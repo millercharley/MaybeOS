@@ -1,0 +1,553 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Multi-Tenant Foundation ─────────────────────────────────
+
+model Organization {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  description String?
+  mission     String?
+  logoUrl     String?
+  brandColor  String   @default("#6366f1")
+  customDomain String? @unique
+  timezone    String   @default("America/New_York")
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  locations     Location[]
+  users         UserOrg[]
+  tiers         MembershipTier[]
+  events        Event[]
+  rooms         Room[]
+  channels      Channel[]
+  surveys       Survey[]
+  auditLogs     AuditLog[]
+  emailTemplates EmailTemplate[]
+
+  @@map("organizations")
+}
+
+model Location {
+  id        String   @id @default(uuid())
+  orgId     String
+  name      String
+  address   String?
+  city      String?
+  state     String?
+  zip       String?
+  country   String   @default("US")
+  timezone  String   @default("America/New_York")
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  rooms Room[]
+  events Event[]
+
+  @@index([orgId])
+  @@map("locations")
+}
+
+// ─── Users & RBAC ────────────────────────────────────────────
+
+enum GlobalRole {
+  PLATFORM_ADMIN
+  USER
+}
+
+enum OrgRole {
+  ADMIN
+  STAFF
+  MEMBER
+  GUEST
+}
+
+model User {
+  id              String     @id @default(uuid())
+  email           String     @unique
+  passwordHash    String?
+  name            String?
+  avatarUrl       String?
+  globalRole      GlobalRole @default(USER)
+  emailVerified   Boolean    @default(false)
+  magicLinkToken  String?
+  magicLinkExpiry DateTime?
+  lastLoginAt     DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  orgs            UserOrg[]
+  rsvps           Rsvp[]
+  bookings        Booking[]
+  posts           Post[]
+  comments        Comment[]
+  reactions       Reaction[]
+  votes           Vote[]
+  surveyResponses SurveyResponse[]
+  sentMessages    DirectMessage[]  @relation("SentMessages")
+  receivedMessages DirectMessage[] @relation("ReceivedMessages")
+
+  @@map("users")
+}
+
+model UserOrg {
+  id              String   @id @default(uuid())
+  userId          String
+  orgId           String
+  role            OrgRole  @default(MEMBER)
+  tierId          String?
+  stripeCustomerId String?
+  stripeSubscriptionId String?
+  subscriptionStatus SubscriptionStatus @default(NONE)
+  memberSince     DateTime @default(now())
+  bio             String?
+  tags            String[] @default([])
+  isPublic        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  tier MembershipTier? @relation(fields: [tierId], references: [id])
+
+  @@unique([userId, orgId])
+  @@index([orgId])
+  @@index([orgId, role])
+  @@map("user_orgs")
+}
+
+enum SubscriptionStatus {
+  NONE
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIALING
+  COMP
+}
+
+// ─── MemberOS: Tiers & Subscriptions ────────────────────────
+
+model MembershipTier {
+  id              String   @id @default(uuid())
+  orgId           String
+  name            String
+  description     String?
+  priceMonthly    Int      @default(0) // cents
+  priceYearly     Int?     // cents
+  isPayWhatYouCan Boolean  @default(false)
+  minPrice        Int?     // cents, for PWYC
+  maxMembers      Int?     // null = unlimited
+  benefits        String[] @default([])
+  stripePriceIdMonthly String?
+  stripePriceIdYearly  String?
+  sortOrder       Int      @default(0)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  members UserOrg[]
+
+  @@index([orgId])
+  @@map("membership_tiers")
+}
+
+// ─── EventsOS ────────────────────────────────────────────────
+
+enum EventVisibility {
+  PUBLIC
+  MEMBERS_ONLY
+  PRIVATE
+}
+
+enum RecurrenceRule {
+  NONE
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
+model Event {
+  id              String          @id @default(uuid())
+  orgId           String
+  locationId      String?
+  roomId          String?
+  title           String
+  slug            String
+  description     String?
+  richDescription String?         // HTML content
+  imageUrl        String?
+  startTime       DateTime
+  endTime         DateTime
+  timezone        String          @default("America/New_York")
+  visibility      EventVisibility @default(PUBLIC)
+  recurrence      RecurrenceRule  @default(NONE)
+  recurrenceEnd   DateTime?
+  parentEventId   String?         // for recurring event instances
+  capacity        Int?
+  waitlistEnabled Boolean         @default(false)
+  requiresRsvp    Boolean         @default(true)
+  category        String?
+  tags            String[]        @default([])
+  isPublished     Boolean         @default(false)
+  publishedAt     DateTime?
+  canceledAt      DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  location  Location?    @relation(fields: [locationId], references: [id])
+  room      Room?        @relation(fields: [roomId], references: [id])
+  parent    Event?       @relation("EventRecurrence", fields: [parentEventId], references: [id])
+  children  Event[]      @relation("EventRecurrence")
+  rsvps     Rsvp[]
+  attendance Attendance[]
+
+  @@unique([orgId, slug])
+  @@index([orgId, startTime])
+  @@index([orgId, visibility, isPublished])
+  @@map("events")
+}
+
+enum RsvpStatus {
+  CONFIRMED
+  WAITLISTED
+  CANCELED
+  TENTATIVE
+}
+
+model Rsvp {
+  id         String     @id @default(uuid())
+  eventId    String
+  userId     String?    // null for guest RSVPs
+  guestName  String?
+  guestEmail String?
+  status     RsvpStatus @default(CONFIRMED)
+  plusOnes   Int        @default(0)
+  note       String?
+  checkedIn  Boolean    @default(false)
+  checkedInAt DateTime?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User? @relation(fields: [userId], references: [id])
+
+  @@unique([eventId, userId])
+  @@index([eventId])
+  @@map("rsvps")
+}
+
+model Attendance {
+  id        String   @id @default(uuid())
+  eventId   String
+  userId    String?
+  guestEmail String?
+  method    String   @default("manual") // manual, qr, self
+  createdAt DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@map("attendance")
+}
+
+// ─── SpaceOS: Rooms & Bookings ───────────────────────────────
+
+model Room {
+  id                String   @id @default(uuid())
+  orgId             String
+  locationId        String?
+  name              String
+  description       String?
+  capacity          Int?
+  amenities         String[] @default([])
+  imageUrl          String?
+  isActive          Boolean  @default(true)
+  requiresApproval  Boolean  @default(false)
+  memberOnly        Boolean  @default(true)
+  hourlyRate        Int?     // cents, null = free
+  googleCalendarId  String?
+  googleTokens      Json?    // encrypted OAuth tokens
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  org              Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  location         Location?     @relation(fields: [locationId], references: [id])
+  availabilityRules AvailabilityRule[]
+  bookings         Booking[]
+  events           Event[]
+
+  @@index([orgId])
+  @@map("rooms")
+}
+
+model AvailabilityRule {
+  id           String   @id @default(uuid())
+  roomId       String
+  dayOfWeek    Int?     // 0=Sunday..6=Saturday; null = all days
+  startTime    String   // "09:00" (HH:mm)
+  endTime      String   // "17:00" (HH:mm)
+  bufferMinutes Int     @default(0)
+  isBlackout   Boolean  @default(false) // true = blocked
+  effectiveFrom DateTime?
+  effectiveTo   DateTime?
+  createdAt    DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId])
+  @@map("availability_rules")
+}
+
+enum BookingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELED
+}
+
+model Booking {
+  id              String        @id @default(uuid())
+  roomId          String
+  userId          String
+  title           String
+  description     String?
+  startTime       DateTime
+  endTime         DateTime
+  status          BookingStatus @default(PENDING)
+  googleEventId   String?       // synced calendar event ID
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  canceledAt      DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([roomId, startTime, endTime])
+  @@index([userId])
+  @@map("bookings")
+}
+
+// ─── CommonsOS: Social & Governance ──────────────────────────
+
+model Channel {
+  id          String   @id @default(uuid())
+  orgId       String
+  name        String
+  slug        String
+  description String?
+  isDefault   Boolean  @default(false)
+  isPublic    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  posts Post[]
+
+  @@unique([orgId, slug])
+  @@index([orgId])
+  @@map("channels")
+}
+
+model Post {
+  id          String   @id @default(uuid())
+  channelId   String
+  authorId    String
+  title       String?
+  body        String
+  isPinned    Boolean  @default(false)
+  isFlagged   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  channel  Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author   User      @relation(fields: [authorId], references: [id])
+  comments Comment[]
+  reactions Reaction[]
+
+  @@index([channelId, createdAt])
+  @@map("posts")
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  postId    String
+  authorId  String
+  body      String
+  isFlagged Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+
+  @@index([postId])
+  @@map("comments")
+}
+
+model Reaction {
+  id     String @id @default(uuid())
+  postId String
+  userId String
+  emoji  String // e.g. "thumbsup", "heart"
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([postId, userId, emoji])
+  @@map("reactions")
+}
+
+model DirectMessage {
+  id         String   @id @default(uuid())
+  senderId   String
+  receiverId String
+  body       String
+  readAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  sender   User @relation("SentMessages", fields: [senderId], references: [id])
+  receiver User @relation("ReceivedMessages", fields: [receiverId], references: [id])
+
+  @@index([senderId, receiverId])
+  @@map("direct_messages")
+}
+
+// ── Governance
+
+enum ProposalStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  PASSED
+  FAILED
+}
+
+model Proposal {
+  id          String         @id @default(uuid())
+  channelId   String
+  authorId    String
+  title       String
+  body        String
+  status      ProposalStatus @default(DRAFT)
+  quorum      Int?           // minimum votes needed
+  closesAt    DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  votes Vote[]
+
+  @@map("proposals")
+}
+
+enum VoteChoice {
+  YES
+  NO
+  ABSTAIN
+}
+
+model Vote {
+  id         String     @id @default(uuid())
+  proposalId String
+  userId     String
+  choice     VoteChoice
+  createdAt  DateTime   @default(now())
+
+  proposal Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@unique([proposalId, userId])
+  @@map("votes")
+}
+
+// ─── ImpactOS: Surveys & Metrics ─────────────────────────────
+
+enum SurveyType {
+  BASELINE
+  FOLLOWUP
+  CUSTOM
+}
+
+model Survey {
+  id          String     @id @default(uuid())
+  orgId       String
+  title       String
+  description String?
+  type        SurveyType @default(CUSTOM)
+  questions   Json       // Array of question definitions
+  isActive    Boolean    @default(false)
+  publishedAt DateTime?
+  closesAt    DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  org       Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  responses SurveyResponse[]
+
+  @@index([orgId])
+  @@map("surveys")
+}
+
+model SurveyResponse {
+  id        String   @id @default(uuid())
+  surveyId  String
+  userId    String?  // null for anonymous
+  answers   Json     // { questionId: answer }
+  demographics Json? // consent-based demographic data
+  createdAt DateTime @default(now())
+
+  survey Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([surveyId])
+  @@map("survey_responses")
+}
+
+// ─── Platform: Audit & Email ─────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  orgId     String
+  actorId   String?
+  action    String   // e.g. "member.joined", "event.published"
+  entityType String?
+  entityId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, createdAt])
+  @@index([orgId, action])
+  @@map("audit_logs")
+}
+
+model EmailTemplate {
+  id        String   @id @default(uuid())
+  orgId     String
+  slug      String   // e.g. "welcome", "renewal-reminder"
+  subject   String
+  bodyHtml  String
+  bodyText  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, slug])
+  @@map("email_templates")
+}
