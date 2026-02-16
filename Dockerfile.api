@@ -1,0 +1,61 @@
+# ── Build stage ───────────────────────────────────────────
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+# Copy workspace package files for dependency resolution
+COPY package.json package-lock.json ./
+COPY apps/api/package.json ./apps/api/
+COPY apps/web/package.json ./apps/web/
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/embed/package.json ./packages/embed/
+
+RUN npm ci
+
+# Copy source
+COPY tsconfig.base.json ./
+COPY packages/shared ./packages/shared
+COPY apps/api ./apps/api
+
+# Generate Prisma client and build
+RUN npx prisma generate --schema=apps/api/prisma/schema.prisma
+RUN npm run build --workspace=apps/api
+
+# ── Production dependencies ──────────────────────────────
+FROM node:20-alpine AS deps
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY apps/api/package.json ./apps/api/
+COPY apps/web/package.json ./apps/web/
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/embed/package.json ./packages/embed/
+
+RUN npm ci --omit=dev
+
+# Re-generate Prisma client for production
+COPY apps/api/prisma ./apps/api/prisma
+RUN npx prisma generate --schema=apps/api/prisma/schema.prisma
+
+# ── Runtime stage ────────────────────────────────────────
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Copy production node_modules (with Prisma client)
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/package.json ./
+
+# Copy compiled API
+COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
+
+# Copy Prisma schema + migrations for migrate deploy
+COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
+
+WORKDIR /app/apps/api
+
+EXPOSE 3001
+ENV PORT=3001
+
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]

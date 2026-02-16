@@ -12,8 +12,10 @@ import { ImpactModule } from './modules/impact/impact.module';
 import { StripeModule } from './modules/stripe/stripe.module';
 import { EmailModule } from './modules/email/email.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
+import { HealthController } from './health.controller';
 
 @Module({
+  controllers: [HealthController],
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     BullModule.forRoot({
