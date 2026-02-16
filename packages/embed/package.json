@@ -1,0 +1,12 @@
+{
+  "name": "@maybeos/embed",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc && echo 'Build embed widget'"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
