@@ -1,0 +1,17 @@
+aws_region  = "us-east-1"
+environment = "production"
+
+# ── Domains (REQUIRED — update these) ────────────────
+api_domain      = "api.maybeos.app"
+web_domain      = "app.maybeos.app"
+certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# ── Sizing (defaults are fine for starting out) ──────
+# db_instance_class = "db.t4g.micro"
+# redis_node_type   = "cache.t4g.micro"
+# api_cpu           = 512
+# api_memory        = 1024
+# web_cpu           = 256
+# web_memory        = 512
+# api_desired_count = 2
+# web_desired_count = 2
