@@ -1,0 +1,16 @@
+node_modules
+.next
+dist
+.env
+.env.*
+!.env.example
+*.log
+.git
+.gitignore
+**/*.test.ts
+**/*.spec.ts
+**/test/
+**/tests/
+coverage
+.vscode
+.idea
