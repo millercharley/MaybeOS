@@ -1,0 +1,94 @@
+'use client';
+
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { Calendar, MessageSquare, DoorOpen, BarChart3, Users } from 'lucide-react';
+import { usePortal } from '@/contexts/portal-context';
+import { usePublicApi } from '@/hooks/use-api';
+import { api } from '@/lib/api';
+
+export default function PortalHomePage() {
+  const { orgSlug } = useParams();
+  const { org } = usePortal();
+  const basePath = `/portal/${orgSlug}`;
+
+  const { data: events } = usePublicApi(
+    () => (org ? api.events.listPublic(org.id) : Promise.resolve([])),
+    [org?.id],
+  );
+
+  const upcoming = (events || [])
+    .filter((e) => new Date(e.startTime) > new Date())
+    .slice(0, 3);
+
+  const features = [
+    { label: 'Events', description: 'Browse and RSVP to upcoming events', href: `${basePath}/events`, icon: Calendar },
+    { label: 'Rooms', description: 'Book shared spaces and meeting rooms', href: `${basePath}/rooms`, icon: DoorOpen },
+    { label: 'Commons', description: 'Join discussions and vote on proposals', href: `${basePath}/commons`, icon: MessageSquare },
+    { label: 'Directory', description: 'Find and connect with other members', href: `${basePath}/directory`, icon: Users },
+    { label: 'Surveys', description: 'Share your feedback and shape our community', href: `${basePath}/impact`, icon: BarChart3 },
+  ];
+
+  return (
+    <div className="space-y-10">
+      <div className="text-center">
+        <h1 className="text-3xl font-bold text-gray-900">{org?.name}</h1>
+        {org?.mission && (
+          <p className="mx-auto mt-3 max-w-2xl text-lg text-gray-600">{org.mission}</p>
+        )}
+        {org?.description && !org?.mission && (
+          <p className="mx-auto mt-3 max-w-2xl text-lg text-gray-600">{org.description}</p>
+        )}
+      </div>
+
+      {upcoming.length > 0 && (
+        <section>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-gray-900">Upcoming Events</h2>
+            <Link href={`${basePath}/events`} className="text-sm font-medium text-brand-600 hover:text-brand-700">
+              View all
+            </Link>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {upcoming.map((event) => (
+              <div key={event.id} className="rounded-xl border border-gray-200 bg-white p-5">
+                <p className="text-xs font-medium text-brand-600">
+                  {new Date(event.startTime).toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })}
+                </p>
+                <h3 className="mt-1 text-sm font-semibold text-gray-900">{event.title}</h3>
+                {event.description && (
+                  <p className="mt-1 line-clamp-2 text-xs text-gray-500">{event.description}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section>
+        <h2 className="mb-4 text-xl font-semibold text-gray-900">Explore</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {features.map((f) => (
+            <Link
+              key={f.label}
+              href={f.href}
+              className="group rounded-xl border border-gray-200 bg-white p-5 transition-colors hover:border-brand-300"
+            >
+              <f.icon className="h-6 w-6 text-brand-600" />
+              <h3 className="mt-3 text-sm font-semibold text-gray-900 group-hover:text-brand-700">
+                {f.label}
+              </h3>
+              <p className="mt-1 text-xs text-gray-500">{f.description}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
