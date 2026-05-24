@@ -87,11 +87,14 @@ import { HealthModule } from './modules/health/health.module';
       useFactory: (config: ConfigService) => {
         const redisUrl = config.get<string>('REDIS_URL', 'redis://localhost:6379');
         const url = new URL(redisUrl);
+        const useTls = url.protocol === 'rediss:';
         return {
           connection: {
             host: url.hostname,
             port: parseInt(url.port || '6379', 10),
             password: url.password || undefined,
+            username: url.username || undefined,
+            tls: useTls ? {} : undefined,
           },
         };
       },

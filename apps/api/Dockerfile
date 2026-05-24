@@ -5,7 +5,9 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json package-lock.json ./
 COPY apps/api/package.json ./apps/api/
+COPY apps/web/package.json ./apps/web/
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/embed/package.json ./packages/embed/
 RUN npm ci
 
 # Build
@@ -26,7 +28,7 @@ FROM base AS runner
 ENV NODE_ENV=production
 
 RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nestjs
+    adduser --system --uid 1001 --home /home/nestjs nestjs
 
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
@@ -38,4 +40,4 @@ USER nestjs
 EXPOSE 3001
 ENV PORT=3001
 
-CMD ["sh", "-c", "cd apps/api && npx prisma migrate deploy && node dist/main"]
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy --schema=apps/api/prisma/schema.prisma && node apps/api/dist/main"]
