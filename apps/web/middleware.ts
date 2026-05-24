@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const APP_ROUTES = ['/login', '/register', '/magic-link', '/admin', '/member', '/calendar'];
+const APP_ROUTES = ['/login', '/register', '/magic-link', '/admin', '/member', '/calendar', '/portal'];
 
 export function middleware(request: NextRequest) {
   const hostname = request.headers.get('host') || '';
