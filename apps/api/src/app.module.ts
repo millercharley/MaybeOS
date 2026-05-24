@@ -28,7 +28,6 @@ import { HealthModule } from './modules/health/health.module';
           .default('development'),
         PORT: Joi.number().default(3001),
         DATABASE_URL: Joi.string().required(),
-        DIRECT_DATABASE_URL: Joi.string().allow('').default(''),
         JWT_SECRET: Joi.string().min(32).required(),
         JWT_EXPIRES_IN: Joi.string().default('7d'),
         REDIS_URL: Joi.string().default('redis://localhost:6379'),
