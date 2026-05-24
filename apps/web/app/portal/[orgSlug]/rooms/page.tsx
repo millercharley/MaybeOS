@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { DoorOpen, Users, Check } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
@@ -20,7 +20,7 @@ export default function PortalRoomsPage() {
   const [booking, setBooking] = useState(false);
   const [bookingResult, setBookingResult] = useState<string | null>(null);
 
-  useState(() => {
+  useEffect(() => {
     if (!org || !token) {
       setLoading(false);
       return;
@@ -30,7 +30,7 @@ export default function PortalRoomsPage() {
       .then(setRooms)
       .catch(() => {})
       .finally(() => setLoading(false));
-  });
+  }, [org, token]);
 
   async function handleBook() {
     if (!org || !token || !selectedRoom || !title || !date || !startTime || !endTime) return;

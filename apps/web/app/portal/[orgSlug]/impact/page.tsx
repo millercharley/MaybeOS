@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { BarChart3, CheckCircle } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
@@ -16,14 +16,14 @@ export default function PortalImpactPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<Set<string>>(new Set());
 
-  useState(() => {
+  useEffect(() => {
     if (!org || !token) { setLoading(false); return; }
     api.impact
       .listSurveys(org.id, token)
       .then(setSurveys)
       .catch(() => {})
       .finally(() => setLoading(false));
-  });
+  }, [org, token]);
 
   async function handleSubmit() {
     if (!org || !token || !activeSurvey) return;

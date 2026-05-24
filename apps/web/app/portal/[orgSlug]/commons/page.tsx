@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { MessageSquare, ThumbsUp, ThumbsDown, Minus, Send } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
@@ -62,7 +62,7 @@ function ChannelsSection() {
   const [newPost, setNewPost] = useState('');
   const [posting, setPosting] = useState(false);
 
-  useState(() => {
+  useEffect(() => {
     if (!org || !token) { setLoading(false); return; }
     api.commons
       .listChannels(org.id, token)
@@ -79,7 +79,7 @@ function ChannelsSection() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  });
+  }, [org, token]);
 
   async function loadPosts(channelId: string) {
     if (!org || !token) return;
@@ -177,14 +177,14 @@ function ProposalsSection() {
   const [loading, setLoading] = useState(true);
   const [votingId, setVotingId] = useState<string | null>(null);
 
-  useState(() => {
+  useEffect(() => {
     if (!org || !token) { setLoading(false); return; }
     api.commons
       .listProposals(org.id, token)
       .then(setProposals)
       .catch(() => {})
       .finally(() => setLoading(false));
-  });
+  }, [org, token]);
 
   async function handleVote(proposalId: string, choice: string) {
     if (!org || !token) return;
