@@ -82,6 +82,14 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
         <p className="mx-auto mt-6 max-w-3xl text-lg text-gray-600 leading-relaxed">
           {org.mission || org.description || 'Welcome to our community.'}
         </p>
+        <div className="mt-6">
+          <Link
+            href={`/portal/${slug}`}
+            className="btn-primary inline-flex items-center gap-2"
+          >
+            Enter Member Portal
+          </Link>
+        </div>
       </div>
 
       {/* Membership Tiers */}
