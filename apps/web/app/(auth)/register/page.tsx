@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 
-export default function RegisterPage() {
+function RegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirect') || '/admin';
   const setToken = useAuthStore((s) => s.setToken);
 
   const [name, setName] = useState('');
@@ -24,7 +26,7 @@ export default function RegisterPage() {
     try {
       const result = await api.auth.register({ name, email, password });
       setToken(result.accessToken);
-      router.push('/admin');
+      router.push(redirectTo);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : 'Something went wrong. Please try again.';
@@ -99,10 +101,18 @@ export default function RegisterPage() {
 
       <p className="mt-6 text-center text-sm text-gray-500">
         Already have an account?{' '}
-        <Link href="/login" className="font-medium text-blue-600 hover:text-blue-500">
+        <Link href={`/login${redirectTo !== '/admin' ? `?redirect=${encodeURIComponent(redirectTo)}` : ''}`} className="font-medium text-blue-600 hover:text-blue-500">
           Sign in
         </Link>
       </p>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" /></div>}>
+      <RegisterForm />
+    </Suspense>
   );
 }

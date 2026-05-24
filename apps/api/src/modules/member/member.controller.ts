@@ -15,8 +15,10 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { MemberService } from './member.service';
 import { CreateTierDto } from './dto/create-tier.dto';
+import { InviteMemberDto } from './dto/invite-member.dto';
 
 @ApiTags('members')
 @Controller('orgs/:orgId')
@@ -75,6 +77,28 @@ export class MemberController {
     @Param('userId') userId: string,
   ) {
     return this.memberService.removeMember(orgId, userId);
+  }
+
+  @Post('members/invite')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Invite a member by email' })
+  inviteMember(
+    @Param('orgId') orgId: string,
+    @Body() dto: InviteMemberDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.memberService.inviteMember(orgId, dto.email, dto.role || 'MEMBER', user.userId);
+  }
+
+  @Get('invitations')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List invitations for an organization' })
+  listInvitations(@Param('orgId') orgId: string) {
+    return this.memberService.listInvitations(orgId);
   }
 
   @Post('members/import')

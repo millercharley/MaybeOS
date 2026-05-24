@@ -2,13 +2,20 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../config/prisma.service';
+import { EmailService } from '../email/email.service';
 import { CreateTierDto } from './dto/create-tier.dto';
 
 @Injectable()
 export class MemberService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly emailService: EmailService,
+    private readonly configService: ConfigService,
+  ) {}
 
   // ─── Members ────────────────────────────────────────────────
 
@@ -229,6 +236,134 @@ export class MemberService {
       data: {
         ...dto,
       },
+    });
+  }
+
+  // ─── Invitations ────────────────────────────────────────────
+
+  async inviteMember(
+    orgId: string,
+    email: string,
+    role: string,
+    invitedByUserId: string,
+  ) {
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const existing = await this.prisma.userOrg.findFirst({
+      where: {
+        orgId,
+        user: { email: normalizedEmail },
+      },
+    });
+    if (existing) {
+      throw new ConflictException('This person is already a member of this organization');
+    }
+
+    const pendingInvite = await this.prisma.invitation.findFirst({
+      where: {
+        orgId,
+        email: normalizedEmail,
+        acceptedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+    });
+    if (pendingInvite) {
+      throw new ConflictException('An invitation has already been sent to this email');
+    }
+
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    const inviter = await this.prisma.user.findUnique({
+      where: { id: invitedByUserId },
+    });
+
+    const invitation = await this.prisma.invitation.create({
+      data: {
+        orgId,
+        email: normalizedEmail,
+        role: role as any,
+        invitedBy: invitedByUserId,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    const webUrl = this.configService.get<string>('WEB_URL');
+    const inviteUrl = `${webUrl}/invite?token=${invitation.token}`;
+
+    await this.emailService.sendInvite(
+      normalizedEmail,
+      org.name,
+      inviteUrl,
+      inviter?.name || undefined,
+    );
+
+    return { id: invitation.id, email: normalizedEmail, status: 'sent' };
+  }
+
+  async getInviteByToken(token: string) {
+    const invitation = await this.prisma.invitation.findUnique({
+      where: { token },
+      include: { org: { select: { id: true, name: true, slug: true, logoUrl: true, brandColor: true } } },
+    });
+
+    if (!invitation) throw new NotFoundException('Invitation not found');
+    if (invitation.acceptedAt) throw new BadRequestException('This invitation has already been accepted');
+    if (invitation.expiresAt < new Date()) throw new BadRequestException('This invitation has expired');
+
+    return {
+      id: invitation.id,
+      email: invitation.email,
+      role: invitation.role,
+      org: invitation.org,
+      expiresAt: invitation.expiresAt,
+    };
+  }
+
+  async acceptInvite(token: string, userId: string) {
+    const invitation = await this.prisma.invitation.findUnique({
+      where: { token },
+    });
+
+    if (!invitation) throw new NotFoundException('Invitation not found');
+    if (invitation.acceptedAt) throw new BadRequestException('This invitation has already been accepted');
+    if (invitation.expiresAt < new Date()) throw new BadRequestException('This invitation has expired');
+
+    const existing = await this.prisma.userOrg.findUnique({
+      where: { userId_orgId: { userId, orgId: invitation.orgId } },
+    });
+    if (existing) {
+      await this.prisma.invitation.update({
+        where: { id: invitation.id },
+        data: { acceptedAt: new Date() },
+      });
+      return { status: 'already_member', orgId: invitation.orgId };
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.userOrg.create({
+        data: {
+          userId,
+          orgId: invitation.orgId,
+          role: invitation.role,
+        },
+      }),
+      this.prisma.invitation.update({
+        where: { id: invitation.id },
+        data: { acceptedAt: new Date() },
+      }),
+    ]);
+
+    return { status: 'accepted', orgId: invitation.orgId };
+  }
+
+  async listInvitations(orgId: string) {
+    return this.prisma.invitation.findMany({
+      where: { orgId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
     });
   }
 
