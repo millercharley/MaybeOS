@@ -3,18 +3,15 @@ WORKDIR /app
 
 # Install dependencies
 FROM base AS deps
-COPY package.json ./
+COPY package.json package-lock.json ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/embed/package.json ./packages/embed/
-RUN npm install --workspace=apps/web --workspace=packages/shared --workspace=packages/embed --include-workspace-root
+RUN npm ci
 
 # Build
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
-COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules 2>/dev/null || true
-COPY --from=deps /app/packages/embed/node_modules ./packages/embed/node_modules 2>/dev/null || true
 COPY package.json tsconfig.base.json ./
 COPY apps/web ./apps/web
 COPY packages/shared ./packages/shared
