@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
+import * as Joi from 'joi';
 import { PrismaModule } from './config/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { OrgModule } from './modules/org/org.module';
@@ -15,11 +16,44 @@ import { CalendarModule } from './modules/calendar/calendar.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
-    BullModule.forRoot({
-      connection: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379', 10),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      validationSchema: Joi.object({
+        NODE_ENV: Joi.string()
+          .valid('development', 'production', 'test')
+          .default('development'),
+        PORT: Joi.number().default(3001),
+        DATABASE_URL: Joi.string().required(),
+        JWT_SECRET: Joi.string().min(32).required(),
+        JWT_EXPIRES_IN: Joi.string().default('7d'),
+        REDIS_URL: Joi.string().default('redis://localhost:6379'),
+        WEB_URL: Joi.string().default('http://localhost:3000'),
+        API_URL: Joi.string().default('http://localhost:3001'),
+        STRIPE_SECRET_KEY: Joi.string().allow('').default(''),
+        STRIPE_WEBHOOK_SECRET: Joi.string().allow('').default(''),
+        GOOGLE_CLIENT_ID: Joi.string().allow('').default(''),
+        GOOGLE_CLIENT_SECRET: Joi.string().allow('').default(''),
+        GOOGLE_REDIRECT_URI: Joi.string().allow('').default(''),
+        POSTMARK_API_TOKEN: Joi.string().allow('').default(''),
+        EMAIL_FROM: Joi.string().default('noreply@maybeos.app'),
+      }),
+      validationOptions: {
+        abortEarly: true,
+      },
+    }),
+    BullModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const redisUrl = config.get<string>('REDIS_URL', 'redis://localhost:6379');
+        const url = new URL(redisUrl);
+        return {
+          connection: {
+            host: url.hostname,
+            port: parseInt(url.port || '6379', 10),
+            password: url.password || undefined,
+          },
+        };
       },
     }),
     PrismaModule,

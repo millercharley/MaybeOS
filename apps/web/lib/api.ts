@@ -125,6 +125,15 @@ class ApiClient {
 
     publicFeedJson: (orgId: string) =>
       this.request<Event[]>(`/orgs/${orgId}/events/feed.json`),
+
+    getPublicBySlug: (orgSlug: string, eventSlug: string) =>
+      this.request<Event>(`/orgs/${orgSlug}/events/by-slug/${eventSlug}`),
+
+    guestRsvp: (orgId: string, eventId: string, data: { name: string; email: string }) =>
+      this.request(`/orgs/${orgId}/events/${eventId}/guest-rsvp`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
   };
 
   // ── Rooms & Bookings ────────────────────────────
@@ -154,6 +163,18 @@ class ApiClient {
 
     myBookings: (orgId: string, token: string) =>
       this.request<Booking[]>(`/orgs/${orgId}/my-bookings`, { token }),
+
+    approveBooking: (orgId: string, roomId: string, bookingId: string, token: string) =>
+      this.request<Booking>(`/orgs/${orgId}/rooms/${roomId}/bookings/${bookingId}/approve`, {
+        method: 'POST',
+        token,
+      }),
+
+    rejectBooking: (orgId: string, roomId: string, bookingId: string, token: string) =>
+      this.request<Booking>(`/orgs/${orgId}/rooms/${roomId}/bookings/${bookingId}/reject`, {
+        method: 'POST',
+        token,
+      }),
   };
 
   // ── Commons ──────────────────────────────────────
