@@ -1,13 +1,15 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirect') || '/admin';
   const setToken = useAuthStore((s) => s.setToken);
 
   const [email, setEmail] = useState('');
@@ -29,7 +31,7 @@ export default function LoginPage() {
       } else {
         const result = await api.auth.login({ email, password });
         setToken(result.accessToken);
-        router.push('/admin');
+        router.push(redirectTo);
       }
     } catch (err: unknown) {
       const message =
@@ -130,10 +132,18 @@ export default function LoginPage() {
 
       <p className="mt-6 text-center text-sm text-gray-500">
         Don&apos;t have an account?{' '}
-        <Link href="/register" className="font-medium text-blue-600 hover:text-blue-500">
+        <Link href={`/register${redirectTo !== '/admin' ? `?redirect=${encodeURIComponent(redirectTo)}` : ''}`} className="font-medium text-blue-600 hover:text-blue-500">
           Create one
         </Link>
       </p>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" /></div>}>
+      <LoginForm />
+    </Suspense>
   );
 }

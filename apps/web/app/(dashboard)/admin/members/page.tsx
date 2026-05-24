@@ -1,12 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, FormEvent } from 'react';
 import { Search, Plus, MoreHorizontal } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
+import { useAuthStore } from '@/lib/auth-store';
 import { api, type PaginatedResponse, type Member } from '@/lib/api';
-
-type Role = 'ADMIN' | 'MEMBER' | 'STAFF';
-type Status = 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
+import { Modal } from '@/components/ui/modal';
 
 const roleBadge: Record<string, string> = {
   ADMIN: 'badge-success',
@@ -22,11 +21,39 @@ const statusBadge: Record<string, string> = {
 
 export default function MembersPage() {
   const [search, setSearch] = useState('');
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState('MEMBER');
+  const [inviting, setInviting] = useState(false);
+  const [inviteResult, setInviteResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const token = useAuthStore((s) => s.token);
+  const currentOrgId = useAuthStore((s) => s.currentOrgId);
 
-  const { data, loading, error } = useApi(
+  const { data, loading, error, refetch } = useApi(
     (token, orgId) => api.members.list(orgId, token, 1, 50),
     [],
   );
+
+  async function handleInvite(e: FormEvent) {
+    e.preventDefault();
+    if (!token || !currentOrgId || !inviteEmail.trim()) return;
+    setInviting(true);
+    setInviteResult(null);
+    try {
+      await api.members.invite(currentOrgId, { email: inviteEmail.trim(), role: inviteRole }, token);
+      setInviteResult({ type: 'success', message: `Invitation sent to ${inviteEmail.trim()}` });
+      setInviteEmail('');
+      setInviteRole('MEMBER');
+      setTimeout(() => {
+        setShowInvite(false);
+        setInviteResult(null);
+      }, 2000);
+    } catch (err) {
+      setInviteResult({ type: 'error', message: err instanceof Error ? err.message : 'Failed to send invitation' });
+    } finally {
+      setInviting(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -56,11 +83,56 @@ export default function MembersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Members</h1>
-        <button className="btn-primary inline-flex items-center gap-2">
+        <button
+          onClick={() => { setShowInvite(true); setInviteResult(null); }}
+          className="btn-primary inline-flex items-center gap-2"
+        >
           <Plus className="h-4 w-4" />
           Invite Member
         </button>
       </div>
+
+      <Modal open={showInvite} onClose={() => setShowInvite(false)} title="Invite Member">
+        <form onSubmit={handleInvite} className="space-y-4">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Email Address</label>
+            <input
+              type="email"
+              required
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              placeholder="member@example.com"
+              className="input w-full"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Role</label>
+            <select
+              value={inviteRole}
+              onChange={(e) => setInviteRole(e.target.value)}
+              className="input w-full"
+            >
+              <option value="MEMBER">Member</option>
+              <option value="STAFF">Staff</option>
+              <option value="ADMIN">Admin</option>
+              <option value="GUEST">Guest</option>
+            </select>
+          </div>
+          {inviteResult && (
+            <div className={`rounded-lg p-3 text-sm ${inviteResult.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+              {inviteResult.message}
+            </div>
+          )}
+          <div className="flex justify-end gap-3">
+            <button type="button" onClick={() => setShowInvite(false)} className="btn-secondary">
+              Cancel
+            </button>
+            <button type="submit" disabled={inviting || !inviteEmail.trim()} className="btn-primary">
+              {inviting ? 'Sending...' : 'Send Invitation'}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />

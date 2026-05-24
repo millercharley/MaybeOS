@@ -103,6 +103,24 @@ class ApiClient {
 
     get: (orgId: string, userId: string, token: string) =>
       this.request<Member>(`/orgs/${orgId}/members/${userId}`, { token }),
+
+    invite: (orgId: string, data: { email: string; role?: string }, token: string) =>
+      this.request<{ id: string; email: string; status: string }>(`/orgs/${orgId}/members/invite`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+  };
+
+  invites = {
+    get: (inviteToken: string) =>
+      this.request<InviteInfo>(`/invites?token=${inviteToken}`),
+
+    accept: (inviteToken: string, authToken: string) =>
+      this.request<{ status: string; orgId: string }>(`/invites/accept?token=${inviteToken}`, {
+        method: 'POST',
+        token: authToken,
+      }),
   };
 
   // ── Events ───────────────────────────────────────
@@ -455,4 +473,12 @@ export interface ImpactDashboardData {
 export interface PaginatedResponse<T> {
   data: T[];
   meta: { page: number; perPage: number; total: number; totalPages: number };
+}
+
+export interface InviteInfo {
+  id: string;
+  email: string;
+  role: string;
+  org: { id: string; name: string; slug: string; logoUrl?: string; brandColor: string };
+  expiresAt: string;
 }

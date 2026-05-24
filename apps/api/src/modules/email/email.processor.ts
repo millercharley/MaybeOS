@@ -121,6 +121,18 @@ export class EmailProcessor extends WorkerHost {
           `,
         };
 
+      case 'invite':
+        return {
+          subject: `You're invited to join ${data.orgName}`,
+          htmlBody: `
+            <h1>You've been invited!</h1>
+            <p>${data.inviterName ? `<strong>${data.inviterName}</strong> has invited you` : 'You have been invited'} to join <strong>${data.orgName}</strong> on MaybeOS.</p>
+            <p>Click the button below to accept the invitation and join the community.</p>
+            <p><a href="${data.inviteUrl}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;">Accept Invitation</a></p>
+            <p style="color:#666;font-size:14px;">This invitation expires in 7 days. If you didn't expect this invitation, you can safely ignore this email.</p>
+          `,
+        };
+
       default:
         return {
           subject: 'Notification from MaybeOS',

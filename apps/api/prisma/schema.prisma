@@ -30,6 +30,7 @@ model Organization {
   rooms         Room[]
   channels      Channel[]
   surveys       Survey[]
+  invitations   Invitation[]
   auditLogs     AuditLog[]
   emailTemplates EmailTemplate[]
 
@@ -529,6 +530,24 @@ model WebhookEvent {
 }
 
 // ─── Platform: Audit & Email ─────────────────────────────────
+
+model Invitation {
+  id        String    @id @default(uuid())
+  orgId     String
+  email     String
+  role      OrgRole   @default(MEMBER)
+  token     String    @unique @default(uuid())
+  invitedBy String
+  expiresAt DateTime
+  acceptedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([email])
+  @@map("invitations")
+}
 
 model AuditLog {
   id        String   @id @default(uuid())

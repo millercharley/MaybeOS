@@ -3,7 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 
 export interface EmailJobData {
-  type: 'welcome' | 'magic-link' | 'event-reminder' | 'renewal-reminder' | 'dunning';
+  type: 'welcome' | 'magic-link' | 'event-reminder' | 'renewal-reminder' | 'dunning' | 'invite';
   to: string;
   data: Record<string, any>;
 }
@@ -82,5 +82,15 @@ export class EmailService {
     } as EmailJobData);
 
     this.logger.log(`Queued dunning email to ${to}`);
+  }
+
+  async sendInvite(to: string, orgName: string, inviteUrl: string, inviterName?: string) {
+    await this.emailQueue.add('send', {
+      type: 'invite',
+      to,
+      data: { orgName, inviteUrl, inviterName },
+    } as EmailJobData);
+
+    this.logger.log(`Queued invite email to ${to} for org "${orgName}"`);
   }
 }
