@@ -1,23 +1,64 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { Logger as PinoLogger } from 'nestjs-pino';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
+  // Init Sentry if DSN provided
+  const sentryDsn = process.env.SENTRY_DSN;
+  if (sentryDsn) {
+    const Sentry = await import('@sentry/nestjs');
+    Sentry.init({
+      dsn: sentryDsn,
+      environment: process.env.NODE_ENV || 'development',
+      tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
+    });
+    logger.log('Sentry error tracking initialized');
+  }
+
   const app = await NestFactory.create(AppModule, {
-    rawBody: true, // Required for Stripe webhook signature verification
+    rawBody: true,
+    bufferLogs: true,
   });
 
-  app.use(helmet());
+  app.useLogger(app.get(PinoLogger));
+
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", 'data:', 'https:'],
+          connectSrc: ["'self'"],
+          fontSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          frameAncestors: ["'none'"],
+        },
+      },
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
+
+  const allowedOrigins = (process.env.WEB_URL || 'http://localhost:3000')
+    .split(',')
+    .map((o) => o.trim());
+
   app.enableCors({
-    origin: process.env.WEB_URL || 'http://localhost:3000',
+    origin: allowedOrigins,
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Org-Id', 'X-Org-Slug'],
   });
 
   app.setGlobalPrefix('api');
+  app.useGlobalFilters(new GlobalExceptionFilter());
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -40,6 +81,7 @@ async function bootstrap() {
       .addTag('commons', 'Social & governance (CommonsOS)')
       .addTag('impact', 'Surveys & metrics (ImpactOS)')
       .addTag('stripe', 'Stripe webhooks')
+      .addTag('health', 'Health checks')
       .build();
 
     const document = SwaggerModule.createDocument(app, swaggerConfig);

@@ -22,6 +22,7 @@ services:
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI}
       POSTMARK_API_TOKEN: ${POSTMARK_API_TOKEN}
       EMAIL_FROM: ${EMAIL_FROM:-noreply@maybeos.app}
+      SENTRY_DSN: ${SENTRY_DSN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -29,7 +30,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001/api"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
