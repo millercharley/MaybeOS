@@ -23,7 +23,7 @@ export class AuthController {
   constructor(private authService: AuthService) {}
 
   @Post('register')
-  @Throttle([{ name: 'short', limit: 3, ttl: 60000 }])
+  @Throttle({ short: { limit: 3, ttl: 60000 } })
   @ApiOperation({ summary: 'Register a new user account' })
   async register(@Body() dto: RegisterDto) {
     const user = await this.authService.register(dto.email, dto.password, dto.name);
@@ -32,14 +32,14 @@ export class AuthController {
 
   @UseGuards(LocalAuthGuard)
   @Post('login')
-  @Throttle([{ name: 'short', limit: 5, ttl: 60000 }])
+  @Throttle({ short: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Log in with email and password' })
   async login(@Body() _dto: LoginDto, @Request() req: any) {
     return this.authService.login(req.user);
   }
 
   @Post('magic-link')
-  @Throttle([{ name: 'short', limit: 3, ttl: 60000 }])
+  @Throttle({ short: { limit: 3, ttl: 60000 } })
   @ApiOperation({ summary: 'Request a magic link for passwordless login' })
   async sendMagicLink(@Body() dto: MagicLinkDto) {
     const token = await this.authService.sendMagicLink(dto.email);

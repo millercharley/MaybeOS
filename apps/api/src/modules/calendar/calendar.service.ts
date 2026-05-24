@@ -338,7 +338,7 @@ export class CalendarService {
           continue;
         }
 
-        const existing = existingByGoogleId.get(gEvent.id);
+        const existing = existingByGoogleId.get(gEvent.id) as any;
 
         if (existing) {
           // Update existing booking if times differ
