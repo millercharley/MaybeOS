@@ -70,6 +70,9 @@ class ApiClient {
 
     profile: (token: string) =>
       this.request<UserProfile>('/auth/profile', { token }),
+
+    refresh: (token: string) =>
+      this.request<{ accessToken: string }>('/auth/refresh', { method: 'POST', token }),
   };
 
   // ── Orgs ─────────────────────────────────────────
@@ -83,7 +86,7 @@ class ApiClient {
     getBySlug: (slug: string) =>
       this.request<Org>(`/orgs/by-slug/${slug}`),
 
-    update: (orgId: string, data: Partial<CreateOrgData>, token: string) =>
+    update: (orgId: string, data: Partial<CreateOrgData> & { brandColor?: string }, token: string) =>
       this.request<Org>(`/orgs/${orgId}`, { method: 'PATCH', body: JSON.stringify(data), token }),
 
     listTiers: (orgId: string) =>
