@@ -1,30 +1,10 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Calendar, Clock, MapPin, Users, ArrowLeft, ExternalLink } from 'lucide-react';
-
-const demoEvent = {
-  title: 'Community Potluck',
-  slug: 'community-potluck',
-  access: 'public' as const,
-  date: 'Saturday, March 1, 2025',
-  time: '6:00 PM - 9:00 PM',
-  location: 'Community Kitchen, 123 Main St',
-  category: 'Food',
-  description: `Join us for our monthly community potluck! This is a wonderful opportunity to meet your neighbors, share delicious food, and strengthen our community bonds.
-
-Everyone is welcome to attend. Please bring a dish to share that serves 6-8 people. We'll have plates, utensils, and drinks provided.
-
-This month's theme is "Comfort Foods From Around the World" - share your family's favorite comfort food recipe and the story behind it.
-
-Dietary accommodations: Please label your dishes with common allergens. We'll have a designated table for gluten-free and vegan options.`,
-  attendeeCount: 23,
-  spotsRemaining: 5,
-  maxCapacity: 28,
-  orgName: 'Sunrise Community Space',
-  orgSlug: 'sunrise-community-space',
-};
+import { usePublicApi } from '@/hooks/use-api';
+import { api } from '@/lib/api';
 
 export default function EventDetailPage(props: { params: Promise<{ slug: string }> }) {
   const { slug } = use(props.params);
@@ -32,11 +12,86 @@ export default function EventDetailPage(props: { params: Promise<{ slug: string 
   const [rsvpEmail, setRsvpEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
-  const event = demoEvent;
+  // Fetch all public events and find the one matching the slug
+  const { data: events, loading, error } = usePublicApi(
+    () => api.events.listPublic('sunrise'),
+    []
+  );
+
+  const event = useMemo(() => {
+    if (!events) return null;
+    return events.find((e) => e.slug === slug) || null;
+  }, [events, slug]);
 
   const handleRsvp = (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitted(true);
+  };
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-12">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
+    </div>
+  );
+
+  if (error) return (
+    <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+      <Link
+        href="/events"
+        className="mb-8 inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to Events
+      </Link>
+      <div className="mt-6 text-center">
+        <Calendar className="mx-auto h-12 w-12 text-gray-300" />
+        <p className="mt-4 text-lg font-medium text-gray-900">Failed to load event</p>
+        <p className="mt-1 text-sm text-gray-500">{error}</p>
+      </div>
+    </div>
+  );
+
+  if (!event) return (
+    <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+      <Link
+        href="/events"
+        className="mb-8 inline-flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to Events
+      </Link>
+      <div className="mt-6 text-center">
+        <Calendar className="mx-auto h-12 w-12 text-gray-300" />
+        <p className="mt-4 text-lg font-medium text-gray-900">Event not found</p>
+        <p className="mt-1 text-sm text-gray-500">
+          The event you are looking for does not exist or has been removed.
+        </p>
+      </div>
+    </div>
+  );
+
+  const startDate = new Date(event.startTime);
+  const endDate = new Date(event.endTime);
+  const access = event.visibility === 'MEMBERS_ONLY' ? 'members-only' : 'public';
+  const dateStr = startDate.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+  const timeStr = `${startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - ${endDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+  const locationStr = event.location?.name || 'TBD';
+  const attendeeCount = event.rsvpCount || 0;
+  const maxCapacity = event.capacity || 0;
+  const spotsRemaining = maxCapacity > 0 ? Math.max(0, maxCapacity - attendeeCount) : null;
+
+  const categoryColorMap: Record<string, string> = {
+    Food: 'bg-orange-50 text-orange-700 ring-1 ring-orange-600/20',
+    Governance: 'bg-purple-50 text-purple-700 ring-1 ring-purple-600/20',
+    Wellness: 'bg-green-50 text-green-700 ring-1 ring-green-600/20',
+    Onboarding: 'bg-blue-50 text-blue-700 ring-1 ring-blue-600/20',
+    Education: 'bg-yellow-50 text-yellow-700 ring-1 ring-yellow-600/20',
+    Social: 'bg-pink-50 text-pink-700 ring-1 ring-pink-600/20',
   };
 
   return (
@@ -55,10 +110,12 @@ export default function EventDetailPage(props: { params: Promise<{ slug: string 
         <div className="lg:col-span-2">
           {/* Category Badge */}
           <div className="mb-4 flex items-center gap-2">
-            <span className="badge bg-orange-50 text-orange-700 ring-1 ring-orange-600/20">
-              {event.category}
-            </span>
-            {event.access === 'members-only' && (
+            {event.category && (
+              <span className={`badge ${categoryColorMap[event.category] || 'bg-gray-50 text-gray-700 ring-1 ring-gray-600/20'}`}>
+                {event.category}
+              </span>
+            )}
+            {access === 'members-only' && (
               <span className="badge bg-brand-50 text-brand-700 ring-1 ring-brand-600/20">
                 Members Only
               </span>
@@ -74,20 +131,20 @@ export default function EventDetailPage(props: { params: Promise<{ slug: string 
           <div className="mt-6 space-y-3">
             <div className="flex items-center gap-3 text-gray-700">
               <Calendar className="h-5 w-5 text-brand-600" />
-              <span className="text-lg">{event.date}</span>
+              <span className="text-lg">{dateStr}</span>
             </div>
             <div className="flex items-center gap-3 text-gray-700">
               <Clock className="h-5 w-5 text-brand-600" />
-              <span className="text-lg">{event.time}</span>
+              <span className="text-lg">{timeStr}</span>
             </div>
             <div className="flex items-center gap-3 text-gray-700">
               <MapPin className="h-5 w-5 text-brand-600" />
-              <span className="text-lg">{event.location}</span>
+              <span className="text-lg">{locationStr}</span>
             </div>
             <div className="flex items-center gap-3 text-gray-700">
               <Users className="h-5 w-5 text-brand-600" />
               <span className="text-lg">
-                {event.attendeeCount} attending, {event.spotsRemaining} spots remaining
+                {attendeeCount} attending{spotsRemaining !== null ? `, ${spotsRemaining} spots remaining` : ''}
               </span>
             </div>
           </div>
@@ -97,7 +154,7 @@ export default function EventDetailPage(props: { params: Promise<{ slug: string 
             <div className="text-center">
               <MapPin className="mx-auto h-8 w-8 text-gray-400" />
               <p className="mt-2 text-sm text-gray-500">Map view coming soon</p>
-              <p className="text-xs text-gray-400">{event.location}</p>
+              <p className="text-xs text-gray-400">{locationStr}</p>
             </div>
           </div>
 
@@ -105,7 +162,7 @@ export default function EventDetailPage(props: { params: Promise<{ slug: string 
           <div className="mt-8">
             <h2 className="text-xl font-semibold text-gray-900">About this event</h2>
             <div className="mt-4 whitespace-pre-line text-gray-600 leading-relaxed">
-              {event.description}
+              {event.description || 'No description provided.'}
             </div>
           </div>
         </div>
@@ -115,29 +172,33 @@ export default function EventDetailPage(props: { params: Promise<{ slug: string 
           {/* RSVP Section */}
           <div className="card rounded-xl border border-gray-200">
             <h2 className="text-lg font-semibold text-gray-900">
-              {event.access === 'public' ? 'RSVP Now' : 'Member Event'}
+              {access === 'public' ? 'RSVP Now' : 'Member Event'}
             </h2>
 
             {/* Capacity Bar */}
-            <div className="mt-4">
-              <div className="flex justify-between text-sm text-gray-600">
-                <span>{event.attendeeCount} attending</span>
-                <span>{event.maxCapacity} max</span>
+            {maxCapacity > 0 && (
+              <div className="mt-4">
+                <div className="flex justify-between text-sm text-gray-600">
+                  <span>{attendeeCount} attending</span>
+                  <span>{maxCapacity} max</span>
+                </div>
+                <div className="mt-1 h-2 w-full rounded-full bg-gray-200">
+                  <div
+                    className="h-2 rounded-full bg-brand-600"
+                    style={{
+                      width: `${Math.min(100, (attendeeCount / maxCapacity) * 100)}%`,
+                    }}
+                  />
+                </div>
+                {spotsRemaining !== null && (
+                  <p className="mt-1 text-sm font-medium text-brand-600">
+                    {spotsRemaining} spots remaining
+                  </p>
+                )}
               </div>
-              <div className="mt-1 h-2 w-full rounded-full bg-gray-200">
-                <div
-                  className="h-2 rounded-full bg-brand-600"
-                  style={{
-                    width: `${(event.attendeeCount / event.maxCapacity) * 100}%`,
-                  }}
-                />
-              </div>
-              <p className="mt-1 text-sm font-medium text-brand-600">
-                {event.spotsRemaining} spots remaining
-              </p>
-            </div>
+            )}
 
-            {event.access === 'public' ? (
+            {access === 'public' ? (
               <>
                 {submitted ? (
                   <div className="mt-6 rounded-lg bg-green-50 p-4 text-center">
@@ -210,9 +271,9 @@ export default function EventDetailPage(props: { params: Promise<{ slug: string 
                 <span className="text-sm font-bold text-brand-700">S</span>
               </div>
               <div>
-                <p className="font-semibold text-gray-900">{event.orgName}</p>
+                <p className="font-semibold text-gray-900">Sunrise Community Space</p>
                 <Link
-                  href={`/orgs/${event.orgSlug}`}
+                  href="/orgs/sunrise"
                   className="text-sm text-brand-600 hover:text-brand-700 inline-flex items-center gap-1"
                 >
                   View organization

@@ -1,84 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Calendar, MapPin, Clock, Search, Filter } from 'lucide-react';
-
-type Event = {
-  id: string;
-  slug: string;
-  title: string;
-  access: 'public' | 'members-only';
-  date: string;
-  time: string;
-  location: string;
-  category: string;
-};
-
-const demoEvents: Event[] = [
-  {
-    id: '1',
-    slug: 'community-potluck',
-    title: 'Community Potluck',
-    access: 'public',
-    date: 'Sat, Mar 1, 2025',
-    time: '6:00 PM',
-    location: 'Community Kitchen',
-    category: 'Food',
-  },
-  {
-    id: '2',
-    slug: 'board-meeting',
-    title: 'Board Meeting',
-    access: 'members-only',
-    date: 'Mon, Mar 3, 2025',
-    time: '7:00 PM',
-    location: 'Main Hall',
-    category: 'Governance',
-  },
-  {
-    id: '3',
-    slug: 'yoga-in-the-park',
-    title: 'Yoga in the Park',
-    access: 'public',
-    date: 'Wed, Mar 5, 2025',
-    time: '9:00 AM',
-    location: 'City Park',
-    category: 'Wellness',
-  },
-  {
-    id: '4',
-    slug: 'new-member-orientation',
-    title: 'New Member Orientation',
-    access: 'public',
-    date: 'Fri, Mar 7, 2025',
-    time: '5:00 PM',
-    location: 'Welcome Room',
-    category: 'Onboarding',
-  },
-  {
-    id: '5',
-    slug: 'cooperative-economics-workshop',
-    title: 'Cooperative Economics Workshop',
-    access: 'public',
-    date: 'Sat, Mar 8, 2025',
-    time: '2:00 PM',
-    location: 'Library',
-    category: 'Education',
-  },
-  {
-    id: '6',
-    slug: 'monthly-social',
-    title: 'Monthly Social',
-    access: 'members-only',
-    date: 'Fri, Mar 14, 2025',
-    time: '7:00 PM',
-    location: 'Rooftop',
-    category: 'Social',
-  },
-];
-
-const categories = ['All', 'Food', 'Governance', 'Wellness', 'Onboarding', 'Education', 'Social'];
+import { usePublicApi } from '@/hooks/use-api';
+import { api, Event } from '@/lib/api';
 
 const categoryColors: Record<string, string> = {
   Food: 'bg-orange-50 text-orange-700 ring-1 ring-orange-600/20',
@@ -94,13 +20,44 @@ export default function EventsPage() {
   const [category, setCategory] = useState('All');
   const [dateRange, setDateRange] = useState('all');
 
-  const filtered = demoEvents.filter((event) => {
-    const matchesSearch =
-      event.title.toLowerCase().includes(search.toLowerCase()) ||
-      event.location.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = category === 'All' || event.category === category;
-    return matchesSearch && matchesCategory;
-  });
+  const { data: events, loading, error } = usePublicApi(
+    () => api.events.listPublic('sunrise'),
+    []
+  );
+
+  // Derive categories from real event data
+  const categories = useMemo(() => {
+    if (!events) return ['All'];
+    const cats = Array.from(new Set(events.map((e) => e.category).filter(Boolean))) as string[];
+    return ['All', ...cats.sort()];
+  }, [events]);
+
+  const filtered = useMemo(() => {
+    if (!events) return [];
+    return events.filter((event) => {
+      const matchesSearch =
+        event.title.toLowerCase().includes(search.toLowerCase()) ||
+        (event.location?.name || '').toLowerCase().includes(search.toLowerCase());
+      const matchesCategory = category === 'All' || event.category === category;
+      return matchesSearch && matchesCategory;
+    });
+  }, [events, search, category]);
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-12">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
+    </div>
+  );
+
+  if (error) return (
+    <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+      <div className="text-center">
+        <Calendar className="mx-auto h-12 w-12 text-gray-300" />
+        <p className="mt-4 text-lg font-medium text-gray-900">Failed to load events</p>
+        <p className="mt-1 text-sm text-gray-500">{error}</p>
+      </div>
+    </div>
+  );
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
@@ -156,64 +113,81 @@ export default function EventsPage() {
 
       {/* Events Grid */}
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {filtered.map((event) => (
-          <Link
-            key={event.id}
-            href={`/events/${event.slug}`}
-            className="card group rounded-xl border border-gray-200 p-0 overflow-hidden transition hover:shadow-md"
-          >
-            {/* Card color strip */}
-            <div className="h-2 bg-brand-600" />
+        {filtered.map((event) => {
+          const startDate = new Date(event.startTime);
+          const access = event.visibility === 'MEMBERS_ONLY' ? 'members-only' : 'public';
+          const dateStr = startDate.toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+          });
+          const timeStr = startDate.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+          });
 
-            <div className="p-6">
-              {/* Category & Access Badge */}
-              <div className="mb-3 flex items-center gap-2">
-                <span
-                  className={`badge ${categoryColors[event.category] || 'bg-gray-50 text-gray-700 ring-1 ring-gray-600/20'}`}
-                >
-                  {event.category}
-                </span>
-                {event.access === 'members-only' && (
-                  <span className="badge bg-brand-50 text-brand-700 ring-1 ring-brand-600/20">
-                    Members Only
-                  </span>
-                )}
-              </div>
+          return (
+            <Link
+              key={event.id}
+              href={`/events/${event.slug}`}
+              className="card group rounded-xl border border-gray-200 p-0 overflow-hidden transition hover:shadow-md"
+            >
+              {/* Card color strip */}
+              <div className="h-2 bg-brand-600" />
 
-              {/* Title */}
-              <h3 className="text-lg font-semibold text-gray-900 group-hover:text-brand-600 transition-colors">
-                {event.title}
-              </h3>
-
-              {/* Details */}
-              <div className="mt-4 space-y-2">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Calendar className="h-4 w-4 text-gray-400" />
-                  <span>{event.date}</span>
+              <div className="p-6">
+                {/* Category & Access Badge */}
+                <div className="mb-3 flex items-center gap-2">
+                  {event.category && (
+                    <span
+                      className={`badge ${categoryColors[event.category] || 'bg-gray-50 text-gray-700 ring-1 ring-gray-600/20'}`}
+                    >
+                      {event.category}
+                    </span>
+                  )}
+                  {access === 'members-only' && (
+                    <span className="badge bg-brand-50 text-brand-700 ring-1 ring-brand-600/20">
+                      Members Only
+                    </span>
+                  )}
                 </div>
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Clock className="h-4 w-4 text-gray-400" />
-                  <span>{event.time}</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <MapPin className="h-4 w-4 text-gray-400" />
-                  <span>{event.location}</span>
-                </div>
-              </div>
 
-              {/* Action */}
-              <div className="mt-5">
-                {event.access === 'public' ? (
-                  <span className="btn-primary w-full text-center">RSVP</span>
-                ) : (
-                  <span className="badge bg-gray-100 text-gray-600 ring-1 ring-gray-300 px-4 py-2 text-sm">
-                    Members Only
-                  </span>
-                )}
+                {/* Title */}
+                <h3 className="text-lg font-semibold text-gray-900 group-hover:text-brand-600 transition-colors">
+                  {event.title}
+                </h3>
+
+                {/* Details */}
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Calendar className="h-4 w-4 text-gray-400" />
+                    <span>{dateStr}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Clock className="h-4 w-4 text-gray-400" />
+                    <span>{timeStr}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <MapPin className="h-4 w-4 text-gray-400" />
+                    <span>{event.location?.name || 'TBD'}</span>
+                  </div>
+                </div>
+
+                {/* Action */}
+                <div className="mt-5">
+                  {access === 'public' ? (
+                    <span className="btn-primary w-full text-center">RSVP</span>
+                  ) : (
+                    <span className="badge bg-gray-100 text-gray-600 ring-1 ring-gray-300 px-4 py-2 text-sm">
+                      Members Only
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-          </Link>
-        ))}
+            </Link>
+          );
+        })}
       </div>
 
       {filtered.length === 0 && (

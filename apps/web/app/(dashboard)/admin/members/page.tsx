@@ -2,75 +2,19 @@
 
 import { useState } from 'react';
 import { Search, Plus, MoreHorizontal } from 'lucide-react';
+import { useApi } from '@/hooks/use-api';
+import { api, type PaginatedResponse, type Member } from '@/lib/api';
 
 type Role = 'ADMIN' | 'MEMBER' | 'STAFF';
 type Status = 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
 
-interface Member {
-  id: string;
-  name: string;
-  email: string;
-  role: Role;
-  tier: string;
-  status: Status;
-  joined: string;
-}
-
-const members: Member[] = [
-  {
-    id: '1',
-    name: 'Sarah Chen',
-    email: 'sarah@example.com',
-    role: 'ADMIN',
-    tier: 'Founding',
-    status: 'ACTIVE',
-    joined: 'Jan 15, 2024',
-  },
-  {
-    id: '2',
-    name: 'Marcus Johnson',
-    email: 'marcus@example.com',
-    role: 'MEMBER',
-    tier: 'Standard',
-    status: 'ACTIVE',
-    joined: 'Mar 2, 2024',
-  },
-  {
-    id: '3',
-    name: 'Priya Patel',
-    email: 'priya@example.com',
-    role: 'STAFF',
-    tier: 'Staff',
-    status: 'ACTIVE',
-    joined: 'Feb 10, 2024',
-  },
-  {
-    id: '4',
-    name: 'David Kim',
-    email: 'david@example.com',
-    role: 'MEMBER',
-    tier: 'Standard',
-    status: 'PAST_DUE',
-    joined: 'Apr 22, 2024',
-  },
-  {
-    id: '5',
-    name: 'Elena Rodriguez',
-    email: 'elena@example.com',
-    role: 'MEMBER',
-    tier: 'Premium',
-    status: 'CANCELED',
-    joined: 'Dec 5, 2023',
-  },
-];
-
-const roleBadge: Record<Role, string> = {
+const roleBadge: Record<string, string> = {
   ADMIN: 'badge-success',
   MEMBER: 'badge-info',
   STAFF: 'badge-warning',
 };
 
-const statusBadge: Record<Status, string> = {
+const statusBadge: Record<string, string> = {
   ACTIVE: 'badge-success',
   PAST_DUE: 'badge-warning',
   CANCELED: 'badge-danger',
@@ -79,10 +23,33 @@ const statusBadge: Record<Status, string> = {
 export default function MembersPage() {
   const [search, setSearch] = useState('');
 
+  const { data, loading, error } = useApi(
+    (token, orgId) => api.members.list(orgId, token, 1, 50),
+    [],
+  );
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="py-12 text-center text-sm text-red-600">
+        Failed to load members: {error}
+      </div>
+    );
+  }
+
+  const members = data?.data ?? [];
+
   const filtered = members.filter(
     (m) =>
-      m.name.toLowerCase().includes(search.toLowerCase()) ||
-      m.email.toLowerCase().includes(search.toLowerCase()),
+      (m.user.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      m.user.email.toLowerCase().includes(search.toLowerCase()),
   );
 
   return (
@@ -140,30 +107,36 @@ export default function MembersPage() {
                   <div className="flex items-center gap-3">
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100">
                       <span className="text-xs font-medium text-brand-700">
-                        {member.name.charAt(0)}
+                        {(member.user.name ?? member.user.email).charAt(0).toUpperCase()}
                       </span>
                     </div>
-                    <span className="text-sm font-medium text-gray-900">{member.name}</span>
+                    <span className="text-sm font-medium text-gray-900">
+                      {member.user.name ?? member.user.email}
+                    </span>
                   </div>
                 </td>
                 <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                  {member.email}
+                  {member.user.email}
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">
-                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${roleBadge[member.role]}`}>
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${roleBadge[member.role] ?? 'badge-info'}`}>
                     {member.role}
                   </span>
                 </td>
                 <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                  {member.tier}
+                  {member.tier?.name ?? '-'}
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">
-                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusBadge[member.status]}`}>
-                    {member.status}
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusBadge[member.subscriptionStatus] ?? 'badge-info'}`}>
+                    {member.subscriptionStatus}
                   </span>
                 </td>
                 <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                  {member.joined}
+                  {new Date(member.memberSince).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}
                 </td>
                 <td className="whitespace-nowrap px-6 py-4 text-right">
                   <button className="text-gray-400 hover:text-gray-600">
