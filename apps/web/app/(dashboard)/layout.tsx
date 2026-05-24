@@ -1,7 +1,10 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
+import { useEffect } from 'react';
 import { Sidebar } from '@/components/layout/sidebar';
+import { useAuthStore } from '@/lib/auth-store';
+import { OrgSetup } from '@/components/setup/org-setup';
 
 const breadcrumbMap: Record<string, string> = {
   '/admin': 'Dashboard',
@@ -19,6 +22,35 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
+  const currentOrgId = useAuthStore((s) => s.currentOrgId);
+  const isLoading = useAuthStore((s) => s.isLoading);
+
+  useEffect(() => {
+    if (!isLoading && !token) {
+      router.push('/login');
+    }
+  }, [isLoading, token, router]);
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-50">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!token) {
+    return null;
+  }
+
+  const hasOrg = user && user.orgs && user.orgs.length > 0 && currentOrgId;
+
+  if (!hasOrg) {
+    return <OrgSetup />;
+  }
 
   const breadcrumbSegments = pathname
     ? pathname.split('/').filter(Boolean)
