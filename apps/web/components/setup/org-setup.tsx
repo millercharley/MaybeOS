@@ -6,6 +6,7 @@ import { useAuthStore } from '@/lib/auth-store';
 
 export function OrgSetup() {
   const token = useAuthStore((s) => s.token);
+  const setToken = useAuthStore((s) => s.setToken);
   const loadProfile = useAuthStore((s) => s.loadProfile);
   const setCurrentOrg = useAuthStore((s) => s.setCurrentOrg);
 
@@ -38,6 +39,8 @@ export function OrgSetup() {
         token,
       );
       setCurrentOrg(org.id);
+      const refreshed = await api.auth.refresh(token);
+      setToken(refreshed.accessToken);
       await loadProfile();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to create organization';

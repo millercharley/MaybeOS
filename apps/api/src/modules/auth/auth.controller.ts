@@ -58,6 +58,14 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('refresh')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Refresh JWT with current org roles' })
+  async refreshToken(@CurrentUser() user: RequestUser) {
+    return this.authService.refreshToken(user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('profile')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get the current user profile' })

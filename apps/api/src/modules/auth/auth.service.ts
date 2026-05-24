@@ -145,6 +145,20 @@ export class AuthService {
   }
 
   /**
+   * Issue a fresh JWT with current org roles.
+   */
+  async refreshToken(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    const { passwordHash, ...safe } = user;
+    return this.login(safe as any);
+  }
+
+  /**
    * Return the full user profile including organisation memberships.
    */
   async getProfile(userId: string) {
