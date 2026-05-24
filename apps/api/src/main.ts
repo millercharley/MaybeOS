@@ -50,8 +50,22 @@ async function bootstrap() {
     .split(',')
     .map((o) => o.trim());
 
+  const baseDomains = allowedOrigins
+    .map((o) => { try { return new URL(o).hostname.split('.').slice(-2).join('.'); } catch { return null; } })
+    .filter(Boolean);
+
   app.enableCors({
-    origin: allowedOrigins,
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      try {
+        const hostname = new URL(origin).hostname;
+        if (baseDomains.some((base) => hostname === base || hostname.endsWith('.' + base))) {
+          return callback(null, true);
+        }
+      } catch {}
+      callback(null, false);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Org-Id', 'X-Org-Slug'],
