@@ -21,10 +21,9 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
     [org?.id]
   );
 
-  // Fetch public events for this org
   const { data: events, loading: eventsLoading } = usePublicApi(
-    () => api.events.listPublic(slug),
-    [slug]
+    () => org ? api.events.listPublic(org.id) : Promise.resolve([]),
+    [org?.id]
   );
 
   // Take the first 3 upcoming events

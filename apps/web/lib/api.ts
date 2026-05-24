@@ -110,8 +110,10 @@ class ApiClient {
     list: (orgId: string, token: string) =>
       this.request<PaginatedResponse<Event>>(`/orgs/${orgId}/events`, { token }),
 
-    listPublic: (orgId: string) =>
-      this.request<Event[]>(`/orgs/${orgId}/events/public`),
+    listPublic: async (orgId: string): Promise<Event[]> => {
+      const res = await this.request<PaginatedResponse<Event>>(`/orgs/${orgId}/events/public`);
+      return res.data;
+    },
 
     get: (orgId: string, eventId: string, token: string) =>
       this.request<Event>(`/orgs/${orgId}/events/${eventId}`, { token }),
