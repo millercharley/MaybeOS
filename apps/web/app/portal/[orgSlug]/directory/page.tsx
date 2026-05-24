@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Users, Search } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
@@ -13,14 +13,14 @@ export default function PortalDirectoryPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
-  useState(() => {
+  useEffect(() => {
     if (!org || !token) { setLoading(false); return; }
     api.members
       .list(org.id, token, 1, 100)
       .then((data) => setMembers(data.data || []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  });
+  }, [org, token]);
 
   if (!token) {
     return (
