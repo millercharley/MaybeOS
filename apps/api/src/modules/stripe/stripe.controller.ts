@@ -12,6 +12,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
@@ -98,6 +99,7 @@ export class StripeController {
   // ──────────────────────────────────────────────────────────────
 
   @Post('stripe/webhooks')
+  @SkipThrottle()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Stripe webhook handler (no auth — verified by signature)' })
   async handleWebhook(

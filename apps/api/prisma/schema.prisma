@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 // ─── Multi-Tenant Foundation ─────────────────────────────────
@@ -515,6 +516,17 @@ model SurveyResponse {
 
   @@index([surveyId])
   @@map("survey_responses")
+}
+
+// ─── Platform: Webhook Idempotency ──────────────────────────
+
+model WebhookEvent {
+  id          String   @id
+  source      String   @default("stripe")
+  processedAt DateTime @default(now())
+
+  @@index([source, processedAt])
+  @@map("webhook_events")
 }
 
 // ─── Platform: Audit & Email ─────────────────────────────────

@@ -25,9 +25,24 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       message =
         typeof exResponse === 'string'
           ? exResponse
-          : (exResponse as Record<string, unknown>).message as string || exception.message;
+          : (exResponse as Record<string, unknown>).message as string ||
+            exception.message;
     } else if (exception instanceof Error) {
       this.logger.error(exception.message, exception.stack);
+
+      // Report to Sentry if available
+      try {
+        const Sentry = require('@sentry/nestjs');
+        Sentry.captureException(exception);
+      } catch {
+        // Sentry not installed or configured — skip
+      }
+
+      if (process.env.NODE_ENV === 'production') {
+        message = 'Internal server error';
+      } else {
+        message = exception.message;
+      }
     }
 
     response.status(status).json({

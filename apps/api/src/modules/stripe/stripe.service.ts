@@ -13,13 +13,6 @@ export class StripeService {
   private readonly logger = new Logger(StripeService.name);
   private stripe: Stripe;
 
-  /**
-   * In-memory set of processed webhook event IDs for idempotency (MVP).
-   * NOTE: In production this should be backed by the database to survive restarts
-   * and work across multiple instances.
-   */
-  private processedEvents = new Set<string>();
-
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
@@ -149,8 +142,11 @@ export class StripeService {
       throw new BadRequestException('Webhook signature verification failed');
     }
 
-    // Idempotency check
-    if (this.processedEvents.has(event.id)) {
+    // Database-backed idempotency check
+    const existing = await this.prisma.webhookEvent.findUnique({
+      where: { id: event.id },
+    });
+    if (existing) {
       this.logger.log(`Event ${event.id} already processed, skipping`);
       return { received: true };
     }
@@ -195,7 +191,9 @@ export class StripeService {
       // In production, you may want more nuanced retry logic.
     }
 
-    this.processedEvents.add(event.id);
+    await this.prisma.webhookEvent.create({
+      data: { id: event.id, source: 'stripe' },
+    });
 
     return { received: true };
   }
