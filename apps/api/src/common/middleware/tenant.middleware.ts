@@ -21,8 +21,8 @@ export class TenantMiddleware implements NestMiddleware {
       });
 
       if (org) {
-        (req as Record<string, unknown>).org = org;
-        (req as Record<string, unknown>).orgId = org.id;
+        (req as any).org = org;
+        (req as any).orgId = org.id;
       }
     }
 

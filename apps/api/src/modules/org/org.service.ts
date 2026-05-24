@@ -172,7 +172,7 @@ export class OrgService {
 
     return this.prisma.organization.update({
       where: { id: orgId },
-      data: { settings: merged },
+      data: { settings: merged as any },
     });
   }
 }
