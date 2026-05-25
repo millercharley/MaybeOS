@@ -361,10 +361,40 @@ export class MemberService {
 
   async listInvitations(orgId: string) {
     return this.prisma.invitation.findMany({
-      where: { orgId },
+      where: { orgId, acceptedAt: null },
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
+  }
+
+  async resendInvite(orgId: string, inviteId: string, resendByUserId: string) {
+    const invitation = await this.prisma.invitation.findFirst({
+      where: { id: inviteId, orgId },
+    });
+    if (!invitation) throw new NotFoundException('Invitation not found');
+    if (invitation.acceptedAt) throw new BadRequestException('This invitation has already been accepted');
+
+    const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    const resender = await this.prisma.user.findUnique({ where: { id: resendByUserId } });
+
+    const updated = await this.prisma.invitation.update({
+      where: { id: inviteId },
+      data: { expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
+    });
+
+    const webUrl = this.configService.get<string>('WEB_URL');
+    const inviteUrl = `${webUrl}/invite?token=${updated.token}`;
+
+    await this.emailService.sendInvite(
+      invitation.email,
+      org.name,
+      inviteUrl,
+      resender?.name || undefined,
+    );
+
+    return { id: updated.id, email: updated.email, status: 'resent' };
   }
 
   // ─── Bulk Import ───────────────────────────────────────────

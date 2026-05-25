@@ -96,9 +96,22 @@ export class MemberController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'List invitations for an organization' })
+  @ApiOperation({ summary: 'List pending invitations for an organization' })
   listInvitations(@Param('orgId') orgId: string) {
     return this.memberService.listInvitations(orgId);
+  }
+
+  @Post('invitations/:inviteId/resend')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Resend an invitation email' })
+  resendInvite(
+    @Param('orgId') orgId: string,
+    @Param('inviteId') inviteId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.memberService.resendInvite(orgId, inviteId, user.userId);
   }
 
   @Post('members/import')
