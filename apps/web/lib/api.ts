@@ -110,6 +110,15 @@ class ApiClient {
         body: JSON.stringify(data),
         token,
       }),
+
+    listInvitations: (orgId: string, token: string) =>
+      this.request<Invitation[]>(`/orgs/${orgId}/invitations`, { token }),
+
+    resendInvite: (orgId: string, inviteId: string, token: string) =>
+      this.request<{ id: string; email: string; status: string }>(`/orgs/${orgId}/invitations/${inviteId}/resend`, {
+        method: 'POST',
+        token,
+      }),
   };
 
   invites = {
@@ -473,6 +482,18 @@ export interface ImpactDashboardData {
 export interface PaginatedResponse<T> {
   data: T[];
   meta: { page: number; perPage: number; total: number; totalPages: number };
+}
+
+export interface Invitation {
+  id: string;
+  orgId: string;
+  email: string;
+  role: string;
+  token: string;
+  invitedBy: string;
+  expiresAt: string;
+  acceptedAt: string | null;
+  createdAt: string;
 }
 
 export interface InviteInfo {
