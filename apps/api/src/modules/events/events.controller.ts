@@ -16,6 +16,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger'
 import { Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { EventsService } from './events.service';
@@ -45,7 +46,7 @@ export class EventsController {
   /* ─── List Events (authenticated) ──────────────────────────── */
 
   @Get('orgs/:orgId/events')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List events for an organization' })
   @ApiQuery({ name: 'visibility', required: false })
@@ -125,7 +126,7 @@ export class EventsController {
   /* ─── Get Event by ID ──────────────────────────────────────── */
 
   @Get('orgs/:orgId/events/:eventId')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get event details' })
   async findById(

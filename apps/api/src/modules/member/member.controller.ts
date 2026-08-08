@@ -14,6 +14,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { MemberService } from './member.service';
@@ -28,7 +29,7 @@ export class MemberController {
   // ─── Members ────────────────────────────────────────────────
 
   @Get('members')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List members of an organization' })
   @ApiQuery({ name: 'page', required: false, type: Number })
@@ -44,7 +45,7 @@ export class MemberController {
   }
 
   @Get('members/:userId')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get a single member detail' })
   getMember(
