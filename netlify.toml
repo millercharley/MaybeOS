@@ -1,0 +1,20 @@
+# Deliberately no [build] block here — the site's existing build command
+# and publish directory (configured in the Netlify dashboard) are left
+# untouched. This file is purely additive: it registers a build plugin
+# that compiles the NestJS API before the functions bundling step, and
+# tells Netlify where to find the resulting function.
+
+[[plugins]]
+  package = "./netlify/plugins/build-api"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+  external_node_modules = ["@prisma/client", ".prisma/client", "bcrypt"]
+  included_files = ["apps/api/node_modules/.prisma/client/**"]
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true
