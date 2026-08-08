@@ -31,6 +31,10 @@ Get MaybeOS Suite production-ready and launch MaybeItsFate LCA as the first live
 - [ ] Port CommonsOS parity (Collections/threading/pinning) into the public portal's separate Commons page, or decide the admin hub is the only place it needs to live
 - [ ] Consolidate Prisma migration history — schema is currently synced via `prisma db push` (not `migrate dev`) because the canonical repo's committed migrations and the zip's committed migrations diverged against the same live Supabase DB; needs a clean migration squash before production cutover
 - [ ] Wildcard subdomain tenant routing ([org].maybeos.com) — Stage 2, not needed for single-tenant launch
+- [ ] Landing page redesign/rebrand for marketing — **waiting on Charley for design direction before starting** (his request, do not start unprompted)
+- [ ] Stripe product catalog — real Products/Prices configured so self-serve checkout works end to end, not just live API keys
+- [ ] Global "product forum" org — every MaybeOS org owner auto-joins a free, global org; Stage 2 concept (needs multiple real org owners to be meaningful)
+- [ ] Prepare github.com/millercharley/MaybeOS for open-source release — license, README, contributing guide, history scrub for secrets
 
 ## In Progress
 - [ ] None — awaiting direction on next task to pick up. Two commits pushed to `claude/maybeOS-suite-foundation-1Wauk` 2026-08-08: CommonsOS parity (`e9f7640`) and the OrgMembershipGuard security fix (`c8bc18c`). Both should be live at maybeos.org; not yet independently reconfirmed against the production URL (only against local dev pointed at the same Supabase DB).
