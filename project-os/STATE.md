@@ -32,6 +32,7 @@ Get MaybeOS Suite production-ready and launch MaybeItsFate LCA as the first live
 - [ ] Consolidate Prisma migration history — schema is currently synced via `prisma db push` (not `migrate dev`) because the canonical repo's committed migrations and the zip's committed migrations diverged against the same live Supabase DB; needs a clean migration squash before production cutover
 - [ ] Wildcard subdomain tenant routing ([org].maybeos.com) — Stage 2, not needed for single-tenant launch
 - [ ] Landing page redesign/rebrand for marketing — **waiting on Charley for design direction before starting** (his request, do not start unprompted)
+- [ ] Supabase Auth integration — Google OAuth, passwordless email, and phone sign-in options, replacing or augmenting the current custom JWT/bcrypt auth. Not scoped yet: needs a decision on whether this replaces `auth.service.ts` entirely or runs alongside it, and how Supabase Auth's own user records map to the existing Prisma `User`/`UserOrg` model
 - [ ] Stripe product catalog — real Products/Prices configured so self-serve checkout works end to end, not just live API keys
 - [ ] Global "product forum" org — every MaybeOS org owner auto-joins a free, global org; Stage 2 concept (needs multiple real org owners to be meaningful)
 - [ ] Prepare github.com/millercharley/MaybeOS for open-source release — license, README, contributing guide, history scrub for secrets
