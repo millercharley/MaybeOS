@@ -24,6 +24,16 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-009 — Add OrgMembershipGuard as a baseline tenant-isolation check
+
+- **Date:** 2026-08-08
+- **Status:** Active
+- **Area:** Security, Backend
+- **Decision:** Introduced `OrgMembershipGuard` (`apps/api/src/common/guards/org-membership.guard.ts`): for any route with an `:orgId` param, the authenticated caller must have an entry in their JWT's `orgRoles` for that org, or be a platform admin. Applied at the controller level for Commons, Space, and Impact (every route in those controllers is genuinely org-member-only), and per-endpoint for the specific leaking routes in Member (`listMembers`, `getMember`), Events (admin `listEvents`, `findById`), and Calendar (`checkFreeBusy`). Deliberately not applied to: org creation and invite acceptance (no `:orgId` yet, by definition), public event feeds/RSVP/guest-RSVP, the public tier-listing endpoint, and Stripe checkout/billing-portal (billing-portal already self-scopes correctly via the caller's own `(userId, orgId)` lookup; checkout must stay open since it's the actual join-and-pay flow for people who aren't members yet).
+- **Alternatives rejected:** Adding `@Roles('ADMIN','STAFF','MEMBER','GUEST')` to each individual leaking endpoint (rejected — same effect, but relies on every future endpoint remembering to add it; a shared guard makes the safe state the default for any new org-scoped controller that adopts the same `@UseGuards(...)` pattern).
+- **Rationale:** `RolesGuard` was designed to check *specific* roles, and only when a route opts in via `@Roles(...)` — it returns `true` unconditionally when no roles are required, with no baseline check that the caller belongs to the org in the URL at all. Confirmed exploitable live (pre-fix): a user with no relationship to Sunrise Community Space could read its full member directory and post/comment/react/vote/book-a-room/submit-a-survey-response into its data, using nothing but their own valid login. Since `/register` is public and self-serve org creation exists, this was reachable by anyone, not just an insider — and became more urgent once the app went live at maybeos.org mid-session.
+- **Supersedes:** none
+
 ### D-008 — Adopt github.com/millercharley/MaybeOS as the canonical repo, superseding the unversioned zip working copy
 
 - **Date:** 2026-08-08
