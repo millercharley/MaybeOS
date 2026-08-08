@@ -15,6 +15,7 @@ import { Response } from 'express';
 import { ApiTags, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { ImpactService } from './impact.service';
@@ -24,7 +25,7 @@ import { SubmitResponseDto } from './dto/submit-response.dto';
 @ApiTags('impact')
 @ApiBearerAuth()
 @Controller('orgs/:orgId')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
 export class ImpactController {
   constructor(private readonly impactService: ImpactService) {}
 

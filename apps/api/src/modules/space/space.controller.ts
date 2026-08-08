@@ -13,6 +13,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { SpaceService } from './space.service';
@@ -23,7 +24,7 @@ import { AvailabilityRuleDto } from './dto/availability-rule.dto';
 @ApiTags('space')
 @ApiBearerAuth()
 @Controller('orgs/:orgId')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
 export class SpaceController {
   constructor(private readonly spaceService: SpaceService) {}
 

@@ -14,6 +14,7 @@ import { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CalendarService } from './calendar.service';
 import { PrismaService } from '../../config/prisma.service';
@@ -97,7 +98,7 @@ export class CalendarController {
   // ──────────────────────────────────────────────────────────────
 
   @Get('orgs/:orgId/rooms/:roomId/calendar/freebusy')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Check room availability via Google Calendar free/busy' })
   @ApiQuery({ name: 'start', description: 'Start time (ISO 8601)', required: true })

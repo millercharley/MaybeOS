@@ -13,6 +13,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { CommonsService } from './commons.service';
@@ -28,7 +29,7 @@ import { VoteChoice } from '@prisma/client';
 @ApiTags('commons')
 @ApiBearerAuth()
 @Controller('orgs/:orgId')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
 export class CommonsController {
   constructor(private readonly commonsService: CommonsService) {}
 
