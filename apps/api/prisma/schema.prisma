@@ -29,6 +29,7 @@ model Organization {
   events        Event[]
   rooms         Room[]
   channels      Channel[]
+  collections   Collection[]
   surveys       Survey[]
   invitations   Invitation[]
   auditLogs     AuditLog[]
@@ -97,6 +98,7 @@ model User {
   surveyResponses SurveyResponse[]
   sentMessages    DirectMessage[]  @relation("SentMessages")
   receivedMessages DirectMessage[] @relation("ReceivedMessages")
+  collectionPages CollectionPage[]
 
   @@map("users")
 }
@@ -353,11 +355,13 @@ model Channel {
   description String?
   isDefault   Boolean  @default(false)
   isPublic    Boolean  @default(true)
+  isPinned    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  posts Post[]
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  posts     Post[]
+  proposals Proposal[]
 
   @@unique([orgId, slug])
   @@index([orgId])
@@ -388,16 +392,56 @@ model Comment {
   id        String   @id @default(uuid())
   postId    String
   authorId  String
+  parentId  String?
   body      String
   isFlagged Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
-  author User @relation(fields: [authorId], references: [id])
+  post    Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author  User      @relation(fields: [authorId], references: [id])
+  parent  Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies Comment[] @relation("CommentReplies")
 
   @@index([postId])
+  @@index([parentId])
   @@map("comments")
+}
+
+// ─── CommonsOS: Collections (wiki) ───────────────────────────
+
+model Collection {
+  id          String   @id @default(uuid())
+  orgId       String
+  name        String
+  emoji       String   @default("📄")
+  description String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  org   Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  pages CollectionPage[]
+
+  @@index([orgId])
+  @@map("collections")
+}
+
+model CollectionPage {
+  id           String   @id @default(uuid())
+  collectionId String
+  authorId     String
+  title        String
+  body         String   // HTML content
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  author     User       @relation(fields: [authorId], references: [id])
+
+  @@index([collectionId])
+  @@map("collection_pages")
 }
 
 model Reaction {
@@ -450,8 +494,10 @@ model Proposal {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
-  votes Vote[]
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  votes   Vote[]
 
+  @@index([channelId])
   @@map("proposals")
 }
 

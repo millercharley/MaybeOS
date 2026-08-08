@@ -19,6 +19,10 @@ import { CommonsService } from './commons.service';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { CreatePostDto } from './dto/create-post.dto';
 import { CreateProposalDto } from './dto/create-proposal.dto';
+import { AddCommentDto } from './dto/add-comment.dto';
+import { SendMessageDto } from './dto/send-message.dto';
+import { CreateCollectionDto, UpdateCollectionDto } from './dto/create-collection.dto';
+import { CreatePageDto, UpdatePageDto } from './dto/page.dto';
 import { VoteChoice } from '@prisma/client';
 
 @ApiTags('commons')
@@ -42,6 +46,18 @@ export class CommonsController {
   @Get('channels')
   listChannels(@Param('orgId') orgId: string) {
     return this.commonsService.listChannels(orgId);
+  }
+
+  @Post('channels/:channelId/pin')
+  @Roles('ADMIN')
+  pinChannel(@Param('channelId') channelId: string) {
+    return this.commonsService.pinChannel(channelId, true);
+  }
+
+  @Delete('channels/:channelId/pin')
+  @Roles('ADMIN')
+  unpinChannel(@Param('channelId') channelId: string) {
+    return this.commonsService.pinChannel(channelId, false);
   }
 
   // ─── Posts ──────────────────────────────────────────────────
@@ -77,9 +93,15 @@ export class CommonsController {
   addComment(
     @Param('postId') postId: string,
     @CurrentUser() user: RequestUser,
-    @Body('body') body: string,
+    @Body() dto: AddCommentDto,
   ) {
-    return this.commonsService.addComment(postId, user.userId, body);
+    return this.commonsService.addComment(postId, user.userId, dto.body, dto.parentId);
+  }
+
+  @Post('comments/:commentId/flag')
+  @Roles('ADMIN', 'STAFF')
+  flagComment(@Param('commentId') commentId: string) {
+    return this.commonsService.flagComment(commentId);
   }
 
   // ─── Reactions ──────────────────────────────────────────────
@@ -153,5 +175,100 @@ export class CommonsController {
     @Query('status') status?: string,
   ) {
     return this.commonsService.listProposals(orgId, status);
+  }
+
+  // ─── Direct Messages ────────────────────────────────────────
+
+  @Get('dms')
+  listConversations(@CurrentUser() user: RequestUser) {
+    return this.commonsService.listConversations(user.userId);
+  }
+
+  @Get('dms/:otherUserId')
+  getConversation(
+    @Param('otherUserId') otherUserId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.commonsService.getConversation(user.userId, otherUserId);
+  }
+
+  @Post('dms/:otherUserId')
+  sendMessage(
+    @Param('otherUserId') otherUserId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: SendMessageDto,
+  ) {
+    return this.commonsService.sendMessage(user.userId, otherUserId, dto.body);
+  }
+
+  @Post('dms/:otherUserId/read')
+  markConversationRead(
+    @Param('otherUserId') otherUserId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.commonsService.markConversationRead(user.userId, otherUserId);
+  }
+
+  // ─── Collections (wiki) ─────────────────────────────────────
+
+  @Post('collections')
+  @Roles('ADMIN')
+  createCollection(@Param('orgId') orgId: string, @Body() dto: CreateCollectionDto) {
+    return this.commonsService.createCollection(orgId, dto);
+  }
+
+  @Get('collections')
+  listCollections(@Param('orgId') orgId: string) {
+    return this.commonsService.listCollections(orgId);
+  }
+
+  @Post('collections/:collectionId')
+  @Roles('ADMIN')
+  updateCollection(
+    @Param('collectionId') collectionId: string,
+    @Body() dto: UpdateCollectionDto,
+  ) {
+    return this.commonsService.updateCollection(collectionId, dto);
+  }
+
+  @Delete('collections/:collectionId')
+  @Roles('ADMIN')
+  deleteCollection(@Param('collectionId') collectionId: string) {
+    return this.commonsService.deleteCollection(collectionId);
+  }
+
+  @Post('collections/:collectionId/pages')
+  @Roles('ADMIN')
+  createPage(
+    @Param('collectionId') collectionId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: CreatePageDto,
+  ) {
+    return this.commonsService.createPage(collectionId, user.userId, dto);
+  }
+
+  @Get('pages/:pageId')
+  getPage(@Param('pageId') pageId: string) {
+    return this.commonsService.getPage(pageId);
+  }
+
+  @Post('pages/:pageId')
+  @Roles('ADMIN')
+  updatePage(@Param('pageId') pageId: string, @Body() dto: UpdatePageDto) {
+    return this.commonsService.updatePage(pageId, dto);
+  }
+
+  @Delete('pages/:pageId')
+  @Roles('ADMIN')
+  deletePage(@Param('pageId') pageId: string) {
+    return this.commonsService.deletePage(pageId);
+  }
+
+  // ─── Search (⌘K) ────────────────────────────────────────────
+
+  @Get('search')
+  @ApiQuery({ name: 'q', required: true })
+  search(@Param('orgId') orgId: string, @Query('q') q: string) {
+    return this.commonsService.search(orgId, q);
   }
 }

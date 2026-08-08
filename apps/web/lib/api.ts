@@ -214,13 +214,42 @@ class ApiClient {
     listChannels: (orgId: string, token: string) =>
       this.request<Channel[]>(`/orgs/${orgId}/channels`, { token }),
 
+    createChannel: (orgId: string, data: { name: string; description?: string; isPublic?: boolean }, token: string) =>
+      this.request<Channel>(`/orgs/${orgId}/channels`, { method: 'POST', body: JSON.stringify(data), token }),
+
+    pinChannel: (orgId: string, channelId: string, pinned: boolean, token: string) =>
+      this.request<Channel>(`/orgs/${orgId}/channels/${channelId}/pin`, { method: pinned ? 'POST' : 'DELETE', token }),
+
     listPosts: (orgId: string, channelId: string, token: string) =>
       this.request<PaginatedResponse<Post>>(`/orgs/${orgId}/channels/${channelId}/posts`, { token }),
+
+    getPost: (orgId: string, postId: string, token: string) =>
+      this.request<Post>(`/orgs/${orgId}/posts/${postId}`, { token }),
 
     createPost: (orgId: string, channelId: string, data: { title?: string; body: string }, token: string) =>
       this.request<Post>(`/orgs/${orgId}/channels/${channelId}/posts`, {
         method: 'POST',
         body: JSON.stringify(data),
+        token,
+      }),
+
+    addComment: (orgId: string, postId: string, data: { body: string; parentId?: string }, token: string) =>
+      this.request<Comment>(`/orgs/${orgId}/posts/${postId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    addReaction: (orgId: string, postId: string, emoji: string, token: string) =>
+      this.request(`/orgs/${orgId}/posts/${postId}/reactions`, {
+        method: 'POST',
+        body: JSON.stringify({ emoji }),
+        token,
+      }),
+
+    removeReaction: (orgId: string, postId: string, emoji: string, token: string) =>
+      this.request(`/orgs/${orgId}/posts/${postId}/reactions/${encodeURIComponent(emoji)}`, {
+        method: 'DELETE',
         token,
       }),
 
@@ -236,6 +265,57 @@ class ApiClient {
         body: JSON.stringify({ choice }),
         token,
       }),
+
+    // ── Direct Messages ──
+    listConversations: (orgId: string, token: string) =>
+      this.request<DmConversation[]>(`/orgs/${orgId}/dms`, { token }),
+
+    getConversation: (orgId: string, otherUserId: string, token: string) =>
+      this.request<DirectMessage[]>(`/orgs/${orgId}/dms/${otherUserId}`, { token }),
+
+    sendMessage: (orgId: string, otherUserId: string, body: string, token: string) =>
+      this.request<DirectMessage>(`/orgs/${orgId}/dms/${otherUserId}`, {
+        method: 'POST',
+        body: JSON.stringify({ body }),
+        token,
+      }),
+
+    markConversationRead: (orgId: string, otherUserId: string, token: string) =>
+      this.request(`/orgs/${orgId}/dms/${otherUserId}/read`, { method: 'POST', token }),
+
+    // ── Collections (wiki) ──
+    listCollections: (orgId: string, token: string) =>
+      this.request<Collection[]>(`/orgs/${orgId}/collections`, { token }),
+
+    createCollection: (orgId: string, data: { name: string; emoji?: string; description?: string }, token: string) =>
+      this.request<Collection>(`/orgs/${orgId}/collections`, { method: 'POST', body: JSON.stringify(data), token }),
+
+    deleteCollection: (orgId: string, collectionId: string, token: string) =>
+      this.request(`/orgs/${orgId}/collections/${collectionId}`, { method: 'DELETE', token }),
+
+    getPage: (orgId: string, pageId: string, token: string) =>
+      this.request<CollectionPage>(`/orgs/${orgId}/pages/${pageId}`, { token }),
+
+    createPage: (orgId: string, collectionId: string, data: { title: string; body: string }, token: string) =>
+      this.request<CollectionPage>(`/orgs/${orgId}/collections/${collectionId}/pages`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    updatePage: (orgId: string, pageId: string, data: { title?: string; body?: string }, token: string) =>
+      this.request<CollectionPage>(`/orgs/${orgId}/pages/${pageId}`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    deletePage: (orgId: string, pageId: string, token: string) =>
+      this.request(`/orgs/${orgId}/pages/${pageId}`, { method: 'DELETE', token }),
+
+    // ── Search (⌘K) ──
+    search: (orgId: string, q: string, token: string) =>
+      this.request<SearchResults>(`/orgs/${orgId}/search?q=${encodeURIComponent(q)}`, { token }),
   };
 
   // ── Impact ───────────────────────────────────────
@@ -425,6 +505,22 @@ export interface Channel {
   slug: string;
   description?: string;
   isDefault: boolean;
+  isPinned: boolean;
+}
+
+export interface Comment {
+  id: string;
+  body: string;
+  parentId?: string | null;
+  author: { id: string; name?: string; avatarUrl?: string };
+  createdAt: string;
+  replies: Comment[];
+}
+
+export interface Reaction {
+  id: string;
+  emoji: string;
+  userId: string;
 }
 
 export interface Post {
@@ -433,7 +529,51 @@ export interface Post {
   body: string;
   author: { id: string; name?: string; avatarUrl?: string };
   createdAt: string;
-  _count?: { comments: number };
+  isPinned?: boolean;
+  comments?: Comment[];
+  reactions?: Reaction[];
+  _count?: { comments: number; reactions: number };
+}
+
+export interface DirectMessage {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  body: string;
+  readAt: string | null;
+  createdAt: string;
+  sender: { id: string; name?: string; avatarUrl?: string };
+  receiver: { id: string; name?: string; avatarUrl?: string };
+}
+
+export interface DmConversation {
+  counterpart: { id: string; name?: string; avatarUrl?: string };
+  lastMessage: DirectMessage;
+  unreadCount: number;
+}
+
+export interface CollectionPage {
+  id: string;
+  collectionId?: string;
+  title: string;
+  body: string;
+  updatedAt: string;
+  author?: { id: string; name?: string; avatarUrl?: string };
+}
+
+export interface Collection {
+  id: string;
+  name: string;
+  emoji: string;
+  description?: string;
+  pages: CollectionPage[];
+}
+
+export interface SearchResults {
+  members: { id: string; name?: string; avatarUrl?: string }[];
+  channels: Channel[];
+  events: Event[];
+  pages: (CollectionPage & { collection: { id: string; name: string; emoji: string } })[];
 }
 
 export interface Proposal {

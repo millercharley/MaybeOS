@@ -3,7 +3,11 @@ import { PrismaService } from '../../config/prisma.service';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { CreatePostDto } from './dto/create-post.dto';
 import { CreateProposalDto } from './dto/create-proposal.dto';
+import { CreateCollectionDto, UpdateCollectionDto } from './dto/create-collection.dto';
+import { CreatePageDto, UpdatePageDto } from './dto/page.dto';
 import { VoteChoice } from '@prisma/client';
+
+const AUTHOR_SELECT = { id: true, name: true, avatarUrl: true } as const;
 
 @Injectable()
 export class CommonsService {
@@ -31,7 +35,19 @@ export class CommonsService {
   async listChannels(orgId: string) {
     return this.prisma.channel.findMany({
       where: { orgId },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ isPinned: 'desc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  async pinChannel(channelId: string, isPinned: boolean) {
+    const channel = await this.prisma.channel.findUnique({ where: { id: channelId } });
+    if (!channel) {
+      throw new NotFoundException('Channel not found');
+    }
+
+    return this.prisma.channel.update({
+      where: { id: channelId },
+      data: { isPinned },
     });
   }
 
@@ -73,11 +89,11 @@ export class CommonsService {
     const post = await this.prisma.post.findUnique({
       where: { id: postId },
       include: {
-        author: { select: { id: true, name: true, avatarUrl: true } },
+        author: { select: AUTHOR_SELECT },
         comments: {
           orderBy: { createdAt: 'asc' },
           include: {
-            author: { select: { id: true, name: true, avatarUrl: true } },
+            author: { select: AUTHOR_SELECT },
           },
         },
         reactions: true,
@@ -88,20 +104,38 @@ export class CommonsService {
       throw new NotFoundException('Post not found');
     }
 
-    return post;
+    // Comments come back flat (with parentId); nest them into a reply tree.
+    const byId = new Map(post.comments.map((c) => [c.id, { ...c, replies: [] as any[] }]));
+    const roots: any[] = [];
+    for (const comment of byId.values()) {
+      if (comment.parentId && byId.has(comment.parentId)) {
+        byId.get(comment.parentId)!.replies.push(comment);
+      } else {
+        roots.push(comment);
+      }
+    }
+
+    return { ...post, comments: roots };
   }
 
   // ─── Comments ───────────────────────────────────────────────
 
-  async addComment(postId: string, authorId: string, body: string) {
+  async addComment(postId: string, authorId: string, body: string, parentId?: string) {
     const post = await this.prisma.post.findUnique({ where: { id: postId } });
     if (!post) {
       throw new NotFoundException('Post not found');
     }
 
+    if (parentId) {
+      const parent = await this.prisma.comment.findUnique({ where: { id: parentId } });
+      if (!parent || parent.postId !== postId) {
+        throw new NotFoundException('Parent comment not found on this post');
+      }
+    }
+
     return this.prisma.comment.create({
-      data: { postId, authorId, body },
-      include: { author: { select: { id: true, name: true, avatarUrl: true } } },
+      data: { postId, authorId, body, parentId },
+      include: { author: { select: AUTHOR_SELECT } },
     });
   }
 
@@ -250,5 +284,216 @@ export class CommonsService {
         _count: { select: { votes: true } },
       },
     });
+  }
+
+  // ─── Direct Messages ──────────────────────────────────────────
+  // Visibility rule: a conversation shows up if it has any message in the
+  // last 30 days, or has an unread message for the current user.
+
+  async listConversations(userId: string) {
+    const messages = await this.prisma.directMessage.findMany({
+      where: { OR: [{ senderId: userId }, { receiverId: userId }] },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        sender: { select: AUTHOR_SELECT },
+        receiver: { select: AUTHOR_SELECT },
+      },
+    });
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const byCounterpart = new Map<string, { counterpart: any; lastMessage: any; unreadCount: number }>();
+
+    for (const message of messages) {
+      const isSender = message.senderId === userId;
+      const counterpart = isSender ? message.receiver : message.sender;
+      const existing = byCounterpart.get(counterpart.id);
+      const isUnread = !isSender && !message.readAt;
+
+      if (!existing) {
+        byCounterpart.set(counterpart.id, {
+          counterpart,
+          lastMessage: message,
+          unreadCount: isUnread ? 1 : 0,
+        });
+      } else if (isUnread) {
+        existing.unreadCount += 1;
+      }
+    }
+
+    return Array.from(byCounterpart.values())
+      .filter((c) => c.unreadCount > 0 || c.lastMessage.createdAt > thirtyDaysAgo)
+      .sort((a, b) => b.lastMessage.createdAt.getTime() - a.lastMessage.createdAt.getTime());
+  }
+
+  async getConversation(userId: string, otherUserId: string) {
+    return this.prisma.directMessage.findMany({
+      where: {
+        OR: [
+          { senderId: userId, receiverId: otherUserId },
+          { senderId: otherUserId, receiverId: userId },
+        ],
+      },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        sender: { select: AUTHOR_SELECT },
+        receiver: { select: AUTHOR_SELECT },
+      },
+    });
+  }
+
+  async sendMessage(senderId: string, receiverId: string, body: string) {
+    if (senderId === receiverId) {
+      throw new NotFoundException('Cannot message yourself');
+    }
+
+    return this.prisma.directMessage.create({
+      data: { senderId, receiverId, body },
+      include: {
+        sender: { select: AUTHOR_SELECT },
+        receiver: { select: AUTHOR_SELECT },
+      },
+    });
+  }
+
+  async markConversationRead(userId: string, otherUserId: string) {
+    await this.prisma.directMessage.updateMany({
+      where: { senderId: otherUserId, receiverId: userId, readAt: null },
+      data: { readAt: new Date() },
+    });
+  }
+
+  // ─── Collections (wiki) ───────────────────────────────────────
+
+  async createCollection(orgId: string, dto: CreateCollectionDto) {
+    return this.prisma.collection.create({
+      data: {
+        orgId,
+        name: dto.name,
+        emoji: dto.emoji ?? '📄',
+        description: dto.description,
+      },
+    });
+  }
+
+  async listCollections(orgId: string) {
+    return this.prisma.collection.findMany({
+      where: { orgId },
+      orderBy: { sortOrder: 'asc' },
+      include: {
+        pages: {
+          orderBy: { sortOrder: 'asc' },
+          select: { id: true, title: true, updatedAt: true },
+        },
+      },
+    });
+  }
+
+  async updateCollection(collectionId: string, dto: UpdateCollectionDto) {
+    const collection = await this.prisma.collection.findUnique({ where: { id: collectionId } });
+    if (!collection) {
+      throw new NotFoundException('Collection not found');
+    }
+
+    return this.prisma.collection.update({ where: { id: collectionId }, data: dto });
+  }
+
+  async deleteCollection(collectionId: string) {
+    const collection = await this.prisma.collection.findUnique({ where: { id: collectionId } });
+    if (!collection) {
+      throw new NotFoundException('Collection not found');
+    }
+
+    await this.prisma.collection.delete({ where: { id: collectionId } });
+  }
+
+  async createPage(collectionId: string, authorId: string, dto: CreatePageDto) {
+    const collection = await this.prisma.collection.findUnique({ where: { id: collectionId } });
+    if (!collection) {
+      throw new NotFoundException('Collection not found');
+    }
+
+    return this.prisma.collectionPage.create({
+      data: { collectionId, authorId, title: dto.title, body: dto.body },
+    });
+  }
+
+  async getPage(pageId: string) {
+    const page = await this.prisma.collectionPage.findUnique({
+      where: { id: pageId },
+      include: { author: { select: AUTHOR_SELECT } },
+    });
+
+    if (!page) {
+      throw new NotFoundException('Page not found');
+    }
+
+    return page;
+  }
+
+  async updatePage(pageId: string, dto: UpdatePageDto) {
+    const page = await this.prisma.collectionPage.findUnique({ where: { id: pageId } });
+    if (!page) {
+      throw new NotFoundException('Page not found');
+    }
+
+    return this.prisma.collectionPage.update({ where: { id: pageId }, data: dto });
+  }
+
+  async deletePage(pageId: string) {
+    const page = await this.prisma.collectionPage.findUnique({ where: { id: pageId } });
+    if (!page) {
+      throw new NotFoundException('Page not found');
+    }
+
+    await this.prisma.collectionPage.delete({ where: { id: pageId } });
+  }
+
+  // ─── Search (⌘K) ────────────────────────────────────────────
+
+  async search(orgId: string, query: string) {
+    if (!query || query.trim().length < 2) {
+      return { members: [], channels: [], events: [], pages: [] };
+    }
+
+    const q = query.trim();
+
+    const [members, channels, events, pages] = await Promise.all([
+      this.prisma.userOrg.findMany({
+        where: {
+          orgId,
+          user: {
+            OR: [{ name: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }],
+          },
+        },
+        take: 8,
+        include: { user: { select: AUTHOR_SELECT } },
+      }),
+      this.prisma.channel.findMany({
+        where: {
+          orgId,
+          OR: [{ name: { contains: q, mode: 'insensitive' } }, { description: { contains: q, mode: 'insensitive' } }],
+        },
+        take: 8,
+      }),
+      this.prisma.event.findMany({
+        where: { orgId, title: { contains: q, mode: 'insensitive' } },
+        take: 8,
+      }),
+      this.prisma.collectionPage.findMany({
+        where: {
+          collection: { orgId },
+          OR: [{ title: { contains: q, mode: 'insensitive' } }, { body: { contains: q, mode: 'insensitive' } }],
+        },
+        take: 8,
+        include: { collection: { select: { id: true, name: true, emoji: true } } },
+      }),
+    ]);
+
+    return {
+      members: members.map((m) => m.user),
+      channels,
+      events,
+      pages,
+    };
   }
 }

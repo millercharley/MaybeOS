@@ -3,6 +3,7 @@
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 import { Sidebar } from '@/components/layout/sidebar';
+import { CommandPalette } from '@/components/layout/command-palette';
 import { useAuthStore } from '@/lib/auth-store';
 import { OrgSetup } from '@/components/setup/org-setup';
 
@@ -80,12 +81,18 @@ export default function DashboardLayout({
               </>
             )}
           </nav>
+          <div className="ml-auto flex items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-400">
+            <span>Search</span>
+            <kbd className="rounded border border-gray-200 bg-gray-50 px-1 font-sans">⌘K</kbd>
+          </div>
         </header>
 
         <main className="flex-1 overflow-auto">
           <div className="p-8">{children}</div>
         </main>
       </div>
+
+      <CommandPalette />
     </div>
   );
 }
