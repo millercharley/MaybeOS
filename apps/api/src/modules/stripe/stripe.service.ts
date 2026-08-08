@@ -17,9 +17,13 @@ export class StripeService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
   ) {
-    this.stripe = new Stripe(
-      this.configService.get<string>('STRIPE_SECRET_KEY'),
-    );
+    const stripeKey = this.configService.get<string>('STRIPE_SECRET_KEY');
+    if (!stripeKey) {
+      this.logger.warn(
+        'STRIPE_SECRET_KEY not configured – Stripe calls will fail (dev mode)',
+      );
+    }
+    this.stripe = new Stripe(stripeKey || 'sk_test_placeholder');
   }
 
   // ──────────────────────────────────────────────────────────────

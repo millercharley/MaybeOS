@@ -13,6 +13,8 @@ async function main() {
   await prisma.comment.deleteMany();
   await prisma.post.deleteMany();
   await prisma.directMessage.deleteMany();
+  await prisma.collectionPage.deleteMany();
+  await prisma.collection.deleteMany();
   await prisma.channel.deleteMany();
   await prisma.surveyResponse.deleteMany();
   await prisma.survey.deleteMany();
@@ -444,7 +446,7 @@ async function main() {
   });
 
   const announcementsChannel = await prisma.channel.create({
-    data: { orgId: org.id, name: 'Announcements', slug: 'announcements', description: 'Official announcements from the board', isPublic: true },
+    data: { orgId: org.id, name: 'Announcements', slug: 'announcements', description: 'Official announcements from the board', isPublic: true, isPinned: true },
   });
 
   const proposalsChannel = await prisma.channel.create({
@@ -479,15 +481,81 @@ async function main() {
     },
   });
 
+  const firstComment = await prisma.comment.create({
+    data: { postId: welcomePost.id, authorId: member1.id, body: 'So excited to be here! This is exactly what our neighborhood needs.' },
+  });
+
+  await prisma.comment.create({
+    data: { postId: welcomePost.id, authorId: orgAdmin.id, parentId: firstComment.id, body: 'So glad to have you, Alex! Let us know if you need anything.' },
+  });
+
   await prisma.comment.createMany({
     data: [
-      { postId: welcomePost.id, authorId: member1.id, body: 'So excited to be here! This is exactly what our neighborhood needs.' },
       { postId: welcomePost.id, authorId: member3.id, body: 'Love the new platform! Much easier than the old email lists.' },
       { postId: welcomePost.id, authorId: member4.id, body: 'Looking forward to the upcoming events. See everyone at the potluck!' },
     ],
   });
 
+  await prisma.reaction.createMany({
+    data: [
+      { postId: welcomePost.id, userId: member1.id, emoji: '🎉' },
+      { postId: welcomePost.id, userId: member2.id, emoji: '🎉' },
+      { postId: welcomePost.id, userId: member3.id, emoji: '❤️' },
+    ],
+  });
+
   console.log('  Channels and posts created');
+
+  // ── Collections (wiki) ────────────────────────────────
+  const aboutCollection = await prisma.collection.create({
+    data: { orgId: org.id, name: 'About Us', emoji: '🏛️', sortOrder: 0 },
+  });
+
+  await prisma.collectionPage.create({
+    data: {
+      collectionId: aboutCollection.id,
+      authorId: orgAdmin.id,
+      title: 'Our Mission',
+      body: '<p>Sunrise Community Space exists to create an inclusive, member-run space where everyone belongs and thrives. We believe in cooperative ownership, mutual aid, and the power of neighbors coming together.</p><p>Founded in 2024, we are governed by our members through open proposals and voting in the Commons.</p>',
+      sortOrder: 0,
+    },
+  });
+
+  await prisma.collectionPage.create({
+    data: {
+      collectionId: aboutCollection.id,
+      authorId: orgAdmin.id,
+      title: 'History',
+      body: '<p>Sunrise began as a handful of neighbors sharing a rented storefront. Today we operate two spaces and serve hundreds of members across Fort Greene and the surrounding neighborhoods.</p>',
+      sortOrder: 1,
+    },
+  });
+
+  const guideCollection = await prisma.collection.create({
+    data: { orgId: org.id, name: 'Member Guide', emoji: '📘', sortOrder: 1 },
+  });
+
+  await prisma.collectionPage.create({
+    data: {
+      collectionId: guideCollection.id,
+      authorId: staffUser.id,
+      title: 'Getting Started',
+      body: '<p>Welcome! Here is how to make the most of your membership:</p><ul><li>Introduce yourself in #general</li><li>Check the Events tab for what is coming up</li><li>Book a room under Rooms &amp; Booking if you need space</li><li>Vote on open proposals in #proposals</li></ul>',
+      sortOrder: 0,
+    },
+  });
+
+  await prisma.collectionPage.create({
+    data: {
+      collectionId: guideCollection.id,
+      authorId: staffUser.id,
+      title: 'House Rules',
+      body: '<p>Please clean up after events, respect quiet hours after 9pm, and reach out to staff for anything you need. We are all stewards of this space together.</p>',
+      sortOrder: 1,
+    },
+  });
+
+  console.log('  Collections and pages created');
 
   // ── Governance Proposals ─────────────────────────────
   const proposal1 = await prisma.proposal.create({
@@ -607,6 +675,41 @@ async function main() {
       { orgId: org.id, actorId: orgAdmin.id, action: 'survey.published', entityType: 'Survey', entityId: baselineSurvey.id },
     ],
   });
+
+  // ── Direct Messages ──────────────────────────────────
+  const dmBase = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
+
+  await prisma.directMessage.create({
+    data: {
+      senderId: orgAdmin.id,
+      receiverId: member1.id,
+      body: 'Hey Alex! Thanks for volunteering to help with the potluck setup.',
+      createdAt: dmBase,
+      readAt: new Date(dmBase.getTime() + 60 * 60 * 1000),
+    },
+  });
+
+  await prisma.directMessage.create({
+    data: {
+      senderId: member1.id,
+      receiverId: orgAdmin.id,
+      body: 'Of course! What time should I show up?',
+      createdAt: new Date(dmBase.getTime() + 60 * 60 * 1000),
+      readAt: new Date(dmBase.getTime() + 90 * 60 * 1000),
+    },
+  });
+
+  await prisma.directMessage.create({
+    data: {
+      senderId: staffUser.id,
+      receiverId: member4.id,
+      body: 'Hi Marcus, do you still have the screen printing supplies from last time?',
+      createdAt: new Date(now.getTime() - 5 * 60 * 60 * 1000),
+      // unread on purpose, to demo the unread indicator
+    },
+  });
+
+  console.log('  Direct messages created');
 
   console.log('  Email templates and audit logs created');
 

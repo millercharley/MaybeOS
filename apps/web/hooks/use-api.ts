@@ -26,7 +26,10 @@ export function useApi<T>(
   const [error, setError] = useState<string | null>(null);
 
   const fetch = useCallback(async () => {
-    if (options.skip || !token || !currentOrgId) return;
+    if (options.skip || !token || !currentOrgId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
