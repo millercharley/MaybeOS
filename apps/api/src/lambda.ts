@@ -1,3 +1,6 @@
+// Must be first: Sentry instruments modules as they load (see instrument.ts).
+import { Sentry } from './instrument';
+
 import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter, NestExpressApplication } from '@nestjs/platform-express';
 import express from 'express';
@@ -63,5 +66,22 @@ export async function handler(event: NetlifyEvent, context: { callbackWaitsForEm
     cachedHandler = await bootstrapHandler();
   }
 
-  return cachedHandler(normalizePath(event), context);
+  try {
+    return await cachedHandler(normalizePath(event), context);
+  } finally {
+    // Critical in serverless: the runtime freezes this process the moment the
+    // response is returned. Sentry queues events and sends them asynchronously,
+    // so without an explicit flush anything captured during this invocation is
+    // silently discarded — error tracking would look configured and report
+    // nothing. Bounded so a slow or unreachable Sentry can't hold the response.
+    //
+    // No-ops when SENTRY_DSN is unset, since init was skipped.
+    if (process.env.SENTRY_DSN) {
+      try {
+        await Sentry.flush(2000);
+      } catch {
+        // Never let telemetry failure surface as a request failure.
+      }
+    }
+  }
 }
