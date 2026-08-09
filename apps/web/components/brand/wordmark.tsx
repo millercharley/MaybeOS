@@ -1,29 +1,39 @@
-/**
- * The MaybeOS wordmark, set as live text rather than an image.
- *
- * Young Serif is the wordmark's own typeface, so setting it as text keeps it
- * sharp at any size, lets it inherit `currentColor` (so it works on paper and
- * on ink without a second asset), and keeps it readable by screen readers.
- *
- * Form follows the supplied asset: "Maybe" in the serif with "OS" raised as a
- * smaller grotesk superscript. The mark is always monochrome — the accent red
- * is never used inside it.
- */
-export function Wordmark({ className = '' }: { className?: string }) {
+import Image from 'next/image';
+import wordmarkSrc from '@/public/brand/wordmark.png';
+
+type Tone = 'ink' | 'paper';
+
+interface WordmarkProps {
+  /**
+   * Which ground the mark sits on.
+   * - `ink` (default) — the supplied black artwork, unmodified, for paper.
+   * - `paper` — inverted for dark ink fields (the admin sidebar). The source
+   *   art is a single black asset with no light-on-dark variant, so it is
+   *   inverted rather than swapped. Replace this with a second asset if a
+   *   dedicated reversed cut is ever produced.
+   */
+  tone?: Tone;
+  /** Rendered height in px. Width is derived from the asset's aspect ratio. */
+  height?: number;
+  className?: string;
+}
+
+const ASPECT = 925 / 326; // intrinsic dimensions of the supplied artwork
+
+export function Wordmark({
+  tone = 'ink',
+  height = 26,
+  className = '',
+}: WordmarkProps) {
   return (
-    <span className={`font-display leading-none tracking-tight ${className}`}>
-      Maybe
-      <span
-        className="font-sans font-semibold"
-        style={{
-          fontSize: '0.42em',
-          verticalAlign: 'super',
-          letterSpacing: '-0.01em',
-          marginLeft: '0.02em',
-        }}
-      >
-        OS
-      </span>
-    </span>
+    <Image
+      src={wordmarkSrc}
+      alt="MaybeOS"
+      height={height}
+      width={Math.round(height * ASPECT)}
+      priority
+      className={className}
+      style={tone === 'paper' ? { filter: 'invert(1)' } : undefined}
+    />
   );
 }

@@ -58,7 +58,7 @@ export default function HomePage() {
       {/* ── Masthead ─────────────────────────────────────────── */}
       <header className="border-b-[1.5px] border-ink">
         <div className="mx-auto flex max-w-container items-center justify-between px-6 py-5">
-          <Wordmark className="text-2xl" />
+          <Wordmark height={28} />
           <nav className="flex shrink-0 items-center gap-2 sm:gap-3">
             <Link href="/login" className="btn-ghost whitespace-nowrap px-3">
               Sign In
@@ -184,7 +184,7 @@ export default function HomePage() {
       {/* ── Footer ───────────────────────────────────────────── */}
       <footer className="border-t-[1.5px] border-ink">
         <div className="mx-auto flex max-w-container flex-wrap items-center justify-between gap-4 px-6 py-10">
-          <Wordmark className="text-xl" />
+          <Wordmark height={22} />
           <p className="data text-xs text-ink-faint">
             Built by a co-op, for co-ops · {new Date().getFullYear()}
           </p>

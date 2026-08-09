@@ -39,7 +39,7 @@ export function Sidebar() {
       {/* No monogram: the design system is explicit that the wordmark is the
           only mark, and that a symbol should not be invented for it. */}
       <div className="flex h-16 items-center border-b border-white/15 px-6">
-        <Wordmark className="text-xl text-paper" />
+        <Wordmark tone="paper" height={22} />
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-4">
