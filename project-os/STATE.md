@@ -8,7 +8,9 @@
 ---
 
 ## Active Workstream
-Get MaybeOS Suite production-ready and launch MaybeItsFate LCA as the first live tenant this month, onboarding-ready for other co-ops to follow (D-003). **Live at https://maybeos.org as of 2026-08-08.**
+Get MaybeOS Suite production-ready and launch MaybeItsFate LCA as the first live tenant this month, onboarding-ready for other co-ops to follow (D-003).
+
+**Deployment reality check (2026-08-09):** maybeos.org serves the frontend, but the API has *never* worked in production — `/api/*` returned 500 because no backend was deployed anywhere and `next.config.ts` fell back to `localhost:3001`. DEP-01 is fixing this; the function now builds, uploads, and is invoked, but cold-starts crash pending environment variables. **Blocked on a production Supabase database** (Charley is creating one; decided against reusing the dev project, which gets wiped by seeding).
 
 ## Built (exists & working)
 - [x] Auth (JWT + magic link + RBAC) — verified end-to-end 2026-08-08
@@ -21,12 +23,13 @@ Get MaybeOS Suite production-ready and launch MaybeItsFate LCA as the first live
 - [x] CommonsOS parity (D-004 onward): Collections/wiki (CRUD + pages), threaded comment replies, channel pinning, Direct Messages (list/send/read receipts), ⌘K search across members/channels/events/pages — built, merged into canonical repo, verified end-to-end in browser
 - [x] Web admin dashboard (login → dashboard → members list) — verified live against seeded data
 - [x] Legacy static demo (`maybeos-handoff`) — fully clickable single-tenant prototype; UX/feature reference only, not shipped (D-002)
+- [x] Redis/BullMQ removed; email sends synchronously via Postmark (D-007) — verified both entry points boot with zero ECONNREFUSED noise
+- [x] Destructive-seed guard — `db:seed` refuses to run against production or any non-local database unless `SEED_FORCE=true`. Added because the script deletes every row first, and dev/prod Supabase URLs differ by a few characters
 - [x] Project operating system (this folder) — established 2026-08-08
 
 ## Planned (not yet built)
 - [ ] AccessOS v1 — admin-issued numeric door codes tied to membership status (D-004, D-006) — fast-follow, not in launch critical path
-- [ ] Netlify deploy pipeline hardening — site is live at maybeos.org (Netlify project `8519a168-9c05-4ca9-9374-297766913c7d`), but confirm the NestJS-as-Functions adapter handles the full API surface, not just what's been manually exercised (D-005)
-- [ ] Remove BullMQ/Redis dependency; synchronous Postmark email sends (D-007)
+- [ ] **DEP-01 (in progress, blocked)** — NestJS deployed as a Netlify Function. Build/upload/invoke all work now; function crashes at cold start until `DATABASE_URL` + `JWT_SECRET` are set. Blocked on the new production Supabase connection string (D-005)
 - [ ] Stripe live-mode config for MaybeItsFate
 - [ ] Port CommonsOS parity (Collections/threading/pinning) into the public portal's separate Commons page, or decide the admin hub is the only place it needs to live
 - [ ] Consolidate Prisma migration history — schema is currently synced via `prisma db push` (not `migrate dev`) because the canonical repo's committed migrations and the zip's committed migrations diverged against the same live Supabase DB; needs a clean migration squash before production cutover
