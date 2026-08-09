@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
-import { BullModule } from '@nestjs/bullmq';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import * as Joi from 'joi';
@@ -30,7 +29,6 @@ import { HealthModule } from './modules/health/health.module';
         DATABASE_URL: Joi.string().required(),
         JWT_SECRET: Joi.string().min(32).required(),
         JWT_EXPIRES_IN: Joi.string().default('7d'),
-        REDIS_URL: Joi.string().default('redis://localhost:6379'),
         WEB_URL: Joi.string().default('http://localhost:3000'),
         API_URL: Joi.string().default('http://localhost:3001'),
         SENTRY_DSN: Joi.string().allow('').default(''),
@@ -79,25 +77,6 @@ import { HealthModule } from './modules/health/health.module';
         limit: 100,
       },
     ]),
-
-    BullModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => {
-        const redisUrl = config.get<string>('REDIS_URL', 'redis://localhost:6379');
-        const url = new URL(redisUrl);
-        const useTls = url.protocol === 'rediss:';
-        return {
-          connection: {
-            host: url.hostname,
-            port: parseInt(url.port || '6379', 10),
-            password: url.password || undefined,
-            username: url.username || undefined,
-            tls: useTls ? {} : undefined,
-          },
-        };
-      },
-    }),
 
     PrismaModule,
     HealthModule,
