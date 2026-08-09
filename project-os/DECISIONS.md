@@ -24,6 +24,22 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-010 — Production topology: single Netlify site, API as a Function, separate prod database
+
+- **Date:** 2026-08-09
+- **Status:** Active
+- **Area:** Hosting, Database
+- **Decision:** maybeos.org is one Netlify site serving both surfaces. The Next.js frontend deploys normally; the NestJS API is compiled ahead of time by a local build plugin and served from a single Netlify Function, with an edge redirect sending `/api/*` to it. Production uses its **own** Supabase project (`iugbkabdbgkofyaychjy`, ca-central-1), entirely separate from the dev project (`xuinggqdewoxiejkacio`, us-west-2).
+- **Alternatives rejected:** Sharing one Supabase project between dev and prod (rejected — `db:seed` deletes every row, and the two connection strings differ by a few characters; one mistake destroys real member data). Splitting the API onto a separate host like Railway (rejected for now — a single Netlify site keeps the API same-origin, which sidesteps CORS entirely and needs no second deployment target).
+- **Rationale:** Same-origin API means no CORS surface. Separate databases make the destructive-seed failure mode structurally impossible rather than merely discouraged.
+- **Required environment variables** (all set on the Netlify site; four exist purely because of non-obvious platform behavior):
+  - `DATABASE_URL` — prod Supabase **session pooler** (port 5432). Must be the pooler, *not* the `db.<ref>.supabase.co` direct host: that host is **IPv6-only**, and Netlify Functions run on IPv4-only Lambda, so the direct URL cannot connect from production at all. Password must be URL-encoded.
+  - `JWT_SECRET` — generated fresh for prod; deliberately not the dev secret.
+  - `NODE_ENV=production` — also disables the Swagger docs endpoint, which should not be public.
+  - `NPM_FLAGS=--include=dev` — **required because of `NODE_ENV=production`**: npm otherwise skips devDependencies, which removes the NestJS CLI, TypeScript, and the Prisma CLI, and the API build silently fails. Setting `NODE_ENV` alone breaks the build.
+  - `NEXT_PUBLIC_API_URL=https://maybeos.org` — baked in at build time and used by the *browser*. Without it the client falls back to `http://localhost:3001` and every request fails with "Failed to fetch", even while server-side rewrites and `curl` against the API both work perfectly. Changing it requires a rebuild, not just a redeploy.
+- **Supersedes:** none (implements D-005)
+
 ### D-009 — Add OrgMembershipGuard as a baseline tenant-isolation check
 
 - **Date:** 2026-08-08
