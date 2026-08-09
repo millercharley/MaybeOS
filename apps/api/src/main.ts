@@ -1,3 +1,6 @@
+// Must be first: Sentry instruments modules as they load (see instrument.ts).
+import './instrument';
+
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { Logger } from '@nestjs/common';

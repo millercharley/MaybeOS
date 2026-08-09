@@ -13,19 +13,8 @@ import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
  * main.ts's `bootstrap()` (which listens on a port) as a side effect.
  */
 export async function configureApp(app: NestExpressApplication) {
-  const logger = new Logger('Bootstrap');
-
-  const sentryDsn = process.env.SENTRY_DSN;
-  if (sentryDsn) {
-    const Sentry = await import('@sentry/nestjs');
-    Sentry.init({
-      dsn: sentryDsn,
-      environment: process.env.NODE_ENV || 'development',
-      tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
-    });
-    logger.log('Sentry error tracking initialized');
-  }
-
+  // Sentry is initialized in instrument.ts, imported before anything else by
+  // each entry point — it cannot be done here, after Nest has already booted.
   app.useLogger(app.get(PinoLogger));
 
   app.use(
