@@ -14,6 +14,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
+import { Wordmark } from '@/components/brand/wordmark';
 
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
@@ -31,12 +32,14 @@ export function Sidebar() {
   const logout = useAuthStore((s) => s.logout);
 
   return (
-    <aside className="flex h-screen w-64 flex-col border-r border-gray-200 bg-white">
-      <div className="flex h-16 items-center gap-2 border-b border-gray-200 px-6">
-        <div className="h-8 w-8 rounded-lg bg-brand-600 flex items-center justify-center">
-          <span className="text-sm font-bold text-white">M</span>
-        </div>
-        <span className="text-lg font-semibold text-gray-900">MaybeOS</span>
+    /* Dark ink sidebar, per the design system's admin-app layout spec — it
+       anchors the paper canvas and gives the accent red something to sit
+       against. This is the second of the palette's two background fields. */
+    <aside className="flex h-screen w-64 flex-col bg-ink">
+      {/* No monogram: the design system is explicit that the wordmark is the
+          only mark, and that a symbol should not be invented for it. */}
+      <div className="flex h-16 items-center border-b border-white/15 px-6">
+        <Wordmark className="text-xl text-paper" />
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-4">
@@ -48,35 +51,35 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={clsx(
-                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-fast',
                 isActive
-                  ? 'bg-brand-50 text-brand-700'
-                  : 'text-gray-700 hover:bg-gray-100',
+                  ? 'bg-brand-600 text-white'
+                  : 'text-paper-deep hover:bg-white/10 hover:text-paper',
               )}
             >
-              <item.icon className="h-5 w-5" />
+              <item.icon className="h-5 w-5" strokeWidth={1.75} />
               {item.label}
             </Link>
           );
         })}
       </nav>
 
-      <div className="border-t border-gray-200 p-4">
+      <div className="border-t border-white/15 p-4">
         <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-full bg-brand-100 flex items-center justify-center">
-            <span className="text-xs font-medium text-brand-700">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10">
+            <span className="text-xs font-semibold text-paper">
               {user?.name?.charAt(0) || user?.email?.charAt(0) || '?'}
             </span>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-paper">
               {user?.name || 'User'}
             </p>
-            <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+            <p className="data truncate text-xs text-ink-faint">{user?.email}</p>
           </div>
           <button
             onClick={logout}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-ink-faint transition-colors hover:text-paper"
             title="Sign out"
           >
             <LogOut className="h-4 w-4" />
