@@ -3,7 +3,41 @@ import * as bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
+/**
+ * This script is destructive: it deletes every row in every table before
+ * inserting demo data. That's fine against a scratch database and
+ * catastrophic against one holding real member records.
+ *
+ * Guard: refuse outright in production, and require an explicit opt-in
+ * for any non-local database — which includes hosted dev databases,
+ * since a Supabase dev URL and a Supabase prod URL differ by a few
+ * characters and are trivially easy to mix up.
+ */
+function assertSafeToSeed() {
+  const url = process.env.DATABASE_URL ?? '';
+  const isLocal = /@(localhost|127\.0\.0\.1|postgres)[:/]/.test(url);
+  const forced = process.env.SEED_FORCE === 'true';
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'Refusing to seed: NODE_ENV=production. This script deletes all data.',
+    );
+  }
+
+  if (!isLocal && !forced) {
+    const host = url.replace(/\/\/[^@]*@/, '//***@').slice(0, 80) || '(unset)';
+    throw new Error(
+      'Refusing to seed a non-local database.\n' +
+        `  Target: ${host}\n` +
+        '  This deletes ALL rows first. If you are certain this is a\n' +
+        '  throwaway database, re-run with SEED_FORCE=true.',
+    );
+  }
+}
+
 async function main() {
+  assertSafeToSeed();
+
   console.log('Seeding MaybeOS database...');
 
   // ── Clean existing data ─────────────────────────────
