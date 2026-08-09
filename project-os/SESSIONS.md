@@ -25,6 +25,24 @@
 
 <!-- Newest entry ABOVE this line. -->
 
+## 2026-08-09 — DEP-01: got the API actually running in production
+
+- **Changes made:** Fixed the Netlify function bundling failure (esbuild couldn't resolve eight of NestJS's *optional* peer deps, silently fell back to a cruder bundler, and shipped >250 MB — marked them `external_node_modules`, dropping the bundle to 34 MB). Fixed `included_files`, which pointed at `apps/api/node_modules/.prisma/client`; Prisma generates to the monorepo root. Completed D-007 (removed BullMQ/Redis; email now sends directly via Postmark). Added a destructive-seed guard. Pushed the schema to a new production Supabase project and set five env vars on Netlify.
+- **Progress:** **The API works in production for the first time.** Verified: health check, 401 on bad credentials, JwtAuthGuard, ValidationPipe, Swagger disabled, and a full register → JWT → authenticated-profile round trip (test account deleted; prod DB confirmed empty across all tables). The live login form now returns a real API error instead of "Failed to fetch".
+- **Open questions:** See STATE.md. New: whether to fix the `magicLinkToken` leak in `/api/auth/profile` before launch (low severity, logged under Known issues).
+- **Blockers:** None.
+- **Knowledge transfer:** Four platform gotchas, each of which cost a failed deploy or a wrong conclusion — all now in D-010:
+  1. **Supabase's direct host (`db.<ref>.supabase.co`) is IPv6-only.** Netlify Functions are IPv4-only Lambda, so the direct connection string *cannot* work in production. Must use the pooler. Charley supplied the direct URL first; a DNS check (`dig A` returning nothing) caught it before it burned a deploy.
+  2. **`NODE_ENV=production` alone breaks the build.** npm skips devDependencies, removing the Nest CLI, TypeScript, and Prisma CLI. Needs `NPM_FLAGS=--include=dev` alongside it. Diagnosed by a clean bisect: the *same commit* (`92801ed`) built fine at 13:44 and failed at 13:57, with only env vars changed in between.
+  3. **`NEXT_PUBLIC_API_URL` is separate from any server-side rewrite.** `curl` against the API succeeded while the browser still failed, because the client bundle bakes this in at build time and otherwise falls back to `localhost:3001`. Server-side rewrites don't help the browser. Changing it needs a *rebuild*, not a redeploy.
+  4. **Netlify's surfaced error can point at the wrong stage.** The failure read `Build script returned non-zero exit code: 2`, implying the build command — which passed locally every way I tried it (clean clone, no `.env`, from repo root, from `apps/web`). The real failure was two stages later at function upload. The public API exposes only that one-line error; the actual cause was in the dashboard build log, which the PAT can't fetch.
+  Also: the pooler region isn't guessable — the prod project landed in `ca-central-1` while dev is `us-west-2`. Found by probing candidate pooler hosts with `pg` until one authenticated, rather than asking again.
+- **Promotions proposed (require approval):**
+  - → DECISIONS.md: D-010 (production topology + the five required env vars and why each exists) — committed this session.
+  - → STATE.md: DEP-01 and D-007 moved to Built; prod database recorded; `magicLinkToken` leak logged under a new "Known issues" heading.
+
+---
+
 ## 2026-08-08 (session 3) — Closed out "Needs Verification," found and fixed a live cross-tenant security bug
 
 - **Changes made:** Ran the API's unit test suite (36/36 pass) and e2e suite (fixed a broken `import * as request from 'supertest'` → `import request from 'supertest'`, an esModuleInterop mismatch that made every e2e test fail before any assertion ran; 11/12 pass after, the 1 failure being the global rate limiter tripping on back-to-back test requests). Verified the org onboarding flow (`org-setup.tsx`) live: registered a fresh user, confirmed the onboarding screen renders only when the user has no org, created a real org, landed as its ADMIN. Verified the public member portal (`/portal/[orgSlug]`) live across all five sections (home, events, rooms, commons, directory, surveys) against real Sunrise data.
