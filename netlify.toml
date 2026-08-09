@@ -10,8 +10,37 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
-  external_node_modules = ["@prisma/client", ".prisma/client", "bcrypt"]
-  included_files = ["apps/api/node_modules/.prisma/client/**"]
+
+  # Prisma's generated client and its native query engine live at the
+  # monorepo root (node_modules/.prisma), not under apps/api.
+  included_files = ["node_modules/.prisma/client/**"]
+
+  external_node_modules = [
+    # Real dependencies that must not be inlined: native binaries, or
+    # packages with dynamic internals esbuild can't statically analyze.
+    "@prisma/client",
+    ".prisma/client",
+    "bcrypt",
+    "class-transformer",
+    "class-validator",
+
+    # Optional NestJS peer dependencies — NOT installed and NOT used here
+    # (microservices, websockets, and the Sequelize/TypeORM/Mongoose/
+    # MikroORM health indicators in @nestjs/terminus). Nest lazily
+    # require()s these behind its optional-package loader, so leaving the
+    # require unresolved is safe at runtime.
+    #
+    # They must be listed anyway: esbuild treats an unresolvable require()
+    # as a hard error and silently falls back to a much cruder bundler,
+    # which packages the entire monorepo node_modules. That is what pushed
+    # the function past Netlify's 250 MB limit and failed the deploy.
+    "@nestjs/microservices",
+    "@nestjs/websockets",
+    "@nestjs/sequelize",
+    "@nestjs/typeorm",
+    "@nestjs/mongoose",
+    "@mikro-orm/core",
+  ]
 
 [[redirects]]
   from = "/api/*"
