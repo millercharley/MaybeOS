@@ -8,7 +8,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         {/* Branding */}
         <div className="text-center">
           <Link href="/" className="inline-block">
-            <Wordmark className="text-3xl text-ink" />
+            <Wordmark height={34} className="mx-auto" />
           </Link>
           <p className="mt-3 text-sm text-ink-soft">
             Run your co-op, not your software stack.
