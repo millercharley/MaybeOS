@@ -1,25 +1,23 @@
 import Link from 'next/link';
+import { Wordmark } from '@/components/brand/wordmark';
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
+    <div className="flex min-h-screen items-center justify-center bg-paper px-4 py-12 sm:px-6 lg:px-8">
       <div className="w-full max-w-md space-y-8">
         {/* Branding */}
         <div className="text-center">
           <Link href="/" className="inline-block">
-            <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">
-              MaybeOS
-            </h1>
+            <Wordmark className="text-3xl text-ink" />
           </Link>
-          <p className="mt-2 text-sm text-gray-500">
-            Community-powered platform for cooperative organizations
+          <p className="mt-3 text-sm text-ink-soft">
+            Run your co-op, not your software stack.
           </p>
         </div>
 
-        {/* Card container */}
-        <div className="card rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
-          {children}
-        </div>
+        {/* Card container — .card already carries the brand's ink border and
+            hard offset shadow, so no local border/shadow overrides here. */}
+        <div className="card p-8">{children}</div>
       </div>
     </div>
   );

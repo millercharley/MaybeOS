@@ -2,54 +2,212 @@
 @tailwind components;
 @tailwind utilities;
 
+/**
+ * MaybeOS design tokens.
+ * Mirrors the "MaybeOS Design System" project (tokens/*.css) so the values
+ * live in one place and Tailwind utilities and raw CSS agree.
+ */
 @layer base {
   :root {
-    --brand: 99 102 241;
+    /* Palette */
+    --paper: #f3eee1;
+    --paper-dim: #eae3d2;
+    --paper-deep: #dfd5bc;
+    --ink: #211c16;
+    --ink-soft: #4a423a;
+    --ink-faint: #8b8072;
+    --line: #d9cfbb;
+    --line-strong: #c4b89d;
+    --white: #fffdf8;
+    --red: #c81e2c;
+    --red-dark: #9e1521;
+    --red-tint: #f6dedd;
+    --moss: #4b5e3a;
+    --moss-tint: #dee6d1;
+    --mustard: #c68a1e;
+    --mustard-tint: #f1dfb8;
+
+    /* Semantic aliases */
+    --surface: var(--paper);
+    --surface-raised: var(--white);
+    --surface-sunken: var(--paper-dim);
+    --border: var(--line);
+    --border-strong: var(--line-strong);
+    --text-primary: var(--ink);
+    --text-secondary: var(--ink-soft);
+    --text-tertiary: var(--ink-faint);
+    --text-on-accent: var(--white);
+    --accent: var(--red);
+    --accent-hover: var(--red-dark);
+    --accent-tint: var(--red-tint);
+    --success: var(--moss);
+    --warning: var(--mustard);
+    --danger: var(--red);
+    --focus-ring: var(--ink);
+
+    /* Depth, radius, motion */
+    --shadow-hard: 3px 3px 0 var(--ink);
+    --shadow-hard-sm: 2px 2px 0 var(--ink);
+    --radius-md: 8px;
+    --radius-lg: 14px;
+    --radius-xl: 22px;
+    --border-brand: 1.5px;
+    --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+    --duration-fast: 120ms;
+    --duration-base: 180ms;
   }
 
   body {
-    @apply bg-gray-50 text-gray-900 antialiased;
+    background-color: var(--paper);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Display type is the union-newsletter masthead note — used sparingly. */
+  .font-display {
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+
+  /* Keyboard focus stays visible and on-brand everywhere. */
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
 @layer components {
+  /**
+   * Buttons. The press interaction is the brand's signature: the hard shadow
+   * collapses and the control shifts 2px toward where the shadow was, like a
+   * stamp landing. No scale, no bounce.
+   */
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-5 py-2.5
+           text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50;
+    background-color: var(--accent);
+    color: var(--text-on-accent);
+    border: var(--border-brand) solid var(--ink);
+    box-shadow: var(--shadow-hard-sm);
+    transition: transform var(--duration-fast) var(--ease-standard),
+      box-shadow var(--duration-fast) var(--ease-standard),
+      background-color var(--duration-fast) var(--ease-standard);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background-color: var(--accent-hover);
+  }
+  .btn-primary:active:not(:disabled) {
+    transform: translate(2px, 2px);
+    box-shadow: none;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors;
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-5 py-2.5
+           text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50;
+    background-color: var(--surface-raised);
+    color: var(--ink);
+    border: var(--border-brand) solid var(--ink);
+    box-shadow: var(--shadow-hard-sm);
+    transition: transform var(--duration-fast) var(--ease-standard),
+      box-shadow var(--duration-fast) var(--ease-standard),
+      background-color var(--duration-fast) var(--ease-standard);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background-color: var(--paper-dim);
+  }
+  .btn-secondary:active:not(:disabled) {
+    transform: translate(2px, 2px);
+    box-shadow: none;
   }
 
   .btn-danger {
-    @apply inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-red-700 transition-colors;
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-5 py-2.5
+           text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50;
+    background-color: var(--danger);
+    color: var(--text-on-accent);
+    border: var(--border-brand) solid var(--ink);
+    box-shadow: var(--shadow-hard-sm);
+    transition: transform var(--duration-fast) var(--ease-standard),
+      box-shadow var(--duration-fast) var(--ease-standard);
+  }
+  .btn-danger:active:not(:disabled) {
+    transform: translate(2px, 2px);
+    box-shadow: none;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold;
+    background: transparent;
+    color: var(--ink);
+    border: var(--border-brand) solid transparent;
+    transition: background-color var(--duration-fast) var(--ease-standard);
+  }
+  .btn-ghost:hover {
+    background-color: var(--paper-dim);
   }
 
   .input {
-    @apply block w-full rounded-lg border-0 py-2.5 px-3.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-brand-600 text-sm;
+    @apply block w-full rounded-md px-3.5 py-2.5 text-sm;
+    background-color: var(--surface-raised);
+    color: var(--ink);
+    border: var(--border-brand) solid var(--ink);
+    transition: outline-color var(--duration-fast) var(--ease-standard);
+  }
+  .input::placeholder {
+    color: var(--text-tertiary);
+  }
+  .input:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 0;
+    border-color: var(--ink);
   }
 
+  /* Cards: white surface, ink rule, hard shadow — a notice pinned to a board. */
   .card {
-    @apply bg-white rounded-xl shadow-sm ring-1 ring-gray-950/5 p-6;
+    @apply rounded-lg p-6;
+    background-color: var(--surface-raised);
+    border: var(--border-brand) solid var(--ink);
+    box-shadow: var(--shadow-hard);
   }
 
   .badge {
     @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+    font-family: var(--font-mono-next), 'IBM Plex Mono', ui-monospace, monospace;
+    border: 1px solid var(--ink);
   }
-
   .badge-success {
-    @apply badge bg-green-50 text-green-700 ring-1 ring-green-600/20;
+    @apply badge;
+    background-color: var(--moss-tint);
+    color: var(--moss);
   }
-
   .badge-warning {
-    @apply badge bg-yellow-50 text-yellow-700 ring-1 ring-yellow-600/20;
+    @apply badge;
+    background-color: var(--mustard-tint);
+    color: #7a5512;
   }
-
   .badge-danger {
-    @apply badge bg-red-50 text-red-700 ring-1 ring-red-600/20;
+    @apply badge;
+    background-color: var(--red-tint);
+    color: var(--red-dark);
+  }
+  .badge-info {
+    @apply badge;
+    background-color: var(--paper-dim);
+    color: var(--ink-soft);
   }
 
-  .badge-info {
-    @apply badge bg-blue-50 text-blue-700 ring-1 ring-blue-600/20;
+  /* Mono treatment for IDs, slugs, counts, timestamps — the "readout" voice. */
+  .data {
+    font-family: var(--font-mono-next), 'IBM Plex Mono', ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
   }
 }
