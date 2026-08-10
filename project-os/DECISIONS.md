@@ -24,6 +24,22 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-015 — Plan changes go through the Stripe Billing Portal, never through checkout
+
+- **Date:** 2026-08-10
+- **Status:** Active
+- **Area:** Billing, Product
+- **Decision (Charley's, 2026-08-10):** A **member** changing tier, updating a card, or cancelling is forced through the **member billing portal**. An **organization** changing its MaybeOS plan is forced through the **admin billing portal**. Checkout is only ever for *starting* a subscription.
+- **Why it matters:** checkout always creates a *new* subscription. Observed in sandbox testing before this rule existed — one member ended up with concurrent $12 and $18 subscriptions and would have been billed for both every month. The portal instead modifies the existing subscription and prorates the difference.
+- **Enforced server-side, not just in the UI.** `createCheckoutSession` throws `409 Conflict` when the member's `stripeSubscriptionId` is set and their status is ACTIVE, TRIALING, or PAST_DUE. Hiding the button would leave the API open. PAST_DUE deliberately counts — a lapsed member needs to fix a card, which is a portal action. CANCELED and NONE do not, so those members can check out again.
+- **The portal must be configured or the rule is unenforceable.** Stripe's default Billing Portal permits card updates and cancellation but **not plan switching** — that only appears when the configuration is given an explicit product list. Forcing members to the portal without configuring it would leave them with no way to change tier at all. `ensurePortalConfiguration` creates one **per org** (the product list is that org's own tiers; one shared configuration would show every co-op's tiers to every member) and caches the id on `Organization.stripePortalConfigId`.
+- **Pay-what-you-can tiers are excluded from portal switching.** Their price is created per member at checkout via inline `price_data`, so there is no shared Price for the portal to offer. A member moving *to* a PWYC tier must cancel and check out again. Verified: 3 of 4 seeded tiers are switchable, PWYC correctly omitted.
+- **Not yet built for organizations.** MaybeOS's own Free/Plus/Unlimited plans (D-013) don't exist yet and need Connect first. This rule applies to them when they are built: the admin billing portal, same enforcement, same reasoning.
+- **Also fixed here:** `createBillingPortalSession` returned `{ error }` with HTTP 200 when no billing account existed, which our own API client would have read as success and redirected to `undefined`. It now throws 404.
+- **Supersedes:** none (extends D-013)
+
+---
+
 ### D-013 — MaybeOS pricing model, and what it forces architecturally
 
 - **Date:** 2026-08-10

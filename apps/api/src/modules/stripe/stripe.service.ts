@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
@@ -16,6 +17,15 @@ import { PrismaService } from '../../config/prisma.service';
  * split-brain the transaction exists to prevent.
  */
 type PrismaTx = Prisma.TransactionClient;
+
+/**
+ * Statuses that mean "this member has a live subscription Stripe is managing".
+ * PAST_DUE counts: the subscription still exists and switching tiers or fixing
+ * a card is exactly what a past-due member needs to do — through the portal,
+ * not by starting a second subscription. CANCELED and NONE do not count, so
+ * those members can check out again normally.
+ */
+const ACTIVE_SUBSCRIPTION_STATUSES = ['ACTIVE', 'TRIALING', 'PAST_DUE'];
 
 @Injectable()
 export class StripeService {
@@ -73,6 +83,23 @@ export class StripeService {
 
     if (!userOrg) {
       throw new NotFoundException('User is not a member of this organization');
+    }
+
+    // Checkout is for *starting* dues, never for changing them. A member who
+    // already has a live subscription must go through the Billing Portal, so
+    // Stripe handles the switch as a proration on the existing subscription.
+    //
+    // This is enforced here, not just hidden in the UI: without it a second
+    // checkout silently creates a *second* subscription and the member is
+    // charged twice a month. Observed during sandbox testing — one member
+    // ended up with concurrent $12 and $18 subscriptions.
+    if (
+      userOrg.stripeSubscriptionId &&
+      ACTIVE_SUBSCRIPTION_STATUSES.includes(userOrg.subscriptionStatus)
+    ) {
+      throw new ConflictException(
+        'You already have an active membership. Use the billing portal to change your tier or payment method.',
+      );
     }
 
     let stripeCustomerId = userOrg.stripeCustomerId;
@@ -193,16 +220,97 @@ export class StripeService {
   }
 
   /**
+   * Ensure this org has a Billing Portal configuration that permits switching
+   * between its own tiers, and return its id.
+   *
+   * This is load-bearing. Stripe's default portal lets a customer update their
+   * card and cancel, but **not change plan** — plan switching only appears when
+   * the configuration is given an explicit product list. Since members are now
+   * required to use the portal to change tiers, a default portal would leave
+   * them with no way to do it at all.
+   *
+   * The configuration is per-org because the product list is the org's own
+   * tiers; one shared configuration would offer every co-op's tiers to every
+   * member. Cached on the Organization so this is one API call, not one per
+   * portal visit.
+   */
+  private async ensurePortalConfiguration(orgId: string): Promise<string | undefined> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { id: true, name: true, stripePortalConfigId: true },
+    });
+
+    if (org?.stripePortalConfigId) return org.stripePortalConfigId;
+
+    const tiers = await this.prisma.membershipTier.findMany({
+      where: { orgId, isActive: true, stripeProductId: { not: null } },
+      select: { stripeProductId: true, stripePriceIdMonthly: true, isPayWhatYouCan: true },
+    });
+
+    // Pay-what-you-can tiers are deliberately excluded: their price is created
+    // per member at checkout, so there is no shared Price for the portal to
+    // offer. A member switching *to* PWYC has to cancel and check out again.
+    const products = tiers
+      .filter((t) => !t.isPayWhatYouCan && t.stripePriceIdMonthly)
+      .map((t) => ({
+        product: t.stripeProductId as string,
+        prices: [t.stripePriceIdMonthly as string],
+      }));
+
+    if (products.length === 0) {
+      // Nothing switchable. Fall back to the account default so the member can
+      // still update a card or cancel.
+      this.logger.warn(
+        `Org ${orgId} has no fixed-price tiers with Stripe prices; the billing portal will not offer plan switching.`,
+      );
+      return undefined;
+    }
+
+    const configuration = await this.stripe.billingPortal.configurations.create({
+      business_profile: { headline: `${org?.name ?? 'Your co-op'} — manage your membership` },
+      features: {
+        customer_update: { enabled: true, allowed_updates: ['email', 'address', 'tax_id'] },
+        payment_method_update: { enabled: true },
+        invoice_history: { enabled: true },
+        subscription_cancel: { enabled: true, mode: 'at_period_end' },
+        subscription_update: {
+          enabled: true,
+          default_allowed_updates: ['price'],
+          proration_behavior: 'create_prorations',
+          products,
+        },
+      },
+    });
+
+    await this.prisma.organization.update({
+      where: { id: orgId },
+      data: { stripePortalConfigId: configuration.id },
+    });
+
+    this.logger.log(
+      `Created billing portal configuration ${configuration.id} for org ${orgId} with ${products.length} switchable tier(s)`,
+    );
+
+    return configuration.id;
+  }
+
+  /**
    * Create a Stripe Billing Portal session so a customer can manage
    * their subscription, payment methods, and invoices.
    */
   async createBillingPortalSession(
     stripeCustomerId: string,
     returnUrl: string,
+    orgId?: string,
   ): Promise<string> {
+    const configuration = orgId
+      ? await this.ensurePortalConfiguration(orgId)
+      : undefined;
+
     const session = await this.stripe.billingPortal.sessions.create({
       customer: stripeCustomerId,
       return_url: returnUrl,
+      ...(configuration ? { configuration } : {}),
     });
 
     return session.url;
