@@ -24,6 +24,21 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-017 — Org logos go in Supabase Storage, not a pasted URL
+
+- **Date:** 2026-08-10
+- **Status:** Active — **not yet implemented**
+- **Area:** Frontend, Backend, Infrastructure
+- **Decision (Charley's, 2026-08-10):** Co-op logos are uploaded to **Supabase Storage**. Rejected: a plain `logoUrl` text field, which is ten minutes of work but pushes image hosting onto every co-op — unreasonable for organizations that mostly aren't technical, and it breaks the moment someone's hosting lapses.
+- **Nothing exists yet.** No `@supabase/supabase-js` dependency, no multipart/`FileInterceptor` handling anywhere in the API, no storage bucket, and no `SUPABASE_*` environment variables — the only Supabase config present is the Postgres connection string. `Organization.logoUrl` exists in the schema and nothing has ever written to it.
+- **Required before implementation:**
+  - A **public** bucket (suggested name `org-logos`) in both the dev and prod Supabase projects. Public is right here: logos render on unauthenticated join pages, so signed URLs would add expiry handling for no benefit.
+  - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` set for both environments. **The service role key bypasses Row Level Security and grants full database and storage access** — it is more dangerous than the Stripe key and must be a Netlify *secret* value, never committed, never pasted into chat.
+- **Planned shape:** upload keyed `org-logos/<orgId>/<uuid>.<ext>`, overwriting nothing so a failed upload can't destroy the current logo; server-side validation of MIME type and size (images only, small cap) rather than trusting the client; `Organization.logoUrl` updated only after the upload succeeds.
+- **Supersedes:** none (this is `OPS-03c`)
+
+---
+
 ### D-016 — Changing a tier price: grandfather by default, opt in to raise
 
 - **Date:** 2026-08-10
