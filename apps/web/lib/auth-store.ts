@@ -1,7 +1,8 @@
 'use client';
 
 import { create } from 'zustand';
-import { api, UserProfile } from './api';
+import * as Sentry from '@sentry/nextjs';
+import { api, ApiError, UserProfile } from './api';
 
 interface AuthState {
   token: string | null;
@@ -33,6 +34,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (typeof window !== 'undefined') {
       localStorage.setItem('maybeos_org', orgId);
     }
+    // Tag reports with the tenant. In a multi-tenant app "is this broken for
+    // everyone or just one org?" is the first question worth answering.
+    Sentry.setTag('org.id', orgId);
     set({ currentOrgId: orgId });
   },
 
@@ -46,16 +50,40 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const user = await api.auth.profile(token);
       set({ user, isLoading: false });
 
+      // Attach identity to every subsequent error report. Id only — an email
+      // address in a third-party dashboard is member PII we have no reason to
+      // send, and the id is enough to trace a report back to an account.
+      Sentry.setUser({ id: user.id });
+
       // Auto-select first org if none selected
       const { currentOrgId } = get();
       if (!currentOrgId && user.orgs.length > 0) {
         get().setCurrentOrg(user.orgs[0].orgId);
       }
-    } catch {
-      set({ token: null, user: null, isLoading: false });
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('maybeos_token');
+    } catch (err) {
+      // This used to be a bare `catch {}` that discarded the session on *any*
+      // failure. A 500 or a dropped connection would silently sign the user
+      // out and look, from the outside, exactly like a normal logout — no
+      // error, no report, nothing to debug. Only an actual rejection of the
+      // credential should end the session.
+      const rejected = err instanceof ApiError && (err.status === 401 || err.status === 403);
+
+      if (rejected) {
+        set({ token: null, user: null, isLoading: false });
+        Sentry.setUser(null);
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('maybeos_token');
+        }
+        return;
       }
+
+      // Keep the token: the credential may well still be good and the next
+      // attempt may succeed. Surface it instead of swallowing it.
+      set({ isLoading: false });
+      Sentry.captureException(err, {
+        level: 'error',
+        tags: { 'auth.stage': 'load-profile' },
+      });
     }
   },
 
@@ -64,6 +92,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       localStorage.removeItem('maybeos_token');
       localStorage.removeItem('maybeos_org');
     }
+    Sentry.setUser(null);
     set({ token: null, user: null, currentOrgId: null });
   },
 

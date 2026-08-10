@@ -27,6 +27,8 @@ Get MaybeOS Suite production-ready and launch MaybeItsFate LCA as the first live
 - [x] Destructive-seed guard — `db:seed` refuses to run against production or any non-local database unless `SEED_FORCE=true`. Added because the script deletes every row first, and dev/prod Supabase URLs differ by a few characters
 - [x] **DEP-01 — API live in production** (D-010). NestJS runs as a Netlify Function behind an edge redirect; frontend and API share the maybeos.org origin. Verified: health check, 401 on bad credentials, JwtAuthGuard, ValidationPipe, Swagger correctly disabled, and a full register -> JWT -> authenticated-profile round trip (test account deleted afterward; prod DB confirmed empty)
 - [x] Dedicated production Supabase project (`iugbkabdbgkofyaychjy`, ca-central-1), schema pushed, zero rows. Dev project stays separate (D-010)
+- [x] **OPS-06 — API error tracking** (Sentry, `@sentry/nestjs` 8.55.2). Init isolated in `instrument.ts` and imported first; explicit `Sentry.flush()` before the Lambda freezes; the exception filter reports all 5xx (not just non-HttpException). Verified against a local fake ingest. **Dormant until a DSN is set.**
+- [x] **OPS-07 — Frontend error tracking** (D-011, `@sentry/nextjs` 8.55.2). Browser + SSR + edge/middleware. Includes the app's **first React error boundaries** (`app/error.tsx`, `app/global-error.tsx`) — before this, a render error showed Next's blank default screen and reported nothing. API client emits a breadcrumb per request and captures 5xx and unreachable-API failures; `auth-store` attaches user id and org tag. Credential-bearing URLs (`?token=`) are redacted before send. Verified end-to-end against a local fake ingest: uncaught error, unhandled rejection, render error, API-down, and token redaction all confirmed. **Dormant until a DSN is set.**
 - [x] Project operating system (this folder) — established 2026-08-08
 
 ## Planned (not yet built)
@@ -43,11 +45,13 @@ Get MaybeOS Suite production-ready and launch MaybeItsFate LCA as the first live
 - [ ] Prepare github.com/millercharley/MaybeOS for open-source release — license, README, contributing guide, history scrub for secrets
 
 ## In Progress
-- [ ] None — awaiting direction. Everything through DEP-01 is pushed to `claude/maybeOS-suite-foundation-1Wauk` and confirmed live at maybeos.org.
+- [ ] None — awaiting direction. Everything through OPS-07 is pushed to `claude/maybeOS-suite-foundation-1Wauk`.
+
+## Blocked on Charley
+- **Sentry DSNs.** OPS-06 and OPS-07 are both code-complete and verified, but inert until DSNs exist. Needs a Sentry account and two projects (`maybeos-api` = Node, `maybeos-web` = Next.js), then on the Netlify site: `SENTRY_DSN` (API) and `NEXT_PUBLIC_SENTRY_DSN` (web). **The web one is inlined at build time — a redeploy is required, not just an env var edit.** Optionally `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` for readable stack traces; without all three the build skips source maps rather than failing.
 
 ## Open Questions
 - Q: What are MaybeItsFate's specific branding inputs (logo, colors, membership tier names/prices) to configure OrgOS for launch?
-- Q: Sentry DSN / error tracking — set up before go-live, or acceptable to launch without?
 - Q: `listProposals` doesn't compute vote tallies (only `_count.votes`), so the Commons proposal cards show 0% everywhere despite real votes existing — worth fixing before launch? (Found incidentally, not fixed.)
 - Q: Now that OrgMembershipGuard exists, should new org-scoped controllers be required to use it by convention/lint rule, so this class of bug can't reappear silently?
 
