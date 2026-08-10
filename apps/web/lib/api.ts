@@ -543,6 +543,8 @@ export interface MembershipTier {
   priceMonthly: number;
   priceYearly?: number;
   isPayWhatYouCan: boolean;
+  /** Floor for a pay-what-you-can tier, in cents. Server-enforced. */
+  minPrice?: number;
   benefits: string[];
 }
 
