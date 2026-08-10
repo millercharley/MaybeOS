@@ -24,6 +24,25 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-011 — Frontend error tracking via @sentry/nextjs, with URL scrubbing as a hard requirement
+
+- **Date:** 2026-08-10
+- **Status:** Active
+- **Area:** Frontend, Security, Observability
+- **Decision:** Adopt `@sentry/nextjs` (pinned to 8.55.2, matching `@sentry/nestjs` in the API) for browser, SSR, and edge/middleware error reporting. Reporting is gated on `NEXT_PUBLIC_SENTRY_DSN`; with no DSN the SDK is never initialized. Two **separate** Sentry projects are used — one for the API, one for the web app.
+- **Alternatives rejected:**
+  - *A lightweight hand-rolled `window.onerror` reporter* — rejected: it misses React render errors entirely (Next.js catches those itself, so they never reach `window.onerror`), and misses SSR and middleware failures.
+  - *Sentry Session Replay* — rejected: it records the DOM of a member-management app (names, emails, addresses, payment status) and ships it to a third party. That is a decision for the co-op to make knowingly, not a default enabled for our debugging convenience.
+  - *Dropping `browserTracingIntegration` to save bundle weight* — rejected after measuring: it saves only 2 kB, because the SDK bundles the tracing code either way. Keeping it buys distributed tracing that links a browser error to the API request that caused it.
+- **Rationale:** The failure this exists to catch is the silent one — a form that does nothing, a page that renders blank — which produces no server log at all. Anything less than a real SDK misses the most common shape of it.
+- **Non-negotiable constraint — URL scrubbing:** Two live routes carry a working bearer credential in the URL: `/magic-link?token=…` and `/invite?token=…`. Sentry attaches the current page URL to every event and to navigation and fetch breadcrumbs, so without redaction an error on either page would ship a usable login credential to a third-party dashboard — and an expired or already-consumed token is *precisely* what makes those pages throw. `sentry.shared.ts` redacts sensitive query parameters from event URLs, query strings, and breadcrumbs before anything leaves the browser. **Verified** by grepping raw captured payloads for the secret: zero occurrences. Do not remove this, and extend `SENSITIVE_QUERY_KEYS` when adding any route that accepts a credential in a query parameter.
+- **Noise-filtering trap to preserve:** `ignoreErrors` filters the bare browser strings for a failed fetch (`Failed to fetch`, `Load failed`, …) because they flood a project with users switching tabs and losing wifi. But "the API is unreachable" is exactly the failure we care about, and it produces the *same* message. `ApiClient` therefore re-wraps network failures as `ApiNetworkError` with a message shaped `API unreachable: POST /auth/login`, which matches nothing in the ignore list. **Never add a generic `/fetch/i` pattern to `ignoreErrors`** — it would silently swallow that signal and leave error tracking looking healthy while reporting nothing.
+- **Cost:** First Load JS shared across all routes goes from 102 kB to 175 kB (+73 kB uncompressed), and the edge middleware bundle from 32.7 kB to 91.8 kB. This is essentially fixed regardless of configuration.
+- **Behavior change beyond telemetry:** `auth-store.loadProfile` previously had a bare `catch {}` that discarded the session on *any* failure. A 500 or a dropped connection silently signed the user out and was indistinguishable from a normal logout. It now ends the session only on a genuine 401/403 and reports anything else.
+- **Supersedes:** none (extends D-005 and the API-side work in OPS-06)
+
+---
+
 ### D-010 — Production topology: single Netlify site, API as a Function, separate prod database
 
 - **Date:** 2026-08-09

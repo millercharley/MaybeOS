@@ -1,8 +1,22 @@
+import * as Sentry from '@sentry/nextjs';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 interface FetchOptions extends RequestInit {
   token?: string;
   orgId?: string;
+}
+
+/**
+ * Strip anything credential-shaped out of a path before it is used in a
+ * Sentry message, tag, or fingerprint. `/auth/magic-link/verify?token=...`
+ * and `/invites/<token>` both embed a working credential in the path itself.
+ */
+function safePath(path: string): string {
+  return path
+    .split('?')[0]
+    .replace(/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '/:id')
+    .replace(/\/[A-Za-z0-9_-]{24,}/g, '/:token');
 }
 
 class ApiClient {
@@ -28,14 +42,55 @@ class ApiClient {
       headers['X-Org-Id'] = orgId;
     }
 
-    const response = await fetch(`${this.baseUrl}/api${path}`, {
-      ...fetchOptions,
-      headers,
+    const method = (fetchOptions.method || 'GET').toUpperCase();
+    const route = safePath(path);
+
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}/api${path}`, {
+        ...fetchOptions,
+        headers,
+      });
+    } catch (cause) {
+      // fetch only rejects when the request never completed: the API is down,
+      // DNS failed, CORS blocked it, or the user lost connectivity. The
+      // browser's own message for all of these is a bare "Failed to fetch",
+      // which is filtered as ambient noise in sentry.shared.ts. Re-wrap it
+      // with the route attached so a genuinely unreachable API is reported
+      // and grouped, instead of being lost among tab-closed noise.
+      const err = new ApiNetworkError(method, route, cause);
+      Sentry.captureException(err, {
+        level: 'error',
+        tags: { 'api.method': method, 'api.route': route },
+        fingerprint: ['api-unreachable', method, route],
+      });
+      throw err;
+    }
+
+    Sentry.addBreadcrumb({
+      category: 'api',
+      type: 'http',
+      level: response.ok ? 'info' : 'warning',
+      message: `${method} ${route} → ${response.status}`,
+      data: { method, route, status: response.status },
     });
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: response.statusText }));
-      throw new ApiError(response.status, error.message || 'Request failed');
+      const apiError = new ApiError(response.status, error.message || 'Request failed');
+
+      // Mirrors the API's own policy in GlobalExceptionFilter: 5xx is a
+      // defect, 4xx is normal traffic. A wrong password reported as an error
+      // would bury the failures that matter.
+      if (response.status >= 500) {
+        Sentry.captureException(apiError, {
+          level: 'error',
+          tags: { 'api.method': method, 'api.route': route, 'api.status': String(response.status) },
+          fingerprint: ['api-5xx', method, route, String(response.status)],
+        });
+      }
+
+      throw apiError;
     }
 
     if (response.status === 204) {
@@ -362,6 +417,24 @@ export class ApiError extends Error {
   ) {
     super(message);
     this.name = 'ApiError';
+  }
+}
+
+/**
+ * The request never reached the API: it is down, unreachable, or blocked.
+ * Distinct from ApiError, which means the API answered and said no.
+ *
+ * Callers that show "check your connection" style messaging should branch on
+ * this rather than on the message text.
+ */
+export class ApiNetworkError extends Error {
+  constructor(
+    public method: string,
+    public route: string,
+    public cause?: unknown,
+  ) {
+    super(`API unreachable: ${method} ${route}`);
+    this.name = 'ApiNetworkError';
   }
 }
 
