@@ -121,6 +121,14 @@ export default function MemberBillingPage() {
   const status = STATUS_COPY[membership.subscriptionStatus] ?? STATUS_COPY.NONE;
   const hasBillingAccount = membership.subscriptionStatus !== 'NONE';
 
+  // A member with a live subscription changes tier through the Stripe Billing
+  // Portal, never by checking out again — a second checkout creates a second
+  // subscription and bills them twice. The API rejects it with a 409 too; this
+  // just avoids offering a button that cannot work.
+  const mustUsePortal = ['ACTIVE', 'TRIALING', 'PAST_DUE'].includes(
+    membership.subscriptionStatus,
+  );
+
   return (
     <div className="max-w-3xl">
       <p className="data mb-2 text-xs uppercase tracking-wider text-[var(--text-tertiary)]">
@@ -177,9 +185,27 @@ export default function MemberBillingPage() {
 
       {/* Tier chooser */}
       <h2 className="mt-10 font-display text-lg">
-        {hasBillingAccount ? 'Change your tier' : 'Choose a tier'}
+        {mustUsePortal ? 'Change your tier' : 'Choose a tier'}
       </h2>
 
+      {mustUsePortal ? (
+        <div className="card mt-4">
+          <p className="text-[var(--text-secondary)]">
+            Switching tiers, updating your card, and cancelling all happen in the
+            billing portal, so your existing membership is adjusted rather than a
+            second one being started alongside it. Any difference in price is
+            prorated automatically.
+          </p>
+          <button
+            onClick={openPortal}
+            className="btn-primary mt-4 inline-flex items-center gap-2"
+          >
+            Open billing portal
+            <ExternalLink size={14} aria-hidden="true" />
+          </button>
+        </div>
+      ) : (
+        <>
       {(!tiers || tiers.length === 0) && (
         <p className="mt-2 text-sm text-[var(--text-secondary)]">
           {membership.orgName} hasn&apos;t set up membership tiers yet.
@@ -271,6 +297,8 @@ export default function MemberBillingPage() {
           );
         })}
       </div>
+        </>
+      )}
 
       <p className="mt-8 text-xs text-[var(--text-tertiary)]">
         Payments are handled by Stripe. MaybeOS never sees your card details.

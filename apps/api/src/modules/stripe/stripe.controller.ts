@@ -10,6 +10,7 @@ import {
   HttpStatus,
   Logger,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
@@ -84,12 +85,18 @@ export class StripeController {
     });
 
     if (!userOrg?.stripeCustomerId) {
-      return { error: 'No billing account found for this organization membership' };
+      // Was returning { error } with HTTP 200, so the client had to inspect the
+      // body to notice the failure — and our own api.ts would have treated it
+      // as success and tried to redirect to `undefined`.
+      throw new NotFoundException(
+        'No billing account found for this membership. Choose a tier first.',
+      );
     }
 
     const url = await this.stripeService.createBillingPortalSession(
       userOrg.stripeCustomerId,
       dto.returnUrl,
+      orgId,
     );
 
     return { url };

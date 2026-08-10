@@ -11,18 +11,23 @@ datasource db {
 // ─── Multi-Tenant Foundation ─────────────────────────────────
 
 model Organization {
-  id           String   @id @default(uuid())
-  name         String
-  slug         String   @unique
-  description  String?
-  mission      String?
-  logoUrl      String?
-  brandColor   String   @default("#6366f1")
-  customDomain String?  @unique
-  timezone     String   @default("America/New_York")
-  settings     Json     @default("{}")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                   String  @id @default(uuid())
+  name                 String
+  slug                 String  @unique
+  description          String?
+  mission              String?
+  logoUrl              String?
+  brandColor           String  @default("#6366f1")
+  customDomain         String? @unique
+  timezone             String  @default("America/New_York")
+  settings             Json    @default("{}")
+  // Stripe Billing Portal configuration for this org's members. The portal
+  // only offers plan switching when it is given an explicit product list,
+  // so each org needs its own configuration naming its own tiers.
+  stripePortalConfigId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   locations      Location[]
   users          UserOrg[]
