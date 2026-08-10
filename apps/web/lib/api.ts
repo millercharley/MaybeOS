@@ -8,15 +8,38 @@ interface FetchOptions extends RequestInit {
 }
 
 /**
- * Strip anything credential-shaped out of a path before it is used in a
- * Sentry message, tag, or fingerprint. `/auth/magic-link/verify?token=...`
- * and `/invites/<token>` both embed a working credential in the path itself.
+ * Reduce a request path to a stable route label for Sentry messages, tags, and
+ * fingerprints. Two jobs, in priority order:
+ *
+ *  1. Never let a credential through. Every token in this client is passed as
+ *     a query parameter (`?token=`), never as a path segment, and the whole
+ *     query string is dropped below — so today nothing credential-shaped can
+ *     reach a route label. The `OPAQUE_SEGMENT` rule is a backstop in case a
+ *     future endpoint puts one in the path.
+ *
+ *  2. Collapse dynamic segments so one endpoint is one Sentry issue. Getting
+ *     this wrong is not cosmetic: an earlier version replaced any segment of
+ *     24+ characters with `:token`, which turned `/orgs/by-slug/sunrise` and
+ *     `/orgs/by-slug/maybeitsfate-land-cooperative` into *different* labels.
+ *     The same endpoint then split into separate issues depending on which
+ *     org happened to fail, and a public slug was mislabelled as a credential.
+ *     Normalize by known route shape, not by guessing from length.
  */
+const UUID_SEGMENT = /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+// Long, unbroken hex/base64 runs — what an opaque credential looks like. A
+// hyphen or a short segment disqualifies it, so real slugs are never matched.
+const OPAQUE_SEGMENT = /\/[A-Za-z0-9]{32,}(?=\/|$)/g;
+
 function safePath(path: string): string {
   return path
     .split('?')[0]
-    .replace(/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '/:id')
-    .replace(/\/[A-Za-z0-9_-]{24,}/g, '/:token');
+    .replace(UUID_SEGMENT, '/:id')
+    // `by-slug/<slug>` appears for both orgs and events.
+    .replace(/\/by-slug\/[^/]+/g, '/by-slug/:slug')
+    // `/orgs/<slug>/…` — some routes address the org by slug, not id.
+    .replace(/^\/orgs\/(?!by-slug(?:\/|$))(?!:id(?:\/|$))(?!:org(?:\/|$))[^/]+/, '/orgs/:org')
+    .replace(OPAQUE_SEGMENT, '/:token');
 }
 
 class ApiClient {
