@@ -17,10 +17,16 @@ export class CreateCheckoutDto {
   amountCents?: number;
 
   @ApiProperty({ description: 'URL to redirect on successful checkout', example: 'https://app.example.com/checkout/success' })
-  @IsUrl()
+  // require_tld: false so http://localhost:3000 validates. class-validator's
+  // default demands a TLD, which silently makes every local checkout fail
+  // with "must be a URL address" while production works fine.
+  @IsUrl({ require_tld: false })
   successUrl: string;
 
   @ApiProperty({ description: 'URL to redirect on canceled checkout', example: 'https://app.example.com/checkout/cancel' })
-  @IsUrl()
+  // require_tld: false so http://localhost:3000 validates. class-validator's
+  // default demands a TLD, which silently makes every local checkout fail
+  // with "must be a URL address" while production works fine.
+  @IsUrl({ require_tld: false })
   cancelUrl: string;
 }
