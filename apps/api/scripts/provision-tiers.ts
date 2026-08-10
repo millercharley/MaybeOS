@@ -13,14 +13,21 @@
  *   npx ts-node scripts/provision-tiers.ts --apply    # actually create them
  */
 import { NestFactory } from '@nestjs/core';
-import { Logger } from '@nestjs/common';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/config/prisma.service';
 import { MemberService } from '../src/modules/member/member.service';
 
 async function main() {
   const apply = process.argv.includes('--apply');
-  const logger = new Logger('provision-tiers');
+
+  // console, not Nest's Logger: the app context below is created with
+  // logger: ['error','warn'] to mute Prisma/Nest chatter, which would also
+  // swallow this script's own progress output.
+  const logger = {
+    log: (m: string) => console.log(m),
+    warn: (m: string) => console.warn(m),
+    error: (m: string) => console.error(m),
+  };
 
   if (!process.env.STRIPE_SECRET_KEY) {
     logger.error('STRIPE_SECRET_KEY is not set — nothing can be provisioned.');

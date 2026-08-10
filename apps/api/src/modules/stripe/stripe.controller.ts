@@ -100,7 +100,15 @@ export class StripeController {
   // ──────────────────────────────────────────────────────────────
 
   @Post('stripe/webhooks')
-  @SkipThrottle()
+  // Must name every throttler. ThrottlerModule.forRoot is configured with
+  // named limiters ('short', 'medium', 'long'), and a bare @SkipThrottle()
+  // expands to { default: true } — a name that matches none of them, so it
+  // silently skips nothing. Stripe fires ~12 events at once when a checkout
+  // completes; under the 3-req/sec 'short' limit most of them came back 429,
+  // including customer.subscription.created. Verified against a real test
+  // payment: the charge succeeded in Stripe while the member's subscription
+  // id and tier were never recorded.
+  @SkipThrottle({ short: true, medium: true, long: true })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Stripe webhook handler (no auth — verified by signature)' })
   async handleWebhook(
