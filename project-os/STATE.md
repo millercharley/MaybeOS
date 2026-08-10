@@ -33,13 +33,14 @@ Get MaybeOS Suite production-ready and launch MaybeItsFate LCA as the first live
 - [x] Project operating system (this folder) — established 2026-08-08
 
 ## Planned (not yet built)
+- [ ] **OPS-03a — Tier management UI.** Admins cannot create or edit membership tiers in the product at all; the API exists and nothing calls it. Blocks Charley setting up MaybeItsFate's dues. Must implement D-016's grandfathering option.
+- [ ] **OPS-03c — Logo upload** (D-017). Blocked on the Supabase bucket and keys above.
 - [ ] AccessOS v1 — admin-issued numeric door codes tied to membership status (D-004, D-006) — fast-follow, not in launch critical path
 - [ ] Production hardening — the deploy works, but has never been exercised beyond auth. Worth a pass over the other modules (events, rooms, commons, impact) against prod before real members arrive
 - [ ] Stripe live-mode config for MaybeItsFate
 - [ ] Port CommonsOS parity (Collections/threading/pinning) into the public portal's separate Commons page, or decide the admin hub is the only place it needs to live
 - [ ] Consolidate Prisma migration history — schema is currently synced via `prisma db push` (not `migrate dev`) because the canonical repo's committed migrations and the zip's committed migrations diverged against the same live Supabase DB; needs a clean migration squash before production cutover
 - [ ] Wildcard subdomain tenant routing ([org].maybeos.com) — Stage 2, not needed for single-tenant launch
-- [ ] Landing page redesign/rebrand for marketing — **waiting on Charley for design direction before starting** (his request, do not start unprompted)
 - [ ] Supabase Auth integration — Google OAuth, passwordless email, and phone sign-in options, replacing or augmenting the current custom JWT/bcrypt auth. Not scoped yet: needs a decision on whether this replaces `auth.service.ts` entirely or runs alongside it, and how Supabase Auth's own user records map to the existing Prisma `User`/`UserOrg` model
 - [ ] Stripe product catalog — real Products/Prices configured so self-serve checkout works end to end, not just live API keys
 - [ ] Global "product forum" org — every MaybeOS org owner auto-joins a free, global org; Stage 2 concept (needs multiple real org owners to be meaningful)
@@ -49,6 +50,8 @@ Get MaybeOS Suite production-ready and launch MaybeItsFate LCA as the first live
 - [ ] None — awaiting direction. Everything through OPS-07 is pushed to `claude/maybeOS-suite-foundation-1Wauk`.
 
 ## Blocked on Charley
+- **OPS-03c (logo upload)** needs a `org-logos` public bucket in both Supabase projects, plus `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` as Netlify **secret** values. The service role key bypasses RLS — treat it as more sensitive than the Stripe key. See D-017.
+- **Live Stripe key is unverified.** Netlify withholds the value, so nobody has confirmed it is `*_live_*` rather than a test key. A test key would look like it works while charging nobody. Confirm on the first tier created in production: `stripeProductId` populated, and the Product visible in Stripe's **live** dashboard.
 - Nothing outstanding for Sentry. The Netlify PAT issued during DEP-01 was **revoked 2026-08-10** and confirmed dead (API returns 401); the site, functions, and error tracking were unaffected. Any future Netlify API work needs a fresh token.
 
 ## Open Questions
