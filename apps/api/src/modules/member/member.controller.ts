@@ -148,6 +148,18 @@ export class MemberController {
     return this.memberService.listTiers(orgId);
   }
 
+  @Get('tiers/manage')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'List all tiers for admin management, including inactive ones and how many members are actively paying for each',
+  })
+  listTiersForAdmin(@Param('orgId') orgId: string) {
+    return this.memberService.listTiersForAdmin(orgId);
+  }
+
   @Patch('tiers/:tierId')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
