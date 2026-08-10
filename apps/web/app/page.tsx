@@ -29,7 +29,7 @@ const tools = [
   {
     name: 'Event Management Tools',
     description:
-      'Post an event, take RSVPs, run a waitlist. Public pages and calendar feeds, without a ticketing platform skimming a cut off the top.',
+      'Post an event, take RSVPs, run a waitlist. Public pages and calendar feeds, and a flat few cents per transaction to keep MaybeOS running — never a percentage of your door.',
     Icon: Calendar,
   },
   {

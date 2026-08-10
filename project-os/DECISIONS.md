@@ -24,6 +24,40 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-013 — MaybeOS pricing model, and what it forces architecturally
+
+- **Date:** 2026-08-10
+- **Status:** Active
+- **Area:** Billing, Product, Licensing
+- **Decision (Charley's pricing, recorded verbatim in intent):**
+  - **Self-host:** free under **Apache License 2.0**. The website offers a **gift** option for anyone wanting to sustain MaybeOS. MaybeItsFate LCA is a **for-profit**, so gifts are **not tax deductible** and must never be described as such.
+  - **MaybeOS Free:** $0/mo, **+$0.55 per transaction**.
+  - **MaybeOS Plus:** **$100 one-time initiation fee**; **$3.65 per user per year**, billed monthly, **minimum 10 users**; **+$0.30 per transaction**. Accounts must be **archived (frozen) or deleted** by an admin to stop counting.
+  - **MaybeOS Unlimited:** **$299/mo billed annually** or **$349/mo billed monthly**; unlimited members; **+$0.10 per transaction**.
+- **Proration semantics (Charley's call, 2026-08-10):** an account **registered at any time during the month counts as a full user for that month** — no reduction for joining late or being archived mid-month. Bill peak headcount, proration disabled. Chosen over day-based proration (fairer but harder to explain) and invoice-date snapshot (gameable by archiving the day before billing).
+- **This forces Stripe Connect.** Every tier takes a per-transaction fee, and taking a cut of another party's charge *is* `application_fee_amount`, which only exists under Connect. There is no version of this that works by routing other co-ops' dues through MaybeOS's own Stripe account — that is money transmission, not billing. **Connect is therefore a hard prerequisite for SCL-02 (self-serve signup)**, not a Stage 2 nicety. It does *not* block this month's launch: MaybeItsFate is tenant #1 and owes itself no fee.
+- **Two separate billing systems.** Co-op → member dues (today's `StripeService`) and MaybeOS → co-op platform fees are different Stripe accounts, products, webhooks, and failure modes. Platform billing belongs in its own module, not bolted onto `StripeService`.
+- **Implementation notes that are easy to get wrong:**
+  - $3.65/user/year billed monthly is **$0.30416666…**, not a whole number of cents. Use `unit_amount_decimal`; `unit_amount: 30` loses money and `31` overcharges.
+  - Free / Plus / Unlimited are distinct plans, so **three separate Products**. Unlimited's monthly and annual prices are two **Prices on one Product** — the legitimate "billing variant" case.
+  - `UserOrg` has **no archived state today**. Plus billing cannot be implemented until one exists; `subscriptionStatus` is about dues, not account lifecycle.
+- **Supersedes:** none
+
+---
+
+### D-014 — Stripe webhooks: claim and dispatch in one transaction
+
+- **Date:** 2026-08-10
+- **Status:** Active
+- **Area:** Backend, Billing, Reliability
+- **Decision:** `handleWebhook` creates the `WebhookEvent` row and runs the event handler inside a single Prisma interactive transaction. The row's primary key (the Stripe event id) is both the idempotency record and the lock. A `P2002` means another delivery won the race and is treated as success; any other error propagates so the endpoint answers non-2xx and Stripe retries.
+- **What was wrong before:** (1) idempotency was a `findUnique` followed later by a `create`, which two concurrent deliveries could both pass; (2) a throwing handler was logged, swallowed, and the event still recorded as processed with a 200 response — so Stripe never retried and a member could pay while their membership was silently never activated. A unit test asserted this second behavior as correct; it has been inverted.
+- **The controller no longer catches.** It previously turned every failure into a 400, which both misreported a database error as a malformed Stripe request and prevented `GlobalExceptionFilter` from reporting the 5xx to Sentry.
+- **Constraint:** requires a **session-mode** database connection. Prisma interactive transactions do not work over PgBouncer in transaction mode. `DATABASE_URL` is deliberately the Supabase session pooler (5432) per D-010 — moving it to 6543 would break webhook processing.
+- **Supersedes:** none
+
+---
+
 ### D-012 — Source maps: upload widened beyond the plugin default, and never served publicly
 
 - **Date:** 2026-08-10

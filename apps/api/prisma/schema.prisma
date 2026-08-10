@@ -4,36 +4,36 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ─── Multi-Tenant Foundation ─────────────────────────────────
 
 model Organization {
-  id          String   @id @default(uuid())
-  name        String
-  slug        String   @unique
-  description String?
-  mission     String?
-  logoUrl     String?
-  brandColor  String   @default("#6366f1")
-  customDomain String? @unique
-  timezone    String   @default("America/New_York")
-  settings    Json     @default("{}")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(uuid())
+  name         String
+  slug         String   @unique
+  description  String?
+  mission      String?
+  logoUrl      String?
+  brandColor   String   @default("#6366f1")
+  customDomain String?  @unique
+  timezone     String   @default("America/New_York")
+  settings     Json     @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  locations     Location[]
-  users         UserOrg[]
-  tiers         MembershipTier[]
-  events        Event[]
-  rooms         Room[]
-  channels      Channel[]
-  collections   Collection[]
-  surveys       Survey[]
-  invitations   Invitation[]
-  auditLogs     AuditLog[]
+  locations      Location[]
+  users          UserOrg[]
+  tiers          MembershipTier[]
+  events         Event[]
+  rooms          Room[]
+  channels       Channel[]
+  collections    Collection[]
+  surveys        Survey[]
+  invitations    Invitation[]
+  auditLogs      AuditLog[]
   emailTemplates EmailTemplate[]
 
   @@map("organizations")
@@ -53,8 +53,8 @@ model Location {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  rooms Room[]
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  rooms  Room[]
   events Event[]
 
   @@index([orgId])
@@ -89,39 +89,39 @@ model User {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
-  orgs            UserOrg[]
-  rsvps           Rsvp[]
-  bookings        Booking[]
-  posts           Post[]
-  comments        Comment[]
-  reactions       Reaction[]
-  votes           Vote[]
-  surveyResponses SurveyResponse[]
-  sentMessages    DirectMessage[]  @relation("SentMessages")
-  receivedMessages DirectMessage[] @relation("ReceivedMessages")
-  collectionPages CollectionPage[]
+  orgs             UserOrg[]
+  rsvps            Rsvp[]
+  bookings         Booking[]
+  posts            Post[]
+  comments         Comment[]
+  reactions        Reaction[]
+  votes            Vote[]
+  surveyResponses  SurveyResponse[]
+  sentMessages     DirectMessage[]  @relation("SentMessages")
+  receivedMessages DirectMessage[]  @relation("ReceivedMessages")
+  collectionPages  CollectionPage[]
 
   @@map("users")
 }
 
 model UserOrg {
-  id              String   @id @default(uuid())
-  userId          String
-  orgId           String
-  role            OrgRole  @default(MEMBER)
-  tierId          String?
-  stripeCustomerId String?
+  id                   String             @id @default(uuid())
+  userId               String
+  orgId                String
+  role                 OrgRole            @default(MEMBER)
+  tierId               String?
+  stripeCustomerId     String?
   stripeSubscriptionId String?
-  subscriptionStatus SubscriptionStatus @default(NONE)
-  memberSince     DateTime @default(now())
-  bio             String?
-  tags            String[] @default([])
-  isPublic        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  subscriptionStatus   SubscriptionStatus @default(NONE)
+  memberSince          DateTime           @default(now())
+  bio                  String?
+  tags                 String[]           @default([])
+  isPublic             Boolean            @default(true)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 
-  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
   tier MembershipTier? @relation(fields: [tierId], references: [id])
 
   @@unique([userId, orgId])
@@ -142,22 +142,27 @@ enum SubscriptionStatus {
 // ─── MemberOS: Tiers & Subscriptions ────────────────────────
 
 model MembershipTier {
-  id              String   @id @default(uuid())
-  orgId           String
-  name            String
-  description     String?
-  priceMonthly    Int      @default(0) // cents
-  priceYearly     Int?     // cents
-  isPayWhatYouCan Boolean  @default(false)
-  minPrice        Int?     // cents, for PWYC
-  maxMembers      Int?     // null = unlimited
-  benefits        String[] @default([])
+  id                   String   @id @default(uuid())
+  orgId                String
+  name                 String
+  description          String?
+  priceMonthly         Int      @default(0) // cents
+  priceYearly          Int? // cents
+  isPayWhatYouCan      Boolean  @default(false)
+  minPrice             Int? // cents, for PWYC
+  maxMembers           Int? // null = unlimited
+  benefits             String[] @default([])
   stripePriceIdMonthly String?
   stripePriceIdYearly  String?
-  sortOrder       Int      @default(0)
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  // Needed for pay-what-you-can: a member-chosen amount is sent as an
+  // inline price_data at checkout, which must attach to this tier's
+  // existing Product. Without it we'd create a throwaway Product per
+  // checkout and every invoice line would read differently.
+  stripeProductId      String?
+  sortOrder            Int      @default(0)
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   members UserOrg[]
@@ -190,7 +195,7 @@ model Event {
   title           String
   slug            String
   description     String?
-  richDescription String?         // HTML content
+  richDescription String? // HTML content
   imageUrl        String?
   startTime       DateTime
   endTime         DateTime
@@ -198,7 +203,7 @@ model Event {
   visibility      EventVisibility @default(PUBLIC)
   recurrence      RecurrenceRule  @default(NONE)
   recurrenceEnd   DateTime?
-  parentEventId   String?         // for recurring event instances
+  parentEventId   String? // for recurring event instances
   capacity        Int?
   waitlistEnabled Boolean         @default(false)
   requiresRsvp    Boolean         @default(true)
@@ -210,12 +215,12 @@ model Event {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  location  Location?    @relation(fields: [locationId], references: [id])
-  room      Room?        @relation(fields: [roomId], references: [id])
-  parent    Event?       @relation("EventRecurrence", fields: [parentEventId], references: [id])
-  children  Event[]      @relation("EventRecurrence")
-  rsvps     Rsvp[]
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  location   Location?    @relation(fields: [locationId], references: [id])
+  room       Room?        @relation(fields: [roomId], references: [id])
+  parent     Event?       @relation("EventRecurrence", fields: [parentEventId], references: [id])
+  children   Event[]      @relation("EventRecurrence")
+  rsvps      Rsvp[]
   attendance Attendance[]
 
   @@unique([orgId, slug])
@@ -232,18 +237,18 @@ enum RsvpStatus {
 }
 
 model Rsvp {
-  id         String     @id @default(uuid())
-  eventId    String
-  userId     String?    // null for guest RSVPs
-  guestName  String?
-  guestEmail String?
-  status     RsvpStatus @default(CONFIRMED)
-  plusOnes   Int        @default(0)
-  note       String?
-  checkedIn  Boolean    @default(false)
+  id          String     @id @default(uuid())
+  eventId     String
+  userId      String? // null for guest RSVPs
+  guestName   String?
+  guestEmail  String?
+  status      RsvpStatus @default(CONFIRMED)
+  plusOnes    Int        @default(0)
+  note        String?
+  checkedIn   Boolean    @default(false)
   checkedInAt DateTime?
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
   user  User? @relation(fields: [userId], references: [id])
@@ -254,12 +259,12 @@ model Rsvp {
 }
 
 model Attendance {
-  id        String   @id @default(uuid())
-  eventId   String
-  userId    String?
+  id         String   @id @default(uuid())
+  eventId    String
+  userId     String?
   guestEmail String?
-  method    String   @default("manual") // manual, qr, self
-  createdAt DateTime @default(now())
+  method     String   @default("manual") // manual, qr, self
+  createdAt  DateTime @default(now())
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
@@ -270,44 +275,44 @@ model Attendance {
 // ─── SpaceOS: Rooms & Bookings ───────────────────────────────
 
 model Room {
-  id                String   @id @default(uuid())
-  orgId             String
-  locationId        String?
-  name              String
-  description       String?
-  capacity          Int?
-  amenities         String[] @default([])
-  imageUrl          String?
-  isActive          Boolean  @default(true)
-  requiresApproval  Boolean  @default(false)
-  memberOnly        Boolean  @default(true)
-  hourlyRate        Int?     // cents, null = free
-  googleCalendarId  String?
-  googleTokens      Json?    // encrypted OAuth tokens
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id               String   @id @default(uuid())
+  orgId            String
+  locationId       String?
+  name             String
+  description      String?
+  capacity         Int?
+  amenities        String[] @default([])
+  imageUrl         String?
+  isActive         Boolean  @default(true)
+  requiresApproval Boolean  @default(false)
+  memberOnly       Boolean  @default(true)
+  hourlyRate       Int? // cents, null = free
+  googleCalendarId String?
+  googleTokens     Json? // encrypted OAuth tokens
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  org              Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  location         Location?     @relation(fields: [locationId], references: [id])
+  org               Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  location          Location?          @relation(fields: [locationId], references: [id])
   availabilityRules AvailabilityRule[]
-  bookings         Booking[]
-  events           Event[]
+  bookings          Booking[]
+  events            Event[]
 
   @@index([orgId])
   @@map("rooms")
 }
 
 model AvailabilityRule {
-  id           String   @id @default(uuid())
-  roomId       String
-  dayOfWeek    Int?     // 0=Sunday..6=Saturday; null = all days
-  startTime    String   // "09:00" (HH:mm)
-  endTime      String   // "17:00" (HH:mm)
-  bufferMinutes Int     @default(0)
-  isBlackout   Boolean  @default(false) // true = blocked
+  id            String    @id @default(uuid())
+  roomId        String
+  dayOfWeek     Int? // 0=Sunday..6=Saturday; null = all days
+  startTime     String // "09:00" (HH:mm)
+  endTime       String // "17:00" (HH:mm)
+  bufferMinutes Int       @default(0)
+  isBlackout    Boolean   @default(false) // true = blocked
   effectiveFrom DateTime?
   effectiveTo   DateTime?
-  createdAt    DateTime @default(now())
+  createdAt     DateTime  @default(now())
 
   room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
@@ -323,20 +328,20 @@ enum BookingStatus {
 }
 
 model Booking {
-  id              String        @id @default(uuid())
-  roomId          String
-  userId          String
-  title           String
-  description     String?
-  startTime       DateTime
-  endTime         DateTime
-  status          BookingStatus @default(PENDING)
-  googleEventId   String?       // synced calendar event ID
-  reviewedBy      String?
-  reviewedAt      DateTime?
-  canceledAt      DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id            String        @id @default(uuid())
+  roomId        String
+  userId        String
+  title         String
+  description   String?
+  startTime     DateTime
+  endTime       DateTime
+  status        BookingStatus @default(PENDING)
+  googleEventId String? // synced calendar event ID
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  canceledAt    DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id])
@@ -370,19 +375,19 @@ model Channel {
 }
 
 model Post {
-  id          String   @id @default(uuid())
-  channelId   String
-  authorId    String
-  title       String?
-  body        String
-  isPinned    Boolean  @default(false)
-  isFlagged   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid())
+  channelId String
+  authorId  String
+  title     String?
+  body      String
+  isPinned  Boolean  @default(false)
+  isFlagged Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  channel  Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  author   User      @relation(fields: [authorId], references: [id])
-  comments Comment[]
+  channel   Channel    @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author    User       @relation(fields: [authorId], references: [id])
+  comments  Comment[]
   reactions Reaction[]
 
   @@index([channelId, createdAt])
@@ -433,7 +438,7 @@ model CollectionPage {
   collectionId String
   authorId     String
   title        String
-  body         String   // HTML content
+  body         String // HTML content
   sortOrder    Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -459,12 +464,12 @@ model Reaction {
 }
 
 model DirectMessage {
-  id         String   @id @default(uuid())
+  id         String    @id @default(uuid())
   senderId   String
   receiverId String
   body       String
   readAt     DateTime?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   sender   User @relation("SentMessages", fields: [senderId], references: [id])
   receiver User @relation("ReceivedMessages", fields: [receiverId], references: [id])
@@ -484,16 +489,16 @@ enum ProposalStatus {
 }
 
 model Proposal {
-  id          String         @id @default(uuid())
-  channelId   String
-  authorId    String
-  title       String
-  body        String
-  status      ProposalStatus @default(DRAFT)
-  quorum      Int?           // minimum votes needed
-  closesAt    DateTime?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id        String         @id @default(uuid())
+  channelId String
+  authorId  String
+  title     String
+  body      String
+  status    ProposalStatus @default(DRAFT)
+  quorum    Int? // minimum votes needed
+  closesAt  DateTime?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
   channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
   votes   Vote[]
@@ -536,7 +541,7 @@ model Survey {
   title       String
   description String?
   type        SurveyType @default(CUSTOM)
-  questions   Json       // Array of question definitions
+  questions   Json // Array of question definitions
   isActive    Boolean    @default(false)
   publishedAt DateTime?
   closesAt    DateTime?
@@ -551,12 +556,12 @@ model Survey {
 }
 
 model SurveyResponse {
-  id        String   @id @default(uuid())
-  surveyId  String
-  userId    String?  // null for anonymous
-  answers   Json     // { questionId: answer }
+  id           String   @id @default(uuid())
+  surveyId     String
+  userId       String? // null for anonymous
+  answers      Json // { questionId: answer }
   demographics Json? // consent-based demographic data
-  createdAt DateTime @default(now())
+  createdAt    DateTime @default(now())
 
   survey Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
   user   User?  @relation(fields: [userId], references: [id])
@@ -579,15 +584,15 @@ model WebhookEvent {
 // ─── Platform: Audit & Email ─────────────────────────────────
 
 model Invitation {
-  id        String    @id @default(uuid())
-  orgId     String
-  email     String
-  role      OrgRole   @default(MEMBER)
-  token     String    @unique @default(uuid())
-  invitedBy String
-  expiresAt DateTime
+  id         String    @id @default(uuid())
+  orgId      String
+  email      String
+  role       OrgRole   @default(MEMBER)
+  token      String    @unique @default(uuid())
+  invitedBy  String
+  expiresAt  DateTime
   acceptedAt DateTime?
-  createdAt DateTime  @default(now())
+  createdAt  DateTime  @default(now())
 
   org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
@@ -597,14 +602,14 @@ model Invitation {
 }
 
 model AuditLog {
-  id        String   @id @default(uuid())
-  orgId     String
-  actorId   String?
-  action    String   // e.g. "member.joined", "event.published"
+  id         String   @id @default(uuid())
+  orgId      String
+  actorId    String?
+  action     String // e.g. "member.joined", "event.published"
   entityType String?
-  entityId  String?
-  metadata  Json?
-  createdAt DateTime @default(now())
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
 
   org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
@@ -616,7 +621,7 @@ model AuditLog {
 model EmailTemplate {
   id        String   @id @default(uuid())
   orgId     String
-  slug      String   // e.g. "welcome", "renewal-reminder"
+  slug      String // e.g. "welcome", "renewal-reminder"
   subject   String
   bodyHtml  String
   bodyText  String?
