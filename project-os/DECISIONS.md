@@ -24,6 +24,20 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-012 — Source maps: upload widened beyond the plugin default, and never served publicly
+
+- **Date:** 2026-08-10
+- **Status:** Active
+- **Area:** Frontend, Observability, Security
+- **Decision:** Upload browser source maps to Sentry from the Netlify build, gated on all three of `SENTRY_AUTH_TOKEN` / `SENTRY_ORG` / `SENTRY_PROJECT` being present. Set `widenClientFileUpload: true` and `deleteSourcemapsAfterUpload: true`.
+- **Why `widenClientFileUpload` is load-bearing, not a nicety:** `@sentry/nextjs` defaults to uploading maps for `.next/static/chunks/app/**` and `chunks/pages/**` only. But `lib/api.ts` and `lib/auth-store.ts` are shared across routes, so webpack emits them into the **top-level numbered chunks** (`107-*.js`, `509-*.js`, …), which those globs miss entirely. Those are precisely the files that raise the errors D-011 instruments. **Confirmed in production:** a real `ApiNetworkError` reported stack frames in `chunks/107-*.js` and `chunks/509-*.js` — without this option that trace would have been unreadable. Do not remove it to shorten build times without checking what lands in the shared chunks first.
+- **Why `deleteSourcemapsAfterUpload`:** otherwise `.map` files ship in the deploy and are served publicly next to the bundle, letting anyone reconstruct the full unminified source. Verified: every deployed chunk's `.map` returns 404 while debug IDs remain present in the JS, which is what lets Sentry match a trace to its uploaded map.
+- **Alternatives rejected:** *Gating on the auth token alone* — rejected: two of three variables set looks configured and silently uploads nothing, so the build now warns loudly and names the missing variable. *Failing the build when credentials are absent* — rejected: maybeos.org deploys from this config on every push, and readable stack traces are not worth taking the site down for.
+- **`SENTRY_AUTH_TOKEN` is stored as a Netlify secret value** (Charley's choice, on Netlify's recommendation — correct). Consequences to remember: its value cannot be read back via the UI or API, so it can only be replaced, not inspected; it is scrubbed from build logs; and Netlify's secrets scanning will fail a build if the value ever appears in deploy output. Its scopes are `builds,functions,runtime` — `builds` is the one that matters.
+- **Supersedes:** none (extends D-011)
+
+---
+
 ### D-011 — Frontend error tracking via @sentry/nextjs, with URL scrubbing as a hard requirement
 
 - **Date:** 2026-08-10
