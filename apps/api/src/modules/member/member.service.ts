@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ConflictException,
   BadRequestException,
@@ -7,14 +8,18 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../config/prisma.service';
 import { EmailService } from '../email/email.service';
+import { StripeService } from '../stripe/stripe.service';
 import { CreateTierDto } from './dto/create-tier.dto';
 
 @Injectable()
 export class MemberService {
+  private readonly logger = new Logger(MemberService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
     private readonly configService: ConfigService,
+    private readonly stripeService: StripeService,
   ) {}
 
   // ─── Members ────────────────────────────────────────────────
@@ -188,7 +193,7 @@ export class MemberService {
     });
     const nextOrder = (maxSort._max.sortOrder ?? -1) + 1;
 
-    return this.prisma.membershipTier.create({
+    const tier = await this.prisma.membershipTier.create({
       data: {
         orgId,
         name: dto.name,
@@ -201,6 +206,61 @@ export class MemberService {
         sortOrder: nextOrder,
       },
     });
+
+    // Provision the matching Stripe Product and Price.
+    //
+    // Without this a tier can never be bought: createCheckoutSession needs
+    // stripePriceIdMonthly (or stripeProductId for pay-what-you-can) and
+    // nothing else ever sets them. createStripePricesForTier existed but was
+    // dead code — no caller anywhere — so every tier ever created was
+    // unpurchasable.
+    //
+    // Deliberately non-fatal. Local dev and CI run without Stripe keys, and a
+    // Stripe outage shouldn't stop an admin defining tiers. The tier is simply
+    // not purchasable until provisioning succeeds; `backfillStripeForTier`
+    // retries it.
+    await this.provisionStripeForTier(tier);
+
+    return this.prisma.membershipTier.findUnique({ where: { id: tier.id } });
+  }
+
+  /**
+   * Create the Stripe Product/Price for a tier and store the ids.
+   * Safe to call on a tier that already has them — it skips.
+   */
+  async provisionStripeForTier(tier: {
+    id: string;
+    name: string;
+    description?: string | null;
+    priceMonthly: number;
+    orgId: string;
+    stripePriceIdMonthly?: string | null;
+  }): Promise<boolean> {
+    if (tier.stripePriceIdMonthly) return true;
+
+    try {
+      const priceId = await this.stripeService.createStripePricesForTier({
+        id: tier.id,
+        name: tier.name,
+        description: tier.description ?? undefined,
+        priceMonthly: tier.priceMonthly,
+        orgId: tier.orgId,
+      });
+
+      await this.prisma.membershipTier.update({
+        where: { id: tier.id },
+        data: { stripePriceIdMonthly: priceId },
+      });
+
+      return true;
+    } catch (err) {
+      this.logger.warn(
+        `Could not provision Stripe objects for tier ${tier.id} (${tier.name}): ` +
+          `${err instanceof Error ? err.message : String(err)}. ` +
+          'The tier exists but cannot be purchased until this succeeds.',
+      );
+      return false;
+    }
   }
 
   /**
