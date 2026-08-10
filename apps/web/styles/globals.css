@@ -205,6 +205,15 @@
     color: var(--ink-soft);
   }
 
+  /* Inert states — canceled, not set up. Deliberately quieter than
+     badge-info, which still reads as "worth a look". */
+  .badge-neutral {
+    @apply badge;
+    background-color: transparent;
+    color: var(--text-tertiary);
+    border-color: var(--border);
+  }
+
   /* Mono treatment for IDs, slugs, counts, timestamps — the "readout" voice. */
   .data {
     font-family: var(--font-mono-next), 'IBM Plex Mono', ui-monospace, monospace;
