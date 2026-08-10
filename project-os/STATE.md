@@ -49,7 +49,7 @@ Get MaybeOS Suite production-ready and launch MaybeItsFate LCA as the first live
 - [ ] None — awaiting direction. Everything through OPS-07 is pushed to `claude/maybeOS-suite-foundation-1Wauk`.
 
 ## Blocked on Charley
-- **Revoke the Netlify PAT** issued during DEP-01 — it was used to set the Sentry env vars and trigger the deploy on 2026-08-10 and is no longer needed.
+- Nothing outstanding for Sentry. The Netlify PAT issued during DEP-01 was **revoked 2026-08-10** and confirmed dead (API returns 401); the site, functions, and error tracking were unaffected. Any future Netlify API work needs a fresh token.
 
 ## Open Questions
 - Q: What are MaybeItsFate's specific branding inputs (logo, colors, membership tier names/prices) to configure OrgOS for launch?
