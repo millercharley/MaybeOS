@@ -9,3 +9,8 @@ coverage/
 .turbo/
 prisma/*.db
 *.tsbuildinfo
+
+# Vendored agent skills (installed via `npx skills add`). Regenerable from
+# skills-lock.json, which IS committed so the set and versions are pinned.
+.agents/
+.claude/skills/
