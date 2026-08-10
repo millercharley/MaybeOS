@@ -82,10 +82,17 @@ class ApiClient {
       // with the route attached so a genuinely unreachable API is reported
       // and grouped, instead of being lost among tab-closed noise.
       const err = new ApiNetworkError(method, route, cause);
-      Sentry.captureException(err, {
-        level: 'error',
-        tags: { 'api.method': method, 'api.route': route },
-        fingerprint: ['api-unreachable', method, route],
+      Sentry.captureException(err, (scope) => {
+        scope.setLevel('error');
+        // ApiNetworkError's message is written for members, so it reads the
+        // same for every endpoint and makes a poor issue title on its own.
+        // The fingerprint still keeps one issue per endpoint; naming the
+        // transaction puts the route back into the issue list, where it can
+        // be scanned.
+        scope.setTransactionName(`${method} ${route}`);
+        scope.setTags({ 'api.method': method, 'api.route': route });
+        scope.setFingerprint(['api-unreachable', method, route]);
+        return scope;
       });
       throw err;
     }
@@ -447,8 +454,19 @@ export class ApiError extends Error {
  * The request never reached the API: it is down, unreachable, or blocked.
  * Distinct from ApiError, which means the API answered and said no.
  *
- * Callers that show "check your connection" style messaging should branch on
- * this rather than on the message text.
+ * The message is deliberately written for a member reading it on screen, not
+ * for a developer reading a log. Nine call sites across the app render
+ * `err.message` directly into the UI, so anything technical here — a route, a
+ * method, an internal hostname — is text a co-op member ends up staring at.
+ *
+ * No diagnostic detail is lost: `method` and `route` are carried as properties
+ * and are attached to every Sentry report as tags and as the fingerprint, so
+ * issues still group per endpoint.
+ *
+ * One constraint on any future rewording: it must not contain the browser's
+ * native failure strings ("Failed to fetch", "Load failed", …), which
+ * sentry.shared.ts filters as ambient noise. See D-011 — the whole point of
+ * this class is to be reportable when those are not.
  */
 export class ApiNetworkError extends Error {
   constructor(
@@ -456,7 +474,7 @@ export class ApiNetworkError extends Error {
     public route: string,
     public cause?: unknown,
   ) {
-    super(`API unreachable: ${method} ${route}`);
+    super("Can't reach MaybeOS right now. Check your connection and try again.");
     this.name = 'ApiNetworkError';
   }
 }
