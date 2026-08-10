@@ -424,7 +424,15 @@ class ApiClient {
 
   // ── Stripe ───────────────────────────────────────
   stripe = {
-    createCheckout: (orgId: string, data: { tierId: string; successUrl: string; cancelUrl: string }, token: string) =>
+    // amountCents is required for pay-what-you-can tiers and rejected for
+    // fixed-price ones. The server validates it against the tier minimum and
+    // Stripe's 50c floor, so the UI's own validation is a convenience, not the
+    // control.
+    createCheckout: (
+      orgId: string,
+      data: { tierId: string; successUrl: string; cancelUrl: string; amountCents?: number },
+      token: string,
+    ) =>
       this.request<{ url: string }>(`/orgs/${orgId}/checkout`, {
         method: 'POST',
         body: JSON.stringify(data),

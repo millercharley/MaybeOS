@@ -41,6 +41,14 @@ describe('StripeService', () => {
         {
           provide: PrismaService,
           useValue: {
+            // handleWebhook now claims and dispatches inside one interactive
+            // transaction, so the mock runs the callback against itself. That
+            // keeps the per-model jest.fn()s below observable while exercising
+            // the real control flow. Rollback isn't simulated — the tests that
+            // care about it assert on the thrown error instead.
+            $transaction: jest.fn(function (this: any, cb: any) {
+              return cb(this);
+            }),
             webhookEvent: {
               findUnique: jest.fn(),
               create: jest.fn(),
@@ -60,6 +68,87 @@ describe('StripeService', () => {
 
     service = module.get<StripeService>(StripeService);
     prisma = module.get(PrismaService);
+  });
+
+  describe('createCheckoutSession (pay-what-you-can)', () => {
+    const pwycTier = {
+      id: 'tier-pwyc',
+      orgId: 'org-1',
+      name: 'Solidarity',
+      isPayWhatYouCan: true,
+      minPrice: 1000,
+      stripeProductId: 'prod_abc',
+      stripePriceIdMonthly: 'price_fixed',
+    };
+
+    beforeEach(() => {
+      prisma.userOrg.findUnique.mockResolvedValue({
+        id: 'uo-1',
+        stripeCustomerId: 'cus_1',
+        user: { email: 'a@b.co', name: 'A' },
+      });
+    });
+
+    it('charges the amount the member chose', async () => {
+      prisma.membershipTier.findUnique.mockResolvedValue(pwycTier);
+      const stripe = (service as any).stripe;
+      stripe.checkout.sessions.create.mockResolvedValue({ url: 'https://pay' });
+
+      await service.createCheckoutSession('org-1', 'u1', 'tier-pwyc', 'https://s', 'https://c', 2500);
+
+      const args = stripe.checkout.sessions.create.mock.calls[0][0];
+      expect(args.line_items[0].price_data).toEqual({
+        currency: 'usd',
+        product: 'prod_abc',
+        unit_amount: 2500,
+        recurring: { interval: 'month' },
+      });
+    });
+
+    it('rejects an amount below the tier minimum', async () => {
+      prisma.membershipTier.findUnique.mockResolvedValue(pwycTier);
+      await expect(
+        service.createCheckoutSession('org-1', 'u1', 'tier-pwyc', 'https://s', 'https://c', 100),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('enforces the 50c Stripe floor when the tier minimum is lower', async () => {
+      prisma.membershipTier.findUnique.mockResolvedValue({ ...pwycTier, minPrice: 1 });
+      await expect(
+        service.createCheckoutSession('org-1', 'u1', 'tier-pwyc', 'https://s', 'https://c', 10),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('requires an amount for a pay-what-you-can tier', async () => {
+      prisma.membershipTier.findUnique.mockResolvedValue(pwycTier);
+      await expect(
+        service.createCheckoutSession('org-1', 'u1', 'tier-pwyc', 'https://s', 'https://c'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects an amount on a fixed-price tier rather than ignoring it', async () => {
+      prisma.membershipTier.findUnique.mockResolvedValue({
+        ...pwycTier,
+        isPayWhatYouCan: false,
+      });
+      await expect(
+        service.createCheckoutSession('org-1', 'u1', 'tier-x', 'https://s', 'https://c', 9999),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('still uses the fixed price when no amount is given', async () => {
+      prisma.membershipTier.findUnique.mockResolvedValue({
+        ...pwycTier,
+        isPayWhatYouCan: false,
+      });
+      const stripe = (service as any).stripe;
+      stripe.checkout.sessions.create.mockResolvedValue({ url: 'https://pay' });
+
+      await service.createCheckoutSession('org-1', 'u1', 'tier-x', 'https://s', 'https://c');
+
+      const args = stripe.checkout.sessions.create.mock.calls[0][0];
+      expect(args.line_items[0]).toEqual({ price: 'price_fixed', quantity: 1 });
+    });
   });
 
   describe('handleWebhook', () => {
@@ -82,16 +171,18 @@ describe('StripeService', () => {
         data: { object: {} },
       });
 
-      prisma.webhookEvent.findUnique.mockResolvedValue({
-        id: 'evt_already_processed',
-        source: 'stripe',
-        processedAt: new Date(),
-      });
+      // A concurrent delivery already claimed this id: the insert loses the
+      // race on the primary key and Prisma raises P2002.
+      const duplicate: any = new Error('Unique constraint failed');
+      duplicate.code = 'P2002';
+      prisma.webhookEvent.create.mockRejectedValue(duplicate);
 
       const result = await service.handleWebhook(Buffer.from('body'), 'valid-sig');
 
       expect(result).toEqual({ received: true });
-      expect(prisma.webhookEvent.create).not.toHaveBeenCalled();
+      // Swallowed as success so Stripe stops redelivering, and the handler
+      // must not run a second time.
+      expect(prisma.userOrg.update).not.toHaveBeenCalled();
     });
 
     it('should process subscription.created and record idempotency', async () => {
@@ -107,7 +198,6 @@ describe('StripeService', () => {
         },
       });
 
-      prisma.webhookEvent.findUnique.mockResolvedValue(null);
       prisma.webhookEvent.create.mockResolvedValue({ id: 'evt_new' });
       prisma.userOrg.update.mockResolvedValue({});
 
@@ -137,7 +227,6 @@ describe('StripeService', () => {
         },
       });
 
-      prisma.webhookEvent.findUnique.mockResolvedValue(null);
       prisma.webhookEvent.create.mockResolvedValue({ id: 'evt_del' });
       prisma.userOrg.findFirst.mockResolvedValue({ id: 'uo-1', userId: 'u1', orgId: 'o1' });
       prisma.userOrg.update.mockResolvedValue({});
@@ -159,7 +248,6 @@ describe('StripeService', () => {
         data: { object: {} },
       });
 
-      prisma.webhookEvent.findUnique.mockResolvedValue(null);
       prisma.webhookEvent.create.mockResolvedValue({ id: 'evt_unknown' });
 
       const result = await service.handleWebhook(Buffer.from('body'), 'valid-sig');
@@ -168,7 +256,12 @@ describe('StripeService', () => {
       expect(prisma.webhookEvent.create).toHaveBeenCalled();
     });
 
-    it('should still record idempotency even if handler throws', async () => {
+    // Previously asserted the opposite — that a failed handler was still
+    // recorded as processed. That behaviour meant Stripe received a 200,
+    // never retried, and a paid member was silently left unactivated. The
+    // claim now shares the handler's transaction, so a failure rolls it back
+    // and the error propagates to produce a non-2xx and a Stripe retry.
+    it('should propagate handler failures so Stripe retries', async () => {
       const stripe = (service as any).stripe;
       stripe.webhooks.constructEvent.mockReturnValue({
         id: 'evt_err',
@@ -181,14 +274,42 @@ describe('StripeService', () => {
         },
       });
 
-      prisma.webhookEvent.findUnique.mockResolvedValue(null);
       prisma.webhookEvent.create.mockResolvedValue({ id: 'evt_err' });
       prisma.userOrg.update.mockRejectedValue(new Error('DB error'));
 
-      const result = await service.handleWebhook(Buffer.from('body'), 'valid-sig');
+      await expect(
+        service.handleWebhook(Buffer.from('body'), 'valid-sig'),
+      ).rejects.toThrow('DB error');
+    });
 
-      expect(result).toEqual({ received: true });
-      expect(prisma.webhookEvent.create).toHaveBeenCalled();
+    it('should claim the event before dispatching, inside one transaction', async () => {
+      const stripe = (service as any).stripe;
+      stripe.webhooks.constructEvent.mockReturnValue({
+        id: 'evt_order',
+        type: 'customer.subscription.created',
+        data: {
+          object: {
+            id: 'sub_order',
+            metadata: { orgId: 'org-1', userId: 'user-1', tierId: 'tier-1' },
+          },
+        },
+      });
+
+      const calls: string[] = [];
+      prisma.webhookEvent.create.mockImplementation(async () => {
+        calls.push('claim');
+        return { id: 'evt_order' };
+      });
+      prisma.userOrg.update.mockImplementation(async () => {
+        calls.push('dispatch');
+        return {};
+      });
+
+      await service.handleWebhook(Buffer.from('body'), 'valid-sig');
+
+      // Claim first: the unique index is the lock a concurrent delivery hits.
+      expect(calls).toEqual(['claim', 'dispatch']);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     });
   });
 });

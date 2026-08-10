@@ -4,16 +4,16 @@ import {
   Body,
   Param,
   Req,
-  Res,
   UseGuards,
   Headers,
   HttpCode,
   HttpStatus,
   Logger,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
-import { Request, Response } from 'express';
+import { Request } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { StripeService } from './stripe.service';
@@ -59,6 +59,7 @@ export class StripeController {
       dto.tierId,
       dto.successUrl,
       dto.cancelUrl,
+      dto.amountCents,
     );
 
     return { url };
@@ -105,28 +106,32 @@ export class StripeController {
   async handleWebhook(
     @Req() req: Request & { rawBody?: Buffer },
     @Headers('stripe-signature') signature: string,
-    @Res() res: Response,
   ) {
     // rawBody is available when NestJS is configured with { rawBody: true }
-    const rawBody = (req as any).rawBody as Buffer;
+    const rawBody = req.rawBody;
 
     if (!rawBody) {
+      // A misconfiguration, not a bad request from Stripe. Raising a 500 means
+      // Stripe keeps retrying while we fix it, rather than us quietly
+      // discarding real payment events.
       this.logger.error(
-        'Raw body not available. Ensure NestJS is configured with { rawBody: true } in main.ts',
+        'Raw body not available. Ensure the app is created with { rawBody: true }.',
       );
-      return res.status(HttpStatus.BAD_REQUEST).json({
-        error: 'Raw body not available for webhook verification',
-      });
+      throw new InternalServerErrorException(
+        'Webhook receiver misconfigured: raw body unavailable',
+      );
     }
 
-    try {
-      const result = await this.stripeService.handleWebhook(rawBody, signature);
-      return res.status(HttpStatus.OK).json(result);
-    } catch (err) {
-      this.logger.error(`Webhook processing failed: ${err.message}`);
-      return res.status(HttpStatus.BAD_REQUEST).json({
-        error: err.message,
-      });
-    }
+    // Deliberately not wrapped in try/catch. Exceptions belong to
+    // GlobalExceptionFilter, which maps a signature failure to 400 and any
+    // processing failure to 500 — and reports the 5xx to Sentry. The previous
+    // version caught everything and answered 400, so a database error during
+    // subscription activation looked like Stripe had sent a malformed request
+    // and never reached error tracking.
+    //
+    // Any non-2xx tells Stripe to retry, which is what we want for a genuine
+    // processing failure; the transaction in handleWebhook guarantees the
+    // retry sees clean state.
+    return this.stripeService.handleWebhook(rawBody, signature);
   }
 }

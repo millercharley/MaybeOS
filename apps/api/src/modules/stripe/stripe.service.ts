@@ -6,7 +6,16 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
+
+/**
+ * The client handed to webhook handlers. Always the transaction-scoped client,
+ * never `this.prisma` — a handler that writes outside the transaction would
+ * leave its changes behind when the claim rolls back, which is the exact
+ * split-brain the transaction exists to prevent.
+ */
+type PrismaTx = Prisma.TransactionClient;
 
 @Injectable()
 export class StripeService {
@@ -40,19 +49,23 @@ export class StripeService {
     tierId: string,
     successUrl: string,
     cancelUrl: string,
+    amountCents?: number,
   ): Promise<string> {
-    // 1. Look up tier to get the Stripe price ID
+    // 1. Look up the tier
     const tier = await this.prisma.membershipTier.findUnique({
       where: { id: tierId },
     });
 
-    if (!tier || !tier.stripePriceIdMonthly) {
-      throw new NotFoundException(
-        'Membership tier not found or has no associated Stripe price',
-      );
+    if (!tier) {
+      throw new NotFoundException('Membership tier not found');
     }
 
-    // 2. Look up or create a Stripe Customer for the user
+    // 2. Resolve what this member will actually be charged.
+    const lineItem = tier.isPayWhatYouCan
+      ? this.payWhatYouCanLineItem(tier, amountCents)
+      : this.fixedPriceLineItem(tier, amountCents);
+
+    // 3. Look up or create a Stripe Customer for the user
     const userOrg = await this.prisma.userOrg.findUnique({
       where: { userId_orgId: { userId, orgId } },
       include: { user: true },
@@ -79,16 +92,11 @@ export class StripeService {
       });
     }
 
-    // 3. Create the Checkout session
+    // 4. Create the Checkout session
     const session = await this.stripe.checkout.sessions.create({
       mode: 'subscription',
       customer: stripeCustomerId,
-      line_items: [
-        {
-          price: tier.stripePriceIdMonthly,
-          quantity: 1,
-        },
-      ],
+      line_items: [lineItem],
       metadata: { orgId, userId, tierId },
       subscription_data: {
         metadata: { orgId, userId, tierId },
@@ -98,6 +106,90 @@ export class StripeService {
     });
 
     return session.url;
+  }
+
+  /**
+   * Stripe rejects any charge under 50 cents (USD). A tier whose minimum sits
+   * below that would fail at the Stripe call with an opaque error, so catch it
+   * here where we can say what actually went wrong.
+   */
+  private static readonly STRIPE_MINIMUM_CENTS = 50;
+
+  /**
+   * Fixed-price tier: charge the price the admin configured.
+   *
+   * A submitted amount is rejected rather than ignored. Silently discarding it
+   * would let a member believe they had chosen what to pay while being billed
+   * something else.
+   */
+  private fixedPriceLineItem(
+    tier: { stripePriceIdMonthly: string | null },
+    amountCents?: number,
+  ): Stripe.Checkout.SessionCreateParams.LineItem {
+    if (amountCents !== undefined) {
+      throw new BadRequestException(
+        'This tier has a fixed price; an amount cannot be chosen for it',
+      );
+    }
+    if (!tier.stripePriceIdMonthly) {
+      throw new NotFoundException(
+        'Membership tier has no associated Stripe price',
+      );
+    }
+    return { price: tier.stripePriceIdMonthly, quantity: 1 };
+  }
+
+  /**
+   * Pay-what-you-can tier: charge the amount the member chose.
+   *
+   * The amount arrives from the browser, so it is validated here and never
+   * trusted. Without this check a member could subscribe to any tier for a
+   * cent. Stripe's `custom_unit_amount` would be the neater mechanism but it
+   * only works for one-time prices, not recurring ones, so the chosen amount
+   * is sent as an inline `price_data` against the tier's existing Product.
+   */
+  private payWhatYouCanLineItem(
+    tier: {
+      name: string;
+      minPrice: number | null;
+      stripeProductId: string | null;
+      id: string;
+      orgId: string;
+    },
+    amountCents?: number,
+  ): Stripe.Checkout.SessionCreateParams.LineItem {
+    if (amountCents === undefined) {
+      throw new BadRequestException(
+        'This tier is pay-what-you-can; choose an amount to continue',
+      );
+    }
+
+    const floor = Math.max(
+      tier.minPrice ?? 0,
+      StripeService.STRIPE_MINIMUM_CENTS,
+    );
+
+    if (amountCents < floor) {
+      throw new BadRequestException(
+        `Amount must be at least ${(floor / 100).toFixed(2)} for this tier`,
+      );
+    }
+
+    if (!tier.stripeProductId) {
+      throw new NotFoundException(
+        'Membership tier has no associated Stripe product',
+      );
+    }
+
+    return {
+      price_data: {
+        currency: 'usd',
+        product: tier.stripeProductId,
+        unit_amount: amountCents,
+        recurring: { interval: 'month' },
+      },
+      quantity: 1,
+    };
   }
 
   /**
@@ -145,67 +237,107 @@ export class StripeService {
       throw new BadRequestException('Webhook signature verification failed');
     }
 
-    // Database-backed idempotency check
-    const existing = await this.prisma.webhookEvent.findUnique({
-      where: { id: event.id },
-    });
-    if (existing) {
-      this.logger.log(`Event ${event.id} already processed, skipping`);
-      return { received: true };
-    }
-
     this.logger.log(`Processing webhook event: ${event.type} (${event.id})`);
 
+    // Claim and process in a single transaction.
+    //
+    // The WebhookEvent row is both the idempotency record and the lock: its
+    // primary key is the Stripe event id, so a concurrent redelivery either
+    // blocks on the unique index and then fails with P2002, or — if this
+    // transaction rolls back — proceeds cleanly. The previous implementation
+    // did `findUnique` and then `create` as two separate statements, which two
+    // simultaneous deliveries could both pass before either wrote.
+    //
+    // Rolling the dispatch into the same transaction also fixes the more
+    // damaging bug: a throwing handler used to be logged, swallowed, and the
+    // event still marked processed with a 200 response. Stripe treats that as
+    // success and never retries, so a member could pay and never have their
+    // membership activated, with nothing failing visibly on either side. Now
+    // the claim rolls back with the work and the error propagates, so Stripe
+    // retries on its own schedule.
+    //
+    // Requires a session-mode connection: Prisma interactive transactions do
+    // not work over PgBouncer in transaction mode. See D-010 — DATABASE_URL is
+    // deliberately the Supabase session pooler (5432), not 6543.
     try {
-      switch (event.type) {
-        case 'customer.subscription.created':
-          await this.handleSubscriptionCreated(
-            event.data.object as Stripe.Subscription,
-          );
-          break;
+      await this.prisma.$transaction(async (tx) => {
+        await tx.webhookEvent.create({
+          data: { id: event.id, source: 'stripe' },
+        });
 
-        case 'customer.subscription.updated':
-          await this.handleSubscriptionUpdated(
-            event.data.object as Stripe.Subscription,
-          );
-          break;
-
-        case 'customer.subscription.deleted':
-          await this.handleSubscriptionDeleted(
-            event.data.object as Stripe.Subscription,
-          );
-          break;
-
-        case 'invoice.payment_failed':
-          await this.handleInvoicePaymentFailed(
-            event.data.object as Stripe.Invoice,
-          );
-          break;
-
-        default:
-          this.logger.log(`Unhandled event type: ${event.type}`);
-      }
+        await this.dispatchEvent(event, tx);
+      });
     } catch (err) {
+      if (this.isAlreadyProcessed(err)) {
+        this.logger.log(`Event ${event.id} already processed, skipping`);
+        return { received: true };
+      }
+
       this.logger.error(
-        `Error handling event ${event.type}: ${err.message}`,
+        `Error handling event ${event.type} (${event.id}): ${err.message}`,
         err.stack,
       );
-      // We still mark it as processed to avoid retry loops for known-bad events.
-      // In production, you may want more nuanced retry logic.
+      // Propagate so the endpoint answers non-2xx and Stripe retries.
+      throw err;
     }
 
-    await this.prisma.webhookEvent.create({
-      data: { id: event.id, source: 'stripe' },
-    });
-
     return { received: true };
+  }
+
+  /** Prisma P2002 = unique constraint violation, i.e. another delivery won the race. */
+  private isAlreadyProcessed(err: unknown): boolean {
+    return (
+      typeof err === 'object' &&
+      err !== null &&
+      (err as { code?: string }).code === 'P2002'
+    );
+  }
+
+  private async dispatchEvent(event: Stripe.Event, tx: PrismaTx): Promise<void> {
+    switch (event.type) {
+      case 'customer.subscription.created':
+        await this.handleSubscriptionCreated(
+          event.data.object as Stripe.Subscription,
+          tx,
+        );
+        break;
+
+      case 'customer.subscription.updated':
+        await this.handleSubscriptionUpdated(
+          event.data.object as Stripe.Subscription,
+          tx,
+        );
+        break;
+
+      case 'customer.subscription.deleted':
+        await this.handleSubscriptionDeleted(
+          event.data.object as Stripe.Subscription,
+          tx,
+        );
+        break;
+
+      case 'invoice.payment_failed':
+        await this.handleInvoicePaymentFailed(
+          event.data.object as Stripe.Invoice,
+          tx,
+        );
+        break;
+
+      default:
+        // Not an error: Stripe sends event types we haven't subscribed to or
+        // don't care about. The claim still commits so we don't reprocess.
+        this.logger.log(`Unhandled event type: ${event.type}`);
+    }
   }
 
   // ──────────────────────────────────────────────────────────────
   // Subscription Event Handlers
   // ──────────────────────────────────────────────────────────────
 
-  private async handleSubscriptionCreated(subscription: Stripe.Subscription) {
+  private async handleSubscriptionCreated(
+    subscription: Stripe.Subscription,
+    tx: PrismaTx,
+  ) {
     const { orgId, userId, tierId } = subscription.metadata;
 
     if (!orgId || !userId) {
@@ -215,7 +347,7 @@ export class StripeService {
       return;
     }
 
-    await this.prisma.userOrg.update({
+    await tx.userOrg.update({
       where: { userId_orgId: { userId, orgId } },
       data: {
         stripeSubscriptionId: subscription.id,
@@ -229,7 +361,10 @@ export class StripeService {
     );
   }
 
-  private async handleSubscriptionUpdated(subscription: Stripe.Subscription) {
+  private async handleSubscriptionUpdated(
+    subscription: Stripe.Subscription,
+    tx: PrismaTx,
+  ) {
     const statusMap: Record<string, string> = {
       active: 'ACTIVE',
       past_due: 'PAST_DUE',
@@ -245,7 +380,7 @@ export class StripeService {
       return;
     }
 
-    const userOrg = await this.prisma.userOrg.findFirst({
+    const userOrg = await tx.userOrg.findFirst({
       where: { stripeSubscriptionId: subscription.id },
     });
 
@@ -256,7 +391,7 @@ export class StripeService {
       return;
     }
 
-    await this.prisma.userOrg.update({
+    await tx.userOrg.update({
       where: { id: userOrg.id },
       data: { subscriptionStatus: mappedStatus as any },
     });
@@ -266,8 +401,11 @@ export class StripeService {
     );
   }
 
-  private async handleSubscriptionDeleted(subscription: Stripe.Subscription) {
-    const userOrg = await this.prisma.userOrg.findFirst({
+  private async handleSubscriptionDeleted(
+    subscription: Stripe.Subscription,
+    tx: PrismaTx,
+  ) {
+    const userOrg = await tx.userOrg.findFirst({
       where: { stripeSubscriptionId: subscription.id },
     });
 
@@ -278,7 +416,7 @@ export class StripeService {
       return;
     }
 
-    await this.prisma.userOrg.update({
+    await tx.userOrg.update({
       where: { id: userOrg.id },
       data: { subscriptionStatus: 'CANCELED' },
     });
@@ -286,7 +424,7 @@ export class StripeService {
     this.logger.log(`Subscription ${subscription.id} canceled`);
   }
 
-  private async handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+  private async handleInvoicePaymentFailed(invoice: Stripe.Invoice, tx: PrismaTx) {
     const subscriptionId =
       typeof invoice.subscription === 'string'
         ? invoice.subscription
@@ -297,7 +435,7 @@ export class StripeService {
       return;
     }
 
-    const userOrg = await this.prisma.userOrg.findFirst({
+    const userOrg = await tx.userOrg.findFirst({
       where: { stripeSubscriptionId: subscriptionId },
       include: { user: true, org: true },
     });
@@ -309,7 +447,7 @@ export class StripeService {
       return;
     }
 
-    await this.prisma.userOrg.update({
+    await tx.userOrg.update({
       where: { id: userOrg.id },
       data: { subscriptionStatus: 'PAST_DUE' },
     });
@@ -396,6 +534,13 @@ export class StripeService {
       currency: 'usd',
       recurring: { interval: 'month' },
       metadata: { tierId: tier.id, orgId: tier.orgId },
+    });
+
+    // Store the product id too: pay-what-you-can checkouts build an inline
+    // price against it, and without it PWYC has nothing to attach to.
+    await this.prisma.membershipTier.update({
+      where: { id: tier.id },
+      data: { stripeProductId: product.id },
     });
 
     this.logger.log(
