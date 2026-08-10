@@ -151,6 +151,83 @@ describe('StripeService', () => {
     });
   });
 
+  describe('repriceTier', () => {
+    const tier = {
+      id: 'tier-1',
+      name: 'Community',
+      stripeProductId: 'prod_1',
+      stripePriceIdMonthly: 'price_old',
+    };
+
+    it('creates a new Price and archives the old one (Stripe Prices are immutable)', async () => {
+      const stripe = (service as any).stripe;
+      stripe.prices.create.mockResolvedValue({ id: 'price_new' });
+      stripe.prices.update = jest.fn().mockResolvedValue({});
+
+      const res = await service.repriceTier(tier, 2000, false);
+
+      expect(res.priceId).toBe('price_new');
+      expect(stripe.prices.create).toHaveBeenCalledWith(
+        expect.objectContaining({ product: 'prod_1', unit_amount: 2000 }),
+      );
+      // Deactivated, never deleted — historical invoices and grandfathered
+      // subscriptions must keep resolving.
+      expect(stripe.prices.update).toHaveBeenCalledWith('price_old', { active: false });
+    });
+
+    it('grandfathers existing subscribers by default', async () => {
+      const stripe = (service as any).stripe;
+      stripe.prices.create.mockResolvedValue({ id: 'price_new' });
+      stripe.prices.update = jest.fn().mockResolvedValue({});
+      prisma.userOrg.findMany = jest.fn();
+
+      const res = await service.repriceTier(tier, 2000, false);
+
+      expect(res.migrated).toBe(0);
+      expect(prisma.userOrg.findMany).not.toHaveBeenCalled();
+    });
+
+    it('moves subscribers at next renewal, with no mid-cycle proration', async () => {
+      const stripe = (service as any).stripe;
+      stripe.prices.create.mockResolvedValue({ id: 'price_new' });
+      stripe.prices.update = jest.fn().mockResolvedValue({});
+      stripe.subscriptions.update = jest.fn().mockResolvedValue({});
+      stripe.subscriptions.retrieve.mockResolvedValue({
+        id: 'sub_1', items: { data: [{ id: 'si_1' }] },
+      });
+      prisma.userOrg.findMany = jest.fn().mockResolvedValue([
+        { id: 'uo1', stripeSubscriptionId: 'sub_1' },
+      ]);
+
+      const res = await service.repriceTier(tier, 2000, true);
+
+      expect(res.migrated).toBe(1);
+      expect(stripe.subscriptions.update).toHaveBeenCalledWith('sub_1', {
+        items: [{ id: 'si_1', price: 'price_new' }],
+        // Without this Stripe bills everyone a prorated amount today.
+        proration_behavior: 'none',
+      });
+    });
+
+    it('keeps going when one subscriber fails to migrate', async () => {
+      const stripe = (service as any).stripe;
+      stripe.prices.create.mockResolvedValue({ id: 'price_new' });
+      stripe.prices.update = jest.fn().mockResolvedValue({});
+      stripe.subscriptions.retrieve
+        .mockRejectedValueOnce(new Error('no such subscription'))
+        .mockResolvedValueOnce({ id: 'sub_2', items: { data: [{ id: 'si_2' }] } });
+      stripe.subscriptions.update = jest.fn().mockResolvedValue({});
+      prisma.userOrg.findMany = jest.fn().mockResolvedValue([
+        { id: 'uo1', stripeSubscriptionId: 'sub_bad' },
+        { id: 'uo2', stripeSubscriptionId: 'sub_2' },
+      ]);
+
+      const res = await service.repriceTier(tier, 2000, true);
+
+      expect(res.migrated).toBe(1);
+    });
+  });
+
   describe('handleWebhook', () => {
     it('should throw BadRequestException on invalid signature', async () => {
       const stripe = (service as any).stripe;
