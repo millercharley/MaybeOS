@@ -291,12 +291,62 @@ export class MemberService {
       );
     }
 
-    return this.prisma.membershipTier.update({
+    const { applyToExistingMembers, ...fields } = dto as Partial<CreateTierDto> & {
+      applyToExistingMembers?: boolean;
+    };
+
+    // A price change has to reach Stripe, and Stripe Prices are immutable.
+    // Previously this method wrote the new amount to the database and stopped
+    // there, so MaybeOS showed the new price while Stripe kept charging the
+    // old one indefinitely — including for members who signed up afterwards.
+    //
+    // Pay-what-you-can tiers are exempt: their Price is built per member at
+    // checkout from the amount that member chose, so there is no shared Price
+    // to replace. Changing `minPrice` only affects future checkouts.
+    const priceChanged =
+      typeof fields.priceMonthly === 'number' &&
+      fields.priceMonthly !== tier.priceMonthly &&
+      !tier.isPayWhatYouCan;
+
+    let stripePriceIdMonthly = tier.stripePriceIdMonthly;
+    let migrated = 0;
+
+    if (priceChanged) {
+      const result = await this.stripeService.repriceTier(
+        tier,
+        fields.priceMonthly as number,
+        applyToExistingMembers ?? false,
+      );
+      stripePriceIdMonthly = result.priceId;
+      migrated = result.migrated;
+
+      // The org's Billing Portal configuration pins specific price ids, so it
+      // now points at the Price we just archived — members would be offered a
+      // tier they can no longer switch to. Clearing the cached id makes
+      // ensurePortalConfiguration rebuild it on the next portal visit.
+      await this.prisma.organization.update({
+        where: { id: orgId },
+        data: { stripePortalConfigId: null },
+      });
+    }
+
+    const updated = await this.prisma.membershipTier.update({
       where: { id: tierId },
       data: {
-        ...dto,
+        ...fields,
+        ...(priceChanged ? { stripePriceIdMonthly } : {}),
       },
     });
+
+    // Tell the caller what actually happened to people's money, so the admin
+    // UI can say "12 members move to the new price at their next renewal"
+    // rather than a bare success.
+    return {
+      ...updated,
+      repriced: priceChanged,
+      migratedSubscribers: migrated,
+      grandfathered: priceChanged && !(applyToExistingMembers ?? false),
+    };
   }
 
   // ─── Invitations ────────────────────────────────────────────

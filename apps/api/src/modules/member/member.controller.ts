@@ -19,6 +19,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { MemberService } from './member.service';
 import { CreateTierDto } from './dto/create-tier.dto';
+import { UpdateTierDto } from './dto/update-tier.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 
 @ApiTags('members')
@@ -155,7 +156,7 @@ export class MemberController {
   updateTier(
     @Param('orgId') orgId: string,
     @Param('tierId') tierId: string,
-    @Body() dto: Partial<CreateTierDto>,
+    @Body() dto: UpdateTierDto,
   ) {
     return this.memberService.updateTier(orgId, tierId, dto);
   }

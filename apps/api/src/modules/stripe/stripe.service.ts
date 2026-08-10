@@ -220,6 +220,123 @@ export class StripeService {
   }
 
   /**
+   * Change what a tier costs.
+   *
+   * Stripe Prices are **immutable** — there is no way to edit an amount. The
+   * only correct move is to create a replacement Price on the same Product,
+   * stop offering the old one, and repoint the tier. Skipping this is how an
+   * admin edits "Community" from $15 to $20, sees $20 everywhere in MaybeOS,
+   * and has Stripe keep charging $15 forever.
+   *
+   * Returns the new price id. Existing subscribers are only touched when
+   * `applyToExisting` is set — see UpdateTierDto for why that is a deliberate
+   * choice rather than a default.
+   */
+  async repriceTier(
+    tier: {
+      id: string;
+      name: string;
+      stripeProductId: string | null;
+      stripePriceIdMonthly: string | null;
+    },
+    newPriceCents: number,
+    applyToExisting: boolean,
+  ): Promise<{ priceId: string; migrated: number }> {
+    if (!tier.stripeProductId) {
+      throw new NotFoundException(
+        'Tier has no Stripe product yet, so its price cannot be changed. Provision it first.',
+      );
+    }
+
+    const price = await this.stripe.prices.create({
+      product: tier.stripeProductId,
+      unit_amount: newPriceCents,
+      currency: 'usd',
+      recurring: { interval: 'month' },
+      metadata: { tierId: tier.id },
+    });
+
+    // Deactivate rather than delete: Stripe keeps historical Prices so past
+    // invoices still resolve, and any subscription grandfathered onto the old
+    // Price keeps billing correctly. Deactivating only stops it being offered
+    // to anyone new.
+    if (tier.stripePriceIdMonthly) {
+      try {
+        await this.stripe.prices.update(tier.stripePriceIdMonthly, { active: false });
+      } catch (err) {
+        // Not fatal — the new Price is already live and the tier will point at
+        // it. A stale active Price is untidy, not harmful.
+        this.logger.warn(
+          `Could not archive old price ${tier.stripePriceIdMonthly} for tier ${tier.id}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
+    let migrated = 0;
+    if (applyToExisting) {
+      migrated = await this.migrateSubscribersToPrice(tier.id, price.id);
+    }
+
+    this.logger.log(
+      `Repriced tier ${tier.id} (${tier.name}) to ${newPriceCents}c as ${price.id}; ` +
+        `${applyToExisting ? `${migrated} subscriber(s) moved` : 'existing subscribers grandfathered'}`,
+    );
+
+    return { priceId: price.id, migrated };
+  }
+
+  /**
+   * Point every live subscription on a tier at a new Price, effective at each
+   * member's next renewal.
+   *
+   * `proration_behavior: 'none'` is the important part: without it Stripe
+   * issues an immediate prorated charge or credit, so an admin correcting a
+   * price would surprise every member with a same-day transaction.
+   */
+  private async migrateSubscribersToPrice(
+    tierId: string,
+    priceId: string,
+  ): Promise<number> {
+    const subscribers = await this.prisma.userOrg.findMany({
+      where: {
+        tierId,
+        stripeSubscriptionId: { not: null },
+        subscriptionStatus: { in: ['ACTIVE', 'TRIALING', 'PAST_DUE'] },
+      },
+      select: { id: true, stripeSubscriptionId: true },
+    });
+
+    let migrated = 0;
+    for (const sub of subscribers) {
+      try {
+        const existing = await this.stripe.subscriptions.retrieve(
+          sub.stripeSubscriptionId as string,
+        );
+        const item = existing.items.data[0];
+        if (!item) continue;
+
+        await this.stripe.subscriptions.update(existing.id, {
+          items: [{ id: item.id, price: priceId }],
+          proration_behavior: 'none',
+        });
+        migrated += 1;
+      } catch (err) {
+        // One member's failure must not abort the rest. They stay on the old
+        // price, which still bills correctly.
+        this.logger.warn(
+          `Could not move subscription ${sub.stripeSubscriptionId} to ${priceId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
+    return migrated;
+  }
+
+  /**
    * Ensure this org has a Billing Portal configuration that permits switching
    * between its own tiers, and return its id.
    *
