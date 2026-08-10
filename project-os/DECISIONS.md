@@ -24,6 +24,24 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-016 — Changing a tier price: grandfather by default, opt in to raise
+
+- **Date:** 2026-08-10
+- **Status:** Active
+- **Area:** Billing, Product, Admin UX
+- **Background:** `updateTier` wrote the new amount to the database and never told Stripe. Stripe Prices are **immutable**, so there was no path by which an admin could change what a member is charged — MaybeOS would show $20 while Stripe billed $15 forever, to existing *and* new members. Fixed in OPS-03b: repricing creates a replacement Price on the same Product, deactivates the old one (never deletes — historical invoices and grandfathered subscriptions must keep resolving), and repoints the tier.
+- **Decision (Charley's, 2026-08-10):** When a price change affects tiers with **active subscriptions**, the admin sees an option, **checked by default, to keep existing members at their current price**. Unchecking it raises them to the new price.
+  - Default (checked) → `applyToExistingMembers: false`. Only new sign-ups pay the new amount.
+  - Unchecked → `applyToExistingMembers: true`. Everyone moves **at their next renewal**, using `proration_behavior: 'none'` so nobody is charged mid-cycle for a change they didn't initiate.
+- **The option only appears when it means something.** With no active subscribers there is no decision to make and the question shouldn't be asked. `GET /orgs/:orgId/tiers/manage` returns `activeSubscribers` per tier for exactly this.
+- **Why that endpoint is separate:** `GET /orgs/:orgId/tiers` is **public and unauthenticated** so the join page can render. Adding subscriber counts there would publish every co-op's per-tier membership numbers to anyone. The admin variant is guarded (`JwtAuthGuard`, `RolesGuard`, ADMIN) and additionally returns deactivated tiers, which admins need and the public must not see.
+- **Pay-what-you-can tiers are exempt** from repricing entirely — their Price is built per member at checkout from the amount that member chose, so there is no shared Price to replace. Editing `minPrice` affects future checkouts only.
+- **Repricing invalidates the org's Billing Portal configuration** (`Organization.stripePortalConfigId` is cleared), because the configuration pins specific price ids and would otherwise keep offering the Price just archived. It rebuilds on the next portal visit.
+- **The update response reports what happened to people's money** — `repriced`, `migratedSubscribers`, `grandfathered` — so the admin UI can say "12 members move to the new price at their next renewal" instead of "Saved".
+- **Supersedes:** none (extends D-015)
+
+---
+
 ### D-015 — Plan changes go through the Stripe Billing Portal, never through checkout
 
 - **Date:** 2026-08-10

@@ -274,6 +274,43 @@ export class MemberService {
   }
 
   /**
+   * Tiers for the admin dashboard: includes deactivated ones, and the number
+   * of members currently paying for each.
+   *
+   * Deliberately separate from `listTiers`, which is public and unauthenticated
+   * so the join page can render. Putting these counts there would publish every
+   * co-op's per-tier membership numbers to anyone who asked — for a small
+   * organization that is genuinely sensitive.
+   *
+   * `activeSubscribers` is what decides whether the admin UI shows the
+   * grandfathering option on a price change: with nobody on the tier there is
+   * no decision to make, so the question shouldn't be asked.
+   */
+  async listTiersForAdmin(orgId: string) {
+    const tiers = await this.prisma.membershipTier.findMany({
+      where: { orgId },
+      orderBy: { sortOrder: 'asc' },
+    });
+
+    const counts = await this.prisma.userOrg.groupBy({
+      by: ['tierId'],
+      where: {
+        orgId,
+        tierId: { not: null },
+        subscriptionStatus: { in: ['ACTIVE', 'TRIALING', 'PAST_DUE'] },
+      },
+      _count: { _all: true },
+    });
+
+    const byTier = new Map(counts.map((c) => [c.tierId, c._count._all]));
+
+    return tiers.map((tier) => ({
+      ...tier,
+      activeSubscribers: byTier.get(tier.id) ?? 0,
+    }));
+  }
+
+  /**
    * Update a membership tier.
    */
   async updateTier(
