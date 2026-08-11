@@ -107,39 +107,10 @@ export class ImpactService {
     });
   }
 
-  async getResponses(surveyId: string, page: number, perPage: number) {
-    const skip = (page - 1) * perPage;
-
-    const [responses, total] = await this.prisma.$transaction([
-      this.prisma.surveyResponse.findMany({
-        where: { surveyId },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: perPage,
-        include: {
-          user: { select: { id: true, name: true, email: true } },
-        },
-      }),
-      this.prisma.surveyResponse.count({ where: { surveyId } }),
-    ]);
-
-    return { data: responses, total, page, perPage };
-  }
-
-  async exportResponses(surveyId: string) {
-    const survey = await this.prisma.survey.findUnique({ where: { id: surveyId } });
-    if (!survey) {
-      throw new NotFoundException('Survey not found');
-    }
-
-    return this.prisma.surveyResponse.findMany({
-      where: { surveyId },
-      orderBy: { createdAt: 'asc' },
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-      },
-    });
-  }
+  // getResponses() and exportResponses() were removed here — see the note in
+  // impact.controller.ts. Both returned individual answers joined to the
+  // respondent's name and email; D-021 puts individual responses out of an
+  // admin's reach entirely.
 
   // ─── Dashboard / Aggregate Metrics ──────────────────────────
 

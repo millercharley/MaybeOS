@@ -9,7 +9,6 @@ import {
   Calendar,
   DoorOpen,
   MessageSquare,
-  BarChart3,
   Settings,
   CreditCard,
   LogOut,
@@ -24,7 +23,8 @@ const navItems = [
   { href: '/admin/events', label: 'Events', icon: Calendar },
   { href: '/admin/rooms', label: 'Rooms & Booking', icon: DoorOpen },
   { href: '/admin/commons', label: 'Commons', icon: MessageSquare },
-  { href: '/admin/impact', label: 'Impact', icon: BarChart3 },
+  // Impact is intentionally absent: the admin Impact page was removed pending
+  // the ImpactOS rebuild (D-021). Re-add it when the Signals view exists.
   { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 
