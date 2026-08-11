@@ -148,6 +148,21 @@ export class MemberController {
     return this.memberService.listTiers(orgId);
   }
 
+  @Post('join')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Join this organization from its public page. Refused unless the org allows public joining.',
+  })
+  joinOrg(
+    @Param('orgId') orgId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: { tierId?: string },
+  ) {
+    return this.memberService.joinOrg(orgId, user.userId, dto?.tierId);
+  }
+
   @Get('tiers/manage')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')

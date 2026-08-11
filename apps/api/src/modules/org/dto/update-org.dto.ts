@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsString, IsBoolean } from 'class-validator';
 import { PartialType } from '@nestjs/swagger';
 import { CreateOrgDto } from './create-org.dto';
 
@@ -13,4 +13,13 @@ export class UpdateOrgDto extends PartialType(CreateOrgDto) {
   @IsOptional()
   @IsString()
   logoUrl?: string;
+
+  /**
+   * Whether anyone can join from the org's public page. Default false, so an
+   * org stays invitation-only until it deliberately opens up. See D-020.
+   */
+  @ApiPropertyOptional({ example: false, default: false })
+  @IsOptional()
+  @IsBoolean()
+  allowPublicJoin?: boolean;
 }
