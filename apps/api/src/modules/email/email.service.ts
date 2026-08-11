@@ -2,8 +2,30 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as postmark from 'postmark';
 
+export interface BookingEmailData {
+  memberName: string;
+  roomName: string;
+  orgName: string;
+  /** Already formatted for display — the service does no timezone work. */
+  when: string;
+  title: string;
+  /** Where the member manages this booking. Must be a page that exists. */
+  manageUrl: string;
+}
+
 export interface EmailJobData {
-  type: 'welcome' | 'magic-link' | 'event-reminder' | 'renewal-reminder' | 'dunning' | 'invite';
+  type:
+    | 'welcome'
+    | 'magic-link'
+    | 'event-reminder'
+    | 'renewal-reminder'
+    | 'dunning'
+    | 'invite'
+    | 'booking-received'
+    | 'booking-confirmed'
+    | 'booking-rejected'
+    | 'booking-canceled'
+    | 'booking-rescheduled';
   to: string;
   data: Record<string, any>;
 }
@@ -74,6 +96,32 @@ export class EmailService {
 
   async sendDunning(to: string, memberName: string, orgName: string) {
     await this.send({ type: 'dunning', to, data: { memberName, orgName } });
+  }
+
+  // ─── Room bookings ───────────────────────────────────────────
+  //
+  // Members previously got no notification of anything: not that a booking was
+  // received, approved, rejected or cancelled. SpaceOS never called this
+  // service at all.
+
+  async sendBookingReceived(to: string, d: BookingEmailData) {
+    await this.send({ type: 'booking-received', to, data: d });
+  }
+
+  async sendBookingConfirmed(to: string, d: BookingEmailData) {
+    await this.send({ type: 'booking-confirmed', to, data: d });
+  }
+
+  async sendBookingRejected(to: string, d: BookingEmailData) {
+    await this.send({ type: 'booking-rejected', to, data: d });
+  }
+
+  async sendBookingCanceled(to: string, d: BookingEmailData) {
+    await this.send({ type: 'booking-canceled', to, data: d });
+  }
+
+  async sendBookingRescheduled(to: string, d: BookingEmailData & { needsApproval: boolean }) {
+    await this.send({ type: 'booking-rescheduled', to, data: d });
   }
 
   async sendInvite(to: string, orgName: string, inviteUrl: string, inviterName?: string) {
@@ -189,6 +237,69 @@ export class EmailService {
             <p>Click the button below to accept the invitation and join the community.</p>
             <p><a href="${data.inviteUrl}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;">Accept Invitation</a></p>
             <p style="color:#666;font-size:14px;">This invitation expires in 7 days. If you didn't expect this invitation, you can safely ignore this email.</p>
+          `,
+        };
+
+      // ─── Room bookings ──────────────────────────────────────────
+      // Brand colours are inlined: email clients strip <style> blocks and have
+      // no access to the app's CSS variables.
+      case 'booking-received':
+        return {
+          subject: `Booking request received — ${data.roomName}`,
+          htmlBody: `
+            <h1>We've got your request</h1>
+            <p>Hi ${data.memberName}, your request for <strong>${data.roomName}</strong> at ${data.orgName} is with an organiser.</p>
+            <p><strong>${data.title}</strong><br>${data.when}</p>
+            <p>You'll get another email once it's confirmed. Nothing is held until then.</p>
+            <p><a href="${data.manageUrl}" style="display:inline-block;padding:12px 24px;background:#c81e2c;color:#fffdf8;border:1.5px solid #211c16;border-radius:8px;text-decoration:none;font-weight:600;">View your bookings</a></p>
+          `,
+        };
+
+      case 'booking-confirmed':
+        return {
+          subject: `Confirmed: ${data.roomName} — ${data.when}`,
+          htmlBody: `
+            <h1>Your booking is confirmed</h1>
+            <p>Hi ${data.memberName}, <strong>${data.roomName}</strong> at ${data.orgName} is yours.</p>
+            <p><strong>${data.title}</strong><br>${data.when}</p>
+            <p><a href="${data.manageUrl}" style="display:inline-block;padding:12px 24px;background:#c81e2c;color:#fffdf8;border:1.5px solid #211c16;border-radius:8px;text-decoration:none;font-weight:600;">Reschedule or cancel</a></p>
+            <p style="color:#8b8072;font-size:14px;">If your plans change, cancelling frees the room for someone else.</p>
+          `,
+        };
+
+      case 'booking-rejected':
+        return {
+          subject: `Booking not confirmed — ${data.roomName}`,
+          htmlBody: `
+            <h1>That slot didn't work out</h1>
+            <p>Hi ${data.memberName}, your request for <strong>${data.roomName}</strong> at ${data.orgName} wasn't confirmed.</p>
+            <p><strong>${data.title}</strong><br>${data.when}</p>
+            <p>You're welcome to try another time — an organiser can tell you what's usually free.</p>
+            <p><a href="${data.manageUrl}" style="display:inline-block;padding:12px 24px;background:#c81e2c;color:#fffdf8;border:1.5px solid #211c16;border-radius:8px;text-decoration:none;font-weight:600;">Find another time</a></p>
+          `,
+        };
+
+      case 'booking-canceled':
+        return {
+          subject: `Cancelled: ${data.roomName} — ${data.when}`,
+          htmlBody: `
+            <h1>Booking cancelled</h1>
+            <p>Hi ${data.memberName}, this booking at ${data.orgName} has been cancelled and the room is free again.</p>
+            <p><strong>${data.title}</strong><br>${data.roomName}, ${data.when}</p>
+            <p><a href="${data.manageUrl}" style="display:inline-block;padding:12px 24px;background:#c81e2c;color:#fffdf8;border:1.5px solid #211c16;border-radius:8px;text-decoration:none;font-weight:600;">Book another time</a></p>
+            <p style="color:#8b8072;font-size:14px;">If you didn't cancel this yourself, speak to an organiser.</p>
+          `,
+        };
+
+      case 'booking-rescheduled':
+        return {
+          subject: `Moved: ${data.roomName} — ${data.when}`,
+          htmlBody: `
+            <h1>Your booking moved</h1>
+            <p>Hi ${data.memberName}, <strong>${data.roomName}</strong> at ${data.orgName} is now booked for:</p>
+            <p><strong>${data.title}</strong><br>${data.when}</p>
+            ${data.needsApproval ? `<p>Because the time changed, it needs confirming again. We'll email you when it is.</p>` : ''}
+            <p><a href="${data.manageUrl}" style="display:inline-block;padding:12px 24px;background:#c81e2c;color:#fffdf8;border:1.5px solid #211c16;border-radius:8px;text-decoration:none;font-weight:600;">View your bookings</a></p>
           `,
         };
 
