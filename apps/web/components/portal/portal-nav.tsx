@@ -13,7 +13,8 @@ const navItems = [
   { path: '/rooms', label: 'Rooms' },
   { path: '/commons', label: 'Commons' },
   { path: '/directory', label: 'Directory' },
-  { path: '/impact', label: 'Surveys' },
+  // Surveys removed with the portal survey page (D-021). The member-facing
+  // half of ImpactOS returns with the touchpoint questions, not as a tab.
 ];
 
 export function PortalNav() {
