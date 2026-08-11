@@ -51,7 +51,8 @@ Get MaybeOS Suite production-ready and launch MaybeItsFate LCA as the first live
 - [ ] Prepare github.com/millercharley/MaybeOS for open-source release — license, README, contributing guide, history scrub for secrets
 
 ## In Progress
-- [ ] None — awaiting direction. Everything through MEM-02 is pushed to `claude/maybeOS-suite-foundation-1Wauk`.
+- [ ] **`claude/impact-deletion-pass` — pushed, awaiting review.** Three commits: D-021/D-022, then the removal of every ImpactOS surface that could not work (admin Impact page, "New Survey" and "Create Survey" buttons, the response-list and CSV-export endpoints, the member-facing portal survey page and its nav entries). Net −488/+74. No PR opened — `gh` is not installed on this machine. Nothing else in ImpactOS was touched: IMP-01's cross-tenant hole is still open in `getSurvey`, `updateSurvey`, `publishSurvey`, `closeSurvey` and `submitResponse`, and is the next fix.
+- Everything through MEM-02 is pushed to `claude/maybeOS-suite-foundation-1Wauk`.
 
 ## Blocked on Charley
 - **Netlify token expires ~2026-08-17** (about six days from 2026-08-11). It is the only one — the DEP-01 PAT was revoked 2026-08-10. Every deploy, env-var change and function log read goes through it, and it fails with a bare 401 when it lapses. Reissue before the date, not after. Tracked as OPS-12.
