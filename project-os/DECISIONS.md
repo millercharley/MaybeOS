@@ -24,6 +24,22 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-020 — Joining a co-op: public sign-up, or invitation-only with a prefilled payment link
+
+- **Date:** 2026-08-11
+- **Status:** Active — **not yet built**
+- **Area:** MemberOS, Billing, Onboarding
+- **Trigger:** Charley registered `charley.miller@gmail.com` in production, clicked "Join as Sustainer", and was taken to *create a new organization* instead of joining MaybeItsFate. No membership was created and no payment was ever offered.
+- **Why it happened (all three layers):** the "Join as X" button is a plain `<Link href="/register">` that discards which org and tier were chosen; registering creates a `User` and never a `UserOrg` because **no self-join endpoint exists anywhere**; and the dashboard, seeing a user with no organizations, correctly-for-its-own-logic concludes they must be founding one. The button has always been decorative, like "Add Room" was before SPC-01.
+- **Decision (Charley's, 2026-08-11):**
+  1. **Public join** — a stranger joining through the public page lands as **`MEMBER`**. The `UserOrg` is created **immediately** with `subscriptionStatus: NONE`, and **payment status is reported** rather than hidden, so an admin can see who has joined but not yet paid. An abandoned checkout leaves a resumable record instead of a dead end.
+  2. **Invitation-only mode** — admins can **hide the public payment/sign-up page**. The org is then joinable only by invitation.
+  3. **Invite links carry identity** — an invite opens a **hashed (tokenised) URL** to the payment page with the invited person's known details **prefilled**.
+- **Build on the existing invitation system, don't duplicate it.** `Invitation` already has `token`, `email`, `role` and `expiresAt` (INV-01), `/invite?token=` already exists, and `api.invites.get(token)` already returns the invitee's email, role and org for prefill. What is missing is **tier selection and checkout on that path** — not the invite infrastructure.
+- **Shape:** one boolean on `Organization` (suggested `allowPublicJoin`, default **false** so every future co-op stays invitation-only until it opts in — a housing co-op or members' club must not be joinable by anyone who pays); an admin toggle; a self-join endpoint that creates the `UserOrg` and returns a checkout session; the public CTA rewired to carry org + tier through registration; and post-register routing that checks for a pending join before assuming org creation.
+- **Security note for the tokenised link:** `/invite?token=` and `/magic-link?token=` are already the two routes whose URLs carry a working credential, and D-011's Sentry scrubbing exists specifically to stop those tokens reaching a third party. Any new tokenised payment URL must be added to `SENSITIVE_QUERY_KEYS` in `sentry.shared.ts` if it uses a different parameter name.
+- **Supersedes:** none
+
 ### D-019 — SpaceOS audit: the booking engine is sound, everything around it is missing
 
 - **Date:** 2026-08-11
