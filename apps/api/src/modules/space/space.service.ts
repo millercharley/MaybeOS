@@ -1,18 +1,27 @@
 import {
   Injectable,
+  Logger,
   ForbiddenException,
   NotFoundException,
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../config/prisma.service';
+import { EmailService } from '../email/email.service';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { AvailabilityRuleDto } from './dto/availability-rule.dto';
 
 @Injectable()
 export class SpaceService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(SpaceService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly emailService: EmailService,
+    private readonly configService: ConfigService,
+  ) {}
 
   /* ------------------------------------------------------------------ */
   /*  Rooms                                                              */
@@ -123,6 +132,62 @@ export class SpaceService {
   /*  Bookings                                                           */
   /* ------------------------------------------------------------------ */
 
+
+  /**
+   * Notify the member about a change to their booking.
+   *
+   * Always fire-and-forget: EmailService already swallows send failures, and a
+   * booking must not fail because Postmark is down. Loads its own copy of the
+   * booking so callers stay simple.
+   *
+   * The manage link points at the org's public portal, which exists. It is
+   * deliberately NOT /member/bookings — that page has never been built, even
+   * though the member dashboard links to it. Sending members to a 404 would be
+   * worse than sending them somewhere real but general. See SPC-07.
+   */
+  private async notifyBooking(
+    bookingId: string,
+    kind: 'received' | 'confirmed' | 'rejected' | 'canceled' | 'rescheduled',
+  ): Promise<void> {
+    try {
+      const b = await this.prisma.booking.findUnique({
+        where: { id: bookingId },
+        include: {
+          user: { select: { email: true, name: true } },
+          room: { include: { org: { select: { name: true, slug: true } } } },
+        },
+      });
+      if (!b?.user?.email) return;
+
+      const webUrl = this.configService.get<string>('WEB_URL') || 'https://maybeos.org';
+      const data = {
+        memberName: b.user.name || 'there',
+        roomName: b.room.name,
+        orgName: b.room.org.name,
+        title: b.title,
+        when: `${b.startTime.toUTCString()} — ${b.endTime.toUTCString()}`,
+        manageUrl: `${webUrl}/portal/${b.room.org.slug}/rooms`,
+      };
+
+      const to = b.user.email;
+      if (kind === 'received') await this.emailService.sendBookingReceived(to, data);
+      else if (kind === 'confirmed') await this.emailService.sendBookingConfirmed(to, data);
+      else if (kind === 'rejected') await this.emailService.sendBookingRejected(to, data);
+      else if (kind === 'canceled') await this.emailService.sendBookingCanceled(to, data);
+      else
+        await this.emailService.sendBookingRescheduled(to, {
+          ...data,
+          needsApproval: b.status === 'PENDING',
+        });
+    } catch (err) {
+      this.logger.warn(
+        `Could not send ${kind} email for booking ${bookingId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
   async createBooking(roomId: string, userId: string, dto: CreateBookingDto) {
     const room = await this.prisma.room.findUnique({
       where: { id: roomId },
@@ -155,7 +220,7 @@ export class SpaceService {
 
     const status = room.requiresApproval ? 'PENDING' : 'APPROVED';
 
-    return this.prisma.booking.create({
+    const created = await this.prisma.booking.create({
       data: {
         roomId,
         userId,
@@ -166,6 +231,12 @@ export class SpaceService {
         status,
       },
     });
+
+    // 'received' when it still needs an organiser; 'confirmed' when the room
+    // auto-approves and the member can just turn up.
+    await this.notifyBooking(created.id, status === 'PENDING' ? 'received' : 'confirmed');
+
+    return created;
   }
 
   async approveBooking(bookingId: string, reviewerId: string) {
@@ -178,7 +249,7 @@ export class SpaceService {
       throw new BadRequestException('Only pending bookings can be approved');
     }
 
-    return this.prisma.booking.update({
+    const approved = await this.prisma.booking.update({
       where: { id: bookingId },
       data: {
         status: 'APPROVED',
@@ -186,6 +257,9 @@ export class SpaceService {
         reviewedAt: new Date(),
       },
     });
+
+    await this.notifyBooking(approved.id, 'confirmed');
+    return approved;
   }
 
   async rejectBooking(bookingId: string, reviewerId: string) {
@@ -198,7 +272,7 @@ export class SpaceService {
       throw new BadRequestException('Only pending bookings can be rejected');
     }
 
-    return this.prisma.booking.update({
+    const rejected = await this.prisma.booking.update({
       where: { id: bookingId },
       data: {
         status: 'REJECTED',
@@ -206,6 +280,9 @@ export class SpaceService {
         reviewedAt: new Date(),
       },
     });
+
+    await this.notifyBooking(rejected.id, 'rejected');
+    return rejected;
   }
 
   /**
@@ -299,7 +376,7 @@ export class SpaceService {
     const status =
       booking.room.requiresApproval && !isStaff ? 'PENDING' : booking.status;
 
-    return this.prisma.booking.update({
+    const moved = await this.prisma.booking.update({
       where: { id: bookingId },
       data: {
         startTime,
@@ -308,6 +385,9 @@ export class SpaceService {
         ...(status === 'PENDING' ? { reviewedBy: null, reviewedAt: null } : {}),
       },
     });
+
+    await this.notifyBooking(moved.id, 'rescheduled');
+    return moved;
   }
 
   async cancelBooking(
@@ -322,13 +402,16 @@ export class SpaceService {
       throw new BadRequestException('Booking is already canceled');
     }
 
-    return this.prisma.booking.update({
+    const canceled = await this.prisma.booking.update({
       where: { id: bookingId },
       data: {
         status: 'CANCELED',
         canceledAt: new Date(),
       },
     });
+
+    await this.notifyBooking(canceled.id, 'canceled');
+    return canceled;
   }
 
   async listBookings(roomId: string, from: Date, to: Date) {
