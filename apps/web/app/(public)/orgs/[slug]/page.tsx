@@ -102,9 +102,15 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
           <div className="mt-10 grid gap-8 lg:grid-cols-3">
             {displayTiers.map((tier, index) => {
               const isFeatured = index === 1 && displayTiers.length >= 2;
-              const priceDisplay = tier.priceMonthly === 0
-                ? 'Free'
-                : `$${(tier.priceMonthly / 100).toFixed(0)}`;
+              // toFixed(0) ROUNDED: a $19.50 tier advertised itself as "$20" on
+              // the page that persuades someone to join, while Stripe charged
+              // $19.50. Show whole dollars only when the price actually is whole.
+              const priceDisplay =
+                tier.priceMonthly === 0
+                  ? 'Free'
+                  : tier.priceMonthly % 100 === 0
+                    ? `$${tier.priceMonthly / 100}`
+                    : `$${(tier.priceMonthly / 100).toFixed(2)}`;
               const period = tier.priceMonthly > 0 ? '/month' : '';
 
               return (
@@ -137,7 +143,12 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
                       {tier.description || `Access as a ${tier.name} member.`}
                     </p>
                     {tier.isPayWhatYouCan && (
-                      <p className="mt-1 text-xs text-brand-600 font-medium">Pay what you can</p>
+                      <p className="mt-1 text-xs text-brand-600 font-medium">
+                        Pay what you can
+                        {tier.minPrice
+                          ? ` — from $${tier.minPrice % 100 === 0 ? tier.minPrice / 100 : (tier.minPrice / 100).toFixed(2)}`
+                          : ''}
+                      </p>
                     )}
                   </div>
 
