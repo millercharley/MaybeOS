@@ -24,6 +24,28 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-019 — SpaceOS audit: the booking engine is sound, everything around it is missing
+
+- **Date:** 2026-08-11
+- **Status:** Active — findings, work not yet started
+- **Area:** SpaceOS, Frontend, Integrations
+- **Trigger:** Charley reported that "Add Room" on `/admin/rooms` does nothing in production.
+- **Correction of an earlier claim:** on 2026-08-11 I described SpaceOS as having "real two-way Google Calendar sync." That was wrong in the way that matters. `CalendarService` implements `createCalendarEvent`, `updateCalendarEvent`, `deleteCalendarEvent`, `checkFreeBusy` and `syncRoomCalendar` — and **every one has zero callers outside the calendar module**. `SpaceModule` does not import `CalendarModule`. The code exists and is never invoked. I read the implementations and reported them as working without checking for call sites, which is the same error that produced the Stripe defects.
+- **What is genuinely built and correct:**
+  - Room CRUD, capacity, amenities, per-room `requiresApproval` and `memberOnly` flags, multi-site via `Location`.
+  - `AvailabilityRule`: day-of-week windows, blackout rules, effective date ranges, buffer minutes. Rooms with no rules default to always available.
+  - Booking lifecycle `PENDING → APPROVED / REJECTED / CANCELED`, recording reviewer and timestamp, retaining `canceledAt` rather than deleting.
+  - **Conflict detection is correct**: `startTime < newEnd AND endTime > newStart` — the proper interval-overlap predicate, not the naive containment check. Counts PENDING as conflicting, supports `excludeBookingId`, and the schema has a matching `[roomId, startTime, endTime]` index.
+- **What is missing:**
+  - **Admin room creation UI.** The "Add Room" button has no `onClick`; `api.rooms.create` exists and is never called. A developer TODO is also rendered into the user-facing page (`admin/rooms/page.tsx:105`).
+  - **Calendar sync is never invoked** from the booking flow, and `Room.googleCalendarId` / `googleTokens` are never populated — there is no per-room OAuth connection flow.
+  - **No booking emails of any kind.** `EmailService` works (D-007) and SpaceOS never calls it.
+  - **No reschedule endpoint.** Only approve/reject/cancel. `checkConflicts` already accepts `excludeBookingId` for exactly this and it is unused.
+  - **`hourlyRate` is stored and never charged** — no Stripe path for paid room hire. Same shape as pay-what-you-can before OPS-03b.
+  - **Never exercised against production** (OPS-09). Availability-rule validation in particular has timezone and HH:mm parsing that has never run.
+- **Open question for Charley before building sync:** the schema puts `googleCalendarId` and OAuth tokens on the **Room**, so each room connects its own calendar. That suits a co-op where different spaces have different stewards, but means an OAuth flow per room. Confirm before building.
+- **Supersedes:** none
+
 ### D-018 — `DATABASE_URL` must carry a connection limit, or production falls over
 
 - **Date:** 2026-08-11
