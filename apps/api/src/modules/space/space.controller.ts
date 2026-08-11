@@ -18,8 +18,20 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { SpaceService } from './space.service';
 import { CreateRoomDto } from './dto/create-room.dto';
+import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { AvailabilityRuleDto } from './dto/availability-rule.dto';
+
+
+/**
+ * Staff and admins may act on any booking in their org; everyone else only on
+ * their own. PLATFORM_ADMIN is included so support can unstick a co-op.
+ */
+function isStaff(user: RequestUser, orgId: string): boolean {
+  if (user.globalRole === 'PLATFORM_ADMIN') return true;
+  const role = user.orgRoles?.[orgId];
+  return role === 'ADMIN' || role === 'STAFF';
+}
 
 @ApiTags('space')
 @ApiBearerAuth()
@@ -144,13 +156,42 @@ export class SpaceController {
     return this.spaceService.rejectBooking(bookingId, user.userId);
   }
 
+  @Patch('bookings/:bookingId/reschedule')
+  @ApiOperation({
+    summary:
+      "Move a booking to a new time. Members may reschedule their own; staff any in the org.",
+  })
+  rescheduleBooking(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('bookingId', ParseUUIDPipe) bookingId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: RescheduleBookingDto,
+  ) {
+    return this.spaceService.rescheduleBooking(
+      orgId,
+      bookingId,
+      user.userId,
+      isStaff(user, orgId),
+      dto,
+    );
+  }
+
   @Post('bookings/:bookingId/cancel')
   @ApiOperation({ summary: 'Cancel a booking' })
   cancelBooking(
-    @Param('orgId', ParseUUIDPipe) _orgId: string,
+    @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('bookingId', ParseUUIDPipe) bookingId: string,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.spaceService.cancelBooking(bookingId);
+    // orgId and the caller are both passed now. Previously neither was: the
+    // service saw only a booking id, so any member could cancel any booking in
+    // any org by knowing its UUID.
+    return this.spaceService.cancelBooking(
+      orgId,
+      bookingId,
+      user.userId,
+      isStaff(user, orgId),
+    );
   }
 
   @Get('my-bookings')

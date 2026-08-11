@@ -314,6 +314,24 @@ class ApiClient {
     myBookings: (orgId: string, token: string) =>
       this.request<Booking[]>(`/orgs/${orgId}/my-bookings`, { token }),
 
+    reschedule: (
+      orgId: string,
+      bookingId: string,
+      data: { startTime: string; endTime: string },
+      token: string,
+    ) =>
+      this.request<Booking>(`/orgs/${orgId}/bookings/${bookingId}/reschedule`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    cancelBooking: (orgId: string, bookingId: string, token: string) =>
+      this.request<Booking>(`/orgs/${orgId}/bookings/${bookingId}/cancel`, {
+        method: 'POST',
+        token,
+      }),
+
     approveBooking: (orgId: string, roomId: string, bookingId: string, token: string) =>
       this.request<Booking>(`/orgs/${orgId}/rooms/${roomId}/bookings/${bookingId}/approve`, {
         method: 'POST',

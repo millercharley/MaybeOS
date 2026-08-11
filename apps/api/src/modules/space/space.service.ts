@@ -1,5 +1,6 @@
 import {
   Injectable,
+  ForbiddenException,
   NotFoundException,
   BadRequestException,
   ConflictException,
@@ -207,11 +208,115 @@ export class SpaceService {
     });
   }
 
-  async cancelBooking(bookingId: string) {
-    const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
+  /**
+   * Load a booking and confirm the caller is allowed to act on it.
+   *
+   * Two checks, both previously missing. `cancelBooking` took only a booking
+   * id: the controller never passed the current user, and the `orgId` route
+   * param was unused. Any authenticated member could therefore cancel any
+   * booking in any organization simply by knowing its UUID — the org guard
+   * passed because they were a member of the org *in the URL*, which was never
+   * compared against the booking's own org. Same family as D-009.
+   */
+  private async loadBookingForActor(
+    orgId: string,
+    bookingId: string,
+    userId: string,
+    isStaff: boolean,
+  ) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { room: { include: { availabilityRules: true } } },
+    });
+
     if (!booking) {
       throw new NotFoundException('Booking not found');
     }
+
+    // The booking must belong to the org in the URL, or a member of one co-op
+    // can reach into another's.
+    if (booking.room.orgId !== orgId) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    // Members may act on their own bookings; staff and admins on any in the org.
+    if (booking.userId !== userId && !isStaff) {
+      throw new ForbiddenException('This is not your booking');
+    }
+
+    return booking;
+  }
+
+  /**
+   * Move a booking to a new time.
+   *
+   * Re-runs the same availability and conflict checks as a new booking, but
+   * excludes this booking from the conflict search — otherwise every reschedule
+   * would collide with itself. `checkConflicts` has always accepted
+   * `excludeBookingId` for exactly this and nothing used it until now.
+   */
+  async rescheduleBooking(
+    orgId: string,
+    bookingId: string,
+    userId: string,
+    isStaff: boolean,
+    dto: { startTime: string; endTime: string },
+  ) {
+    const booking = await this.loadBookingForActor(orgId, bookingId, userId, isStaff);
+
+    if (booking.status === 'CANCELED' || booking.status === 'REJECTED') {
+      throw new BadRequestException(
+        `A ${booking.status.toLowerCase()} booking cannot be rescheduled. Make a new one.`,
+      );
+    }
+
+    const startTime = new Date(dto.startTime);
+    const endTime = new Date(dto.endTime);
+
+    if (endTime <= startTime) {
+      throw new BadRequestException('End time must be after start time');
+    }
+
+    if (!booking.room.isActive) {
+      throw new BadRequestException('Room is not currently active');
+    }
+
+    this.validateAvailability(booking.room.availabilityRules, startTime, endTime);
+
+    const hasConflict = await this.checkConflicts(
+      booking.roomId,
+      startTime,
+      endTime,
+      bookingId,
+    );
+    if (hasConflict) {
+      throw new ConflictException('This time slot conflicts with an existing booking');
+    }
+
+    // An admin approved a *specific* slot. Moving it means that approval no
+    // longer describes what was agreed, so a member's reschedule re-enters the
+    // queue. Staff moving a booking is itself the approval, so it stays put.
+    const status =
+      booking.room.requiresApproval && !isStaff ? 'PENDING' : booking.status;
+
+    return this.prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        startTime,
+        endTime,
+        status,
+        ...(status === 'PENDING' ? { reviewedBy: null, reviewedAt: null } : {}),
+      },
+    });
+  }
+
+  async cancelBooking(
+    orgId: string,
+    bookingId: string,
+    userId: string,
+    isStaff: boolean,
+  ) {
+    const booking = await this.loadBookingForActor(orgId, bookingId, userId, isStaff);
 
     if (booking.status === 'CANCELED') {
       throw new BadRequestException('Booking is already canceled');
