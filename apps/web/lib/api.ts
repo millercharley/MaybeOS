@@ -287,6 +287,13 @@ class ApiClient {
     get: (orgId: string, roomId: string, token: string) =>
       this.request<Room>(`/orgs/${orgId}/rooms/${roomId}`, { token }),
 
+    update: (orgId: string, roomId: string, data: Partial<CreateRoomData>, token: string) =>
+      this.request<Room>(`/orgs/${orgId}/rooms/${roomId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
     create: (orgId: string, data: CreateRoomData, token: string) =>
       this.request<Room>(`/orgs/${orgId}/rooms`, {
         method: 'POST',
@@ -646,6 +653,8 @@ export interface Room {
   amenities: string[];
   requiresApproval: boolean;
   memberOnly: boolean;
+  hourlyRate?: number | null;
+  isActive?: boolean;
 }
 
 export interface CreateRoomData {
@@ -653,7 +662,11 @@ export interface CreateRoomData {
   description?: string;
   capacity?: number;
   amenities?: string[];
+  locationId?: string;
   requiresApproval?: boolean;
+  memberOnly?: boolean;
+  /** Cents per hour. Stored but not yet charged — see SPC-06. */
+  hourlyRate?: number;
 }
 
 export interface Booking {
