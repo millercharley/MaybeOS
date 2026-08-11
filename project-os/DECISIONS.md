@@ -24,6 +24,22 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-018 — `DATABASE_URL` must carry a connection limit, or production falls over
+
+- **Date:** 2026-08-11
+- **Status:** Active
+- **Area:** Database, Hosting, Reliability
+- **Decision:** Every `DATABASE_URL` for this project must include an explicit `connection_limit`. **Production: `connection_limit=1&pool_timeout=20`. Local development: `connection_limit=5&pool_timeout=20`.**
+- **What happened:** a routine application-code deploy on 2026-08-10 took the production API down. Every request returned a Prisma error: `FATAL: (EMAXCONNSESSION) max clients reached in session mode - max clients are limited to pool_size: 15`. The site's frontend stayed up while the entire API 502'd.
+- **Cause:** Prisma opens a connection pool **per process**, defaulting to `cpus × 2 + 1`. In serverless that means a pool *per warm Lambda container*, and Supabase's session pooler caps the project at **15 connections total**. A few warm containers exhaust it. A deploy is the worst moment, because new containers start while the old ones are still holding their connections.
+- **Why the two values differ:** production is a fleet of short-lived Lambda containers, so each must hold exactly **one** connection — that allows ~15 concurrent containers instead of ~3. Local development is a single long-lived server, where `connection_limit=1` would serialize every query; **5** gives it room while staying well inside the cap. Local logs showed Prisma opening **17** connections against a 15-connection pooler, so a single developer could exhaust dev on their own.
+- **This interacts with D-010 and D-014.** D-010 requires the **session** pooler (port 5432) because the direct host is IPv6-only and Netlify is IPv4-only. D-014 requires session mode because Prisma interactive transactions don't work over PgBouncer in transaction mode. So switching to the transaction pooler (6543), which would have far more headroom, is **not** an available fix — it would break Stripe webhook processing. The connection limit is the fix.
+- **Latent, not introduced.** This misconfiguration existed from DEP-01 onward and would have fired on the first real traffic spike, or the first time two members used the site simultaneously. It only surfaced because a deploy forced container churn. Nothing in the deployed code changed to cause it.
+- **Where it lives:** the value is a Netlify environment variable, so it is invisible to anyone reading this repository and trivially lost in a future edit. That is exactly why it is recorded here alongside D-010's other non-obvious environment requirements.
+- **Supersedes:** none (extends D-010)
+
+---
+
 ### D-017 — Org logos go in Supabase Storage, not a pasted URL
 
 - **Date:** 2026-08-10
