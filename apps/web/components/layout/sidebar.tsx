@@ -11,6 +11,7 @@ import {
   MessageSquare,
   BarChart3,
   Settings,
+  CreditCard,
   LogOut,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
@@ -19,6 +20,7 @@ import { Wordmark } from '@/components/brand/wordmark';
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/members', label: 'Members', icon: Users },
+  { href: '/admin/tiers', label: 'Tiers & Dues', icon: CreditCard },
   { href: '/admin/events', label: 'Events', icon: Calendar },
   { href: '/admin/rooms', label: 'Rooms & Booking', icon: DoorOpen },
   { href: '/admin/commons', label: 'Commons', icon: MessageSquare },
