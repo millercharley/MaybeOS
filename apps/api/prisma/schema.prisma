@@ -26,6 +26,10 @@ model Organization {
   // so each org needs its own configuration naming its own tiers.
   stripePortalConfigId String?
 
+  // Off by default: a housing co-op or members' club must not be joinable by
+  // anyone with a card. Each org opts in. See D-020.
+  allowPublicJoin Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   ConflictException,
+  ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -178,6 +179,71 @@ export class MemberService {
     return this.prisma.userOrg.delete({
       where: { userId_orgId: { userId, orgId } },
     });
+  }
+
+  /**
+   * A logged-in user joins an org from its public page.
+   *
+   * Until now nothing could create a UserOrg except founding an org or
+   * accepting an invitation, so the public "Join as X" button led people into
+   * creating their *own* organisation instead — observed in production with a
+   * real sign-up (D-020).
+   *
+   * The membership is created immediately with `subscriptionStatus: NONE`
+   * rather than waiting for payment. An abandoned checkout then leaves a
+   * resumable record instead of a dead end, and admins can see who has joined
+   * but not yet paid. Charley's call.
+   */
+  async joinOrg(orgId: string, userId: string, tierId?: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { id: true, name: true, allowPublicJoin: true },
+    });
+
+    if (!org) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    // Invitation-only orgs are not merely hidden in the UI — the endpoint
+    // refuses, or hiding the page would be decoration.
+    if (!org.allowPublicJoin) {
+      throw new ForbiddenException(
+        `${org.name} is invitation only. Ask an organiser for an invite.`,
+      );
+    }
+
+    const existing = await this.prisma.userOrg.findUnique({
+      where: { userId_orgId: { userId, orgId } },
+    });
+
+    // Idempotent: someone who abandoned checkout and came back must not be
+    // blocked from their own membership.
+    if (existing) {
+      return { membership: existing, alreadyMember: true };
+    }
+
+    if (tierId) {
+      const tier = await this.prisma.membershipTier.findFirst({
+        where: { id: tierId, orgId, isActive: true },
+      });
+      if (!tier) {
+        throw new NotFoundException('That membership tier is not available');
+      }
+    }
+
+    const membership = await this.prisma.userOrg.create({
+      data: {
+        userId,
+        orgId,
+        tierId: tierId ?? null,
+        role: 'MEMBER',
+        subscriptionStatus: 'NONE',
+      },
+    });
+
+    this.logger.log(`User ${userId} joined org ${orgId} (tier ${tierId ?? 'none'})`);
+
+    return { membership, alreadyMember: false };
   }
 
   // ─── Tiers ─────────────────────────────────────────────────
