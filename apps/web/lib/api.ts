@@ -204,6 +204,32 @@ class ApiClient {
         method: 'POST',
         token,
       }),
+
+    // ── Tiers (admin) ──────────────────────────────
+    // Distinct from orgs.listTiers, which is the public join-page listing.
+    // This one is admin-guarded and additionally returns deactivated tiers and
+    // how many members are actively paying for each.
+    listTiersForAdmin: (orgId: string, token: string) =>
+      this.request<AdminTier[]>(`/orgs/${orgId}/tiers/manage`, { token }),
+
+    createTier: (orgId: string, data: TierInput, token: string) =>
+      this.request<MembershipTier>(`/orgs/${orgId}/tiers`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    updateTier: (
+      orgId: string,
+      tierId: string,
+      data: Partial<TierInput> & { isActive?: boolean; applyToExistingMembers?: boolean },
+      token: string,
+    ) =>
+      this.request<TierUpdateResult>(`/orgs/${orgId}/tiers/${tierId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
   };
 
   invites = {
@@ -534,6 +560,30 @@ export interface Location {
   address?: string;
   city?: string;
   state?: string;
+}
+
+export interface TierInput {
+  name: string;
+  description?: string;
+  priceMonthly: number;
+  isPayWhatYouCan?: boolean;
+  minPrice?: number;
+  benefits?: string[];
+}
+
+export interface AdminTier extends MembershipTier {
+  isActive: boolean;
+  sortOrder: number;
+  stripePriceIdMonthly?: string | null;
+  /** Members currently paying for this tier (ACTIVE, TRIALING or PAST_DUE). */
+  activeSubscribers: number;
+}
+
+/** What actually happened to people's money on a price change. */
+export interface TierUpdateResult extends MembershipTier {
+  repriced: boolean;
+  migratedSubscribers: number;
+  grandfathered: boolean;
 }
 
 export interface MembershipTier {
