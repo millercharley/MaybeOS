@@ -5,14 +5,9 @@ import {
   Patch,
   Body,
   Param,
-  Query,
   UseGuards,
-  DefaultValuePipe,
-  ParseIntPipe,
-  Res,
 } from '@nestjs/common';
-import { Response } from 'express';
-import { ApiTags, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
@@ -84,68 +79,17 @@ export class ImpactController {
     return this.impactService.submitResponse(surveyId, userId, dto.answers, dto.demographics);
   }
 
-  @Get('surveys/:surveyId/responses')
-  @Roles('ADMIN')
-  @ApiQuery({ name: 'page', required: false })
-  @ApiQuery({ name: 'perPage', required: false })
-  getResponses(
-    @Param('surveyId') surveyId: string,
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('perPage', new DefaultValuePipe(20), ParseIntPipe) perPage: number,
-  ) {
-    return this.impactService.getResponses(surveyId, page, perPage);
-  }
-
-  @Get('surveys/:surveyId/export')
-  @Roles('ADMIN')
-  async exportResponses(
-    @Param('surveyId') surveyId: string,
-    @Res() res: Response,
-  ) {
-    const responses = await this.impactService.exportResponses(surveyId);
-
-    // Build CSV header and rows
-    if (responses.length === 0) {
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="survey-${surveyId}-responses.csv"`);
-      return res.send('');
-    }
-
-    // Collect all unique answer keys across responses
-    const answerKeys = new Set<string>();
-    for (const r of responses) {
-      const answers = r.answers as Record<string, any>;
-      Object.keys(answers).forEach((k) => answerKeys.add(k));
-    }
-
-    const sortedKeys = Array.from(answerKeys).sort();
-    const headers = ['id', 'userId', 'userName', 'userEmail', ...sortedKeys, 'createdAt'];
-    const csvRows = [headers.join(',')];
-
-    for (const r of responses) {
-      const answers = r.answers as Record<string, any>;
-      const row = [
-        r.id,
-        r.userId ?? '',
-        r.user?.name ?? '',
-        r.user?.email ?? '',
-        ...sortedKeys.map((k) => {
-          const val = answers[k];
-          if (val === undefined || val === null) return '';
-          const str = String(val);
-          return str.includes(',') || str.includes('"') || str.includes('\n')
-            ? `"${str.replace(/"/g, '""')}"`
-            : str;
-        }),
-        r.createdAt.toISOString(),
-      ];
-      csvRows.push(row.join(','));
-    }
-
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="survey-${surveyId}-responses.csv"`);
-    return res.send(csvRows.join('\n'));
-  }
+  // Two endpoints used to live here: a paginated response list and a CSV
+  // export, both returning individual answers alongside the respondent's name
+  // and email address. Neither had a caller anywhere in the web app.
+  //
+  // They are not coming back in this form. Under D-021 an admin never sees how
+  // an individual member answered an impact question — results reach them in
+  // aggregate, with segments of fewer than five suppressed. Anything that
+  // replaces these reads aggregates, not rows.
+  //
+  // Removing them also shrinks IMP-01: until every method scopes its survey id
+  // to the org in the path, these were the two that leaked identities.
 
   // ─── Dashboard ──────────────────────────────────────────────
 

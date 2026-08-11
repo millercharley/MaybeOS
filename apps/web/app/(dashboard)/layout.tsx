@@ -13,7 +13,6 @@ const breadcrumbMap: Record<string, string> = {
   '/admin/events': 'Events',
   '/admin/rooms': 'Rooms & Booking',
   '/admin/commons': 'Commons',
-  '/admin/impact': 'Impact',
   '/admin/settings': 'Settings',
 };
 
