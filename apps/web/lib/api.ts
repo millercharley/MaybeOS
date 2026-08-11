@@ -209,6 +209,13 @@ class ApiClient {
     // Distinct from orgs.listTiers, which is the public join-page listing.
     // This one is admin-guarded and additionally returns deactivated tiers and
     // how many members are actively paying for each.
+    /** Join an org from its public page. Refused unless the org allows it. */
+    joinOrg: (orgId: string, tierId: string | undefined, token: string) =>
+      this.request<{ membership: { role: string; subscriptionStatus: string }; alreadyMember: boolean }>(
+        `/orgs/${orgId}/join`,
+        { method: 'POST', body: JSON.stringify({ tierId }), token },
+      ),
+
     listTiersForAdmin: (orgId: string, token: string) =>
       this.request<AdminTier[]>(`/orgs/${orgId}/tiers/manage`, { token }),
 

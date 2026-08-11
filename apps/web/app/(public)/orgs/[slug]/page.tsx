@@ -162,8 +162,15 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
                   </ul>
 
                   <div className="mt-8">
+                    {/*
+                      Carries the co-op and the chosen tier through to /join,
+                      which handles sign-in, membership and checkout. This used
+                      to be a bare link to /register, which discarded both — so
+                      the visitor ended up being offered a *new* organization
+                      instead of joining this one.
+                    */}
                     <Link
-                      href="/register"
+                      href={`/join?org=${encodeURIComponent(slug)}&tier=${encodeURIComponent(tier.id)}`}
                       className={`w-full text-center ${
                         isFeatured ? 'btn-primary' : 'btn-secondary'
                       }`}
