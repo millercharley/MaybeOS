@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Body,
   Query,
@@ -18,6 +19,7 @@ import { CurrentUser, RequestUser } from '../../common/decorators/current-user.d
 import { OrgService } from './org.service';
 import { CreateOrgDto } from './dto/create-org.dto';
 import { UpdateOrgDto } from './dto/update-org.dto';
+import { UploadLogoDto } from './dto/upload-logo.dto';
 
 @ApiTags('orgs')
 @Controller('orgs')
@@ -51,6 +53,24 @@ export class OrgController {
   @ApiOperation({ summary: 'Update organization' })
   update(@Param('orgId') orgId: string, @Body() dto: UpdateOrgDto) {
     return this.orgService.update(orgId, dto);
+  }
+
+  @Post(':orgId/logo')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Replace the organization's logo" })
+  uploadLogo(@Param('orgId') orgId: string, @Body() dto: UploadLogoDto) {
+    return this.orgService.replaceLogo(orgId, dto.data, dto.mimeType);
+  }
+
+  @Delete(':orgId/logo')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Remove the organization's logo" })
+  deleteLogo(@Param('orgId') orgId: string) {
+    return this.orgService.removeLogo(orgId);
   }
 
   @Get(':orgId/settings')

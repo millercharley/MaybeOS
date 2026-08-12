@@ -17,6 +17,14 @@ export async function configureApp(app: NestExpressApplication) {
   // each entry point — it cannot be done here, after Nest has already booted.
   app.useLogger(app.get(PinoLogger));
 
+  // Logos arrive as base64 in a JSON body (OPS-03c), and Express defaults to a
+  // 100 kB JSON limit — small enough that a 70-byte test image passes and any
+  // real logo fails with "request entity too large". The bucket caps images at
+  // 2 MB, which is ~2.7 MB once base64-encoded, so 4 MB leaves headroom for the
+  // JSON around it while staying well inside Netlify's 6 MB request ceiling.
+  app.useBodyParser('json', { limit: '4mb' });
+  app.useBodyParser('urlencoded', { limit: '4mb', extended: true });
+
   app.use(
     helmet({
       contentSecurityPolicy: {

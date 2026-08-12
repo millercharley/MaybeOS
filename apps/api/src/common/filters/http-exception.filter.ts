@@ -34,9 +34,26 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           : ((exResponse as Record<string, unknown>).message as string) ||
             exception.message;
     } else if (exception instanceof Error) {
-      this.logger.error(exception.message, exception.stack);
-      if (process.env.NODE_ENV !== 'production') {
+      // Some middleware throws plain Errors that already carry an HTTP status —
+      // body-parser's "request entity too large" is a 413, not a server fault.
+      // Without this it surfaced as a 500 and was reported to Sentry as a
+      // defect, burying real failures in noise from oversized uploads.
+      const carried = (exception as Error & { status?: number; statusCode?: number });
+      const carriedStatus = carried.status ?? carried.statusCode;
+
+      if (typeof carriedStatus === 'number' && carriedStatus >= 400 && carriedStatus < 600) {
+        status = carriedStatus;
         message = exception.message;
+        if (status < 500) {
+          this.logger.warn(`${status} ${exception.message}`);
+        } else {
+          this.logger.error(exception.message, exception.stack);
+        }
+      } else {
+        this.logger.error(exception.message, exception.stack);
+        if (process.env.NODE_ENV !== 'production') {
+          message = exception.message;
+        }
       }
     }
 

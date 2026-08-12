@@ -1,11 +1,71 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { CreateOrgDto } from './dto/create-org.dto';
 import { UpdateOrgDto } from './dto/update-org.dto';
 
 @Injectable()
 export class OrgService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {}
+
+  /**
+   * Replace an org's logo (OPS-03c, D-017).
+   *
+   * Order matters and is the whole design: upload first, write `logoUrl` only
+   * once the object is actually stored, and delete the previous file last. A
+   * failure at any step leaves the org with the logo it had, never with a
+   * broken link — which is why the upload writes to a fresh key rather than
+   * overwriting.
+   */
+  async replaceLogo(orgId: string, data: string, mimeType: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { id: true, logoUrl: true },
+    });
+    if (!org) {
+      throw new NotFoundException(`Organization "${orgId}" not found`);
+    }
+
+    // Accept either a bare base64 string or a full data: URL, since browsers
+    // hand back the latter from FileReader.
+    const base64 = data.includes(',') ? data.slice(data.indexOf(',') + 1) : data;
+    const bytes = Buffer.from(base64.replace(/\s/g, ''), 'base64');
+
+    const logoUrl = await this.storage.uploadOrgLogo(orgId, bytes, mimeType);
+
+    const updated = await this.prisma.organization.update({
+      where: { id: orgId },
+      data: { logoUrl },
+    });
+
+    // Only now is the old file unreferenced.
+    await this.storage.deleteOrgLogo(orgId, org.logoUrl);
+
+    return updated;
+  }
+
+  /** Remove the logo entirely, falling back to the initial-letter mark. */
+  async removeLogo(orgId: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { id: true, logoUrl: true },
+    });
+    if (!org) {
+      throw new NotFoundException(`Organization "${orgId}" not found`);
+    }
+
+    const updated = await this.prisma.organization.update({
+      where: { id: orgId },
+      data: { logoUrl: null },
+    });
+
+    await this.storage.deleteOrgLogo(orgId, org.logoUrl);
+
+    return updated;
+  }
 
   /**
    * Creates an organization, auto-creates the founding user as ADMIN,
