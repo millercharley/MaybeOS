@@ -32,8 +32,24 @@ export default function PublicLayout({
             <Link href="/login" className="btn-secondary">
               Sign In
             </Link>
+            {/*
+              Labelled for where it actually goes. This said "Join", and
+              /register founds a *new* co-op — so on a co-op's own public page
+              the header invited you to join and then offered to start a
+              different organisation, which is the exact confusion D-020 was
+              written about.
+
+              It deliberately does not offer to join the co-op you are looking
+              at. That belongs to the tier buttons on /orgs/[slug], which know
+              which tier was chosen and whether the co-op accepts public
+              joiners at all (MEM-03). A second join path in the header would
+              know neither, and would drift from the first.
+
+              "Create Organization" matches the landing page, which already
+              uses that label for this destination in all three of its CTAs.
+            */}
             <Link href="/register" className="btn-primary">
-              Join
+              Create Organization
             </Link>
           </div>
         </div>
