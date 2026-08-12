@@ -4,6 +4,7 @@ import { SpaceService } from '../space.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { EmailService } from '../../email/email.service';
+import { EventsService } from '../../events/events.service';
 
 /**
  * Availability rules (SPC-05).
@@ -64,6 +65,9 @@ describe('SpaceService — availability rules', () => {
         },
         { provide: EmailService, useValue: { send: jest.fn(), sendBookingEmail: jest.fn() } },
         { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('http://localhost:3020') } },
+        // SpaceService now keeps a booking's published event in step with it
+        // (EVT-05); these tests do not exercise that path.
+        { provide: EventsService, useValue: { syncWithBooking: jest.fn() } },
       ],
     }).compile();
 

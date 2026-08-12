@@ -3,11 +3,13 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { ContactViewer } from '../../common/access/contact-visibility';
 import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
+import { PublishBookingEventDto } from './dto/publish-booking-event.dto';
 import ical, { ICalCalendarMethod } from 'ical-generator';
 
 /* ───────────────────────────── helpers ───────────────────────────── */
@@ -56,7 +58,70 @@ export class EventsService {
 
   /* ─── Create ────────────────────────────────────────────────── */
 
-  async create(orgId: string, dto: CreateEventDto, userId: string) {
+  /**
+   * Publish an event from a room booking (EVT-05).
+   *
+   * The member has already said when and where by booking the room; asking
+   * them to type it again is how the two drift apart. Time, room and title
+   * come from the booking, and the event stays linked to it so the booking
+   * lifecycle can reach it.
+   *
+   * Refused unless the booking is APPROVED. A PENDING booking is a request,
+   * and advertising a public event for a room the co-op has not agreed to
+   * hand over is the one failure mode this feature can cause that the member
+   * cannot undo — people will already have seen it.
+   */
+  async createFromBooking(
+    orgId: string,
+    bookingId: string,
+    userId: string,
+    isStaff: boolean,
+    dto: PublishBookingEventDto,
+  ) {
+    const booking = await this.prisma.booking.findFirst({
+      where: { id: bookingId, room: { orgId } },
+      include: { room: true, event: { select: { id: true } } },
+    });
+    if (!booking) throw new NotFoundException('Booking not found');
+
+    if (booking.userId !== userId && !isStaff) {
+      throw new ForbiddenException('That booking is not yours');
+    }
+    if (booking.event) {
+      throw new ConflictException('This booking already has an event');
+    }
+    if (booking.status !== 'APPROVED') {
+      throw new BadRequestException(
+        `This booking is ${booking.status.toLowerCase()}. Only a confirmed booking can be published as an event.`,
+      );
+    }
+    if (booking.endTime < new Date()) {
+      throw new BadRequestException('That booking has already finished');
+    }
+
+    return this.create(
+      orgId,
+      {
+        title: dto.title ?? booking.title,
+        description: dto.description,
+        startTime: booking.startTime.toISOString(),
+        endTime: booking.endTime.toISOString(),
+        roomId: booking.roomId,
+        visibility: dto.visibility ?? 'MEMBERS_ONLY',
+        capacity: dto.capacity ?? booking.room.capacity ?? undefined,
+        category: dto.category,
+      } as CreateEventDto,
+      userId,
+      { bookingId: booking.id, publish: dto.publish ?? true },
+    );
+  }
+
+  async create(
+    orgId: string,
+    dto: CreateEventDto,
+    userId: string,
+    options: { bookingId?: string; publish?: boolean } = {},
+  ) {
     const slug = toSlug(dto.title, dto.startTime);
 
     // Ensure slug uniqueness within the org
@@ -86,6 +151,13 @@ export class EventsService {
         // on somebody else's behalf reassigns it; until they do, the person
         // who made it is the one who answers for it.
         hostId: dto.hostId ?? userId,
+        bookingId: options.bookingId,
+        // A member publishing their own event means it goes live. Leaving it
+        // as a draft they cannot publish would be a dead end — the point of
+        // the feature is that they can share it.
+        ...(options.publish ?? dto.publish
+          ? { isPublished: true, publishedAt: new Date() }
+          : {}),
         waitlistEnabled: dto.waitlistEnabled,
         category: dto.category,
         tags: dto.tags,
@@ -118,8 +190,45 @@ export class EventsService {
     return event;
   }
 
-  async update(orgId: string, eventId: string, dto: UpdateEventDto) {
+  /**
+   * Load an event the actor is allowed to change (EVT-05).
+   *
+   * Members can now create events, so they need to be able to edit and cancel
+   * the ones they host — otherwise the feature hands somebody a thing they
+   * cannot correct or call off. Organisers may change any event in their org,
+   * which is what running the space means.
+   *
+   * Forbidden rather than NotFound here, unlike the tenant checks: the event
+   * belongs to a co-op the caller is already a member of, so its existence is
+   * not the secret. What is being refused is authorship, and saying so is
+   * more use than pretending the event is missing.
+   */
+  private async loadEventForActor(
+    orgId: string,
+    eventId: string,
+    userId: string,
+    isStaff: boolean,
+  ) {
     const event = await this.findEventInOrg(orgId, eventId);
+    if (!isStaff && event.hostId !== userId) {
+      throw new ForbiddenException('Only the host or an organiser can change this event');
+    }
+    return event;
+  }
+
+  async update(
+    orgId: string,
+    eventId: string,
+    dto: UpdateEventDto,
+    actor: { userId: string; isStaff: boolean },
+  ) {
+    const event = await this.loadEventForActor(orgId, eventId, actor.userId, actor.isStaff);
+
+    // Only an organiser reassigns a host. A member handing their event to
+    // somebody else would be volunteering them for the follow-up email.
+    if (dto.hostId !== undefined && !actor.isStaff) {
+      throw new ForbiddenException('Only an organiser can change who hosts an event');
+    }
 
     // If title or startTime changed, regenerate slug
     let slug: string | undefined;
@@ -168,8 +277,12 @@ export class EventsService {
 
   /* ─── Publish ───────────────────────────────────────────────── */
 
-  async publish(orgId: string, eventId: string) {
-    await this.findEventInOrg(orgId, eventId);
+  async publish(
+    orgId: string,
+    eventId: string,
+    actor: { userId: string; isStaff: boolean },
+  ) {
+    await this.loadEventForActor(orgId, eventId, actor.userId, actor.isStaff);
 
     return this.prisma.event.update({
       where: { id: eventId },
@@ -182,13 +295,52 @@ export class EventsService {
 
   /* ─── Cancel ────────────────────────────────────────────────── */
 
-  async cancel(orgId: string, eventId: string) {
-    await this.findEventInOrg(orgId, eventId);
+  async cancel(
+    orgId: string,
+    eventId: string,
+    actor: { userId: string; isStaff: boolean },
+  ) {
+    await this.loadEventForActor(orgId, eventId, actor.userId, actor.isStaff);
 
     return this.prisma.event.update({
       where: { id: eventId },
       data: {
         canceledAt: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Keep an event in step with the booking it was published from (EVT-05).
+   *
+   * Called by SpaceService when a booking is cancelled, rejected or moved.
+   * Without this, cancelling a room booking leaves the co-op advertising an
+   * event in a room it no longer holds, and everyone who RSVPed still turns
+   * up — the failure the member cannot undo, because people have already
+   * read it.
+   *
+   * Cancelled rather than deleted: the RSVPs are a record of who intended to
+   * come, and "this was called off" is information. Same reasoning as
+   * cancelled RSVPs being shown rather than dropped.
+   */
+  async syncWithBooking(
+    bookingId: string,
+    change: { startTime?: Date; endTime?: Date; canceled?: boolean },
+  ) {
+    const event = await this.prisma.event.findUnique({
+      where: { bookingId },
+      select: { id: true, canceledAt: true },
+    });
+    if (!event) return null;
+
+    return this.prisma.event.update({
+      where: { id: event.id },
+      data: {
+        ...(change.startTime ? { startTime: change.startTime } : {}),
+        ...(change.endTime ? { endTime: change.endTime } : {}),
+        // Never un-cancel: an event called off stays called off even if the
+        // booking somehow returns, because people were already told.
+        ...(change.canceled && !event.canceledAt ? { canceledAt: new Date() } : {}),
       },
     });
   }
@@ -506,6 +658,31 @@ export class EventsService {
       ...rsvp,
       eventCanceled: rsvp.event.canceledAt !== null,
       isPast: rsvp.event.endTime < new Date(),
+    }));
+  }
+
+  /**
+   * Events this member hosts (EVT-05).
+   *
+   * Creating an event is only half of it — they need somewhere to find the
+   * thing they made, see whether anyone is coming, and correct or call it
+   * off. Drafts included: an unpublished event is invisible everywhere else,
+   * so this is the only place it can be finished.
+   */
+  async listHostedEvents(orgId: string, userId: string) {
+    const events = await this.prisma.event.findMany({
+      where: { orgId, hostId: userId },
+      orderBy: { startTime: 'desc' },
+      include: {
+        location: { select: { name: true } },
+        room: { select: { name: true } },
+        ...CONFIRMED_RSVP_COUNT,
+      },
+    });
+
+    return events.map((event) => ({
+      ...withRsvpCount(event),
+      isPast: event.endTime < new Date(),
     }));
   }
 
