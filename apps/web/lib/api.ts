@@ -354,6 +354,42 @@ class ApiClient {
         token,
       }),
 
+    update: (orgId: string, eventId: string, data: Partial<CreateEventData>, token: string) =>
+      this.request<Event>(`/orgs/${orgId}/events/${eventId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    publish: (orgId: string, eventId: string, token: string) =>
+      this.request<Event>(`/orgs/${orgId}/events/${eventId}/publish`, {
+        method: 'POST',
+        token,
+      }),
+
+    cancelEvent: (orgId: string, eventId: string, token: string) =>
+      this.request<Event>(`/orgs/${orgId}/events/${eventId}/cancel`, {
+        method: 'POST',
+        token,
+      }),
+
+    /** Events the signed-in member hosts, drafts included (EVT-05). */
+    myEvents: (orgId: string, token: string) =>
+      this.request<HostedEvent[]>(`/orgs/${orgId}/events/my-events`, { token }),
+
+    /** Turn a confirmed booking into an event (EVT-05). */
+    publishFromBooking: (
+      orgId: string,
+      bookingId: string,
+      data: PublishBookingEventData,
+      token: string,
+    ) =>
+      this.request<Event>(`/orgs/${orgId}/bookings/${bookingId}/event`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
     rsvp: (orgId: string, eventId: string, token: string) =>
       this.request(`/orgs/${orgId}/events/${eventId}/rsvp`, { method: 'POST', token }),
 
@@ -850,6 +886,35 @@ export interface CreateEventData {
   category?: string;
   locationId?: string;
   roomId?: string;
+  /** Go live immediately rather than saving a draft (EVT-05). */
+  publish?: boolean;
+}
+
+/**
+ * Publishing an event from a room booking (EVT-05). Everything is optional —
+ * the booking already answers when, where, and what the member called it.
+ */
+export interface PublishBookingEventData {
+  title?: string;
+  description?: string;
+  visibility?: string;
+  capacity?: number;
+  category?: string;
+  publish?: boolean;
+}
+
+/**
+ * An event the signed-in member hosts, drafts included.
+ *
+ * `location` and `room` come back as names only from this endpoint — a door
+ * list needs the whole room, a list of your own events needs to say where.
+ * Omitting the wider fields here keeps the type honest about what arrives.
+ */
+export interface HostedEvent extends Omit<Event, 'location' | 'room'> {
+  isPast: boolean;
+  canceledAt?: string | null;
+  location?: { name: string } | null;
+  room?: { name: string } | null;
 }
 
 export interface Room {

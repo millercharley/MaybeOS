@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Users,
   Calendar,
+  CalendarPlus,
   DoorOpen,
   MessageSquare,
   Settings,
@@ -40,6 +41,7 @@ const adminNav = [
 const memberNav = [
   { href: '/member', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/member/rsvps', label: 'My RSVPs', icon: Calendar },
+  { href: '/member/events', label: 'My Events', icon: CalendarPlus },
   { href: '/member/bookings', label: 'My Bookings', icon: DoorOpen },
   { href: '/member/billing', label: 'Billing', icon: CreditCard },
   { href: '/member/profile', label: 'Profile', icon: UserCircle },

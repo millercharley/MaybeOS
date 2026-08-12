@@ -1,9 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, AlertCircle, CheckCircle2, DoorOpen, CalendarClock } from 'lucide-react';
+import Link from 'next/link';
+import { Loader2, AlertCircle, CheckCircle2, DoorOpen, CalendarClock, Megaphone, X } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Booking, ApiError } from '@/lib/api';
+import { EventForm, EventFormValues } from '@/components/events/event-form';
 
 /**
  * Times are shown in the reader's own timezone, unlike the booking emails,
@@ -54,6 +56,11 @@ export default function MemberBookingsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const [movingId, setMovingId] = useState<string | null>(null);
+  // Publishing a booking as an event (EVT-05). The member already said when
+  // and where by booking the room; this asks only what the co-op needs to
+  // know about it.
+  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [published, setPublished] = useState<Record<string, string>>({});
   const [newStart, setNewStart] = useState('');
   const [newEnd, setNewEnd] = useState('');
 
@@ -69,6 +76,38 @@ export default function MemberBookingsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  async function publishAsEvent(bookingId: string, values: EventFormValues) {
+    if (!token || !orgId) return;
+    setBusyId(bookingId);
+    setError(null);
+    try {
+      const event = await api.events.publishFromBooking(
+        orgId,
+        bookingId,
+        {
+          title: values.title,
+          description: values.description,
+          visibility: values.visibility,
+          capacity: values.capacity,
+          category: values.category,
+          publish: values.publish,
+        },
+        token,
+      );
+      setPublishingId(null);
+      setPublished((prev) => ({ ...prev, [bookingId]: event.id }));
+      setNotice(
+        values.publish
+          ? 'Your event is live. It will be called off automatically if you cancel this booking.'
+          : 'Saved as a draft. Publish it from My Events when you are ready.',
+      );
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not publish that.');
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   function startMove(b: Booking) {
     setMovingId(b.id);
@@ -187,8 +226,26 @@ export default function MemberBookingsPage() {
                   </p>
                 </div>
 
-                {movingId !== b.id && (
-                  <div className="flex gap-2">
+                {movingId !== b.id && publishingId !== b.id && (
+                  <div className="flex flex-wrap gap-2">
+                    {/* Only a confirmed booking can be published — the API
+                        refuses otherwise, and offering a button that always
+                        fails would be worse than not offering one. */}
+                    {b.status === 'APPROVED' && !published[b.id] && (
+                      <button
+                        onClick={() => setPublishingId(b.id)}
+                        disabled={busy}
+                        className="btn-secondary inline-flex items-center gap-1.5"
+                      >
+                        <Megaphone size={14} aria-hidden="true" />
+                        Publish as event
+                      </button>
+                    )}
+                    {published[b.id] && (
+                      <Link href="/member/events" className="btn-ghost text-sm">
+                        View event
+                      </Link>
+                    )}
                     <button onClick={() => startMove(b)} disabled={busy} className="btn-secondary">
                       Reschedule
                     </button>
@@ -235,6 +292,35 @@ export default function MemberBookingsPage() {
                       Keep as is
                     </button>
                   </div>
+                </div>
+              )}
+
+              {publishingId === b.id && (
+                <div className="mt-4 border-t border-[var(--border)] pt-4">
+                  <div className="mb-3 flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium">Tell people about it</p>
+                      <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                        {b.room?.name ?? 'The room'} on {when(b.startTime, b.endTime)} — taken
+                        from this booking, so the two cannot disagree. Cancel the booking and
+                        the event is called off with it.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setPublishingId(null)}
+                      className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+                      aria-label="Close"
+                    >
+                      <X size={16} aria-hidden="true" />
+                    </button>
+                  </div>
+                  <EventForm
+                    initial={{ title: b.title, startTime: b.startTime, endTime: b.endTime }}
+                    submitLabel="Publish event"
+                    busy={busy}
+                    onSubmit={(values) => publishAsEvent(b.id, values)}
+                    onCancel={() => setPublishingId(null)}
+                  />
                 </div>
               )}
             </div>
