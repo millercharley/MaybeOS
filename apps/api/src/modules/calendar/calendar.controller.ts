@@ -88,7 +88,15 @@ export class CalendarController {
   @Roles('ADMIN')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Trigger a full sync of the room calendar with Google' })
-  async syncCalendar(@Param('roomId') roomId: string) {
+  async syncCalendar(
+    @Param('orgId') orgId: string,
+    @Param('roomId') roomId: string,
+  ) {
+    const room = await this.prisma.room.findFirst({ where: { id: roomId, orgId } });
+    if (!room) {
+      throw new NotFoundException('Room not found');
+    }
+
     const result = await this.calendarService.syncRoomCalendar(roomId);
     return result;
   }
@@ -104,16 +112,19 @@ export class CalendarController {
   @ApiQuery({ name: 'start', description: 'Start time (ISO 8601)', required: true })
   @ApiQuery({ name: 'end', description: 'End time (ISO 8601)', required: true })
   async checkFreeBusy(
+    @Param('orgId') orgId: string,
     @Param('roomId') roomId: string,
     @Query('start') start: string,
     @Query('end') end: string,
   ) {
-    const room = await this.prisma.room.findUnique({
-      where: { id: roomId },
+    // Scoped to the org in the path (SEC-04). The membership guard only
+    // proves the caller belongs to that org, not that the room does.
+    const room = await this.prisma.room.findFirst({
+      where: { id: roomId, orgId },
     });
 
     if (!room) {
-      throw new NotFoundException(`Room ${roomId} not found`);
+      throw new NotFoundException('Room not found');
     }
 
     const busyPeriods = await this.calendarService.checkFreeBusy(

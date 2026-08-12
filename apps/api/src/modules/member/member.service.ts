@@ -287,6 +287,8 @@ export class MemberService {
     // retries it.
     await this.provisionStripeForTier(tier);
 
+    // tenant-scoping-exempt: re-reading the tier this method just created in
+    // `orgId`, to pick up the Stripe ids provisioning wrote.
     return this.prisma.membershipTier.findUnique({ where: { id: tier.id } });
   }
 
