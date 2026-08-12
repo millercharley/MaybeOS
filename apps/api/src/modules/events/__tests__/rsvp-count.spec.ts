@@ -84,22 +84,59 @@ describe('EventsService — rsvpCount', () => {
     expect(event).not.toHaveProperty('_count');
   });
 
-  it('derives the count from the RSVP list on the detail route', async () => {
-    prisma.event.findFirst.mockResolvedValue({
-      id: 'a',
-      title: 'Event a',
-      rsvps: [
-        { status: 'CONFIRMED' },
-        { status: 'CONFIRMED' },
-        { status: 'CANCELED' },
-        { status: 'WAITLISTED' },
-      ],
-      room: null,
-      location: null,
+  describe('the detail route', () => {
+    const withRsvps = () =>
+      prisma.event.findFirst.mockResolvedValue({
+        id: 'a',
+        title: 'Event a',
+        rsvps: [
+          { userId: 'user-1', status: 'CONFIRMED', guestEmail: null, note: 'wheelchair' },
+          { userId: 'user-2', status: 'CONFIRMED', guestEmail: null, note: null },
+          { userId: null, status: 'CANCELED', guestEmail: 'guest@example.com', note: null },
+          { userId: 'user-3', status: 'WAITLISTED', guestEmail: null, note: null },
+        ],
+        room: null,
+        location: null,
+      });
+
+    const organiser = { userId: 'admin-1', privileged: true };
+    const member = { userId: 'user-1', privileged: false };
+
+    it('derives the count from the RSVP list', async () => {
+      withRsvps();
+
+      const event = await service.findById('org-1', 'a', organiser);
+
+      expect(event.rsvpCount).toBe(2);
     });
 
-    const event = await service.findById('org-1', 'a');
+    it('counts everyone even when the list itself is redacted', async () => {
+      withRsvps();
 
-    expect(event.rsvpCount).toBe(2);
+      // The headline number is not contact information; who is on the list is.
+      const event = await service.findById('org-1', 'a', member);
+
+      expect(event.rsvpCount).toBe(2);
+    });
+
+    it('shows an ordinary member only their own RSVP', async () => {
+      withRsvps();
+
+      const event = await service.findById('org-1', 'a', member);
+
+      // guestEmail is a raw address and note is what somebody wrote to the
+      // organisers; this route was open to every member of the org.
+      expect(event.rsvps).toEqual([
+        { userId: 'user-1', status: 'CONFIRMED', guestEmail: null, note: 'wheelchair' },
+      ]);
+    });
+
+    it('gives organisers the whole attendee list', async () => {
+      withRsvps();
+
+      const event = await service.findById('org-1', 'a', organiser);
+
+      expect(event.rsvps).toHaveLength(4);
+    });
   });
 });
