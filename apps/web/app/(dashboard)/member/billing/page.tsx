@@ -132,7 +132,7 @@ export default function MemberBillingPage() {
   return (
     <div className="max-w-3xl">
       <p className="data mb-2 text-xs uppercase tracking-wider text-[var(--text-tertiary)]">
-        {membership.orgName}
+        {membership.org?.name}
       </p>
       <h1 className="font-display text-2xl leading-tight">Dues &amp; billing</h1>
 
@@ -208,7 +208,7 @@ export default function MemberBillingPage() {
         <>
       {(!tiers || tiers.length === 0) && (
         <p className="mt-2 text-sm text-[var(--text-secondary)]">
-          {membership.orgName} hasn&apos;t set up membership tiers yet.
+          {membership.org?.name} hasn&apos;t set up membership tiers yet.
         </p>
       )}
 

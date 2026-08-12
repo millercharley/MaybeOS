@@ -2,6 +2,7 @@ import {
   Injectable,
   ConflictException,
   UnauthorizedException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -161,21 +162,61 @@ export class AuthService {
   /**
    * Return the full user profile including organisation memberships.
    */
+  /**
+   * The signed-in user's own profile.
+   *
+   * Fields are selected rather than spread-and-delete (OPS-08). The previous
+   * version stripped `passwordHash` and returned everything else, which
+   * included `magicLinkToken` and `magicLinkExpiry` — a live bearer
+   * credential echoed into a response that the browser keeps in memory and
+   * Sentry records a breadcrumb for. Selecting means a column added to `User`
+   * later is not published here by default.
+   */
   async getProfile(userId: string) {
-    const user = await this.prisma.user.findUnique({
+    return this.prisma.user.findUnique({
       where: { id: userId },
-      include: {
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        avatarUrl: true,
+        globalRole: true,
+        emailVerified: true,
+        lastLoginAt: true,
+        createdAt: true,
+        updatedAt: true,
+        // Selected, not included: the raw UserOrg row also carries
+        // stripeCustomerId and stripeSubscriptionId, which the browser has no
+        // use for. Same reasoning as excluding the magic-link token above.
         orgs: {
-          include: { org: true },
+          select: {
+            orgId: true,
+            role: true,
+            tierId: true,
+            subscriptionStatus: true,
+            memberSince: true,
+            org: { select: { id: true, name: true, slug: true, logoUrl: true } },
+          },
         },
       },
     });
+  }
 
+  /** Update the fields a member owns about themselves. */
+  async updateProfile(userId: string, dto: { name?: string; avatarUrl?: string | null }) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
-      return null;
+      throw new NotFoundException('User not found');
     }
 
-    const { passwordHash, ...result } = user;
-    return result;
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(dto.name !== undefined && { name: dto.name }),
+        ...(dto.avatarUrl !== undefined && { avatarUrl: dto.avatarUrl }),
+      },
+    });
+
+    return this.getProfile(userId);
   }
 }
