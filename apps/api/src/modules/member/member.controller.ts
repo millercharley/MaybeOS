@@ -17,6 +17,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
+import { viewerFor } from '../../common/access/contact-visibility';
 import { MemberService } from './member.service';
 import { CreateTierDto } from './dto/create-tier.dto';
 import { UpdateTierDto } from './dto/update-tier.dto';
@@ -38,11 +39,18 @@ export class MemberController {
   @ApiQuery({ name: 'search', required: false, type: String })
   listMembers(
     @Param('orgId') orgId: string,
+    @CurrentUser() user: RequestUser,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('perPage', new DefaultValuePipe(20), ParseIntPipe) perPage: number,
     @Query('search') search?: string,
   ) {
-    return this.memberService.listMembers(orgId, page, perPage, search);
+    return this.memberService.listMembers(
+      orgId,
+      viewerFor(user, orgId),
+      page,
+      perPage,
+      search,
+    );
   }
 
   @Get('members/:userId')
@@ -52,8 +60,9 @@ export class MemberController {
   getMember(
     @Param('orgId') orgId: string,
     @Param('userId') userId: string,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.memberService.getMember(orgId, userId);
+    return this.memberService.getMember(orgId, userId, viewerFor(user, orgId));
   }
 
   @Patch('members/:userId/role')

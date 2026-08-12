@@ -23,6 +23,7 @@ import { EventsService } from './events.service';
 import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
 import { ListEventsQueryDto } from './dto/list-events.dto';
+import { viewerFor } from '../../common/access/contact-visibility';
 
 @ApiTags('events')
 @Controller()
@@ -124,8 +125,9 @@ export class EventsController {
   async findById(
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.eventsService.findById(orgId, eventId);
+    return this.eventsService.findById(orgId, eventId, viewerFor(user, orgId));
   }
 
   /* ─── Update Event ──────────────────────────────────────────── */
