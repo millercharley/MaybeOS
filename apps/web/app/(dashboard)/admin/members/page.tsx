@@ -97,7 +97,7 @@ export default function MembersPage() {
   const filtered = members.filter(
     (m) =>
       (m.user.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
-      m.user.email.toLowerCase().includes(search.toLowerCase()),
+      (m.user.email ?? '').toLowerCase().includes(search.toLowerCase()),
   );
 
   return (
@@ -251,11 +251,11 @@ export default function MembersPage() {
                   <div className="flex items-center gap-3">
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100">
                       <span className="text-xs font-medium text-brand-700">
-                        {(member.user.name ?? member.user.email).charAt(0).toUpperCase()}
+                        {(member.user.name ?? member.user.email ?? '?').charAt(0).toUpperCase()}
                       </span>
                     </div>
                     <span className="text-sm font-medium text-gray-900">
-                      {member.user.name ?? member.user.email}
+                      {member.user.name ?? member.user.email ?? 'Member'}
                     </span>
                   </div>
                 </td>
@@ -271,8 +271,8 @@ export default function MembersPage() {
                   {member.tier?.name ?? '-'}
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">
-                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusBadge[member.subscriptionStatus] ?? 'badge-info'}`}>
-                    {member.subscriptionStatus}
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusBadge[member.subscriptionStatus ?? ''] ?? 'badge-info'}`}>
+                    {member.subscriptionStatus ?? 'NONE'}
                   </span>
                 </td>
                 <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">

@@ -40,11 +40,12 @@ export default function PortalDirectoryPage() {
     );
   }
 
+  // Name only. Members no longer receive each other's email addresses, and
+  // searching one they cannot see would only tell them whether an address
+  // belongs to somebody here.
   const filtered = search
-    ? members.filter(
-        (m) =>
-          m.user.name?.toLowerCase().includes(search.toLowerCase()) ||
-          m.user.email.toLowerCase().includes(search.toLowerCase()),
+    ? members.filter((m) =>
+        m.user.name?.toLowerCase().includes(search.toLowerCase()),
       )
     : members;
 
@@ -93,13 +94,13 @@ export default function PortalDirectoryPage() {
                   />
                 ) : (
                   <span className="text-sm font-medium text-brand-700">
-                    {member.user.name?.charAt(0) || member.user.email.charAt(0).toUpperCase()}
+                    {member.user.name?.charAt(0).toUpperCase() || '?'}
                   </span>
                 )}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-gray-900">
-                  {member.user.name || member.user.email}
+                  {member.user.name || 'Member'}
                 </p>
                 <div className="mt-0.5 flex items-center gap-2">
                   <span

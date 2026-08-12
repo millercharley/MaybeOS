@@ -5,6 +5,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
+import { ContactViewer } from '../../common/access/contact-visibility';
 import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
 import ical, { ICalCalendarMethod } from 'ical-generator';
@@ -187,7 +188,7 @@ export class EventsService {
 
   /* ─── Find by ID ────────────────────────────────────────────── */
 
-  async findById(orgId: string, eventId: string) {
+  async findById(orgId: string, eventId: string, viewer: ContactViewer) {
     const event = await this.prisma.event.findFirst({
       where: { id: eventId, orgId },
       include: {
@@ -198,13 +199,27 @@ export class EventsService {
     });
 
     if (!event) throw new NotFoundException('Event not found');
+
     // The detail route already ships the full RSVP list, so the count comes
     // from that rather than a second query — but it must still be *present*,
     // and mean the same thing it means in the lists.
-    return {
-      ...event,
-      rsvpCount: event.rsvps.filter((r) => r.status === 'CONFIRMED').length,
-    };
+    const rsvpCount = event.rsvps.filter((r) => r.status === 'CONFIRMED').length;
+
+    // An attendee list is contact information: `guestEmail` is a raw address,
+    // and `note` is whatever someone wrote to the organisers — "I use a
+    // wheelchair", "I'm bringing my ex's kids". Organisers need both to run
+    // the event. Another member needs neither, and this route was open to
+    // every member of the org.
+    if (!viewer.privileged) {
+      return {
+        ...event,
+        // Their own RSVP stays: that is how the page knows they are going.
+        rsvps: event.rsvps.filter((r) => r.userId === viewer.userId),
+        rsvpCount,
+      };
+    }
+
+    return { ...event, rsvpCount };
   }
 
   /* ─── List by Org (paginated) ───────────────────────────────── */

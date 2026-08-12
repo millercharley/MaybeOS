@@ -11,6 +11,42 @@ import { PrismaService } from '../../config/prisma.service';
 import { EmailService } from '../email/email.service';
 import { StripeService } from '../stripe/stripe.service';
 import { CreateTierDto } from './dto/create-tier.dto';
+import { ContactViewer } from '../../common/access/contact-visibility';
+
+/**
+ * A member as another member may see them.
+ *
+ * Same co-op earns you a name, a face, a role and whatever the person chose
+ * to write about themselves — not their email address, and not the state of
+ * their subscription. Organisers see the whole row, because contacting and
+ * billing members is their job; see `contact-visibility.ts`.
+ *
+ * Everyone sees their own record untouched.
+ */
+function toMemberView<
+  T extends {
+    userId: string;
+    stripeCustomerId?: string | null;
+    stripeSubscriptionId?: string | null;
+    subscriptionStatus?: unknown;
+    user: { email?: string };
+  },
+>(member: T, viewer: ContactViewer) {
+  if (viewer.privileged || member.userId === viewer.userId) {
+    return member;
+  }
+
+  const {
+    stripeCustomerId: _customer,
+    stripeSubscriptionId: _subscription,
+    subscriptionStatus: _status,
+    user,
+    ...rest
+  } = member;
+  const { email: _email, ...publicUser } = user;
+
+  return { ...rest, user: publicUser };
+}
 
 @Injectable()
 export class MemberService {
@@ -26,10 +62,12 @@ export class MemberService {
   // ─── Members ────────────────────────────────────────────────
 
   /**
-   * Paginated list of members for an org, with optional search by name/email.
+   * Paginated list of members for an org. Organisers may search by name or
+   * email; everyone else, by name only.
    */
   async listMembers(
     orgId: string,
+    viewer: ContactViewer,
     page: number = 1,
     perPage: number = 20,
     search?: string,
@@ -39,12 +77,19 @@ export class MemberService {
     const where: any = { orgId };
 
     if (search) {
-      where.user = {
-        OR: [
-          { name: { contains: search, mode: 'insensitive' } },
-          { email: { contains: search, mode: 'insensitive' } },
-        ],
-      };
+      // Matching on email would answer "is this address a member here?" even
+      // with the address itself redacted from the response — a membership
+      // oracle for anyone with a list of emails to test. Organisers keep it
+      // because looking a member up by the address they wrote in is the
+      // normal way to find them.
+      where.user = viewer.privileged
+        ? {
+            OR: [
+              { name: { contains: search, mode: 'insensitive' } },
+              { email: { contains: search, mode: 'insensitive' } },
+            ],
+          }
+        : { name: { contains: search, mode: 'insensitive' } };
     }
 
     const [data, total] = await this.prisma.$transaction([
@@ -74,7 +119,7 @@ export class MemberService {
     ]);
 
     return {
-      data,
+      data: data.map((member) => toMemberView(member, viewer)),
       meta: {
         total,
         page,
@@ -87,7 +132,7 @@ export class MemberService {
   /**
    * Get a single member's detail within an org.
    */
-  async getMember(orgId: string, userId: string) {
+  async getMember(orgId: string, userId: string, viewer: ContactViewer) {
     const member = await this.prisma.userOrg.findUnique({
       where: { userId_orgId: { userId, orgId } },
       include: {
@@ -110,7 +155,7 @@ export class MemberService {
       );
     }
 
-    return member;
+    return toMemberView(member, viewer);
   }
 
   /**
