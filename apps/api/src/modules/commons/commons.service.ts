@@ -103,14 +103,6 @@ export class CommonsService {
     if (!membership) throw new NotFoundException('Member not found in this organization');
   }
 
-  private async orgMemberIds(orgId: string): Promise<Set<string>> {
-    const members = await this.prisma.userOrg.findMany({
-      where: { orgId },
-      select: { userId: true },
-    });
-    return new Set(members.map((m) => m.userId));
-  }
-
   // ─── Channels ───────────────────────────────────────────────
 
   async createChannel(orgId: string, dto: CreateChannelDto) {
@@ -432,14 +424,23 @@ export class CommonsService {
   }
 
   // ─── Direct Messages ──────────────────────────────────────────
+  //
+  // Every query below filters on `orgId` (CMN-08). The org is on the message
+  // itself now, so a conversation belongs to one co-op rather than to a pair
+  // of people: two members who share two co-ops hold two separate threads,
+  // and nothing from one is reachable from the other's URL.
+  //
+  // The membership checks are kept alongside the filters on purpose. The
+  // filter stops another org's messages being *read*; the check stops a new
+  // one being *addressed* to somebody outside this org, which no filter on
+  // existing rows can catch.
+  //
   // Visibility rule: a conversation shows up if it has any message in the
   // last 30 days, or has an unread message for the current user.
 
   async listConversations(orgId: string, userId: string) {
-    const orgMembers = await this.orgMemberIds(orgId);
-
     const messages = await this.prisma.directMessage.findMany({
-      where: { OR: [{ senderId: userId }, { receiverId: userId }] },
+      where: { orgId, OR: [{ senderId: userId }, { receiverId: userId }] },
       orderBy: { createdAt: 'desc' },
       include: {
         sender: { select: AUTHOR_SELECT },
@@ -453,13 +454,6 @@ export class CommonsService {
     for (const message of messages) {
       const isSender = message.senderId === userId;
       const counterpart = isSender ? message.receiver : message.sender;
-
-      // A conversation carries no org of its own, so this list is filtered to
-      // counterparts who are members of the org being viewed. Without it, the
-      // inbox under one co-op's URL would show threads with people from
-      // another.
-      if (!orgMembers.has(counterpart.id)) continue;
-
       const existing = byCounterpart.get(counterpart.id);
       const isUnread = !isSender && !message.readAt;
 
@@ -484,6 +478,7 @@ export class CommonsService {
 
     return this.prisma.directMessage.findMany({
       where: {
+        orgId,
         OR: [
           { senderId: userId, receiverId: otherUserId },
           { senderId: otherUserId, receiverId: userId },
@@ -502,12 +497,13 @@ export class CommonsService {
       throw new BadRequestException('Cannot message yourself');
     }
 
-    // Without this, any authenticated user could message any user in the
-    // system by id — the org in the path was never consulted.
+    // Both parties must belong to this org. The sender is already proven by
+    // OrgMembershipGuard; the recipient is checked here, because a filter on
+    // existing rows cannot stop a message being addressed outside the org.
     await this.assertOrgMember(orgId, receiverId);
 
     return this.prisma.directMessage.create({
-      data: { senderId, receiverId, body },
+      data: { orgId, senderId, receiverId, body },
       include: {
         sender: { select: AUTHOR_SELECT },
         receiver: { select: AUTHOR_SELECT },
@@ -519,7 +515,7 @@ export class CommonsService {
     await this.assertOrgMember(orgId, otherUserId);
 
     await this.prisma.directMessage.updateMany({
-      where: { senderId: otherUserId, receiverId: userId, readAt: null },
+      where: { orgId, senderId: otherUserId, receiverId: userId, readAt: null },
       data: { readAt: new Date() },
     });
   }
