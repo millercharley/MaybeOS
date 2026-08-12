@@ -319,6 +319,9 @@ export class CalendarService {
     const room = await this.prisma.room.findUnique({
       where: { id: roomId },
       include: { bookings: true },
+      // Opting back in to the tokens the client omits by default — syncing
+      // with Google is the one thing that genuinely needs them.
+      omit: { googleTokens: false },
     });
 
     if (!room) {

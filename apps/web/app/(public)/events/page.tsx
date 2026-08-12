@@ -21,7 +21,10 @@ export default function EventsPage() {
   const [dateRange, setDateRange] = useState('all');
 
   const { data: events, loading, error } = usePublicApi(
-    () => api.events.listPublic('sunrise'),
+    // TODO: the co-op is hardcoded. This page belongs to the marketing site,
+    // which has no org in its URL; showing one co-op's events there is a
+    // placeholder, not a design.
+    () => api.events.listPublicBySlug('sunrise'),
     []
   );
 
