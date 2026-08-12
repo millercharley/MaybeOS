@@ -291,6 +291,23 @@ class ApiClient {
       return res.data;
     },
 
+    /**
+     * The same list, addressed by slug.
+     *
+     * The public pages know a co-op by its slug — that is what sits in the URL
+     * — but `/orgs/:orgId/events/public` parses its parameter as a UUID and
+     * rejects anything else. Both public event pages passed the slug straight
+     * in and got "Validation failed (uuid is expected)", so neither had ever
+     * rendered an event. Resolving the slug first is the missing step.
+     */
+    listPublicBySlug: async (orgSlug: string): Promise<Event[]> => {
+      const org = await this.request<Org>(`/orgs/by-slug/${orgSlug}`);
+      const res = await this.request<PaginatedResponse<Event>>(
+        `/orgs/${org.id}/events/public`,
+      );
+      return res.data;
+    },
+
     get: (orgId: string, eventId: string, token: string) =>
       this.request<Event>(`/orgs/${orgId}/events/${eventId}`, { token }),
 
@@ -307,8 +324,12 @@ class ApiClient {
     publicFeedJson: (orgId: string) =>
       this.request<Event[]>(`/orgs/${orgId}/events/feed.json`),
 
+    /**
+     * The public event page. Path corrected: `/orgs/:slug/events/by-slug/:slug`
+     * is not a route the API has ever served — the real one is below.
+     */
     getPublicBySlug: (orgSlug: string, eventSlug: string) =>
-      this.request<Event>(`/orgs/${orgSlug}/events/by-slug/${eventSlug}`),
+      this.request<Event>(`/public/events/${orgSlug}/${eventSlug}`),
 
     guestRsvp: (orgId: string, eventId: string, data: { name: string; email: string }) =>
       this.request(`/orgs/${orgId}/events/${eventId}/guest-rsvp`, {
@@ -622,6 +643,11 @@ export interface Org {
    * so the public page must not offer it either.
    */
   allowPublicJoin: boolean;
+  /**
+   * Only `GET /orgs/by-slug/:slug` includes these — the public org page's
+   * single call. `GET /orgs/:orgId` returns the bare row, so anything reading
+   * them off an org fetched by id gets undefined.
+   */
   locations?: Location[];
   tiers?: MembershipTier[];
 }
@@ -702,8 +728,10 @@ export interface Event {
   tags: string[];
   capacity?: number;
   isPublished: boolean;
+  /** CONFIRMED RSVPs only — cancelled and waitlisted are not attendees. */
   rsvpCount?: number;
   location?: Location;
+  room?: Room;
 }
 
 export interface CreateEventData {
@@ -896,13 +924,45 @@ export interface SubmitSurveyData {
   demographics?: Record<string, string>;
 }
 
+/**
+ * The impact dashboard, as `/orgs/:orgId/impact/dashboard` actually returns it.
+ *
+ * The previous shape (avgAttendance, surveyMetrics, trends, retentionByMonth)
+ * described an endpoint that has never existed. No page reads it yet, so it
+ * broke nothing — it was simply waiting to mislead whoever built the dashboard
+ * screen. Verified against a live response.
+ */
 export interface ImpactDashboardData {
   totalMembers: number;
   totalEvents: number;
-  avgAttendance: number;
-  surveyMetrics: Record<string, number>;
-  trends: Array<{ month: string; belonging: number; participation: number }>;
-  retentionByMonth: Array<{ month: string; count: number }>;
+  totalResponses: number;
+  /** Zero until event check-in has a caller (IMP-10) — reported, not hidden. */
+  totalAttendance: number;
+  /** Responses as a percentage of members. Can exceed 100 over many windows. */
+  participationRate: number;
+  /** Headline categories first (belonging, loneliness, network_size). */
+  scores: Array<{
+    category: string;
+    average: number | null;
+    answerCount: number;
+  }>;
+  surveys: Array<{
+    surveyId: string;
+    title: string;
+    type: string;
+    isActive: boolean;
+    responses: number;
+  }>;
+  /** One entry per collection window, so a trend compares like with like. */
+  windows: Array<{
+    windowId: string;
+    surveyId: string;
+    surveyTitle: string;
+    label: string;
+    opensAt: string;
+    closesAt: string | null;
+    responses: number;
+  }>;
 }
 
 export interface PaginatedResponse<T> {
