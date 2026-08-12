@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { CreatePostDto } from './dto/create-post.dto';
@@ -12,6 +12,104 @@ const AUTHOR_SELECT = { id: true, name: true, avatarUrl: true } as const;
 @Injectable()
 export class CommonsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  // ─── Org scoping (CMN-07) ───────────────────────────────────
+  //
+  // Every method below that takes an entity id also takes the `orgId` from
+  // the route, and resolves the entity *through* its org rather than by id
+  // alone. `OrgMembershipGuard` only proves the caller belongs to the org
+  // named in the URL — and the caller writes the URL. Before this, pairing
+  // your own org id with somebody else's post, comment, proposal, collection
+  // or page id was enough to read it, edit it, delete it or vote on it.
+  //
+  // Nothing here has an org column of its own except Channel and Collection,
+  // so the rest are reached along their ownership chain:
+  //
+  //   Post           -> channel.orgId
+  //   Comment        -> post.channel.orgId
+  //   Proposal       -> channel.orgId
+  //   CollectionPage -> collection.orgId
+  //
+  // A miss and a wrong-org hit both raise NotFound, deliberately
+  // indistinguishable, so a 403 can't be used to confirm that an id exists
+  // somewhere in the system. Same choice as SpaceOS bookings (SPC-02),
+  // ImpactOS surveys (IMP-01) and D-009.
+
+  private async findChannelInOrg(orgId: string, channelId: string) {
+    const channel = await this.prisma.channel.findFirst({
+      where: { id: channelId, orgId },
+    });
+    if (!channel) throw new NotFoundException('Channel not found');
+    return channel;
+  }
+
+  private async findPostInOrg(orgId: string, postId: string) {
+    const post = await this.prisma.post.findFirst({
+      where: { id: postId, channel: { orgId } },
+    });
+    if (!post) throw new NotFoundException('Post not found');
+    return post;
+  }
+
+  private async findCommentInOrg(orgId: string, commentId: string) {
+    const comment = await this.prisma.comment.findFirst({
+      where: { id: commentId, post: { channel: { orgId } } },
+    });
+    if (!comment) throw new NotFoundException('Comment not found');
+    return comment;
+  }
+
+  private async findProposalInOrg(orgId: string, proposalId: string) {
+    const proposal = await this.prisma.proposal.findFirst({
+      where: { id: proposalId, channel: { orgId } },
+    });
+    if (!proposal) throw new NotFoundException('Proposal not found');
+    return proposal;
+  }
+
+  private async findCollectionInOrg(orgId: string, collectionId: string) {
+    const collection = await this.prisma.collection.findFirst({
+      where: { id: collectionId, orgId },
+    });
+    if (!collection) throw new NotFoundException('Collection not found');
+    return collection;
+  }
+
+  private async findPageInOrg(orgId: string, pageId: string) {
+    const page = await this.prisma.collectionPage.findFirst({
+      where: { id: pageId, collection: { orgId } },
+    });
+    if (!page) throw new NotFoundException('Page not found');
+    return page;
+  }
+
+  /**
+   * Direct messages are the awkward case: `DirectMessage` has a sender and a
+   * receiver and no org at all, so the `orgs/:orgId` segment on those routes
+   * was purely decorative — any authenticated user could message any user in
+   * the system by id, across co-ops.
+   *
+   * Enforced at the boundary instead: the other party must be a member of the
+   * org in the path. That is a real restriction rather than a data fix — a
+   * conversation still has no org of its own, so two people who share two
+   * co-ops have one shared thread, not two. Putting an org on the message is a
+   * schema decision and is not made here.
+   */
+  private async assertOrgMember(orgId: string, userId: string) {
+    const membership = await this.prisma.userOrg.findFirst({
+      where: { orgId, userId },
+      select: { id: true },
+    });
+    if (!membership) throw new NotFoundException('Member not found in this organization');
+  }
+
+  private async orgMemberIds(orgId: string): Promise<Set<string>> {
+    const members = await this.prisma.userOrg.findMany({
+      where: { orgId },
+      select: { userId: true },
+    });
+    return new Set(members.map((m) => m.userId));
+  }
 
   // ─── Channels ───────────────────────────────────────────────
 
@@ -39,11 +137,8 @@ export class CommonsService {
     });
   }
 
-  async pinChannel(channelId: string, isPinned: boolean) {
-    const channel = await this.prisma.channel.findUnique({ where: { id: channelId } });
-    if (!channel) {
-      throw new NotFoundException('Channel not found');
-    }
+  async pinChannel(orgId: string, channelId: string, isPinned: boolean) {
+    await this.findChannelInOrg(orgId, channelId);
 
     return this.prisma.channel.update({
       where: { id: channelId },
@@ -53,7 +148,11 @@ export class CommonsService {
 
   // ─── Posts ──────────────────────────────────────────────────
 
-  async createPost(channelId: string, authorId: string, dto: CreatePostDto) {
+  async createPost(orgId: string, channelId: string, authorId: string, dto: CreatePostDto) {
+    // Previously unchecked entirely: this would happily write a post into
+    // another co-op's channel.
+    await this.findChannelInOrg(orgId, channelId);
+
     return this.prisma.post.create({
       data: {
         channelId,
@@ -65,7 +164,9 @@ export class CommonsService {
     });
   }
 
-  async listPosts(channelId: string, page: number, perPage: number) {
+  async listPosts(orgId: string, channelId: string, page: number, perPage: number) {
+    await this.findChannelInOrg(orgId, channelId);
+
     const skip = (page - 1) * perPage;
 
     const [posts, total] = await this.prisma.$transaction([
@@ -85,9 +186,9 @@ export class CommonsService {
     return { data: posts, total, page, perPage };
   }
 
-  async getPost(postId: string) {
-    const post = await this.prisma.post.findUnique({
-      where: { id: postId },
+  async getPost(orgId: string, postId: string) {
+    const post = await this.prisma.post.findFirst({
+      where: { id: postId, channel: { orgId } },
       include: {
         author: { select: AUTHOR_SELECT },
         comments: {
@@ -120,11 +221,14 @@ export class CommonsService {
 
   // ─── Comments ───────────────────────────────────────────────
 
-  async addComment(postId: string, authorId: string, body: string, parentId?: string) {
-    const post = await this.prisma.post.findUnique({ where: { id: postId } });
-    if (!post) {
-      throw new NotFoundException('Post not found');
-    }
+  async addComment(
+    orgId: string,
+    postId: string,
+    authorId: string,
+    body: string,
+    parentId?: string,
+  ) {
+    await this.findPostInOrg(orgId, postId);
 
     if (parentId) {
       const parent = await this.prisma.comment.findUnique({ where: { id: parentId } });
@@ -141,7 +245,11 @@ export class CommonsService {
 
   // ─── Reactions ──────────────────────────────────────────────
 
-  async addReaction(postId: string, userId: string, emoji: string) {
+  async addReaction(orgId: string, postId: string, userId: string, emoji: string) {
+    // An unchecked upsert here would attach a reaction to a post in another
+    // co-op, where it would then be visible to that co-op's members.
+    await this.findPostInOrg(orgId, postId);
+
     return this.prisma.reaction.upsert({
       where: {
         postId_userId_emoji: { postId, userId, emoji },
@@ -151,7 +259,9 @@ export class CommonsService {
     });
   }
 
-  async removeReaction(postId: string, userId: string, emoji: string) {
+  async removeReaction(orgId: string, postId: string, userId: string, emoji: string) {
+    await this.findPostInOrg(orgId, postId);
+
     await this.prisma.reaction.deleteMany({
       where: { postId, userId, emoji },
     });
@@ -159,11 +269,8 @@ export class CommonsService {
 
   // ─── Flagging ───────────────────────────────────────────────
 
-  async flagPost(postId: string) {
-    const post = await this.prisma.post.findUnique({ where: { id: postId } });
-    if (!post) {
-      throw new NotFoundException('Post not found');
-    }
+  async flagPost(orgId: string, postId: string) {
+    await this.findPostInOrg(orgId, postId);
 
     return this.prisma.post.update({
       where: { id: postId },
@@ -171,11 +278,8 @@ export class CommonsService {
     });
   }
 
-  async flagComment(commentId: string) {
-    const comment = await this.prisma.comment.findUnique({ where: { id: commentId } });
-    if (!comment) {
-      throw new NotFoundException('Comment not found');
-    }
+  async flagComment(orgId: string, commentId: string) {
+    await this.findCommentInOrg(orgId, commentId);
 
     return this.prisma.comment.update({
       where: { id: commentId },
@@ -185,7 +289,14 @@ export class CommonsService {
 
   // ─── Proposals ──────────────────────────────────────────────
 
-  async createProposal(channelId: string, authorId: string, dto: CreateProposalDto) {
+  async createProposal(
+    orgId: string,
+    channelId: string,
+    authorId: string,
+    dto: CreateProposalDto,
+  ) {
+    await this.findChannelInOrg(orgId, channelId);
+
     return this.prisma.proposal.create({
       data: {
         channelId,
@@ -199,11 +310,8 @@ export class CommonsService {
     });
   }
 
-  async openProposal(proposalId: string) {
-    const proposal = await this.prisma.proposal.findUnique({ where: { id: proposalId } });
-    if (!proposal) {
-      throw new NotFoundException('Proposal not found');
-    }
+  async openProposal(orgId: string, proposalId: string) {
+    await this.findProposalInOrg(orgId, proposalId);
 
     return this.prisma.proposal.update({
       where: { id: proposalId },
@@ -211,15 +319,22 @@ export class CommonsService {
     });
   }
 
-  async closeProposal(proposalId: string) {
-    const proposal = await this.prisma.proposal.findUnique({
+  /**
+   * Tally a proposal and record the outcome.
+   *
+   * `orgId` is required rather than optional even though the scheduler
+   * (D-022) calls this for proposals across every org: the scheduler reads
+   * each proposal's own `channel.orgId` and passes it back in. Making it
+   * optional "for the scheduler" would leave exactly one unscoped path into
+   * this method, which is how the original hole existed.
+   */
+  async closeProposal(orgId: string, proposalId: string) {
+    await this.findProposalInOrg(orgId, proposalId);
+
+    const proposal = await this.prisma.proposal.findUniqueOrThrow({
       where: { id: proposalId },
       include: { votes: true },
     });
-
-    if (!proposal) {
-      throw new NotFoundException('Proposal not found');
-    }
 
     const yes = proposal.votes.filter((v) => v.choice === 'YES').length;
     const no = proposal.votes.filter((v) => v.choice === 'NO').length;
@@ -235,7 +350,35 @@ export class CommonsService {
     });
   }
 
-  async castVote(proposalId: string, userId: string, choice: VoteChoice) {
+  /**
+   * Record a vote.
+   *
+   * Two things were missing, and both matter more here than elsewhere in
+   * CommonsOS because this is the module's governance surface:
+   *
+   * - The proposal was resolved by id alone, so a member of one co-op could
+   *   vote in another co-op's decision.
+   * - There was no state check at all. A vote was accepted on a DRAFT
+   *   proposal nobody had opened yet, on one already closed and tallied, and
+   *   on one whose `closesAt` had long passed — silently changing the record
+   *   behind a decision that had already been announced.
+   */
+  async castVote(orgId: string, proposalId: string, userId: string, choice: VoteChoice) {
+    const proposal = await this.findProposalInOrg(orgId, proposalId);
+
+    if (proposal.status !== 'OPEN') {
+      throw new BadRequestException(
+        `This proposal is not open for voting (status: ${proposal.status})`,
+      );
+    }
+
+    if (proposal.closesAt && proposal.closesAt <= new Date()) {
+      // The scheduler closes these within fifteen minutes (D-022), but a vote
+      // landing inside that window must still be refused — the deadline is the
+      // deadline, not "whenever the job next ran".
+      throw new BadRequestException('Voting on this proposal has closed');
+    }
+
     return this.prisma.vote.upsert({
       where: {
         proposalId_userId: { proposalId, userId },
@@ -245,9 +388,9 @@ export class CommonsService {
     });
   }
 
-  async getProposal(proposalId: string) {
-    const proposal = await this.prisma.proposal.findUnique({
-      where: { id: proposalId },
+  async getProposal(orgId: string, proposalId: string) {
+    const proposal = await this.prisma.proposal.findFirst({
+      where: { id: proposalId, channel: { orgId } },
       include: { votes: true },
     });
 
@@ -290,7 +433,9 @@ export class CommonsService {
   // Visibility rule: a conversation shows up if it has any message in the
   // last 30 days, or has an unread message for the current user.
 
-  async listConversations(userId: string) {
+  async listConversations(orgId: string, userId: string) {
+    const orgMembers = await this.orgMemberIds(orgId);
+
     const messages = await this.prisma.directMessage.findMany({
       where: { OR: [{ senderId: userId }, { receiverId: userId }] },
       orderBy: { createdAt: 'desc' },
@@ -306,6 +451,13 @@ export class CommonsService {
     for (const message of messages) {
       const isSender = message.senderId === userId;
       const counterpart = isSender ? message.receiver : message.sender;
+
+      // A conversation carries no org of its own, so this list is filtered to
+      // counterparts who are members of the org being viewed. Without it, the
+      // inbox under one co-op's URL would show threads with people from
+      // another.
+      if (!orgMembers.has(counterpart.id)) continue;
+
       const existing = byCounterpart.get(counterpart.id);
       const isUnread = !isSender && !message.readAt;
 
@@ -325,7 +477,9 @@ export class CommonsService {
       .sort((a, b) => b.lastMessage.createdAt.getTime() - a.lastMessage.createdAt.getTime());
   }
 
-  async getConversation(userId: string, otherUserId: string) {
+  async getConversation(orgId: string, userId: string, otherUserId: string) {
+    await this.assertOrgMember(orgId, otherUserId);
+
     return this.prisma.directMessage.findMany({
       where: {
         OR: [
@@ -341,10 +495,14 @@ export class CommonsService {
     });
   }
 
-  async sendMessage(senderId: string, receiverId: string, body: string) {
+  async sendMessage(orgId: string, senderId: string, receiverId: string, body: string) {
     if (senderId === receiverId) {
-      throw new NotFoundException('Cannot message yourself');
+      throw new BadRequestException('Cannot message yourself');
     }
+
+    // Without this, any authenticated user could message any user in the
+    // system by id — the org in the path was never consulted.
+    await this.assertOrgMember(orgId, receiverId);
 
     return this.prisma.directMessage.create({
       data: { senderId, receiverId, body },
@@ -355,7 +513,9 @@ export class CommonsService {
     });
   }
 
-  async markConversationRead(userId: string, otherUserId: string) {
+  async markConversationRead(orgId: string, userId: string, otherUserId: string) {
+    await this.assertOrgMember(orgId, otherUserId);
+
     await this.prisma.directMessage.updateMany({
       where: { senderId: otherUserId, receiverId: userId, readAt: null },
       data: { readAt: new Date() },
@@ -388,38 +548,31 @@ export class CommonsService {
     });
   }
 
-  async updateCollection(collectionId: string, dto: UpdateCollectionDto) {
-    const collection = await this.prisma.collection.findUnique({ where: { id: collectionId } });
-    if (!collection) {
-      throw new NotFoundException('Collection not found');
-    }
+  async updateCollection(orgId: string, collectionId: string, dto: UpdateCollectionDto) {
+    await this.findCollectionInOrg(orgId, collectionId);
 
     return this.prisma.collection.update({ where: { id: collectionId }, data: dto });
   }
 
-  async deleteCollection(collectionId: string) {
-    const collection = await this.prisma.collection.findUnique({ where: { id: collectionId } });
-    if (!collection) {
-      throw new NotFoundException('Collection not found');
-    }
+  async deleteCollection(orgId: string, collectionId: string) {
+    // Cascades to every page in the collection, so an unscoped id here let an
+    // admin of one co-op delete another co-op's entire wiki section.
+    await this.findCollectionInOrg(orgId, collectionId);
 
     await this.prisma.collection.delete({ where: { id: collectionId } });
   }
 
-  async createPage(collectionId: string, authorId: string, dto: CreatePageDto) {
-    const collection = await this.prisma.collection.findUnique({ where: { id: collectionId } });
-    if (!collection) {
-      throw new NotFoundException('Collection not found');
-    }
+  async createPage(orgId: string, collectionId: string, authorId: string, dto: CreatePageDto) {
+    await this.findCollectionInOrg(orgId, collectionId);
 
     return this.prisma.collectionPage.create({
       data: { collectionId, authorId, title: dto.title, body: dto.body },
     });
   }
 
-  async getPage(pageId: string) {
-    const page = await this.prisma.collectionPage.findUnique({
-      where: { id: pageId },
+  async getPage(orgId: string, pageId: string) {
+    const page = await this.prisma.collectionPage.findFirst({
+      where: { id: pageId, collection: { orgId } },
       include: { author: { select: AUTHOR_SELECT } },
     });
 
@@ -430,20 +583,14 @@ export class CommonsService {
     return page;
   }
 
-  async updatePage(pageId: string, dto: UpdatePageDto) {
-    const page = await this.prisma.collectionPage.findUnique({ where: { id: pageId } });
-    if (!page) {
-      throw new NotFoundException('Page not found');
-    }
+  async updatePage(orgId: string, pageId: string, dto: UpdatePageDto) {
+    await this.findPageInOrg(orgId, pageId);
 
     return this.prisma.collectionPage.update({ where: { id: pageId }, data: dto });
   }
 
-  async deletePage(pageId: string) {
-    const page = await this.prisma.collectionPage.findUnique({ where: { id: pageId } });
-    if (!page) {
-      throw new NotFoundException('Page not found');
-    }
+  async deletePage(orgId: string, pageId: string) {
+    await this.findPageInOrg(orgId, pageId);
 
     await this.prisma.collectionPage.delete({ where: { id: pageId } });
   }

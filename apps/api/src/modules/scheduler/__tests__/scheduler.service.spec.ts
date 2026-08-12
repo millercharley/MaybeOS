@@ -52,23 +52,29 @@ describe('SchedulerService', () => {
     });
 
     it('delegates to CommonsService so the quorum rule is not duplicated', async () => {
-      prisma.proposal.findMany.mockResolvedValue([{ id: 'p1' }, { id: 'p2' }] as never);
+      prisma.proposal.findMany.mockResolvedValue([
+        { id: 'p1', channel: { orgId: 'org-a' } },
+        { id: 'p2', channel: { orgId: 'org-b' } },
+      ] as never);
 
       const result = await service.runDueTasks(NOW);
 
       expect(commons.closeProposal).toHaveBeenCalledTimes(2);
-      expect(commons.closeProposal).toHaveBeenCalledWith('p1');
-      expect(commons.closeProposal).toHaveBeenCalledWith('p2');
+      // Each proposal is closed in *its own* org, not in some ambient one:
+      // the scheduler crosses org boundaries by reading each row's org and
+      // naming it, rather than through an unscoped call (CMN-07).
+      expect(commons.closeProposal).toHaveBeenCalledWith('org-a', 'p1');
+      expect(commons.closeProposal).toHaveBeenCalledWith('org-b', 'p2');
       expect(result.tasks[0]).toMatchObject({ processed: 2, failed: 0 });
     });
 
     it('keeps going when one proposal fails, and reports it', async () => {
       prisma.proposal.findMany.mockResolvedValue([
-        { id: 'p1' },
-        { id: 'boom' },
-        { id: 'p3' },
+        { id: 'p1', channel: { orgId: 'org-a' } },
+        { id: 'boom', channel: { orgId: 'org-a' } },
+        { id: 'p3', channel: { orgId: 'org-a' } },
       ] as never);
-      commons.closeProposal.mockImplementation(async (id: string) => {
+      commons.closeProposal.mockImplementation(async (_orgId: string, id: string) => {
         if (id === 'boom') throw new Error('deadlock');
         return {} as never;
       });
@@ -76,7 +82,7 @@ describe('SchedulerService', () => {
       const result = await service.runDueTasks(NOW);
 
       // The two healthy rows must still have been closed.
-      expect(commons.closeProposal).toHaveBeenCalledWith('p3');
+      expect(commons.closeProposal).toHaveBeenCalledWith('org-a', 'p3');
       expect(result.tasks[0]).toMatchObject({ processed: 2, failed: 1 });
       expect(result.tasks[0].errors[0]).toContain('boom');
     });
