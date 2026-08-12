@@ -31,15 +31,28 @@ const UUID_SEGMENT = /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 // hyphen or a short segment disqualifies it, so real slugs are never matched.
 const OPAQUE_SEGMENT = /\/[A-Za-z0-9]{32,}(?=\/|$)/g;
 
-function safePath(path: string): string {
-  return path
-    .split('?')[0]
-    .replace(UUID_SEGMENT, '/:id')
-    // `by-slug/<slug>` appears for both orgs and events.
-    .replace(/\/by-slug\/[^/]+/g, '/by-slug/:slug')
-    // `/orgs/<slug>/…` — some routes address the org by slug, not id.
-    .replace(/^\/orgs\/(?!by-slug(?:\/|$))(?!:id(?:\/|$))(?!:org(?:\/|$))[^/]+/, '/orgs/:org')
-    .replace(OPAQUE_SEGMENT, '/:token');
+// Exported for its tests (OPS-10). It was unexported and untestable, which is
+// how it reached production with a bug only a live Sentry trace revealed.
+export function safePath(path: string): string {
+  return (
+    path
+      .split('?')[0]
+      .replace(UUID_SEGMENT, '/:id')
+      // `by-slug/<slug>` appears for both orgs and events.
+      .replace(/\/by-slug\/[^/]+/g, '/by-slug/:slug')
+      /**
+       * The org position is always `:org`, whether it arrived as an id or a
+       * slug.
+       *
+       * This used to exclude `:id`, so a UUID had already become `/orgs/:id`
+       * by the time this ran and kept that label, while a slug became
+       * `/orgs/:org`. One endpoint, two labels, two Sentry issues — the exact
+       * split this function exists to prevent, just by a different route than
+       * the length bug that preceded it. Found by writing its first test.
+       */
+      .replace(/^\/orgs\/(?!by-slug(?:\/|$))(?!:org(?:\/|$))[^/]+/, '/orgs/:org')
+      .replace(OPAQUE_SEGMENT, '/:token')
+  );
 }
 
 class ApiClient {
