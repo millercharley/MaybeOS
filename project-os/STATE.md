@@ -73,6 +73,10 @@ Get MaybeOS Suite production-ready and launch MaybeItsFate LCA as the first live
 
 - [x] **SPC-08 — booking emails use the co-op's timezone** (merge `c9e3be6`). They sent `toUTCString()`, so a member who booked 10am in the app received "14:00:00 GMT" — the app was right and the email, which is what goes in a calendar, was wrong. **The stated blocker was false:** `Organization.timezone` has existed all along with a selector in Settings, so this was never a schema problem. Emails now name the zone as well. Five tests, including a London co-op to prove it follows the org rather than the server. Verified from the API log: "Mon, Apr 5, 2027, 10:00 AM – 12:00 PM EDT".
 
+- [x] **EVT-01 + MEM-01 — My RSVPs and My Profile** (merge `fbfc0e6`). Two dashboard links that had never had pages. RSVPs needed an API too; `my-rsvps` is declared above the `:eventId` route because Nest matches in order. Times render in the event's timezone, cancelled RSVPs are shown rather than dropped, and an event the org cancelled outranks the member's own status.
+- [x] **OPS-08 — profile no longer echoes a live credential.** `getProfile` selects its fields instead of fetching everything and deleting `passwordHash`, which is why `magicLinkToken` travelled beside it into the browser and Sentry. Memberships no longer carry Stripe ids. Its test asserts the query, not the result.
+- [x] **MEM-05 — every member was greeted by "Your Organization"** rather than their co-op's name, and the billing page rendered a blank line. Found by making the `UserProfile` type honest: it declared flat `orgName`/`orgSlug` fields the API has never sent, and two pages read them. **Third instance of this shape**, after OPS-05 and the vote-tally mismatch — a declared type no response has ever matched. Worth a sweep of `apps/web/lib/api.ts` against real payloads.
+
 ## Next
 - **Choice questions produce no averages, by design.** `participation` and `civic_engagement` are CHOICE, so they have no numeric value and never appear in `scores`. Two of the five headline categories therefore report nothing until somebody builds choice distributions. Correct behaviour — you cannot average "Weekly" — but it looks like a bug to anyone who does not know, and the PRD's Signals view will need it.
 - **Schema changes now have a rehearsed path.** Migrate the database first through the Supabase connector, then merge; never the other way round, since the API queries the new tables on every ImpactOS request. `prisma migrate diff` generates the SQL; commit it under `apps/api/prisma/manual-migrations/` because there is no migrations folder (OPS-04).
@@ -97,7 +101,6 @@ Get MaybeOS Suite production-ready and launch MaybeItsFate LCA as the first live
 - Q: Now that OrgMembershipGuard exists, should new org-scoped controllers be required to use it by convention/lint rule, so this class of bug can't reappear silently?
 
 ## Known issues (not blocking)
-- `GET /api/auth/profile` returns `magicLinkToken` and `magicLinkExpiry` in its payload. `passwordHash` is correctly excluded. Low severity — the endpoint already requires a valid JWT for that same user, so it exposes nothing an attacker couldn't already act on. Still worth fixing: a magic-link token is a bearer credential and shouldn't be echoed into responses that may be cached or logged. Fix is a field selection in `auth.service.ts`.
 
 ## Blockers
 - B: No Docker/Homebrew on this dev machine — local Postgres/Redis unavailable. Postgres resolved via Supabase; Redis moot per D-007. (Resolved / not blocking.)
