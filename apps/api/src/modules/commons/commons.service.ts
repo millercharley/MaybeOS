@@ -414,13 +414,29 @@ export class CommonsService {
       where.status = status;
     }
 
-    return this.prisma.proposal.findMany({
+    const proposals = await this.prisma.proposal.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: {
-        _count: { select: { votes: true } },
+        votes: { select: { choice: true } },
       },
     });
+
+    // The list returns the same `voteTally` shape as getProposal (OPS-05).
+    // It previously returned only `_count.votes` — a total with no breakdown —
+    // so every card that wanted "68% yes" had nothing to compute it from and
+    // rendered 0%. Returning the same shape from both endpoints also stops the
+    // two drifting apart, which is how the list came to disagree with the
+    // detail view in the first place.
+    return proposals.map(({ votes, ...proposal }) => ({
+      ...proposal,
+      voteTally: {
+        yes: votes.filter((v) => v.choice === 'YES').length,
+        no: votes.filter((v) => v.choice === 'NO').length,
+        abstain: votes.filter((v) => v.choice === 'ABSTAIN').length,
+        total: votes.length,
+      },
+    }));
   }
 
   // ─── Direct Messages ──────────────────────────────────────────
