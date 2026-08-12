@@ -125,6 +125,21 @@ export class EventsController {
 
   /* ─── Get Event by ID ──────────────────────────────────────── */
 
+  // Declared before `:eventId`: Nest matches in order, so a literal path
+  // segment placed after a parameterised one is never reached — the id route
+  // would take "my-rsvps" and fail its UUID pipe. Same reason /public and the
+  // feeds sit above it.
+  @Get('orgs/:orgId/events/my-rsvps')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "List the current user's RSVPs for this organization" })
+  listMyRsvps(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.eventsService.listUserRsvps(orgId, user.userId);
+  }
+
   @Get('orgs/:orgId/events/:eventId')
   @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
   @ApiBearerAuth()

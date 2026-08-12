@@ -36,7 +36,11 @@ export default function MemberPortalPage() {
   // Derive member info from auth store
   const currentOrg = user?.orgs?.[0];
   const memberName = user?.name || user?.email || 'Member';
-  const orgName = currentOrg?.orgName || 'Your Organization';
+  // `currentOrg.orgName` never existed on the API response — the membership
+  // carries a nested `org`. So this always fell through to the placeholder,
+  // and every member's dashboard greeted them with "Your Organization"
+  // instead of the name of their co-op.
+  const orgName = currentOrg?.org?.name || 'Your Organization';
   const tierName = currentOrg?.role || 'Member';
   const subscriptionStatus = currentOrg?.subscriptionStatus || 'active';
   const statusDisplay = subscriptionStatus.charAt(0).toUpperCase() + subscriptionStatus.slice(1);

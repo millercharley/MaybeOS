@@ -412,6 +412,44 @@ export class EventsService {
     return 'CONFIRMED';
   }
 
+  /**
+   * Every event this member has RSVPed to in one org (EVT-01).
+   *
+   * Mirrors SpaceOS's `listUserBookings`. Canceled RSVPs are included rather
+   * than hidden: "you cancelled this" is information, and dropping the row
+   * makes an event the member remembers responding to simply vanish.
+   */
+  async listUserRsvps(orgId: string, userId: string) {
+    const rsvps = await this.prisma.rsvp.findMany({
+      where: { userId, event: { orgId } },
+      include: {
+        event: {
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            startTime: true,
+            endTime: true,
+            timezone: true,
+            canceledAt: true,
+            capacity: true,
+            location: { select: { name: true } },
+            room: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { event: { startTime: 'asc' } },
+    });
+
+    // An event the org cancelled matters more to a member than their own RSVP
+    // status, so it is surfaced rather than left to be inferred from a date.
+    return rsvps.map((rsvp) => ({
+      ...rsvp,
+      eventCanceled: rsvp.event.canceledAt !== null,
+      isPast: rsvp.event.endTime < new Date(),
+    }));
+  }
+
   /* ─── Cancel RSVP ──────────────────────────────────────────── */
 
   async cancelRsvp(orgId: string, eventId: string, userId: string) {
