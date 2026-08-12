@@ -747,6 +747,7 @@ async function main() {
 
   await prisma.directMessage.create({
     data: {
+      orgId: org.id,
       senderId: orgAdmin.id,
       receiverId: member1.id,
       body: 'Hey Alex! Thanks for volunteering to help with the potluck setup.',
@@ -757,6 +758,7 @@ async function main() {
 
   await prisma.directMessage.create({
     data: {
+      orgId: org.id,
       senderId: member1.id,
       receiverId: orgAdmin.id,
       body: 'Of course! What time should I show up?',
@@ -767,6 +769,7 @@ async function main() {
 
   await prisma.directMessage.create({
     data: {
+      orgId: org.id,
       senderId: staffUser.id,
       receiverId: member4.id,
       body: 'Hi Marcus, do you still have the screen printing supplies from last time?',
