@@ -96,7 +96,9 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
         <section className="mt-16">
           <h2 className="text-center text-2xl font-bold text-gray-900">Membership Tiers</h2>
           <p className="mt-2 text-center text-gray-600">
-            Choose the membership level that works for you.
+            {org.allowPublicJoin
+              ? 'Choose the membership level that works for you.'
+              : `${org.name} is invitation only. These are the membership levels — ask an organiser for an invite.`}
           </p>
 
           <div className="mt-10 grid gap-8 lg:grid-cols-3">
@@ -163,20 +165,28 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
 
                   <div className="mt-8">
                     {/*
-                      Carries the co-op and the chosen tier through to /join,
-                      which handles sign-in, membership and checkout. This used
-                      to be a bare link to /register, which discarded both — so
-                      the visitor ended up being offered a *new* organization
-                      instead of joining this one.
+                      Only offered when the co-op actually accepts public
+                      joiners. The self-join endpoint refuses otherwise
+                      (D-020), so showing "Join as X" on an invitation-only
+                      co-op sent people to a page that could only tell them no.
+                      Same family as the $19.50 tier that advertised itself as
+                      "$20" — the public page must not promise what the backend
+                      will not do.
                     */}
-                    <Link
-                      href={`/join?org=${encodeURIComponent(slug)}&tier=${encodeURIComponent(tier.id)}`}
-                      className={`w-full text-center ${
-                        isFeatured ? 'btn-primary' : 'btn-secondary'
-                      }`}
-                    >
-                      {priceDisplay === 'Free' ? 'Join Free' : `Join as ${tier.name}`}
-                    </Link>
+                    {org.allowPublicJoin ? (
+                      <Link
+                        href={`/join?org=${encodeURIComponent(slug)}&tier=${encodeURIComponent(tier.id)}`}
+                        className={`w-full text-center ${
+                          isFeatured ? 'btn-primary' : 'btn-secondary'
+                        }`}
+                      >
+                        {priceDisplay === 'Free' ? 'Join Free' : `Join as ${tier.name}`}
+                      </Link>
+                    ) : (
+                      <p className="text-center text-sm text-gray-500">
+                        By invitation
+                      </p>
+                    )}
                   </div>
                 </div>
               );
