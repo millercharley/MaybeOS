@@ -155,6 +155,7 @@ export class EventsService {
         recurrence: dto.recurrence as any,
         recurrenceEnd: dto.recurrenceEnd ? new Date(dto.recurrenceEnd) : undefined,
         capacity: dto.capacity,
+        priceCents: dto.priceCents ?? null,
         // The creator hosts by default (EVT-04). An organiser making an event
         // on somebody else's behalf reassigns it; until they do, the person
         // who made it is the one who answers for it.
@@ -271,6 +272,8 @@ export class EventsService {
           recurrenceEnd: new Date(dto.recurrenceEnd),
         }),
         ...(dto.capacity !== undefined && { capacity: dto.capacity }),
+        // Null is meaningful: it makes a ticketed event free again.
+        ...(dto.priceCents !== undefined && { priceCents: dto.priceCents }),
         // `null` clears the host deliberately, so `!== undefined` rather than
         // a truthiness check — an event can legitimately have nobody running it.
         ...(dto.hostId !== undefined && { hostId: dto.hostId }),

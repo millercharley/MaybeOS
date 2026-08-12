@@ -9,6 +9,7 @@ import {
   IsUUID,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Min, ValidateIf } from 'class-validator';
 
 export enum EventVisibility {
   PUBLIC = 'PUBLIC',
@@ -89,6 +90,21 @@ export class CreateEventDto {
   @IsOptional()
   @IsUUID()
   hostId?: string;
+
+
+  /**
+   * What a ticket costs, in cents. Null or absent means free, and free is not
+   * the same as zero-priced — a free event never touches Stripe.
+   *
+   * `ValidateIf` rather than `IsOptional` so an explicit null is accepted:
+   * the form always sends this field and sends null for a free event, which
+   * is how it says "this one has no ticket" rather than "I forgot to ask".
+   */
+  @ApiPropertyOptional({ example: 1000, minimum: 50, nullable: true })
+  @ValidateIf((_o, value) => value !== null && value !== undefined)
+  @IsInt()
+  @Min(50, { message: 'Stripe will not take payments under $0.50' })
+  priceCents?: number | null;
 
   @ApiPropertyOptional({
     default: false,
@@ -176,6 +192,21 @@ export class UpdateEventDto {
   @IsOptional()
   @IsInt()
   capacity?: number;
+
+
+  /**
+   * What a ticket costs, in cents. Null or absent means free, and free is not
+   * the same as zero-priced — a free event never touches Stripe.
+   *
+   * `ValidateIf` rather than `IsOptional` so an explicit null is accepted:
+   * the form always sends this field and sends null for a free event, which
+   * is how it says "this one has no ticket" rather than "I forgot to ask".
+   */
+  @ApiPropertyOptional({ example: 1000, minimum: 50, nullable: true })
+  @ValidateIf((_o, value) => value !== null && value !== undefined)
+  @IsInt()
+  @Min(50, { message: 'Stripe will not take payments under $0.50' })
+  priceCents?: number | null;
 
   /** Null clears the host; an event may legitimately have nobody running it. */
   @ApiPropertyOptional({ nullable: true })

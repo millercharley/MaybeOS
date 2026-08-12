@@ -72,6 +72,7 @@ export function EventForm({
   plan = 'FREE',
   orgFeeCents = 0,
   canSellTickets = false,
+  hosts,
 }: {
   initial?: Partial<EventFormValues>;
   submitLabel?: string;
@@ -85,6 +86,12 @@ export function EventForm({
   orgFeeCents?: number;
   /** Whether Stripe onboarding is finished. Without it, tickets cannot sell. */
   canSellTickets?: boolean;
+  /**
+   * Members an organiser may hand the event to (EVT-04). Omitted on the member
+   * form, where you always host what you make — so the field simply does not
+   * appear rather than appearing and being refused.
+   */
+  hosts?: { id: string; name: string }[];
 }) {
   const [title, setTitle] = useState(initial?.title ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
@@ -99,6 +106,7 @@ export function EventForm({
     initial?.priceCents ? (initial.priceCents / 100).toFixed(2) : '',
   );
   const [category, setCategory] = useState(initial?.category ?? '');
+  const [hostId, setHostId] = useState(initial?.hostId ?? '');
   const [localError, setLocalError] = useState('');
 
   function submit(e: FormEvent, publish: boolean) {
@@ -136,6 +144,7 @@ export function EventForm({
       capacity: capacity ? Number(capacity) : undefined,
       category: category.trim() || undefined,
       priceCents,
+      ...(hosts && hostId ? { hostId } : {}),
       publish,
     });
   }
@@ -237,6 +246,30 @@ export function EventForm({
           ))}
         </div>
       </fieldset>
+
+      {hosts && (
+        <div>
+          <label htmlFor="event-host" className="mb-1 block text-sm font-medium text-gray-900">
+            Who is running it?
+          </label>
+          <select
+            id="event-host"
+            value={hostId}
+            onChange={(e) => setHostId(e.target.value)}
+            className="input w-full"
+          >
+            <option value="">You</option>
+            {hosts.map((h) => (
+              <option key={h.id} value={h.id}>
+                {h.name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-gray-500">
+            They get the post-event follow-up and can edit the event themselves.
+          </p>
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
