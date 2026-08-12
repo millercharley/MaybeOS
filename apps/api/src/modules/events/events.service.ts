@@ -21,6 +21,32 @@ function toSlug(title: string, date: string): string {
   return `${datePrefix}-${kebab}`;
 }
 
+/**
+ * Attendee counts, in the shape the web actually reads.
+ *
+ * Every event list in the product renders `event.rsvpCount`; the API only
+ * ever sent Prisma's nested `_count.rsvps`. Nothing bridged the two, so the
+ * admin capacity bar, the member portal list and the public event page all
+ * displayed 0 attendees no matter how many people had RSVPed — and the
+ * TypeScript type declaring `rsvpCount?: number` made it look intentional.
+ *
+ * CONFIRMED only, everywhere. A cancelled RSVP is not an attendee and a
+ * waitlisted one is not holding a place, so counting them would overstate a
+ * capacity bar. The public event page already counted this way; the org-side
+ * lists did not, which meant one event could report two different numbers
+ * depending on who was looking at it.
+ */
+const CONFIRMED_RSVP_COUNT = {
+  _count: { select: { rsvps: { where: { status: 'CONFIRMED' as const } } } },
+};
+
+function withRsvpCount<T extends { _count: { rsvps: number } }>(
+  event: T,
+): Omit<T, '_count'> & { rsvpCount: number } {
+  const { _count, ...rest } = event;
+  return { ...rest, rsvpCount: _count.rsvps };
+}
+
 /* ───────────────────────────── service ───────────────────────────── */
 
 @Injectable()
@@ -172,7 +198,13 @@ export class EventsService {
     });
 
     if (!event) throw new NotFoundException('Event not found');
-    return event;
+    // The detail route already ships the full RSVP list, so the count comes
+    // from that rather than a second query — but it must still be *present*,
+    // and mean the same thing it means in the lists.
+    return {
+      ...event,
+      rsvpCount: event.rsvps.filter((r) => r.status === 'CONFIRMED').length,
+    };
   }
 
   /* ─── List by Org (paginated) ───────────────────────────────── */
@@ -215,14 +247,14 @@ export class EventsService {
         include: {
           location: true,
           room: true,
-          _count: { select: { rsvps: true } },
+          ...CONFIRMED_RSVP_COUNT,
         },
       }),
       this.prisma.event.count({ where }),
     ]);
 
     return {
-      data,
+      data: data.map(withRsvpCount),
       meta: {
         total,
         page,
@@ -273,14 +305,14 @@ export class EventsService {
         include: {
           location: true,
           room: true,
-          _count: { select: { rsvps: true } },
+          ...CONFIRMED_RSVP_COUNT,
         },
       }),
       this.prisma.event.count({ where }),
     ]);
 
     return {
-      data,
+      data: data.map(withRsvpCount),
       meta: {
         total,
         page,
@@ -304,7 +336,7 @@ export class EventsService {
         location: true,
         room: true,
         org: { select: { id: true, name: true, slug: true, logoUrl: true, brandColor: true } },
-        _count: { select: { rsvps: { where: { status: 'CONFIRMED' } } } },
+        ...CONFIRMED_RSVP_COUNT,
       },
     });
 
@@ -314,7 +346,7 @@ export class EventsService {
       throw new NotFoundException('Event not found');
     }
 
-    return event;
+    return withRsvpCount(event);
   }
 
   /* ─── RSVP ──────────────────────────────────────────────────── */

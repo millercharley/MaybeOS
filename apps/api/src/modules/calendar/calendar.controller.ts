@@ -121,6 +121,9 @@ export class CalendarController {
     // proves the caller belongs to that org, not that the room does.
     const room = await this.prisma.room.findFirst({
       where: { id: roomId, orgId },
+      // checkFreeBusy calls Google as the room, so this read needs the tokens
+      // the client omits by default. The room object stays server-side.
+      omit: { googleTokens: false },
     });
 
     if (!room) {
