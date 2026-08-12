@@ -545,7 +545,7 @@ export default function CommonsPage() {
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {proposalList.map((proposal) => {
-              const votes = proposal.votes ?? { yes: 0, no: 0, abstain: 0, total: 0 };
+              const votes = proposal.voteTally ?? { yes: 0, no: 0, abstain: 0, total: 0 };
               const totalVotes = votes.yes + votes.no + votes.abstain;
               const quorum = proposal.quorum ?? 0;
               const quorumPercent = quorum > 0 ? Math.round((totalVotes / quorum) * 100) : 0;
