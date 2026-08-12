@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../config/prisma.service';
+import { ContactViewer } from '../../common/access/contact-visibility';
 import { EmailService } from '../email/email.service';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -467,7 +468,13 @@ export class SpaceService {
     return canceled;
   }
 
-  async listBookings(orgId: string, roomId: string, from: Date, to: Date) {
+  async listBookings(
+    orgId: string,
+    roomId: string,
+    from: Date,
+    to: Date,
+    viewer: ContactViewer,
+  ) {
     await this.findRoomInOrg(orgId, roomId);
 
     return this.prisma.booking.findMany({
@@ -476,7 +483,19 @@ export class SpaceService {
         startTime: { gte: from },
         endTime: { lte: to },
       },
-      include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            avatarUrl: true,
+            // Seeing who booked the studio on Tuesday is the point of this
+            // list; being handed their email address is not. Organisers keep
+            // it, because chasing a booking is their job.
+            email: viewer.privileged,
+          },
+        },
+      },
       orderBy: { startTime: 'asc' },
     });
   }

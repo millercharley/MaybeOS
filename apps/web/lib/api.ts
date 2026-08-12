@@ -720,10 +720,17 @@ export interface MembershipTier {
 
 export interface Member {
   id: string;
-  user: { id: string; email: string; name?: string; avatarUrl?: string };
+  /**
+   * `email` reaches organisers (ADMIN, STAFF) and the member themselves —
+   * nobody else. Members must not see each other's contact information, so
+   * the API omits it for everyone else and this is optional to match. Any
+   * member-facing screen reading it will get undefined.
+   */
+  user: { id: string; email?: string; name?: string; avatarUrl?: string };
   role: string;
   tier?: MembershipTier;
-  subscriptionStatus: string;
+  /** Another member's billing state is not their business — organisers only. */
+  subscriptionStatus?: string;
   memberSince: string;
   tags: string[];
 }

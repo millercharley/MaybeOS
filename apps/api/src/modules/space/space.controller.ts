@@ -22,6 +22,7 @@ import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { AvailabilityRuleDto } from './dto/availability-rule.dto';
 import { ListBookingsQueryDto } from './dto/list-bookings.dto';
+import { viewerFor } from '../../common/access/contact-visibility';
 
 
 /**
@@ -128,12 +129,14 @@ export class SpaceController {
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('roomId', ParseUUIDPipe) roomId: string,
     @Query() query: ListBookingsQueryDto,
+    @CurrentUser() user: RequestUser,
   ) {
     return this.spaceService.listBookings(
       orgId,
       roomId,
       new Date(query.from),
       new Date(query.to),
+      viewerFor(user, orgId),
     );
   }
 
