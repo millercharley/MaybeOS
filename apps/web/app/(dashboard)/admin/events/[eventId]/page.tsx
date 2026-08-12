@@ -4,7 +4,7 @@ import { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Check, Search, UserPlus, Users } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
-import { api, DoorList } from '@/lib/api';
+import { api, DoorList, Event } from '@/lib/api';
 
 /**
  * The door list (IMP-10).
@@ -26,6 +26,9 @@ export default function EventDoorListPage(props: {
   const orgId = useAuthStore((s) => s.currentOrgId);
 
   const [list, setList] = useState<DoorList | null>(null);
+  // The page never said which event you were checking people into — the
+  // heading was "Check-in" and the breadcrumb was a raw UUID.
+  const [event, setEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
@@ -35,7 +38,12 @@ export default function EventDoorListPage(props: {
   const load = useCallback(async () => {
     if (!token || !orgId) return;
     try {
-      setList(await api.events.attendees(orgId, eventId, token));
+      const [attendees, detail] = await Promise.all([
+        api.events.attendees(orgId, eventId, token),
+        api.events.get(orgId, eventId, token),
+      ]);
+      setList(attendees);
+      setEvent(detail);
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load the door list');
@@ -132,10 +140,21 @@ export default function EventDoorListPage(props: {
       </div>
 
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Check-in</h1>
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-gray-900">
+            {event?.title ?? 'Check-in'}
+          </h1>
           <p className="mt-1 text-sm text-gray-500">
             Tap a name as each person arrives. Tap again to undo.
+          </p>
+          <p className="mt-2 text-sm text-gray-500">
+            {event?.host ? (
+              <>Hosted by {event.host.name ?? 'a member'}</>
+            ) : (
+              // Every event made before EVT-04 has no host, and the PRD's
+              // post-event follow-up needs one. Saying so beats an empty line.
+              <span className="text-gray-400">No host set</span>
+            )}
           </p>
         </div>
         <div className="text-right">

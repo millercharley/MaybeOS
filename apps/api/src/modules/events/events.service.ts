@@ -56,14 +56,7 @@ export class EventsService {
 
   /* ─── Create ────────────────────────────────────────────────── */
 
-  /**
-   * `_userId` is the creator, and it goes nowhere: `Event` has no host or
-   * createdBy column, so MaybeOS does not record who made an event. The
-   * parameter is kept because every caller already has the value and the
-   * column is the missing half — see EVT-04. The PRD needs it (§6.2 sends a
-   * post-event follow-up "to the host"), so this is a gap, not dead weight.
-   */
-  async create(orgId: string, dto: CreateEventDto, _userId: string) {
+  async create(orgId: string, dto: CreateEventDto, userId: string) {
     const slug = toSlug(dto.title, dto.startTime);
 
     // Ensure slug uniqueness within the org
@@ -89,6 +82,10 @@ export class EventsService {
         recurrence: dto.recurrence as any,
         recurrenceEnd: dto.recurrenceEnd ? new Date(dto.recurrenceEnd) : undefined,
         capacity: dto.capacity,
+        // The creator hosts by default (EVT-04). An organiser making an event
+        // on somebody else's behalf reassigns it; until they do, the person
+        // who made it is the one who answers for it.
+        hostId: dto.hostId ?? userId,
         waitlistEnabled: dto.waitlistEnabled,
         category: dto.category,
         tags: dto.tags,
@@ -157,6 +154,9 @@ export class EventsService {
           recurrenceEnd: new Date(dto.recurrenceEnd),
         }),
         ...(dto.capacity !== undefined && { capacity: dto.capacity }),
+        // `null` clears the host deliberately, so `!== undefined` rather than
+        // a truthiness check — an event can legitimately have nobody running it.
+        ...(dto.hostId !== undefined && { hostId: dto.hostId }),
         ...(dto.waitlistEnabled !== undefined && { waitlistEnabled: dto.waitlistEnabled }),
         ...(dto.category !== undefined && { category: dto.category }),
         ...(dto.tags !== undefined && { tags: dto.tags }),
@@ -202,6 +202,10 @@ export class EventsService {
         rsvps: true,
         room: true,
         location: true,
+        // Deliberately not on the public endpoints. Publishing a member's
+        // name to anyone on the internet is a decision the co-op should make,
+        // not a default that arrives with a schema change (see SEC-06).
+        host: { select: { id: true, name: true, avatarUrl: true } },
       },
     });
 
@@ -269,6 +273,7 @@ export class EventsService {
         include: {
           location: true,
           room: true,
+          host: { select: { id: true, name: true, avatarUrl: true } },
           ...CONFIRMED_RSVP_COUNT,
         },
       }),
