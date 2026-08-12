@@ -1,3 +1,5 @@
+import { RESERVED_ORG_SLUGS } from '@maybeos/shared';
+
 /**
  * Which co-op a hostname addresses (SCL-01).
  *
@@ -27,8 +29,12 @@ const ROOT_DOMAINS = (process.env.NEXT_PUBLIC_TENANT_ROOT_DOMAINS || 'maybeos.or
   .map((d) => d.trim().toLowerCase())
   .filter(Boolean);
 
-/** Subdomains the platform uses itself, so no co-op can claim them. */
-const RESERVED = new Set(['app', 'api', 'www', 'admin', 'staging', 'preview']);
+/**
+ * Subdomains the platform uses itself, so no co-op can claim them. Shared with
+ * the API, which refuses to create an org with one of these slugs — the two
+ * must agree, or a co-op could register a name whose portal is unreachable.
+ */
+const RESERVED = new Set<string>(RESERVED_ORG_SLUGS);
 
 export function tenantFromHost(host: string): string | null {
   // Strip the port; `sunrise.maybeos.org:3000` is still sunrise.
