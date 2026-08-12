@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { EventsService } from '../events.service';
 import { PrismaService } from '../../../config/prisma.service';
+import { ConnectService } from '../../stripe/connect.service';
 
 /**
  * Attendance can be recorded (IMP-10).
@@ -37,7 +38,19 @@ describe('EventsService — check-in', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [EventsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        EventsService,
+        { provide: PrismaService, useValue: prisma },
+        // Cancelling an event refunds its tickets; these suites do not sell any.
+        {
+          provide: ConnectService,
+          useValue: {
+            refundEventTickets: jest
+              .fn()
+              .mockResolvedValue({ attempted: 0, refunded: 0, failed: [] }),
+          },
+        },
+      ],
     }).compile();
 
     service = module.get<EventsService>(EventsService);
