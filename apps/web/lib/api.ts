@@ -286,6 +286,29 @@ class ApiClient {
     myRsvps: (orgId: string, token: string) =>
       this.request<MyRsvp[]>(`/orgs/${orgId}/events/my-rsvps`, { token }),
 
+    // ── Door list (IMP-10) — organisers only ──────────
+    attendees: (orgId: string, eventId: string, token: string) =>
+      this.request<DoorList>(`/orgs/${orgId}/events/${eventId}/attendees`, { token }),
+
+    checkIn: (orgId: string, eventId: string, rsvpId: string, token: string) =>
+      this.request<{ alreadyCheckedIn: boolean }>(
+        `/orgs/${orgId}/events/${eventId}/rsvps/${rsvpId}/check-in`,
+        { method: 'POST', token },
+      ),
+
+    undoCheckIn: (orgId: string, eventId: string, rsvpId: string, token: string) =>
+      this.request(`/orgs/${orgId}/events/${eventId}/rsvps/${rsvpId}/check-in`, {
+        method: 'DELETE',
+        token,
+      }),
+
+    recordWalkIn: (orgId: string, eventId: string, name: string, token: string) =>
+      this.request(`/orgs/${orgId}/events/${eventId}/walk-ins`, {
+        method: 'POST',
+        body: JSON.stringify(name ? { name } : {}),
+        token,
+      }),
+
     listPublic: async (orgId: string): Promise<Event[]> => {
       const res = await this.request<PaginatedResponse<Event>>(`/orgs/${orgId}/events/public`);
       return res.data;
@@ -544,6 +567,23 @@ class ApiClient {
 
     dashboard: (orgId: string, token: string) =>
       this.request<ImpactDashboardData>(`/orgs/${orgId}/impact/dashboard`, { token }),
+
+    // ── The member's own demographic profile (IMP-17) ──
+    myDemographics: (orgId: string, token: string) =>
+      this.request<MyDemographics>(`/orgs/${orgId}/me/demographics`, { token }),
+
+    saveMyDemographics: (
+      orgId: string,
+      answers: Record<string, string>,
+      token: string,
+    ) =>
+      this.request<{ answers: Record<string, string> }>(
+        `/orgs/${orgId}/me/demographics`,
+        { method: 'PUT', body: JSON.stringify({ answers }), token },
+      ),
+
+    deleteMyDemographics: (orgId: string, token: string) =>
+      this.request(`/orgs/${orgId}/me/demographics`, { method: 'DELETE', token }),
   };
 
   // ── Stripe ───────────────────────────────────────
@@ -733,6 +773,31 @@ export interface Member {
   subscriptionStatus?: string;
   memberSince: string;
   tags: string[];
+}
+
+/**
+ * An event's door list (IMP-10). Verified against a live response.
+ *
+ * `expected` is everyone who said they were coming; `walkIns` is everyone who
+ * did not and turned up anyway. `attendanceCount` is what the impact
+ * dashboard aggregates, returned here so the door and the report cannot
+ * disagree about the same evening.
+ */
+export interface DoorList {
+  expected: Array<{
+    rsvpId: string;
+    userId: string | null;
+    name: string;
+    avatarUrl: string | null;
+    isGuest: boolean;
+    status: string;
+    plusOnes: number;
+    checkedIn: boolean;
+    checkedInAt: string | null;
+  }>;
+  walkIns: Array<{ attendanceId: string; name: string; createdAt: string }>;
+  attendanceCount: number;
+  expectedCount: number;
 }
 
 export interface Event {
@@ -990,6 +1055,20 @@ export interface ImpactDashboardData {
     closesAt: string | null;
     responses: number;
   }>;
+}
+
+/**
+ * The member's demographic profile (IMP-17). Verified against a live response.
+ *
+ * The field list comes from the server rather than being duplicated here — a
+ * second copy of the vocabulary would drift, and a mismatched key becomes a
+ * question nobody can answer.
+ */
+export interface MyDemographics {
+  fields: Array<{ key: string; label: string; options?: string[] }>;
+  answers: Record<string, string>;
+  /** Segments smaller than this are never reported. Shown to the member. */
+  suppressionThreshold: number;
 }
 
 export interface PaginatedResponse<T> {

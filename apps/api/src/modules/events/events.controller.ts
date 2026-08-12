@@ -23,6 +23,7 @@ import { EventsService } from './events.service';
 import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
 import { ListEventsQueryDto } from './dto/list-events.dto';
+import { WalkInDto } from './dto/walk-in.dto';
 import { viewerFor } from '../../common/access/contact-visibility';
 
 @ApiTags('events')
@@ -216,17 +217,59 @@ export class EventsController {
 
   /* ─── Check-in ──────────────────────────────────────────────── */
 
-  @Post('orgs/:orgId/events/:eventId/check-in/:userId')
+  @Get('orgs/:orgId/events/:eventId/attendees')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'STAFF')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Check in a user at an event' })
+  @ApiOperation({ summary: 'The door list for an event' })
+  async listAttendees(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+  ) {
+    return this.eventsService.listAttendees(orgId, eventId);
+  }
+
+  /**
+   * Keyed on the RSVP, not the user. The previous signature took a user id,
+   * so a guest RSVP — which has no user — could never be checked in.
+   */
+  @Post('orgs/:orgId/events/:eventId/rsvps/:rsvpId/check-in')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Mark an RSVP as arrived' })
   async checkIn(
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
-    @Param('userId', ParseUUIDPipe) userId: string,
+    @Param('rsvpId', ParseUUIDPipe) rsvpId: string,
   ) {
-    return this.eventsService.checkIn(orgId, eventId, userId);
+    return this.eventsService.checkIn(orgId, eventId, rsvpId);
+  }
+
+  @Delete('orgs/:orgId/events/:eventId/rsvps/:rsvpId/check-in')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Undo a check-in' })
+  async undoCheckIn(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Param('rsvpId', ParseUUIDPipe) rsvpId: string,
+  ) {
+    return this.eventsService.undoCheckIn(orgId, eventId, rsvpId);
+  }
+
+  @Post('orgs/:orgId/events/:eventId/walk-ins')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Record somebody who arrived without an RSVP' })
+  async recordWalkIn(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Body() dto: WalkInDto,
+  ) {
+    return this.eventsService.recordWalkIn(orgId, eventId, dto.name);
   }
 
   /* ─── Public Event Page (by slugs, no auth) ────────────────── */

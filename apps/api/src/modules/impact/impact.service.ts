@@ -7,6 +7,13 @@ import {
 import { Prisma, SurveyQuestion, SurveyQuestionType } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { CreateSurveyDto, SurveyQuestionDto } from './dto/create-survey.dto';
+import {
+  DEMOGRAPHIC_FIELDS,
+  PREFER_NOT_TO_SAY,
+  SUPPRESSION_THRESHOLD,
+  sanitizeDemographics,
+  suppressSmallCells,
+} from './demographics';
 
 const QUESTION_SELECT = {
   id: true,
@@ -318,7 +325,6 @@ export class ImpactService {
     surveyId: string,
     userId: string,
     answers: Record<string, unknown>,
-    demographics?: Record<string, unknown>,
   ) {
     const survey = await this.findSurveyInOrg(orgId, surveyId);
 
@@ -340,7 +346,12 @@ export class ImpactService {
           surveyId,
           windowId: window.id,
           userId,
-          demographics: demographics as Prisma.InputJsonValue,
+          // No demographics here. The PRD is explicit that they are collected
+          // once in the member's own profile and "never inside impact
+          // micro-surveys" (§6.4) — asking again per response both burns the
+          // fatigue budget and scatters copies of the same personal data
+          // across every survey somebody ever answers. The column stays for
+          // the rows already written; nothing adds to it. See IMP-17.
           answers: { create: values },
         },
         include: { answers: true },
@@ -466,8 +477,124 @@ export class ImpactService {
    * loaded every response and averaged JSON keys named after categories, which
    * nothing wrote, so every score was null against real data.
    */
+  // ─── Demographic profile (IMP-17, PRD §6.4) ─────────────────
+
+  /**
+   * The member's own demographic profile, with the questions to ask.
+   *
+   * Returns the field definitions alongside the answers so the client does
+   * not carry its own copy of the vocabulary — a second list would drift, and
+   * a mismatched key silently becomes an unanswerable question.
+   */
+  async getMyDemographics(orgId: string, userId: string) {
+    const membership = await this.prisma.userOrg.findUnique({
+      where: { userId_orgId: { userId, orgId } },
+      select: { demographics: true },
+    });
+
+    if (!membership) {
+      throw new NotFoundException('You are not a member of this organization');
+    }
+
+    return {
+      fields: DEMOGRAPHIC_FIELDS,
+      answers: (membership.demographics as Record<string, string>) ?? {},
+      // Surfaced rather than hardcoded in the UI copy, so the promise the
+      // member is shown and the rule the reports obey are the same number.
+      suppressionThreshold: SUPPRESSION_THRESHOLD,
+    };
+  }
+
+  async updateMyDemographics(
+    orgId: string,
+    userId: string,
+    input: Record<string, unknown>,
+  ) {
+    const clean = sanitizeDemographics(input);
+
+    const updated = await this.prisma.userOrg.update({
+      where: { userId_orgId: { userId, orgId } },
+      // Replaces rather than merges: a field the member cleared has to be
+      // able to disappear, and a merge would make removal impossible.
+      data: { demographics: clean as Prisma.InputJsonValue },
+      select: { demographics: true },
+    });
+
+    return { answers: updated.demographics ?? {} };
+  }
+
+  /**
+   * Delete the profile outright.
+   *
+   * The PRD makes this member-owned data, "viewable, editable, and deletable
+   * at any time, with deletion propagating to future reports" (§10). Because
+   * segment counts are computed from this column at report time rather than
+   * copied into the report, deleting here removes them from every future
+   * report by construction — nothing has to remember to propagate.
+   */
+  async deleteMyDemographics(orgId: string, userId: string) {
+    await this.prisma.userOrg.update({
+      where: { userId_orgId: { userId, orgId } },
+      data: { demographics: Prisma.DbNull },
+    });
+
+    return { deleted: true };
+  }
+
+  /**
+   * Who the space actually serves — and who it does not reach.
+   *
+   * Aggregated live from the member profiles, never from a stored copy, so a
+   * member who deletes their profile is gone from the next read. Every
+   * distribution passes through small-cell suppression, which the PRD makes
+   * mandatory and non-overridable by any role including owner.
+   */
+  async getDemographicSummary(orgId: string) {
+    const memberships = await this.prisma.userOrg.findMany({
+      where: { orgId },
+      select: { demographics: true },
+    });
+
+    const profiles = memberships
+      .map((m) => m.demographics as Record<string, string> | null)
+      .filter((d): d is Record<string, string> => Boolean(d && Object.keys(d).length));
+
+    const fields = DEMOGRAPHIC_FIELDS.map((field) => {
+      const counts: Record<string, number> = {};
+      let preferNotToSay = 0;
+
+      for (const profile of profiles) {
+        const value = profile[field.key];
+        if (!value) continue;
+        if (value === PREFER_NOT_TO_SAY) {
+          preferNotToSay += 1;
+          continue;
+        }
+        counts[value] = (counts[value] ?? 0) + 1;
+      }
+
+      return {
+        key: field.key,
+        label: field.label,
+        ...suppressSmallCells(counts),
+        preferNotToSay,
+        answered: Object.values(counts).reduce((n, c) => n + c, 0) + preferNotToSay,
+      };
+    });
+
+    return {
+      totalMembers: memberships.length,
+      // Coverage is the honest denominator: a distribution over 12 of 300
+      // members describes those 12, and the PRD wants gaps visible rather
+      // than smoothed over.
+      profilesCompleted: profiles.length,
+      suppressionThreshold: SUPPRESSION_THRESHOLD,
+      fields,
+    };
+  }
+
   async getDashboard(orgId: string) {
-    const [surveys, members, events, attendance] = await Promise.all([
+    const [surveys, members, events, attendance, pastEvents] = await Promise.all([
       this.prisma.survey.findMany({
         where: { orgId },
         include: { _count: { select: { responses: true } } },
@@ -475,6 +602,9 @@ export class ImpactService {
       this.prisma.userOrg.count({ where: { orgId } }),
       this.prisma.event.count({ where: { orgId } }),
       this.prisma.attendance.count({ where: { event: { orgId } } }),
+      this.prisma.event.count({
+        where: { orgId, endTime: { lt: new Date() }, canceledAt: null },
+      }),
     ]);
 
     const grouped = await this.prisma.surveyAnswer.groupBy({
@@ -520,9 +650,19 @@ export class ImpactService {
       totalMembers: members,
       totalEvents: events,
       totalResponses,
-      // Structurally zero until check-in has a caller (IMP-10). Reported
-      // honestly rather than omitted.
       totalAttendance: attendance,
+      /**
+       * Reach, per event that has actually happened (IMP-10).
+       *
+       * `totalAttendance` alone answers nothing: 40 check-ins across 2 events
+       * and across 40 tell very different stories. Dividing by *past* events
+       * rather than all of them keeps next month's programme from dragging
+       * the average down — an event nobody has attended yet is not a poorly
+       * attended event.
+       */
+      avgAttendance:
+        pastEvents > 0 ? Math.round((attendance / pastEvents) * 10) / 10 : 0,
+      pastEvents,
       participationRate: members > 0 ? Math.round((totalResponses / members) * 100) : 0,
       scores,
       surveys: surveys.map((s) => ({

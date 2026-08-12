@@ -127,6 +127,12 @@ model UserOrg {
   bio                  String?
   tags                 String[]           @default([])
   isPublic             Boolean            @default(true)
+  /// Member-owned demographic profile (IMP-17, PRD §6.4). Collected once here
+  /// and never inside an impact micro-survey. Scoped to the membership rather
+  /// than the user: orgs are firewalled (D-020), and what somebody is willing
+  /// to tell one co-op is not consent to tell another. Null means never
+  /// answered; an absent key means that field was skipped.
+  demographics         Json?
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
 
@@ -273,6 +279,10 @@ model Attendance {
   eventId    String
   userId     String?
   guestEmail String?
+  /// What the door wrote down for someone with no account. A check-in desk
+  /// realistically gets a name or nothing; demanding an address to record
+  /// that a person was present would lose the count entirely (IMP-10).
+  guestName  String?
   method     String   @default("manual") // manual, qr, self
   createdAt  DateTime @default(now())
 

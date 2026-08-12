@@ -5,6 +5,7 @@ import { Save, Mail, ShieldCheck } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
+import { DemographicProfile } from '@/components/member/demographic-profile';
 
 /**
  * "My Profile" (MEM-01).
@@ -155,6 +156,8 @@ export default function MyProfilePage() {
           </button>
         </div>
       </form>
+
+      <DemographicProfile />
 
       {profile.orgs && profile.orgs.length > 0 && (
         <section className="card">
