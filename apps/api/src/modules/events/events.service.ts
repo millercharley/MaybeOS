@@ -534,33 +534,166 @@ export class EventsService {
 
   /* ─── Check-in ──────────────────────────────────────────────── */
 
-  async checkIn(orgId: string, eventId: string, userId: string) {
+  /**
+   * The door list for an event (IMP-10).
+   *
+   * Attendance was structurally zero across the whole product: the check-in
+   * path below has existed since EventOS was built and no screen has ever
+   * called it, so the `attendance` table held 0 rows against 13 RSVPs and the
+   * impact dashboard's reach figures could only ever report nothing.
+   *
+   * Shaped for the job it is used for — standing at a door, matching a face
+   * to a row. Confirmed and waitlisted only: someone who cancelled is not
+   * expected, and showing them invites checking in the wrong person. Sorted
+   * by name so the list reads the way a person scans it, not by RSVP time.
+   */
+  async listAttendees(orgId: string, eventId: string) {
     await this.findEventInOrg(orgId, eventId);
 
-    const rsvp = await this.prisma.rsvp.findUnique({
-      where: { eventId_userId: { eventId, userId } },
-    });
-    if (!rsvp) throw new NotFoundException('RSVP not found');
-    if (rsvp.checkedIn) throw new BadRequestException('Already checked in');
+    const [rsvps, attendance] = await Promise.all([
+      this.prisma.rsvp.findMany({
+        where: { eventId, status: { in: ['CONFIRMED', 'WAITLISTED'] } },
+        include: { user: { select: { id: true, name: true, avatarUrl: true } } },
+      }),
+      this.prisma.attendance.findMany({
+        where: { eventId },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
 
-    const [updatedRsvp, attendance] = await this.prisma.$transaction([
+    // Walk-ins are the rows `recordWalkIn` wrote, identified by their method.
+    // Selecting on `userId: null` instead looked right and was not: a *guest*
+    // RSVP also has no user, so checking one in showed them on the door list
+    // and again as a walk-in, and counted them twice.
+    const walkIns = attendance.filter((a) => a.method === 'self');
+
+    const expected = rsvps
+      .map((rsvp) => ({
+        rsvpId: rsvp.id,
+        userId: rsvp.userId,
+        name: rsvp.user?.name ?? rsvp.guestName ?? 'Guest',
+        avatarUrl: rsvp.user?.avatarUrl ?? null,
+        isGuest: rsvp.userId === null,
+        status: rsvp.status,
+        plusOnes: rsvp.plusOnes,
+        checkedIn: rsvp.checkedIn,
+        checkedInAt: rsvp.checkedInAt,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return {
+      expected,
+      walkIns: walkIns.map((w) => ({
+        attendanceId: w.id,
+        name: w.guestName ?? 'Walk-in',
+        createdAt: w.createdAt,
+      })),
+      /**
+       * Counted off the attendance table itself — the same rows the impact
+       * dashboard aggregates — rather than added up from RSVP flags and
+       * walk-ins separately. Two independent sums of the same evening will
+       * eventually disagree, and the first version of this did.
+       */
+      attendanceCount: attendance.length,
+      expectedCount: rsvps.filter((r) => r.status === 'CONFIRMED').length,
+    };
+  }
+
+  /**
+   * Mark an RSVP as arrived.
+   *
+   * Keyed on the RSVP rather than a user id, which is what the previous
+   * signature took: a guest RSVP has no user, so the only people who could
+   * ever have been checked in were members — and guests are exactly who a
+   * co-op most needs counted for reach.
+   *
+   * Writes both `Rsvp.checkedIn` and an `Attendance` row in one transaction.
+   * Two mechanisms existed and neither was authoritative; keeping them in step
+   * is what makes the flag usable on the door list and the table usable as the
+   * event log the dashboard aggregates.
+   */
+  async checkIn(orgId: string, eventId: string, rsvpId: string) {
+    await this.findEventInOrg(orgId, eventId);
+
+    const rsvp = await this.prisma.rsvp.findFirst({ where: { id: rsvpId, eventId } });
+    if (!rsvp) throw new NotFoundException('RSVP not found');
+    if (rsvp.status === 'CANCELED') {
+      throw new BadRequestException('This RSVP was cancelled');
+    }
+    // Idempotent: tapping a name twice on a door list is a slip, not an error
+    // worth refusing. It used to answer 400, which on a queue reads as a fault.
+    if (rsvp.checkedIn) {
+      return { rsvp, alreadyCheckedIn: true };
+    }
+
+    const [updatedRsvp] = await this.prisma.$transaction([
       this.prisma.rsvp.update({
         where: { id: rsvp.id },
-        data: {
-          checkedIn: true,
-          checkedInAt: new Date(),
-        },
+        data: { checkedIn: true, checkedInAt: new Date() },
       }),
       this.prisma.attendance.create({
         data: {
           eventId,
-          userId,
+          userId: rsvp.userId,
+          guestEmail: rsvp.userId ? null : rsvp.guestEmail,
           method: 'manual',
         },
       }),
     ]);
 
-    return { rsvp: updatedRsvp, attendance };
+    return { rsvp: updatedRsvp, alreadyCheckedIn: false };
+  }
+
+  /**
+   * Undo a check-in.
+   *
+   * There was no way back: `checkIn` refused a second call with "Already
+   * checked in" and nothing cleared the flag, so one mis-tap on a door list
+   * permanently overstated attendance — in a table whose whole purpose is to
+   * be counted in a report.
+   */
+  async undoCheckIn(orgId: string, eventId: string, rsvpId: string) {
+    await this.findEventInOrg(orgId, eventId);
+
+    const rsvp = await this.prisma.rsvp.findFirst({ where: { id: rsvpId, eventId } });
+    if (!rsvp) throw new NotFoundException('RSVP not found');
+
+    const [updatedRsvp] = await this.prisma.$transaction([
+      this.prisma.rsvp.update({
+        where: { id: rsvp.id },
+        data: { checkedIn: false, checkedInAt: null },
+      }),
+      // Remove the attendance this check-in created, not every row for the
+      // person: deleteMany with the same predicate the write used.
+      this.prisma.attendance.deleteMany({
+        where: rsvp.userId
+          ? { eventId, userId: rsvp.userId }
+          : { eventId, userId: null, guestEmail: rsvp.guestEmail },
+      }),
+    ]);
+
+    return updatedRsvp;
+  }
+
+  /**
+   * Record somebody who turned up without an RSVP.
+   *
+   * Without this, attendance is bounded by RSVPs — which is the structural
+   * undercount IMP-10 is about, just a smaller one. A co-op's open evening is
+   * mostly people who did not RSVP, and the PRD leans on reach indicators
+   * precisely because they cost no fatigue budget.
+   */
+  async recordWalkIn(orgId: string, eventId: string, name?: string) {
+    await this.findEventInOrg(orgId, eventId);
+
+    return this.prisma.attendance.create({
+      data: {
+        eventId,
+        userId: null,
+        guestName: name?.trim() || null,
+        method: 'self',
+      },
+    });
   }
 
   /* ─── JSON Feed ─────────────────────────────────────────────── */
