@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, CheckCircle, AlertCircle } from 'lucide-react';
+import { CheckCircle, AlertCircle } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, InviteInfo } from '@/lib/api';
 
@@ -13,6 +13,7 @@ function InviteContent() {
   const inviteToken = searchParams.get('token');
   const token = useAuthStore((s) => s.token);
   const loadProfile = useAuthStore((s) => s.loadProfile);
+  const setCurrentOrg = useAuthStore((s) => s.setCurrentOrg);
 
   const [invite, setInvite] = useState<InviteInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,8 +41,20 @@ function InviteContent() {
     try {
       const result = await api.invites.accept(inviteToken, token);
       setAccepted(true);
+      // The org the invitation was for, not whichever one happened to be
+      // selected. The result used to be discarded entirely.
+      setCurrentOrg(result.orgId);
       await loadProfile();
-      setTimeout(() => router.push('/admin'), 2000);
+      // And land them somewhere they can actually use. This always pushed
+      // /admin, so a member accepting an invitation arrived at an organiser
+      // dashboard — a wall of 403s before IMP-11, and "this page is for
+      // organisers" after it. Most invitations are for members.
+      // loadProfile resolves void, so the refreshed user comes off the store.
+      const role = useAuthStore
+        .getState()
+        .user?.orgs?.find((o) => o.orgId === result.orgId)?.role;
+      const home = role === 'ADMIN' || role === 'STAFF' ? '/admin' : '/member';
+      setTimeout(() => router.push(home), 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to accept invitation');
     } finally {
@@ -79,7 +92,7 @@ function InviteContent() {
           <CheckCircle className="mx-auto h-12 w-12 text-green-500" />
           <h1 className="mt-4 text-xl font-bold text-gray-900">Welcome!</h1>
           <p className="mt-2 text-sm text-gray-500">
-            You've joined <strong>{invite?.org.name}</strong>. Redirecting to your dashboard...
+            You&apos;ve joined <strong>{invite?.org.name}</strong>. Redirecting to your dashboard...
           </p>
         </div>
       </div>
@@ -99,10 +112,10 @@ function InviteContent() {
             </span>
           </div>
           <h1 className="mt-4 text-xl font-bold text-gray-900">
-            You're invited to join {invite?.org.name}
+            You&apos;re invited to join {invite?.org.name}
           </h1>
           <p className="mt-2 text-sm text-gray-500">
-            You've been invited as a <strong>{invite?.role}</strong> member.
+            You&apos;ve been invited as a <strong>{invite?.role}</strong> member.
           </p>
         </div>
 

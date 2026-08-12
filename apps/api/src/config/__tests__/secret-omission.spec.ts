@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { PrismaService } from '../prisma.service';
 
 /**
@@ -27,9 +29,6 @@ describe('PrismaService — secret omission', () => {
   it('is the only place the omission is declared', () => {
     // Guards against a second PrismaClient being constructed somewhere else
     // without the omit — that instance would leak while this one does not.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const fs = require('fs');
-    const path = require('path');
     const root = path.resolve(__dirname, '../..');
 
     const offenders: string[] = [];

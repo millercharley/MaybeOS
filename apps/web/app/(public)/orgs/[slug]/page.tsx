@@ -4,7 +4,7 @@ import { use, useMemo } from 'react';
 import Link from 'next/link';
 import { Calendar, Clock, MapPin, Users, Check, Star } from 'lucide-react';
 import { usePublicApi } from '@/hooks/use-api';
-import { api, Event } from '@/lib/api';
+import { api } from '@/lib/api';
 
 export default function OrgProfilePage(props: { params: Promise<{ slug: string }> }) {
   const { slug } = use(props.params);
@@ -16,7 +16,7 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
   );
 
   // Fetch tiers once org is loaded
-  const { data: tiers, loading: tiersLoading } = usePublicApi(
+  const { data: tiers } = usePublicApi(
     () => org ? api.orgs.listTiers(org.id) : Promise.resolve([]),
     [org?.id]
   );

@@ -216,7 +216,9 @@ describe('ImpactService — submitting a response', () => {
 
 describe('ImpactService — question versioning', () => {
   let service: ImpactService;
-  let prisma: jest.Mocked<PrismaService>;
+  // Assigned so the module compiles the same way as the suite above; these
+  // tests assert through `tx`, the transaction client, not the root prisma.
+  let _prisma: jest.Mocked<PrismaService>;
   let tx: Record<string, { update: jest.Mock; create: jest.Mock }>;
 
   const ORG = 'org-1';
@@ -258,7 +260,7 @@ describe('ImpactService — question versioning', () => {
     }).compile();
 
     service = module.get<ImpactService>(ImpactService);
-    prisma = module.get(PrismaService);
+    _prisma = module.get(PrismaService);
   });
 
   it('retires the old version and writes a new one when wording changes', async () => {

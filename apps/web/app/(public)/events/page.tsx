@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Calendar, MapPin, Clock, Search, Filter } from 'lucide-react';
 import { usePublicApi } from '@/hooks/use-api';
-import { api, Event } from '@/lib/api';
+import { api } from '@/lib/api';
 
 const categoryColors: Record<string, string> = {
   Food: 'bg-orange-50 text-orange-700 ring-1 ring-orange-600/20',

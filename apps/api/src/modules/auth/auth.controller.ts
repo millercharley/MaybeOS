@@ -44,10 +44,10 @@ export class AuthController {
   @Throttle({ short: { limit: 3, ttl: 60000 } })
   @ApiOperation({ summary: 'Request a magic link for passwordless login' })
   async sendMagicLink(@Body() dto: MagicLinkDto) {
-    const token = await this.authService.sendMagicLink(dto.email);
-    // The actual email sending is delegated to the email module.
-    // In a real implementation, the token would be embedded in a URL
-    // and sent via email. Here we return a confirmation message.
+    // The token is deliberately not bound to a variable and never returned:
+    // it is a working credential, and echoing it would make the endpoint its
+    // own bypass. Delivery is the email module's job.
+    await this.authService.sendMagicLink(dto.email);
     return { message: 'If an account exists, a magic link has been sent.' };
   }
 
