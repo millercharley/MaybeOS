@@ -228,6 +228,12 @@ model Event {
   /// have no known host, and guessing one would invent a fact the product
   /// would then act on — the PRD emails this person after their event.
   hostId          String?
+  /// The booking this event was published from (EVT-05), when a member turned
+  /// their room booking into something the co-op can see. One event per
+  /// booking. The link is what keeps them in step: cancelling or moving the
+  /// booking has to reach the event, or the co-op keeps advertising a room
+  /// that is no longer held.
+  bookingId       String?         @unique
   waitlistEnabled Boolean         @default(false)
   requiresRsvp    Boolean         @default(true)
   category        String?
@@ -242,6 +248,10 @@ model Event {
   // SetNull, not Cascade: a host leaving the co-op must not delete the events
   // they ran, along with every RSVP and attendance record attached to them.
   host       User?        @relation("HostedEvents", fields: [hostId], references: [id], onDelete: SetNull)
+  // SetNull rather than Cascade: if a booking row is ever hard-deleted the
+  // event it produced should survive as an event, not vanish along with its
+  // RSVPs. Cancellation is handled in the service, not by the database.
+  booking    Booking?     @relation(fields: [bookingId], references: [id], onDelete: SetNull)
   location   Location?    @relation(fields: [locationId], references: [id])
   room       Room?        @relation(fields: [roomId], references: [id])
   parent     Event?       @relation("EventRecurrence", fields: [parentEventId], references: [id])
@@ -373,8 +383,9 @@ model Booking {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id])
+  room  Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user  User   @relation(fields: [userId], references: [id])
+  event Event?
 
   @@index([roomId, startTime, endTime])
   @@index([userId])
