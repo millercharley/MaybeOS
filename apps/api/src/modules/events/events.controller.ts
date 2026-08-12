@@ -12,7 +12,7 @@ import {
   Header,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -22,6 +22,7 @@ import { CurrentUser, RequestUser } from '../../common/decorators/current-user.d
 import { EventsService } from './events.service';
 import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
+import { ListEventsQueryDto } from './dto/list-events.dto';
 
 @ApiTags('events')
 @Controller()
@@ -49,54 +50,30 @@ export class EventsController {
   @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List events for an organization' })
-  @ApiQuery({ name: 'visibility', required: false })
-  @ApiQuery({ name: 'category', required: false })
-  @ApiQuery({ name: 'from', required: false, description: 'ISO date' })
-  @ApiQuery({ name: 'to', required: false, description: 'ISO date' })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'perPage', required: false, type: Number })
   async listByOrg(
     @Param('orgId', ParseUUIDPipe) orgId: string,
-    @Query('visibility') visibility?: string,
-    @Query('category') category?: string,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-    @Query('page') page?: string,
-    @Query('perPage') perPage?: string,
+    @Query() query: ListEventsQueryDto,
   ) {
-    return this.eventsService.listByOrg(orgId, {
-      visibility,
-      category,
-      from,
-      to,
-      page: page ? parseInt(page, 10) : undefined,
-      perPage: perPage ? parseInt(perPage, 10) : undefined,
-    });
+    return this.eventsService.listByOrg(orgId, query);
   }
 
   /* ─── List Public Events (no auth) ─────────────────────────── */
 
   @Get('orgs/:orgId/events/public')
   @ApiOperation({ summary: 'List public published events' })
-  @ApiQuery({ name: 'category', required: false })
-  @ApiQuery({ name: 'from', required: false })
-  @ApiQuery({ name: 'to', required: false })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'perPage', required: false, type: Number })
   async listPublicEvents(
     @Param('orgId', ParseUUIDPipe) orgId: string,
-    @Query('category') category?: string,
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-    @Query('page') page?: string,
-    @Query('perPage') perPage?: string,
+    @Query() query: ListEventsQueryDto,
   ) {
+    // `visibility` is deliberately not forwarded: this route publishes only
+    // what the org has made public, and letting a caller name a visibility
+    // would be asking the anonymous route to show something else.
     return this.eventsService.listPublicEvents(orgId, {
-      category,
-      from,
-      to,
-      page: page ? parseInt(page, 10) : undefined,
-      perPage: perPage ? parseInt(perPage, 10) : undefined,
+      category: query.category,
+      from: query.from,
+      to: query.to,
+      page: query.page,
+      perPage: query.perPage,
     });
   }
 

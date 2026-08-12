@@ -367,8 +367,22 @@ class ApiClient {
         token,
       }),
 
-    listBookings: (orgId: string, roomId: string, token: string) =>
-      this.request<Booking[]>(`/orgs/${orgId}/rooms/${roomId}/bookings`, { token }),
+    /**
+     * The room's bookings over a date range. The range is required — this used
+     * to omit it and could never have worked: the API answered 500 (now 400).
+     * No page calls this yet.
+     */
+    listBookings: (
+      orgId: string,
+      roomId: string,
+      range: { from: string; to: string },
+      token: string,
+    ) =>
+      this.request<Booking[]>(
+        `/orgs/${orgId}/rooms/${roomId}/bookings` +
+          `?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`,
+        { token },
+      ),
 
     myBookings: (orgId: string, token: string) =>
       this.request<Booking[]>(`/orgs/${orgId}/my-bookings`, { token }),
