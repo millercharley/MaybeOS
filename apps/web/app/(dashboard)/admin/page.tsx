@@ -7,10 +7,12 @@ import { useAuthStore } from '@/lib/auth-store';
 import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
 
+// "New Survey" used to sit here pointing at /admin/impact. It never created a
+// survey — the page it led to had no authoring UI, and authoring is a non-goal
+// under D-021. Removed with the Impact page itself.
 const quickActions = [
   { label: 'Create Event', href: '/admin/events', icon: Calendar },
   { label: 'Add Member', href: '/admin/members', icon: Users },
-  { label: 'New Survey', href: '/admin/impact', icon: BarChart3 },
 ];
 
 export default function AdminDashboardPage() {

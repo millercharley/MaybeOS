@@ -29,8 +29,13 @@ No command line required — everything is done through the Railway web dashboar
 
 ### 1. Push Code to GitHub
 
-Make sure the `main` branch of your `millercharley/MaybeOS` GitHub repo has the latest code.
-If using a feature branch, merge it to `main` first.
+> **Correction (2026-08-11).** This document describes a Railway deploy that is no
+> longer how MaybeOS ships — production is Netlify (D-005, D-010), and there is **no
+> `main` branch** on `millercharley/MaybeOS`. Netlify builds
+> **`claude/maybeOS-suite-foundation-1Wauk`**, which is also origin's default branch,
+> so **merging into that branch is the production deploy** — there is no staging step
+> between them. Confirmed by Charley on 2026-08-11. The Railway instructions below are
+> kept only as history; follow D-010 for the live topology.
 
 ---
 

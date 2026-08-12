@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { Calendar, MessageSquare, DoorOpen, BarChart3, Users } from 'lucide-react';
+import { Calendar, MessageSquare, DoorOpen, Users } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { usePublicApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
@@ -26,7 +26,6 @@ export default function PortalHomePage() {
     { label: 'Rooms', description: 'Book shared spaces and meeting rooms', href: `${basePath}/rooms`, icon: DoorOpen },
     { label: 'Commons', description: 'Join discussions and vote on proposals', href: `${basePath}/commons`, icon: MessageSquare },
     { label: 'Directory', description: 'Find and connect with other members', href: `${basePath}/directory`, icon: Users },
-    { label: 'Surveys', description: 'Share your feedback and shape our community', href: `${basePath}/impact`, icon: BarChart3 },
   ];
 
   return (

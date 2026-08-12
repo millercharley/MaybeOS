@@ -24,6 +24,46 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-022 — Scheduled execution: adopt Netlify Scheduled Functions
+
+- **Date:** 2026-08-11
+- **Status:** Active — **not yet built**
+- **Area:** Hosting, Backend, ImpactOS
+- **Trigger:** D-021 adopts a PRD in which half the data collection is timed — post-use booking questions 2h after a session ends, host follow-up 72h after an event, attendee follow-up 24h after, plus scheduled report cadences and a per-member question queue that has to select at the moment its window opens. MaybeOS cannot run anything on a delay. `netlify.toml` registers exactly one function (`api.js`) and no `schedule`, and D-007 removed BullMQ/Redis because a serverless deploy had no worker to drain the queue. Every timed touchpoint in the PRD is currently unimplementable, and only the two synchronous ones (booking confirm, ticket purchase) can fire at all.
+- **Decision:** Add **Netlify Scheduled Functions** as the platform's scheduling primitive. A scheduled function runs on a cron expression, invokes the existing Nest application code, and processes due work from the database. Timing state lives in Postgres — a due-at column on the queued item — not in an in-memory queue, so a missed or retried invocation is idempotent and recoverable rather than lost.
+- **Alternatives rejected:**
+  - *Bring back BullMQ/Redis* — rejected for the same reason D-007 removed it: a serverless function is not a worker, and adding managed Redis reintroduces a dependency and a cost line for what is, at MaybeItsFate's size, a few hundred rows a month.
+  - *An external cron service pinging an API route* (GitHub Actions, cron-job.org) — rejected as a second place to hold production configuration, outside the Netlify deploy and invisible to anyone reading this repo.
+  - *Fire timed questions lazily on the member's next page load* — genuinely tempting, needs no scheduler, and rejected because it silently biases the sample toward members who open the app. Response rate and its representativeness are the constraint the whole PRD is built around; skewing them to save infrastructure would corrupt the data the reports rest on.
+- **Rationale:** It is the smallest thing that works, it lives in the repo next to the deploy it belongs to, and putting due-at state in Postgres means the scheduler is a trigger rather than a system of record. This does not reverse D-007 — no queue infrastructure comes back — it supplies the one capability D-007's removal left absent.
+- **Consequences to watch:** the scheduled invocation shares the Lambda connection-limit problem from D-018 (Prisma opens a pool per container against a 15-connection cap), so it must reuse the same pooled client rather than opening its own. Netlify's minimum granularity is one minute, which is far finer than anything ImpactOS needs.
+- **Supersedes:** none. Complements D-007 (which removed the queue) and D-005 (Netlify hosting).
+
+### D-021 — Adopt Impact OS PRD v0.1 as the scope of ImpactOS
+
+- **Date:** 2026-08-11
+- **Status:** Active — **not yet built**
+- **Area:** ImpactOS, Product
+- **Trigger:** ImpactOS was audited on 2026-08-11 (AUDIT-BRIEF.md) — the first time the module had ever been run — producing thirteen findings, IMP-01…IMP-13. The audit could say what was broken but not what "working" would mean: the module had no decision record, no roadmap items, and no stated purpose. Charley answered it the same day with *Impact OS — Product Requirements Document*, Draft v0.1.
+- **Decision:** The PRD is the scope of ImpactOS. Its shape: an admin writes a mission and three to five goals in plain language; AI drafts indicators and questions and presents a measurement plan for approval; questions attach to moments that already exist in MaybeOS (booking, ticket purchase, post-event, Commons) under a hard fatigue budget; the year ends in a generated, editable, publishable report. The admin's entire task list is five items, four of which happen once.
+- **The load-bearing constraint is the fatigue budget**, not the AI: one micro-question per member per 30 days across all touchpoints, ~12 a year, with dismissal extending a member's window and three dismissals moving them to annual-check-in-only with no admin override. Response rate is the binding constraint on the whole product; a plan that burns member goodwill in month two has no report in month twelve.
+- **What this makes a non-goal:** a general-purpose survey builder, academic evaluation (no causal claims), CRM/grant management, cross-community benchmarking, and bookkeeping.
+- **Effect on the audit findings** — four of the thirteen are answered by this decision rather than fixed:
+  - **IMP-06** (no survey authoring in the product) — authoring is an explicit non-goal. Remove the dead "Create Survey" and "New Survey" buttons; do not build the screen behind them.
+  - **IMP-07** (responses and CSV export unreachable from the UI) — **inverts**. §10 says individual responses are never exposed to admins, and the export returns respondent names and email addresses beside their answers. Delete both endpoints instead of wiring them up.
+  - **IMP-02 / IMP-03** (the dashboard crashes; every figure on it is zero) — the goal-organised Signals view replaces that page. Stop shipping the crashing route rather than repairing the chart.
+  - **IMP-05** (the aggregation averages keys nothing ever writes) — stops being a bug and becomes the central schema question. A response must bind to an indicator, a **question version** and a **collection window**, or G5 ("every figure traces to a response count and collection window") is unenforceable, and so is the Ask guardrail against merging incompatible windows.
+- **What the PRD assumes MaybeOS has and it does not** (verified in the codebase 2026-08-11, tracked as IMP-14…17):
+  1. **No scheduler.** Half the touchpoints are timed. See D-022.
+  2. **No ticketing.** Ticket purchase is one of four P0 touchpoints; `Event` has no price field, `Room.hourlyRate` is stored and never charged, and membership dues are the only thing MaybeOS charges for. Either ticketing gets built or that touchpoint leaves P0.
+  3. **No expense model.** There is no expense, budget or invoice table, so cost-per-outcome and mission-alignment-of-spend have no denominator. This is the PRD's own open question 7 and it should gate §7 rather than trail it — subsidy and in-kind value are computable today (PWYC already exists on tiers), the composites are not.
+  4. **No member profile page.** `/member/profile` is linked from the member dashboard and 404s (MEM-01), so the screen that owns member-owned, member-deletable demographic data does not exist.
+- **Two amendments proposed against the PRD, not yet accepted by Charley:**
+  - **Declare reportable segment cuts at plan-approval time.** At the PRD's own targets a 300-member community produces roughly 1,500 answers a year across the plan. Single-dimension cuts report fine; intersections of six activity dimensions and eight demographic fields will hit mandatory n<5 suppression almost everywhere, and the admin finds out at report time. §6.3 already prevents this failure for indicators ("this one won't have enough responses until year two") — segmentation deserves the same warning on the same screen.
+  - **Demote G4** ("admin edits <25% of report blocks"). It is equally consistent with a good draft and with an admin who skimmed and published. The better signal already exists under Value: reports used in a grant application or board meeting.
+- **Alternatives rejected:** a single fixed instrument shipped with the product, identical for every co-op, with per-org authoring disallowed (proposed by the AI earlier the same day) — rejected because it buys computability at the cost of every community measuring the same thing, and the PRD achieves the same discipline through the survey-builder non-goal while getting breadth from behavioural data that costs no fatigue budget.
+- **Supersedes:** none. First decision record for ImpactOS.
+
 ### D-020 — Joining a co-op: public sign-up, or invitation-only with a prefilled payment link
 
 - **Date:** 2026-08-11
