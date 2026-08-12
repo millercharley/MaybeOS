@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Calendar, MapPin, Users } from 'lucide-react';
+import { Calendar, Users } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { usePublicApi } from '@/hooks/use-api';
@@ -92,7 +92,7 @@ export default function PortalEventsPage() {
                 <div className="ml-4 shrink-0">
                   {token ? (
                     rsvpDone.has(event.id) ? (
-                      <span className="text-sm font-medium text-green-600">RSVP'd</span>
+                      <span className="text-sm font-medium text-green-600">RSVP&apos;d</span>
                     ) : (
                       <button
                         onClick={() => handleRsvp(event.id)}

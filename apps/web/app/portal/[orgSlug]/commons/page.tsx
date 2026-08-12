@@ -9,7 +9,6 @@ import { api, Channel, Post, Proposal } from '@/lib/api';
 type Tab = 'channels' | 'proposals';
 
 export default function PortalCommonsPage() {
-  const { org } = usePortal();
   const token = useAuthStore((s) => s.token);
   const [tab, setTab] = useState<Tab>('channels');
 
@@ -61,6 +60,11 @@ function ChannelsSection() {
   const [loading, setLoading] = useState(true);
   const [newPost, setNewPost] = useState('');
   const [posting, setPosting] = useState(false);
+  // Every call in this section used to `catch {}`. A member posted, it failed,
+  // and the page said nothing — the post simply never appeared. Silence is the
+  // worst possible answer here, because the member's own action is the thing
+  // that vanished.
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!org || !token) { setLoading(false); return; }
@@ -77,7 +81,9 @@ function ChannelsSection() {
       .then((data) => {
         if (data) setPosts(data.data || []);
       })
-      .catch(() => {})
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : 'Could not load the Commons'),
+      )
       .finally(() => setLoading(false));
   }, [org, token]);
 
@@ -85,21 +91,29 @@ function ChannelsSection() {
     if (!org || !token) return;
     setSelectedChannel(channelId);
     setPosts([]);
+    setError('');
     try {
       const data = await api.commons.listPosts(org.id, channelId, token);
       setPosts(data.data || []);
-    } catch {}
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load these posts');
+    }
   }
 
   async function handlePost(e: FormEvent) {
     e.preventDefault();
     if (!org || !token || !selectedChannel || !newPost.trim()) return;
     setPosting(true);
+    setError('');
     try {
       const post = await api.commons.createPost(org.id, selectedChannel, { body: newPost }, token);
       setPosts((prev) => [post, ...prev]);
+      // Only cleared once the post is actually saved. Clearing first would
+      // throw away what somebody wrote the moment the request failed.
       setNewPost('');
-    } catch {}
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not post that');
+    }
     setPosting(false);
   }
 
@@ -112,11 +126,18 @@ function ChannelsSection() {
   }
 
   if (channels.length === 0) {
-    return <p className="py-8 text-center text-sm text-gray-500">No channels yet.</p>;
+    return (
+      <>
+        {error && <ErrorNote message={error} />}
+        <p className="py-8 text-center text-sm text-gray-500">No channels yet.</p>
+      </>
+    );
   }
 
   return (
-    <div className="flex gap-6">
+    <div className="space-y-4">
+      {error && <ErrorNote message={error} />}
+      <div className="flex gap-6">
       <div className="w-48 shrink-0 space-y-1">
         {channels.map((ch) => (
           <button
@@ -165,8 +186,18 @@ function ChannelsSection() {
             ))}
           </div>
         )}
+        </div>
       </div>
     </div>
+  );
+}
+
+/** One place the whole page reports a failure, rather than three silences. */
+function ErrorNote({ message }: { message: string }) {
+  return (
+    <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+      {message}
+    </p>
   );
 }
 
@@ -176,24 +207,32 @@ function ProposalsSection() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(true);
   const [votingId, setVotingId] = useState<string | null>(null);
+  // Voting used to `catch {}`: a failed vote left the buttons exactly as they
+  // were, so a member had every reason to believe it had counted.
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!org || !token) { setLoading(false); return; }
     api.commons
       .listProposals(org.id, token)
       .then(setProposals)
-      .catch(() => {})
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : 'Could not load proposals'),
+      )
       .finally(() => setLoading(false));
   }, [org, token]);
 
   async function handleVote(proposalId: string, choice: string) {
     if (!org || !token) return;
     setVotingId(proposalId);
+    setError('');
     try {
       await api.commons.vote(org.id, proposalId, choice, token);
       const updated = await api.commons.getProposal(org.id, proposalId, token);
       setProposals((prev) => prev.map((p) => (p.id === proposalId ? updated : p)));
-    } catch {}
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Your vote did not go through');
+    }
     setVotingId(null);
   }
 
@@ -206,11 +245,17 @@ function ProposalsSection() {
   }
 
   if (proposals.length === 0) {
-    return <p className="py-8 text-center text-sm text-gray-500">No proposals yet.</p>;
+    return (
+      <>
+        {error && <ErrorNote message={error} />}
+        <p className="py-8 text-center text-sm text-gray-500">No proposals yet.</p>
+      </>
+    );
   }
 
   return (
     <div className="space-y-4">
+      {error && <ErrorNote message={error} />}
       {proposals.map((proposal) => {
         const total = proposal.voteTally?.total || 0;
         const yesPercent = total > 0 ? Math.round(((proposal.voteTally?.yes || 0) / total) * 100) : 0;
