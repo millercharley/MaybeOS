@@ -2,6 +2,15 @@ import * as Sentry from '@sentry/nextjs';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
+/**
+ * Absolute URL for an API path, for links the browser follows rather than
+ * fetches — the calendar feed, mainly. Uses the same base as every request, so
+ * a link and a fetch can never disagree about where the API is.
+ */
+export function apiUrl(path: string): string {
+  return `${API_BASE}/api${path}`;
+}
+
 interface FetchOptions extends RequestInit {
   token?: string;
   orgId?: string;
