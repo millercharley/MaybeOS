@@ -204,7 +204,12 @@ class ApiClient {
 
     update: (
       orgId: string,
-      data: Partial<CreateOrgData> & { brandColor?: string; allowPublicJoin?: boolean },
+      data: Partial<CreateOrgData> & {
+        brandColor?: string;
+        allowPublicJoin?: boolean;
+        /** The co-op's own fee per ticket, in cents (D-013 ticketing). */
+        ticketFeeCents?: number;
+      },
       token: string,
     ) =>
       this.request<Org>(`/orgs/${orgId}`, { method: 'PATCH', body: JSON.stringify(data), token }),
@@ -394,6 +399,19 @@ class ApiClient {
       token: string,
     ) =>
       this.request<Event>(`/orgs/${orgId}/bookings/${bookingId}/event`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    /** Start Stripe checkout for a ticket. No token needed — public events. */
+    buyTicket: (
+      orgId: string,
+      eventId: string,
+      data: { successUrl: string; cancelUrl: string; email?: string },
+      token?: string,
+    ) =>
+      this.request<{ url: string }>(`/orgs/${orgId}/events/${eventId}/tickets/checkout`, {
         method: 'POST',
         body: JSON.stringify(data),
         token,
@@ -644,6 +662,29 @@ class ApiClient {
       this.request(`/orgs/${orgId}/me/demographics`, { method: 'DELETE', token }),
   };
 
+  // ── Stripe Connect: the co-op's own payouts (D-013) ──
+  connect = {
+    status: (orgId: string, token: string) =>
+      this.request<ConnectStatus>(`/orgs/${orgId}/connect/status`, { token }),
+
+    startOnboarding: (
+      orgId: string,
+      data: { returnUrl: string; refreshUrl: string },
+      token: string,
+    ) =>
+      this.request<{ url: string }>(`/orgs/${orgId}/connect/onboarding`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    refundTicket: (orgId: string, ticketId: string, token: string) =>
+      this.request<{ refunded: boolean; reason?: string }>(
+        `/orgs/${orgId}/tickets/${ticketId}/refund`,
+        { method: 'POST', token },
+      ),
+  };
+
   // ── Stripe ───────────────────────────────────────
   stripe = {
     // amountCents is required for pay-what-you-can tiers and rejected for
@@ -762,6 +803,12 @@ export interface Org {
    */
   locations?: Location[];
   tiers?: MembershipTier[];
+  /** MaybeOS plan, which sets the per-transaction ticket fee (D-013). */
+  plan?: 'FREE' | 'PLUS' | 'UNLIMITED';
+  /** A fee the co-op adds to its own ticket sales, in cents. */
+  ticketFeeCents?: number;
+  /** Whether Stripe onboarding is finished and tickets can actually sell. */
+  stripeChargesEnabled?: boolean;
 }
 
 export interface CreateOrgData {
@@ -881,6 +928,11 @@ export interface Event {
    * which is true of every event created before the column existed.
    */
   host?: { id: string; name?: string; avatarUrl?: string } | null;
+  /** What a ticket costs, in cents. Null means free — no Stripe involved. */
+  priceCents?: number | null;
+  currency?: string;
+  /** The public event endpoint embeds a slice of the co-op. */
+  org?: { id: string; name: string; slug: string; logoUrl?: string | null };
   location?: Location;
   room?: Room;
 }
@@ -897,6 +949,11 @@ export interface CreateEventData {
   roomId?: string;
   /** Go live immediately rather than saving a draft (EVT-05). */
   publish?: boolean;
+  /**
+   * What a ticket costs, in cents. Null or absent means free — and free is not
+   * the same as zero-priced: a free event never touches Stripe.
+   */
+  priceCents?: number | null;
 }
 
 /**
@@ -910,6 +967,16 @@ export interface PublishBookingEventData {
   capacity?: number;
   category?: string;
   publish?: boolean;
+  priceCents?: number | null;
+}
+
+/** Whether a co-op can take money for tickets yet (D-013, Stripe Connect). */
+export interface ConnectStatus {
+  connected: boolean;
+  chargesEnabled: boolean;
+  detailsSubmitted?: boolean;
+  /** What Stripe still wants before this co-op can be paid. */
+  requirements?: string[];
 }
 
 /**

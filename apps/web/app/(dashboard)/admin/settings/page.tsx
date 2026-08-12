@@ -5,6 +5,7 @@ import { Save } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
+import { TicketPayouts } from '@/components/settings/ticket-payouts';
 
 type SettingsTab = 'general' | 'branding' | 'integrations' | 'billing';
 
@@ -283,6 +284,8 @@ export default function SettingsPage() {
         into a submit-everything button would let an admin leave the page
         believing the doors were open when they were not.
       */}
+      {activeTab === 'general' && org && <TicketPayouts org={org} onSaved={refetch} />}
+
       {activeTab === 'general' && (
         <section className="card max-w-2xl space-y-4">
           <div className="flex items-start justify-between gap-6">

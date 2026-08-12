@@ -30,6 +30,17 @@ export class PrismaService
        */
       omit: {
         room: { googleTokens: true },
+        /**
+         * The co-op's Stripe Connect account id. `GET /orgs/:orgId` is
+         * unauthenticated — it backs the public org page — and returns the
+         * whole row, so adding this column for ticketing published every
+         * co-op's connected account id to anyone who asked. Not a credential,
+         * but an internal identifier that belongs between MaybeOS and Stripe.
+         *
+         * ConnectService opts back in per query; it is the only thing that
+         * needs it.
+         */
+        organization: { stripeAccountId: true },
       },
     });
   }

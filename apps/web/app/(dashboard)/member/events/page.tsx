@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Calendar, Globe, Lock, Plus, Users, X } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
-import { api, HostedEvent } from '@/lib/api';
+import { api, HostedEvent, Org } from '@/lib/api';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
 
 /**
@@ -20,6 +20,10 @@ export default function MyEventsPage() {
   const orgId = useAuthStore((s) => s.currentOrgId);
 
   const [events, setEvents] = useState<HostedEvent[]>([]);
+  // The form quotes real fees, so it needs the co-op's plan and whether
+  // Stripe onboarding is actually finished. Quoting a fee from a guess would
+  // be worse than not quoting one.
+  const [org, setOrg] = useState<Org | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -28,7 +32,12 @@ export default function MyEventsPage() {
   const load = useCallback(async () => {
     if (!token || !orgId) return;
     try {
-      setEvents(await api.events.myEvents(orgId, token));
+      const [mine, theOrg] = await Promise.all([
+        api.events.myEvents(orgId, token),
+        api.orgs.get(orgId, token),
+      ]);
+      setEvents(mine);
+      setOrg(theOrg);
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load your events');
@@ -141,6 +150,9 @@ export default function MyEventsPage() {
             busy={busy}
             onSubmit={create}
             onCancel={() => setCreating(false)}
+            plan={org?.plan ?? 'FREE'}
+            orgFeeCents={org?.ticketFeeCents ?? 0}
+            canSellTickets={Boolean(org?.stripeChargesEnabled)}
           />
         </section>
       )}
