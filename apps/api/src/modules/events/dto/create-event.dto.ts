@@ -82,6 +82,14 @@ export class CreateEventDto {
   @IsInt()
   capacity?: number;
 
+  @ApiPropertyOptional({
+    description:
+      'Who runs this event. Defaults to whoever creates it (EVT-04); set it when creating an event on somebody else\'s behalf.',
+  })
+  @IsOptional()
+  @IsUUID()
+  hostId?: string;
+
   @ApiPropertyOptional({ description: 'Allow waitlist when capacity is reached' })
   @IsOptional()
   @IsBoolean()
@@ -159,6 +167,12 @@ export class UpdateEventDto {
   @IsOptional()
   @IsInt()
   capacity?: number;
+
+  /** Null clears the host; an event may legitimately have nobody running it. */
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsUUID()
+  hostId?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()
