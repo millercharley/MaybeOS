@@ -14,3 +14,9 @@ prisma/*.db
 # skills-lock.json, which IS committed so the set and versions are pinned.
 .agents/
 .claude/skills/
+
+# Personal Claude Code config: permission allowlists are per-developer, not a
+# property of the project. Charley's grants git merge; nobody else should
+# inherit that by cloning. Project-wide settings, if ever wanted, go in a
+# committed .claude/settings.json instead.
+.claude/settings.local.json
