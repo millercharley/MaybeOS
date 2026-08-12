@@ -200,7 +200,7 @@ export default function EventDetailPage(props: { params: Promise<{ slug: string 
               <>
                 {submitted ? (
                   <div className="mt-6 rounded-lg bg-green-50 p-4 text-center">
-                    <p className="font-medium text-green-800">You are RSVP'd!</p>
+                    <p className="font-medium text-green-800">You are RSVP&apos;d!</p>
                     <p className="mt-1 text-sm text-green-600">
                       A confirmation has been sent to your email.
                     </p>

@@ -72,6 +72,14 @@ export default function GlobalError({
             The failure has been reported. Reloading usually clears it.
           </p>
 
+          {/*
+            A real anchor, deliberately. This is the global error boundary: it
+            renders when the root layout itself failed, so the router may be
+            part of what broke. `<Link>` would do a client-side navigation
+            through the very thing that is not working, while a plain href
+            forces the full reload the copy above promises.
+          */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a
             href="/"
             style={{

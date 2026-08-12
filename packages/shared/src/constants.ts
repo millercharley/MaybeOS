@@ -62,3 +62,41 @@ export const IMPACT_CATEGORIES = [
   'participation',
   'civic_engagement',
 ] as const;
+
+// ─── Reserved organization slugs ─────────────────────────────
+
+/**
+ * Slugs a co-op may not take, because the platform uses them itself.
+ *
+ * An org's slug is also its subdomain (SCL-01): `sunrise.maybeos.org` serves
+ * that co-op's portal. So a slug is not only a URL path — registering `www`
+ * or `api` would mean the routing layer refuses to resolve you and your
+ * portal is simply unreachable, while `admin` collides with a hostname the
+ * platform intends to use.
+ *
+ * Canonical list. `apps/web/lib/tenant-host.ts` imports it; the API keeps a
+ * copy because its build cannot reach outside `src/`, guarded by a test that
+ * fails if the two ever disagree.
+ */
+export const RESERVED_ORG_SLUGS = [
+  'admin',
+  'api',
+  'app',
+  'assets',
+  'auth',
+  'billing',
+  'blog',
+  'cdn',
+  'dashboard',
+  'docs',
+  'help',
+  'login',
+  'mail',
+  'preview',
+  'register',
+  'staging',
+  'static',
+  'status',
+  'support',
+  'www',
+] as const;

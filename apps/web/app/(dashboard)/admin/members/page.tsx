@@ -4,7 +4,7 @@ import { useState, FormEvent } from 'react';
 import { Search, Plus, MoreHorizontal, Clock, RefreshCw, Mail } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
 import { useAuthStore } from '@/lib/auth-store';
-import { api, type Invitation } from '@/lib/api';
+import { api } from '@/lib/api';
 import { Modal } from '@/components/ui/modal';
 
 const roleBadge: Record<string, string> = {
@@ -69,7 +69,15 @@ export default function MembersPage() {
     try {
       await api.members.resendInvite(currentOrgId, inviteId, token);
       refetchInvites();
-    } catch {}
+    } catch (err) {
+      // Swallowed silently before: "Resend" looked identical whether the
+      // email went out or the request failed. Reuses the banner the invite
+      // form already renders rather than adding a second one.
+      setInviteResult({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Could not resend that invitation',
+      });
+    }
     setResendingId(null);
   }
 

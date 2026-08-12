@@ -6,10 +6,7 @@ import {
   Delete,
   Param,
   Body,
-  Query,
   UseGuards,
-  DefaultValuePipe,
-  ParseIntPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';

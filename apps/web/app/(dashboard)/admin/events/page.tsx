@@ -80,7 +80,6 @@ export default function EventsPage() {
         {filtered.map((event) => {
           const startDate = new Date(event.startTime);
           const endDate = new Date(event.endTime);
-          const isPast = startDate < now;
           const dateStr = startDate.toLocaleDateString('en-US', {
             month: 'short',
             day: 'numeric',

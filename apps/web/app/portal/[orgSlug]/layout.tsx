@@ -20,7 +20,7 @@ function PortalShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50">
         <h1 className="text-2xl font-bold text-gray-900">Organization Not Found</h1>
         <p className="mt-2 text-gray-500">
-          The organization you're looking for doesn't exist or the URL is incorrect.
+          The organization you&apos;re looking for doesn&apos;t exist or the URL is incorrect.
         </p>
       </div>
     );

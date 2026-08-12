@@ -4,7 +4,6 @@ import Link from 'next/link';
 import {
   Calendar,
   Clock,
-  MapPin,
   CreditCard,
   User,
   ClipboardList,
@@ -15,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { useApi } from '@/hooks/use-api';
-import { api, Booking } from '@/lib/api';
+import { api } from '@/lib/api';
 
 const quickLinks = [
   { label: 'My RSVPs', href: '/member/rsvps', icon: Calendar },
@@ -32,6 +31,18 @@ export default function MemberPortalPage() {
     (token, orgId) => api.rooms.myBookings(orgId, token),
     []
   );
+
+  // This section used to read "Coming soon — your RSVP'd events will appear
+  // here once the feature is available", while /member/rsvps was live and
+  // linked from the sidebar two rows above it (EVT-01). The dashboard was
+  // telling members a working feature did not exist.
+  const { data: rsvps, loading: rsvpsLoading } = useApi(
+    (token, orgId) => api.events.myRsvps(orgId, token),
+    []
+  );
+  const upcomingRsvps = (rsvps ?? [])
+    .filter((r) => !r.isPast && !r.eventCanceled && r.status !== 'CANCELED')
+    .slice(0, 3);
 
   // Derive member info from auth store
   const currentOrg = user?.orgs?.[0];
@@ -136,16 +147,48 @@ export default function MemberPortalPage() {
       <section className="mt-8">
         <h2 className="text-lg font-semibold text-gray-900">My Upcoming Events</h2>
         <div className="mt-4">
-          <div className="card rounded-xl border border-gray-200 text-center py-8">
-            <Calendar className="mx-auto h-10 w-10 text-gray-300" />
-            <p className="mt-3 text-sm font-medium text-gray-900">Coming soon</p>
-            <p className="mt-1 text-sm text-gray-500">
-              Your RSVP'd events will appear here once the feature is available.
-            </p>
-            <Link href="/events" className="mt-4 inline-block text-sm font-medium text-brand-600 hover:text-brand-700">
-              Browse upcoming events
-            </Link>
-          </div>
+          {rsvpsLoading ? (
+            <div className="card rounded-xl border border-gray-200 py-8 text-center">
+              <div className="mx-auto h-6 w-6 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
+            </div>
+          ) : upcomingRsvps.length === 0 ? (
+            <div className="card rounded-xl border border-gray-200 py-8 text-center">
+              <Calendar className="mx-auto h-10 w-10 text-gray-300" />
+              <p className="mt-3 text-sm text-gray-500">
+                You haven&apos;t RSVPed to anything coming up.
+              </p>
+              <Link href="/events" className="mt-4 inline-block text-sm font-medium text-brand-600 hover:text-brand-700">
+                Browse upcoming events
+              </Link>
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {upcomingRsvps.map((rsvp) => (
+                <li key={rsvp.id}>
+                  <Link
+                    href="/member/rsvps"
+                    className="card flex items-center justify-between rounded-xl border border-gray-200 hover:border-brand-300"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium text-gray-900">
+                        {rsvp.event.title}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-gray-500">
+                        {new Date(rsvp.event.startTime).toLocaleDateString('en-US', {
+                          timeZone: rsvp.event.timezone || undefined,
+                          weekday: 'short',
+                          month: 'short',
+                          day: 'numeric',
+                        })}
+                        {rsvp.status === 'WAITLISTED' && ' · on the waitlist'}
+                      </span>
+                    </span>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </section>
 
