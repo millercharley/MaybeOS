@@ -231,6 +231,8 @@ export class CommonsService {
     await this.findPostInOrg(orgId, postId);
 
     if (parentId) {
+      // tenant-scoping-exempt: the post above is already scoped to the org,
+      // and the parent is then required to belong to that same post.
       const parent = await this.prisma.comment.findUnique({ where: { id: parentId } });
       if (!parent || parent.postId !== postId) {
         throw new NotFoundException('Parent comment not found on this post');

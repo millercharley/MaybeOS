@@ -130,10 +130,10 @@ export class EventsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get event details' })
   async findById(
-    @Param('orgId', ParseUUIDPipe) _orgId: string,
+    @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
   ) {
-    return this.eventsService.findById(eventId);
+    return this.eventsService.findById(orgId, eventId);
   }
 
   /* ─── Update Event ──────────────────────────────────────────── */
@@ -144,11 +144,11 @@ export class EventsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update an event' })
   async update(
-    @Param('orgId', ParseUUIDPipe) _orgId: string,
+    @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
     @Body() dto: UpdateEventDto,
   ) {
-    return this.eventsService.update(eventId, dto);
+    return this.eventsService.update(orgId, eventId, dto);
   }
 
   /* ─── Publish Event ─────────────────────────────────────────── */
@@ -159,10 +159,10 @@ export class EventsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Publish an event' })
   async publish(
-    @Param('orgId', ParseUUIDPipe) _orgId: string,
+    @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
   ) {
-    return this.eventsService.publish(eventId);
+    return this.eventsService.publish(orgId, eventId);
   }
 
   /* ─── Cancel Event ──────────────────────────────────────────── */
@@ -173,10 +173,10 @@ export class EventsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Cancel an event' })
   async cancel(
-    @Param('orgId', ParseUUIDPipe) _orgId: string,
+    @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
   ) {
-    return this.eventsService.cancel(eventId);
+    return this.eventsService.cancel(orgId, eventId);
   }
 
   /* ─── RSVP ──────────────────────────────────────────────────── */
@@ -186,12 +186,12 @@ export class EventsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'RSVP to an event (members) or as guest' })
   async rsvp(
-    @Param('orgId', ParseUUIDPipe) _orgId: string,
+    @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
     @Body() dto: RsvpDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.eventsService.rsvp(eventId, user?.userId ?? null, dto);
+    return this.eventsService.rsvp(orgId, eventId, user?.userId ?? null, dto);
   }
 
   /* ─── Guest RSVP (no auth) ─────────────────────────────────── */
@@ -199,11 +199,11 @@ export class EventsController {
   @Post('orgs/:orgId/events/:eventId/rsvp/guest')
   @ApiOperation({ summary: 'Guest RSVP to a public event (no auth required)' })
   async guestRsvp(
-    @Param('orgId', ParseUUIDPipe) _orgId: string,
+    @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
     @Body() dto: RsvpDto,
   ) {
-    return this.eventsService.rsvp(eventId, null, dto);
+    return this.eventsService.rsvp(orgId, eventId, null, dto);
   }
 
   /* ─── Cancel RSVP ──────────────────────────────────────────── */
@@ -213,11 +213,11 @@ export class EventsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Cancel your RSVP' })
   async cancelRsvp(
-    @Param('orgId', ParseUUIDPipe) _orgId: string,
+    @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.eventsService.cancelRsvp(eventId, user.userId);
+    return this.eventsService.cancelRsvp(orgId, eventId, user.userId);
   }
 
   /* ─── Check-in ──────────────────────────────────────────────── */
@@ -228,11 +228,11 @@ export class EventsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Check in a user at an event' })
   async checkIn(
-    @Param('orgId', ParseUUIDPipe) _orgId: string,
+    @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
     @Param('userId', ParseUUIDPipe) userId: string,
   ) {
-    return this.eventsService.checkIn(eventId, userId);
+    return this.eventsService.checkIn(orgId, eventId, userId);
   }
 
   /* ─── Public Event Page (by slugs, no auth) ────────────────── */

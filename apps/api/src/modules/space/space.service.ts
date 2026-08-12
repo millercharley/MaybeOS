@@ -43,11 +43,34 @@ export class SpaceService {
     });
   }
 
-  async updateRoom(roomId: string, dto: Partial<CreateRoomDto>) {
-    const room = await this.prisma.room.findUnique({ where: { id: roomId } });
+  /**
+   * Load a room and confirm it belongs to the org in the URL (SEC-04).
+   *
+   * SPC-02 fixed this for the booking-cancel path via loadBookingForActor,
+   * but left the room and availability paths resolving by bare id. The org
+   * guard only proves the caller belongs to the org they named in the URL,
+   * so an admin could rename, re-rule or read another co-op's rooms.
+   */
+  private async findRoomInOrg(orgId: string, roomId: string) {
+    const room = await this.prisma.room.findFirst({ where: { id: roomId, orgId } });
     if (!room) {
       throw new NotFoundException('Room not found');
     }
+    return room;
+  }
+
+  private async findBookingInOrg(orgId: string, bookingId: string) {
+    const booking = await this.prisma.booking.findFirst({
+      where: { id: bookingId, room: { orgId } },
+    });
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+    return booking;
+  }
+
+  async updateRoom(orgId: string, roomId: string, dto: Partial<CreateRoomDto>) {
+    await this.findRoomInOrg(orgId, roomId);
 
     return this.prisma.room.update({
       where: { id: roomId },
@@ -72,9 +95,9 @@ export class SpaceService {
     });
   }
 
-  async getRoom(roomId: string) {
-    const room = await this.prisma.room.findUnique({
-      where: { id: roomId },
+  async getRoom(orgId: string, roomId: string) {
+    const room = await this.prisma.room.findFirst({
+      where: { id: roomId, orgId },
       include: {
         availabilityRules: true,
         bookings: {
@@ -99,11 +122,8 @@ export class SpaceService {
   /*  Availability Rules                                                 */
   /* ------------------------------------------------------------------ */
 
-  async addAvailabilityRule(roomId: string, dto: AvailabilityRuleDto) {
-    const room = await this.prisma.room.findUnique({ where: { id: roomId } });
-    if (!room) {
-      throw new NotFoundException('Room not found');
-    }
+  async addAvailabilityRule(orgId: string, roomId: string, dto: AvailabilityRuleDto) {
+    await this.findRoomInOrg(orgId, roomId);
 
     return this.prisma.availabilityRule.create({
       data: {
@@ -119,8 +139,10 @@ export class SpaceService {
     });
   }
 
-  async removeAvailabilityRule(ruleId: string) {
-    const rule = await this.prisma.availabilityRule.findUnique({ where: { id: ruleId } });
+  async removeAvailabilityRule(orgId: string, ruleId: string) {
+    const rule = await this.prisma.availabilityRule.findFirst({
+      where: { id: ruleId, room: { orgId } },
+    });
     if (!rule) {
       throw new NotFoundException('Availability rule not found');
     }
@@ -150,6 +172,8 @@ export class SpaceService {
     kind: 'received' | 'confirmed' | 'rejected' | 'canceled' | 'rescheduled',
   ): Promise<void> {
     try {
+      // tenant-scoping-exempt: private, and every caller has already resolved
+      // this booking inside its org before asking for an email about it.
       const b = await this.prisma.booking.findUnique({
         where: { id: bookingId },
         include: {
@@ -188,9 +212,9 @@ export class SpaceService {
     }
   }
 
-  async createBooking(roomId: string, userId: string, dto: CreateBookingDto) {
-    const room = await this.prisma.room.findUnique({
-      where: { id: roomId },
+  async createBooking(orgId: string, roomId: string, userId: string, dto: CreateBookingDto) {
+    const room = await this.prisma.room.findFirst({
+      where: { id: roomId, orgId },
       include: { availabilityRules: true },
     });
 
@@ -239,11 +263,8 @@ export class SpaceService {
     return created;
   }
 
-  async approveBooking(bookingId: string, reviewerId: string) {
-    const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
-    if (!booking) {
-      throw new NotFoundException('Booking not found');
-    }
+  async approveBooking(orgId: string, bookingId: string, reviewerId: string) {
+    const booking = await this.findBookingInOrg(orgId, bookingId);
 
     if (booking.status !== 'PENDING') {
       throw new BadRequestException('Only pending bookings can be approved');
@@ -262,11 +283,8 @@ export class SpaceService {
     return approved;
   }
 
-  async rejectBooking(bookingId: string, reviewerId: string) {
-    const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
-    if (!booking) {
-      throw new NotFoundException('Booking not found');
-    }
+  async rejectBooking(orgId: string, bookingId: string, reviewerId: string) {
+    const booking = await this.findBookingInOrg(orgId, bookingId);
 
     if (booking.status !== 'PENDING') {
       throw new BadRequestException('Only pending bookings can be rejected');
@@ -301,18 +319,14 @@ export class SpaceService {
     userId: string,
     isStaff: boolean,
   ) {
-    const booking = await this.prisma.booking.findUnique({
-      where: { id: bookingId },
+    // The org filter is part of the query rather than a follow-up comparison:
+    // same result, but it cannot be separated from the lookup by a later edit.
+    const booking = await this.prisma.booking.findFirst({
+      where: { id: bookingId, room: { orgId } },
       include: { room: { include: { availabilityRules: true } } },
     });
 
     if (!booking) {
-      throw new NotFoundException('Booking not found');
-    }
-
-    // The booking must belong to the org in the URL, or a member of one co-op
-    // can reach into another's.
-    if (booking.room.orgId !== orgId) {
       throw new NotFoundException('Booking not found');
     }
 
@@ -414,7 +428,9 @@ export class SpaceService {
     return canceled;
   }
 
-  async listBookings(roomId: string, from: Date, to: Date) {
+  async listBookings(orgId: string, roomId: string, from: Date, to: Date) {
+    await this.findRoomInOrg(orgId, roomId);
+
     return this.prisma.booking.findMany({
       where: {
         roomId,

@@ -59,7 +59,10 @@ describe('StripeService', () => {
               update: jest.fn(),
             },
             membershipTier: {
-              findUnique: jest.fn(),
+              // findFirst, not findUnique: the tier is resolved through the
+              // org being joined so a checkout cannot target another co-op's
+              // tier (SEC-04).
+              findFirst: jest.fn(),
             },
           },
         },
@@ -90,7 +93,7 @@ describe('StripeService', () => {
     });
 
     it('charges the amount the member chose', async () => {
-      prisma.membershipTier.findUnique.mockResolvedValue(pwycTier);
+      prisma.membershipTier.findFirst.mockResolvedValue(pwycTier);
       const stripe = (service as any).stripe;
       stripe.checkout.sessions.create.mockResolvedValue({ url: 'https://pay' });
 
@@ -106,28 +109,28 @@ describe('StripeService', () => {
     });
 
     it('rejects an amount below the tier minimum', async () => {
-      prisma.membershipTier.findUnique.mockResolvedValue(pwycTier);
+      prisma.membershipTier.findFirst.mockResolvedValue(pwycTier);
       await expect(
         service.createCheckoutSession('org-1', 'u1', 'tier-pwyc', 'https://s', 'https://c', 100),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('enforces the 50c Stripe floor when the tier minimum is lower', async () => {
-      prisma.membershipTier.findUnique.mockResolvedValue({ ...pwycTier, minPrice: 1 });
+      prisma.membershipTier.findFirst.mockResolvedValue({ ...pwycTier, minPrice: 1 });
       await expect(
         service.createCheckoutSession('org-1', 'u1', 'tier-pwyc', 'https://s', 'https://c', 10),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('requires an amount for a pay-what-you-can tier', async () => {
-      prisma.membershipTier.findUnique.mockResolvedValue(pwycTier);
+      prisma.membershipTier.findFirst.mockResolvedValue(pwycTier);
       await expect(
         service.createCheckoutSession('org-1', 'u1', 'tier-pwyc', 'https://s', 'https://c'),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('rejects an amount on a fixed-price tier rather than ignoring it', async () => {
-      prisma.membershipTier.findUnique.mockResolvedValue({
+      prisma.membershipTier.findFirst.mockResolvedValue({
         ...pwycTier,
         isPayWhatYouCan: false,
       });
@@ -137,7 +140,7 @@ describe('StripeService', () => {
     });
 
     it('still uses the fixed price when no amount is given', async () => {
-      prisma.membershipTier.findUnique.mockResolvedValue({
+      prisma.membershipTier.findFirst.mockResolvedValue({
         ...pwycTier,
         isPayWhatYouCan: false,
       });

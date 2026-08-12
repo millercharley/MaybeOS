@@ -294,6 +294,8 @@ export class CalendarService {
    * and reconcile with local bookings. Creates/updates bookings as needed.
    */
   async syncRoomCalendar(roomId: string) {
+    // tenant-scoping-exempt: the only caller is the sync route, which resolves
+    // the room inside the org in the path before calling this.
     const room = await this.prisma.room.findUnique({
       where: { id: roomId },
       include: { bookings: true },
