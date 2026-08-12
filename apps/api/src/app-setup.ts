@@ -1,5 +1,5 @@
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { ValidationPipe, Logger } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import helmet from 'helmet';
@@ -60,7 +60,10 @@ export async function configureApp(app: NestExpressApplication) {
         if (baseDomains.some((base) => hostname === base || hostname.endsWith('.' + base))) {
           return callback(null, true);
         }
-      } catch {}
+      } catch {
+        // A malformed Origin header is not a permitted origin. Falling
+        // through to the rejection below is the whole intent.
+      }
       callback(null, false);
     },
     credentials: true,

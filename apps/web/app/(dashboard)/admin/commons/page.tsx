@@ -119,7 +119,7 @@ export default function CommonsPage() {
     const pageId = searchParams.get('page');
     if (channelId) setView({ type: 'channel', id: channelId });
     else if (pageId) setView({ type: 'page', id: pageId });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [searchParams]);
   const [openCollections, setOpenCollections] = useState<Record<string, boolean>>({});
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
@@ -132,7 +132,7 @@ export default function CommonsPage() {
     [],
   );
 
-  const { data: collections, refetch: refetchCollections } = useApi(
+  const { data: collections } = useApi(
     (token, orgId) => api.commons.listCollections(orgId, token),
     [],
   );

@@ -57,14 +57,14 @@ maybeos-suite/
 - **Frontend**: Next.js 15 (App Router), TypeScript, Tailwind CSS, Zustand, Lucide icons
 - **Backend**: NestJS 10, TypeScript, Prisma ORM, Passport JWT
 - **Database**: PostgreSQL 16 with row-level tenancy (`orgId` on all tables)
-- **Queue**: BullMQ + Redis for async jobs (emails, calendar sync, webhooks)
+- **Scheduled work**: a Netlify Scheduled Function every 15 minutes (D-022). BullMQ and Redis were removed in D-007 — a serverless deployment had no worker to drain the queue.
 - **Integrations**: Stripe Billing, Google Calendar API, Postmark email
 - **Auth**: Email/password + magic links, JWT tokens, RBAC (Admin/Staff/Member/Guest)
 
 ## Prerequisites
 
 - Node.js >= 20
-- Docker & Docker Compose (for Postgres + Redis)
+- PostgreSQL 15+ — Docker Compose provides one, or use a hosted database
 - Stripe account (test mode) for payment features
 - Google Cloud project (optional, for calendar sync)
 - Postmark account (optional, for emails)
@@ -79,13 +79,17 @@ cd maybeos-suite
 npm install
 ```
 
-### 2. Start infrastructure
+### 2. Start a database
 
 ```bash
 docker compose up -d
 ```
 
-This starts PostgreSQL (port 5432) and Redis (port 6379).
+This starts PostgreSQL on port 5432. Alternatively, point `DATABASE_URL` at a
+hosted database — the deployed environments use Supabase.
+
+There is no Redis. The queue it backed was removed (D-007) because a
+serverless deployment has no worker to drain it; email sends directly.
 
 ### 3. Configure environment
 
@@ -109,9 +113,16 @@ POSTMARK_API_TOKEN=""                     # optional (logs emails in dev)
 ```bash
 cd apps/api
 npx prisma generate
-npx prisma migrate dev --name init
+npx prisma migrate deploy    # applies prisma/migrations
 npm run db:seed
 ```
+
+`db:seed` refuses to run against a non-local database without an explicit
+override, so it cannot be pointed at production by accident.
+
+Schema changes go through `prisma migrate`, never `prisma db push` — see
+[apps/api/prisma/migrations/README.md](apps/api/prisma/migrations/README.md)
+for why, and for the drift check to run before a release.
 
 ### 5. Run the application
 
@@ -321,6 +332,12 @@ npm run dev:web             # Web only
 npm run build               # Build all
 ```
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the setup, the conventions that
+exist for a reason, and what a good pull request looks like. Security and
+privacy reports go to [SECURITY.md](SECURITY.md) rather than a public issue.
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).

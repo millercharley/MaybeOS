@@ -56,7 +56,14 @@ export class EventsService {
 
   /* ─── Create ────────────────────────────────────────────────── */
 
-  async create(orgId: string, dto: CreateEventDto, userId: string) {
+  /**
+   * `_userId` is the creator, and it goes nowhere: `Event` has no host or
+   * createdBy column, so MaybeOS does not record who made an event. The
+   * parameter is kept because every caller already has the value and the
+   * column is the missing half — see EVT-04. The PRD needs it (§6.2 sends a
+   * post-event follow-up "to the host"), so this is a gap, not dead weight.
+   */
+  async create(orgId: string, dto: CreateEventDto, _userId: string) {
     const slug = toSlug(dto.title, dto.startTime);
 
     // Ensure slug uniqueness within the org

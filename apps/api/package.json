@@ -12,7 +12,7 @@
     "db:generate": "prisma generate",
     "db:seed": "ts-node prisma/seeds/seed.ts",
     "db:studio": "prisma studio",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint src",
     "test": "jest",
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },

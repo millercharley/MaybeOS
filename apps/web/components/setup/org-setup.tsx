@@ -61,7 +61,7 @@ export function OrgSetup() {
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Welcome</h1>
           <p className="mt-2 text-gray-600">
-            Create your organization to get started. This will be your co-op's home base.
+            Create your organization to get started. This will be your co-op&apos;s home base.
           </p>
         </div>
 

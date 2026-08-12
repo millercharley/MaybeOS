@@ -355,7 +355,7 @@ export class CalendarService {
           .map((b) => [b.googleEventId, b]),
       );
 
-      let created = 0;
+      const created = 0;
       let updated = 0;
 
       for (const gEvent of googleEvents) {

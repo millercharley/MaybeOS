@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { PrismaService } from '../../config/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { CreateOrgDto } from './dto/create-org.dto';
+import { RESERVED_ORG_SLUGS } from './reserved-slugs';
 import { UpdateOrgDto } from './dto/update-org.dto';
 
 @Injectable()
@@ -72,6 +73,10 @@ export class OrgService {
    * and seeds a default "General" channel.
    */
   async create(dto: CreateOrgDto, userId: string) {
+    if (RESERVED_ORG_SLUGS.includes(dto.slug)) {
+      throw new ConflictException(`Slug "${dto.slug}" is reserved`);
+    }
+
     const existing = await this.prisma.organization.findUnique({
       where: { slug: dto.slug },
     });
