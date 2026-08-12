@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useState, useMemo } from 'react';
+import { use, useState } from 'react';
 import Link from 'next/link';
 import { Calendar, Clock, MapPin, Users, ArrowLeft, ExternalLink } from 'lucide-react';
 import { usePublicApi } from '@/hooks/use-api';
@@ -12,16 +12,14 @@ export default function EventDetailPage(props: { params: Promise<{ slug: string 
   const [rsvpEmail, setRsvpEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
-  // Fetch all public events and find the one matching the slug
-  const { data: events, loading, error } = usePublicApi(
-    () => api.events.listPublic('sunrise'),
-    []
+  // One event, fetched by slug. This used to pull the whole public list and
+  // find() through it — with the co-op's slug passed where the route parses a
+  // UUID, so the request 400'd and the page never rendered an event at all.
+  // TODO: the co-op is hardcoded, same as the list page above it.
+  const { data: event, loading, error } = usePublicApi(
+    () => api.events.getPublicBySlug('sunrise', slug),
+    [slug]
   );
-
-  const event = useMemo(() => {
-    if (!events) return null;
-    return events.find((e) => e.slug === slug) || null;
-  }, [events, slug]);
 
   const handleRsvp = (e: React.FormEvent) => {
     e.preventDefault();
