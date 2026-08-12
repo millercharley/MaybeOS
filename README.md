@@ -340,4 +340,12 @@ privacy reports go to [SECURITY.md](SECURITY.md) rather than a public issue.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+**Apache License 2.0** — see [LICENSE](LICENSE).
+
+Self-hosting MaybeOS is free, and always will be (D-013). If you run it and
+want to help sustain the project, MaybeOS accepts gifts. MaybeItsFate LCA is a
+**for-profit company**, so those gifts are **not tax deductible** and must
+never be described as such.
+
+The hosted service is priced separately — see D-013 in
+[project-os/DECISIONS.md](project-os/DECISIONS.md).
