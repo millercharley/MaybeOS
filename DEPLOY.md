@@ -1,229 +1,100 @@
-# Deploying MaybeOS on Railway
+# Deploying MaybeOS
 
-This guide walks you through deploying MaybeOS for MaybeItsFate's beta test.
-No command line required — everything is done through the Railway web dashboard.
+Production is **Netlify**, one site serving both halves of the app (D-005, D-010).
 
----
+This file used to be a Railway walkthrough with a correction notice bolted to the
+top. Railway has not been the deployment target since D-010, and a document that
+describes the wrong host — however clearly it is annotated — is a document that
+eventually gets followed. It has been replaced with what actually happens.
 
-## What You'll End Up With
+## The shape of it
 
-- `api.maybeitsfate.com` — The backend API
-- `app.maybeitsfate.com` — The web app your members use
-- Managed PostgreSQL database (automatic backups)
-- Managed Redis (for background jobs)
-- Automatic HTTPS on all URLs
-- Auto-deploy on every push to `main`
+One Netlify site, `maybeos.org`:
 
----
+- **Web** — the Next.js app in `apps/web`, built by Netlify's Next runtime.
+- **API** — the NestJS app in `apps/api`, wrapped by `serverless-http` in
+  `apps/api/src/lambda.ts` and served as the Netlify Function at
+  `netlify/functions/api.js`. It answers on `/api/*` — **same origin as the web
+  app**, which is the whole reason it lives here rather than on a second host:
+  no CORS between the two, and one deploy rather than two that can disagree.
+- **Scheduled work** — `netlify/functions/scheduled-tasks.js`, every 15 minutes
+  (D-022). Not reachable over HTTP: Netlify answers 403 to external callers, and
+  the handler refuses any invocation without a `next_run` payload.
+- **Database** — Supabase Postgres. Two projects, `MaybeOS Dev` and
+  `MaybeOS Prod`; they are not the same and it matters (see below).
 
-## Prerequisites
+`netlify.toml` registers the build plugin that compiles the API before functions
+are bundled, and lists the packages esbuild must not inline.
 
-1. A **GitHub account** (the code must be pushed to GitHub)
-2. A **Railway account** — sign up free at https://railway.app (use "Login with GitHub")
-3. A **domain** you control (e.g. `maybeitsfate.com`) — or use Railway's free `.up.railway.app` subdomain for testing
-4. (Optional) **Stripe account** for payments — can be added later
+## How a deploy happens
 
----
+**Netlify builds `claude/maybeOS-suite-foundation-1Wauk`.** That is origin's
+default branch. There is **no `main`**, and there is no staging step:
 
-## Step-by-Step Setup
+> Merging into that branch *is* the production deploy of maybeos.org.
 
-### 1. Push Code to GitHub
+So: build and test the *merged* result before pushing, not after.
 
-> **Correction (2026-08-11).** This document describes a Railway deploy that is no
-> longer how MaybeOS ships — production is Netlify (D-005, D-010), and there is **no
-> `main` branch** on `millercharley/MaybeOS`. Netlify builds
-> **`claude/maybeOS-suite-foundation-1Wauk`**, which is also origin's default branch,
-> so **merging into that branch is the production deploy** — there is no staging step
-> between them. Confirmed by Charley on 2026-08-11. The Railway instructions below are
-> kept only as history; follow D-010 for the live topology.
+```bash
+git checkout claude/maybeOS-suite-foundation-1Wauk
+git merge --no-ff your-branch
+npm run lint && npm test && npm run build     # on the merged tree
+git push origin claude/maybeOS-suite-foundation-1Wauk
+```
 
----
+`--no-ff` keeps a release revertable as a single commit.
 
-### 2. Create a Railway Project
+## Database changes come first
 
-1. Go to https://railway.app/dashboard
-2. Click **"New Project"**
-3. Choose **"Deploy from GitHub Repo"**
-4. Select the `millercharley/MaybeOS` repository
-5. Railway will detect the monorepo — click **"Add Service"** (don't let it auto-deploy yet)
+Prisma selects every column unless a query says otherwise, so a column that
+exists in the code and not in the database is a 500 on every request that
+touches that table. This has happened: `organizations.allowPublicJoin` shipped
+without its production migration and took MaybeItsFate's public pages down,
+returning HTTP 200 the whole time because the pages are client-rendered shells.
 
----
+**Apply the migration to production, then merge the code.** Never the other way
+round. Full procedure in
+[apps/api/prisma/migrations/README.md](apps/api/prisma/migrations/README.md),
+including the drift check to run against both databases before a release.
 
-### 3. Add PostgreSQL
+## After a deploy
 
-1. In your Railway project, click **"+ New"** (top right)
-2. Choose **"Database" → "PostgreSQL"**
-3. Railway will provision a PostgreSQL 16 instance automatically
-4. No configuration needed — Railway injects `DATABASE_URL` automatically
+```bash
+node tools/prod-smoke.js
+```
 
----
+26 read-only checks across every module: public endpoints answer 200, guarded
+ones answer 401 rather than 500, malformed queries answer 400. It exits
+non-zero on anything unexpected. This is what caught the outage above.
 
-### 4. Add Redis
+## Environment variables
 
-1. Click **"+ New"** again
-2. Choose **"Database" → "Redis"**
-3. Railway provisions Redis automatically
-4. The `REDIS_URL` variable is injected automatically
+Set in the Netlify dashboard (Site configuration → Environment variables), not
+in the repo. The ones production needs:
 
----
+| Variable | Notes |
+|---|---|
+| `DATABASE_URL` | Supabase **prod** session-mode pooler |
+| `JWT_SECRET` | |
+| `WEB_URL` | `https://maybeos.org` — also drives the CORS allow-list |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | org logo storage (D-017) |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | live mode in production |
+| `POSTMARK_API_TOKEN` | email delivery |
+| `SENTRY_DSN` | error tracking |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | optional; calendar sync refuses with 503 when unset |
 
-### 5. Configure the API Service
+Dev and prod Supabase credentials are **not interchangeable**, and the two
+dashboards look identical. Check the project name before pasting anything.
 
-1. Click on the GitHub service Railway created (or click "+ New" → "GitHub Repo" → select `millercharley/MaybeOS`)
-2. Go to **Settings** tab:
-   - **Service Name:** `api`
-   - **Root Directory:** leave empty (uses repo root)
-   - **Builder:** Docker
-   - **Dockerfile Path:** `apps/api/Dockerfile`
-   - **Watch Paths:** `/apps/api/**`, `/packages/shared/**`
-3. Go to **Variables** tab and add these (click "New Variable" for each):
+## What is not the deployment target
 
-| Variable | Value |
-|----------|-------|
-| `NODE_ENV` | `production` |
-| `JWT_SECRET` | (click "Generate" or paste a random 64-char string) |
-| `JWT_EXPIRES_IN` | `7d` |
-| `PORT` | `3001` |
-| `WEB_URL` | `https://app.maybeitsfate.com` (or your Railway web URL) |
-| `API_URL` | `https://api.maybeitsfate.com` (or your Railway API URL) |
-| `STRIPE_SECRET_KEY` | (leave empty for now, or paste your Stripe secret key) |
-| `STRIPE_WEBHOOK_SECRET` | (leave empty for now) |
-| `SENTRY_DSN` | (leave empty for now) |
-| `POSTMARK_API_TOKEN` | (leave empty — emails log to console) |
-| `EMAIL_FROM` | `hello@maybeitsfate.com` |
+**Railway.** It was the original target and was replaced by D-010. If a Railway
+project is still connected to `millercharley/MaybeOS` it will keep building on
+every push and keep failing, because nothing in this repo is arranged for it —
+no `railway.json`, no `Procfile`, no `nixpacks.toml`. Those build failures are
+noise from a disconnected past, not a signal about this deploy. Delete the
+Railway project or disconnect its GitHub integration; nothing in this repository
+can stop it.
 
-4. **Link the database variables:**
-   - Click "New Variable" → "Add Reference" → select your PostgreSQL service → choose `DATABASE_URL`
-   - Click "New Variable" → "Add Reference" → select your Redis service → choose `REDIS_URL`
-
-5. Go to **Networking** tab:
-   - Click **"Generate Domain"** to get a `*.up.railway.app` URL
-   - Or click **"Custom Domain"** and add `api.maybeitsfate.com`
-
----
-
-### 6. Configure the Web Service
-
-1. Click **"+ New"** → **"GitHub Repo"** → select `millercharley/MaybeOS` again
-2. Go to **Settings** tab:
-   - **Service Name:** `web`
-   - **Root Directory:** leave empty
-   - **Builder:** Docker
-   - **Dockerfile Path:** `apps/web/Dockerfile`
-   - **Watch Paths:** `/apps/web/**`, `/packages/**`
-3. Go to **Variables** tab:
-
-| Variable | Value |
-|----------|-------|
-| `NODE_ENV` | `production` |
-| `PORT` | `3000` |
-| `NEXT_PUBLIC_API_URL` | `https://api.maybeitsfate.com` (must match the API domain from step 5) |
-
-4. Go to **Networking** tab:
-   - Generate a domain or add custom domain `app.maybeitsfate.com`
-
----
-
-### 7. Set Up Custom Domains (if using your own domain)
-
-For each custom domain you added, Railway will show you DNS records to create:
-
-1. Go to your domain registrar (GoDaddy, Namecheap, Cloudflare, etc.)
-2. Add a **CNAME** record:
-   - `api.maybeitsfate.com` → (the value Railway shows you)
-   - `app.maybeitsfate.com` → (the value Railway shows you)
-3. Wait 5-10 minutes for DNS to propagate
-4. Railway will automatically issue SSL certificates
-
----
-
-### 8. Deploy
-
-1. Both services should start building automatically
-2. Watch the build logs in Railway's dashboard (click on each service → "Deployments" tab)
-3. The API service will:
-   - Build the Docker image
-   - Run database migrations automatically on startup
-   - Start the server
-4. The Web service will:
-   - Build the Next.js frontend
-   - Start serving pages
-
----
-
-### 9. Seed Demo Data (First Time Only)
-
-After the first successful deploy, you need to populate the database with initial data:
-
-1. In Railway, click on the **API service**
-2. Go to the **"Settings"** tab
-3. Find **"Railway Shell"** or click the **"Shell"** button
-4. Run this command:
-   ```
-   cd apps/api && npx prisma db seed
-   ```
-5. This creates demo accounts you can log in with:
-   - **Platform Admin:** `admin@maybeos.app` / `password123`
-   - **Org Admin:** `maya@sunrise.coop` / `password123`
-
----
-
-### 10. Verify It Works
-
-1. Open your API URL in a browser: `https://api.maybeitsfate.com/api/health`
-   - You should see: `{"status":"ok","details":{"database":{"status":"up"}}}`
-2. Open your Web URL: `https://app.maybeitsfate.com`
-   - You should see the MaybeOS login page
-3. Log in with `maya@sunrise.coop` / `password123`
-
----
-
-## After Launch Checklist
-
-- [ ] Change the default passwords for demo accounts
-- [ ] Set up Stripe (add keys to Railway variables, create webhook pointing to `https://api.maybeitsfate.com/api/stripe/webhooks`)
-- [ ] Set up Postmark for real email delivery (add API token to Railway variables)
-- [ ] Set up Sentry for error tracking (add DSN to Railway variables)
-- [ ] Invite your first real members
-
----
-
-## Ongoing: How Deploys Work
-
-Once set up, Railway auto-deploys whenever you push to `main`:
-- Push code → Railway detects the change → builds new image → deploys with zero downtime
-
----
-
-## Cost Estimate
-
-Railway's usage-based pricing for a small beta:
-- **API + Web services:** ~$5-10/month (based on usage)
-- **PostgreSQL:** ~$5/month
-- **Redis:** ~$3/month
-- **Total:** ~$13-20/month for a beta with <100 users
-
-Railway gives you $5 free credit to start.
-
----
-
-## Troubleshooting
-
-**Build fails:**
-- Check the build logs (click on the service → "Deployments" → click the failed deploy)
-- Most common issue: missing environment variables
-
-**App loads but shows errors:**
-- Check the API health endpoint first
-- Make sure `NEXT_PUBLIC_API_URL` on the web service exactly matches your API's public URL (including `https://`)
-
-**Database issues:**
-- Railway's PostgreSQL dashboard lets you view data
-- You can connect with any PostgreSQL client using the connection string from Railway
-
----
-
-## Need Help?
-
-- Railway docs: https://docs.railway.app
-- Railway Discord: https://discord.gg/railway (fast community support)
+**Docker Compose** (`docker-compose.yml`, `docker-compose.prod.yml`) is for
+running Postgres locally. It is not how production runs.

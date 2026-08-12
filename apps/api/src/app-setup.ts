@@ -7,7 +7,7 @@ import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 
 /**
  * Shared setup applied to every Nest app instance, whether it ends up
- * behind `app.listen()` (traditional server — local dev, Docker, Railway)
+ * behind `app.listen()` (traditional server — local dev, Docker)
  * or wrapped by serverless-http for Netlify Functions (see lambda.ts).
  * Kept in its own side-effect-free module so importing it never triggers
  * main.ts's `bootstrap()` (which listens on a port) as a side effect.
