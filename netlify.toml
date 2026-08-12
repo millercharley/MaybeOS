@@ -42,6 +42,22 @@
     "@mikro-orm/core",
   ]
 
+# Scheduled work (D-022). Every fifteen minutes: close proposals and surveys
+# whose deadline has passed. Due-at state lives on the rows themselves, so a
+# missed run costs lateness and never loss — the next run picks up whatever
+# is still outstanding.
+#
+# Fifteen minutes is chosen against the finest deadline anyone can currently
+# set, which is a date. It is far more often than that needs, and still rare
+# enough that the connection this holds for a second or two is invisible
+# against Supabase's 15-connection cap (D-018).
+#
+# Deliberately no [[redirects]] entry: this function must not be reachable
+# over HTTP. It also refuses any invocation without a schedule payload — see
+# apps/api/src/scheduled.ts.
+[functions."scheduled-tasks"]
+  schedule = "*/15 * * * *"
+
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
