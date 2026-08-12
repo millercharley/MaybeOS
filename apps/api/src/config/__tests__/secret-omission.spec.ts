@@ -3,7 +3,7 @@ import * as path from 'path';
 import { PrismaService } from '../prisma.service';
 
 /**
- * Room OAuth tokens are redacted by default.
+ * Secrets and internal identifiers are redacted by default.
  *
  * `Room.googleTokens` holds the co-op's Google Calendar refresh token, which
  * does not expire. Every room read used `include`, which selects every column,
@@ -23,7 +23,13 @@ describe('PrismaService — secret omission', () => {
 
     // Undefined here means the constructor dropped the `omit` option, which is
     // exactly the regression worth catching: nothing else would break.
-    expect(globalOmit).toEqual({ room: { googleTokens: true } });
+    expect(globalOmit).toEqual({
+      room: { googleTokens: true },
+      // Added when ticketing landed: `GET /orgs/:orgId` is unauthenticated and
+      // returns the whole row, so a new column is published to the world by
+      // default. This is the guard that noticed.
+      organization: { stripeAccountId: true },
+    });
   });
 
   it('is the only place the omission is declared', () => {

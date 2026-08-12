@@ -54,7 +54,10 @@ export class ConnectService {
     returnUrl: string,
     refreshUrl: string,
   ): Promise<{ url: string }> {
-    const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      omit: { stripeAccountId: false },
+    });
     if (!org) throw new NotFoundException('Organization not found');
 
     let accountId = org.stripeAccountId;
@@ -92,7 +95,10 @@ export class ConnectService {
    * elsewhere stays true.
    */
   async refreshAccountStatus(orgId: string) {
-    const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      omit: { stripeAccountId: false },
+    });
     if (!org) throw new NotFoundException('Organization not found');
 
     if (!org.stripeAccountId) {
@@ -143,7 +149,11 @@ export class ConnectService {
   }): Promise<{ url: string }> {
     const event = await this.prisma.event.findFirst({
       where: { id: eventId, orgId },
-      include: { org: true, _count: { select: { tickets: true } } },
+      include: {
+        // The account id is omitted globally; charging needs it.
+        org: { omit: { stripeAccountId: false } },
+        _count: { select: { tickets: true } },
+      },
     });
     if (!event) throw new NotFoundException('Event not found');
 
@@ -303,7 +313,7 @@ export class ConnectService {
   async refundTicket(ticketId: string): Promise<{ refunded: boolean; reason?: string }> {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id: ticketId },
-      include: { event: { include: { org: true } } },
+      include: { event: { include: { org: { omit: { stripeAccountId: false } } } } },
     });
     if (!ticket) throw new NotFoundException('Ticket not found');
 

@@ -21,9 +21,45 @@ export default function EventDetailPage(props: { params: Promise<{ slug: string 
     [slug]
   );
 
-  const handleRsvp = (e: React.FormEvent) => {
+  const [working, setWorking] = useState(false);
+  const [rsvpError, setRsvpError] = useState('');
+
+  /**
+   * This used to be `setSubmitted(true)` and nothing else — the form said "a
+   * confirmation has been sent to your email" without ever calling the API, so
+   * no public RSVP has ever been recorded. Now it does one of two real things.
+   */
+  const handleRsvp = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
+    if (!event?.org) return;
+    setWorking(true);
+    setRsvpError('');
+
+    try {
+      if (event.priceCents) {
+        // Paid: hand off to Stripe on the co-op's account. The ticket is
+        // recorded by the webhook, not on return, so closing the tab after
+        // paying still gets you a seat.
+        const here = window.location.href;
+        const { url } = await api.events.buyTicket(event.org.id, event.id, {
+          successUrl: `${here}?purchased=1`,
+          cancelUrl: here,
+          email: rsvpEmail || undefined,
+        });
+        window.location.assign(url);
+        return;
+      }
+
+      await api.events.guestRsvp(event.org.id, event.id, {
+        name: rsvpName,
+        email: rsvpEmail,
+      });
+      setSubmitted(true);
+    } catch (err) {
+      setRsvpError(err instanceof Error ? err.message : 'Could not complete that');
+    } finally {
+      setWorking(false);
+    }
   };
 
   if (loading) return (
@@ -170,8 +206,18 @@ export default function EventDetailPage(props: { params: Promise<{ slug: string 
           {/* RSVP Section */}
           <div className="card rounded-xl border border-gray-200">
             <h2 className="text-lg font-semibold text-gray-900">
-              {access === 'public' ? 'RSVP Now' : 'Member Event'}
+              {event.priceCents
+                ? `$${(event.priceCents / 100).toFixed(2)}`
+                : access === 'public'
+                  ? 'RSVP Now'
+                  : 'Member Event'}
             </h2>
+            {event.priceCents ? (
+              // The buyer sees the ticket price here and the exact total at
+              // Stripe. Saying "plus fees" without a number is the thing
+              // people resent about ticketing sites.
+              <p className="mt-1 text-sm text-gray-500">per ticket, plus fees at checkout</p>
+            ) : null}
 
             {/* Capacity Bar */}
             {maxCapacity > 0 && (
@@ -241,8 +287,17 @@ export default function EventDetailPage(props: { params: Promise<{ slug: string 
                         className="input mt-1"
                       />
                     </div>
-                    <button type="submit" className="btn-primary w-full">
-                      RSVP Now
+                    {rsvpError && (
+                      <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+                        {rsvpError}
+                      </p>
+                    )}
+                    <button type="submit" className="btn-primary w-full" disabled={working}>
+                      {working
+                        ? 'One moment...'
+                        : event.priceCents
+                          ? 'Buy ticket'
+                          : 'RSVP Now'}
                     </button>
                   </form>
                 )}
