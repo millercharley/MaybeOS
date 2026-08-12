@@ -34,6 +34,61 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
 
+  // Logo upload (OPS-03c, D-017)
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoError, setLogoError] = useState('');
+
+  const LOGO_MAX_BYTES = 2 * 1024 * 1024;
+  const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+
+  async function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // let the same file be picked again after an error
+    if (!file || !token || !currentOrgId) return;
+
+    // Checked here as well as on the server, so the person sees the problem
+    // before a 2 MB upload crosses the network. The server does not trust this.
+    if (!LOGO_TYPES.includes(file.type)) {
+      setLogoError('Use a PNG, JPEG or WebP image.');
+      return;
+    }
+    if (file.size > LOGO_MAX_BYTES) {
+      setLogoError(`That image is ${(file.size / 1024 / 1024).toFixed(1)} MB. The limit is 2 MB.`);
+      return;
+    }
+
+    setLogoBusy(true);
+    setLogoError('');
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('Could not read that file.'));
+        reader.readAsDataURL(file);
+      });
+      await api.orgs.uploadLogo(currentOrgId, dataUrl, file.type, token);
+      refetch();
+    } catch (err: unknown) {
+      setLogoError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setLogoBusy(false);
+    }
+  }
+
+  async function handleLogoRemove() {
+    if (!token || !currentOrgId) return;
+    setLogoBusy(true);
+    setLogoError('');
+    try {
+      await api.orgs.removeLogo(currentOrgId, token);
+      refetch();
+    } catch (err: unknown) {
+      setLogoError(err instanceof Error ? err.message : 'Could not remove the logo');
+    } finally {
+      setLogoBusy(false);
+    }
+  }
+
   // Public joining (MEM-03, D-020)
   const [allowPublicJoin, setAllowPublicJoin] = useState(false);
   const [confirmingOpen, setConfirmingOpen] = useState(false);
@@ -299,6 +354,57 @@ export default function SettingsPage() {
                   : 'Allow anyone to join'}
             </button>
           )}
+        </section>
+      )}
+
+      {activeTab === 'branding' && (
+        <section className="card max-w-2xl space-y-4">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Logo</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Shown on your public page and member portal. PNG, JPEG or WebP, up to 2 MB.
+            </p>
+          </div>
+
+          {logoError && (
+            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{logoError}</div>
+          )}
+
+          <div className="flex items-center gap-5">
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
+              {org?.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={org.logoUrl} alt={`${org.name} logo`} className="h-full w-full object-contain" />
+              ) : (
+                <span className="text-2xl font-bold text-gray-400">
+                  {(org?.name || '?').charAt(0).toUpperCase()}
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <label className={`btn-primary text-sm ${logoBusy ? 'pointer-events-none opacity-60' : 'cursor-pointer'}`}>
+                {logoBusy ? 'Uploading...' : org?.logoUrl ? 'Replace logo' : 'Upload logo'}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={handleLogoChange}
+                  disabled={logoBusy}
+                  className="hidden"
+                />
+              </label>
+              {org?.logoUrl && (
+                <button
+                  type="button"
+                  onClick={handleLogoRemove}
+                  disabled={logoBusy}
+                  className="btn-secondary text-sm"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
         </section>
       )}
 

@@ -180,6 +180,21 @@ class ApiClient {
 
     listTiers: (orgId: string) =>
       this.request<MembershipTier[]>(`/orgs/${orgId}/tiers`),
+
+    /**
+     * Base64 in a JSON body rather than multipart. The API runs as a Netlify
+     * Function, where a multipart body arrives base64-encoded from the
+     * platform and cannot be exercised locally — see UploadLogoDto.
+     */
+    uploadLogo: (orgId: string, data: string, mimeType: string, token: string) =>
+      this.request<Org>(`/orgs/${orgId}/logo`, {
+        method: 'POST',
+        body: JSON.stringify({ data, mimeType }),
+        token,
+      }),
+
+    removeLogo: (orgId: string, token: string) =>
+      this.request<Org>(`/orgs/${orgId}/logo`, { method: 'DELETE', token }),
   };
 
   // ── Members ──────────────────────────────────────
