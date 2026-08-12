@@ -29,6 +29,21 @@ model Organization {
   // Off by default: a housing co-op or members' club must not be joinable by
   // anyone with a card. Each org opts in. See D-020.
   allowPublicJoin Boolean @default(false)
+  /// The co-op's MaybeOS plan (D-013). Everyone starts on FREE.
+  plan            MaybeOsPlan @default(FREE)
+  /// The co-op's own Stripe account, from Connect onboarding. Ticket money is
+  /// paid here directly and MaybeOS's cut is taken as an application fee —
+  /// routing other co-ops' takings through MaybeOS's own account would be
+  /// money transmission, not billing (D-013). Null until onboarding completes.
+  stripeAccountId String?
+  /// Whether Stripe says the account can actually accept charges. Onboarding
+  /// can be started and abandoned halfway, and an account that exists is not
+  /// the same as one that can be paid.
+  stripeChargesEnabled Boolean @default(false)
+  /// A fee the co-op adds to its own ticket sales, on top of MaybeOS's, in
+  /// cents per ticket. Charley's requirement: org admins set their own fee in
+  /// addition. Zero by default — a co-op that has not chosen one charges none.
+  ticketFeeCents  Int     @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -111,6 +126,7 @@ model User {
   receivedMessages DirectMessage[]  @relation("ReceivedMessages")
   collectionPages  CollectionPage[]
   hostedEvents     Event[]          @relation("HostedEvents")
+  tickets          Ticket[]
 
   @@map("users")
 }
@@ -145,6 +161,14 @@ model UserOrg {
   @@index([orgId])
   @@index([orgId, role])
   @@map("user_orgs")
+}
+
+/// Which MaybeOS plan a co-op is on (D-013). Drives the per-transaction fee
+/// MaybeOS takes on ticket sales: FREE 55c, PLUS 30c, UNLIMITED 10c.
+enum MaybeOsPlan {
+  FREE
+  PLUS
+  UNLIMITED
 }
 
 enum SubscriptionStatus {
@@ -222,6 +246,12 @@ model Event {
   recurrenceEnd   DateTime?
   parentEventId   String? // for recurring event instances
   capacity        Int?
+  /// What a ticket costs, in cents. Null means free — the overwhelming
+  /// majority of co-op events — and free is not the same as zero-priced: a
+  /// free event never touches Stripe at all.
+  priceCents      Int?
+  /// ISO 4217, lowercase, as Stripe expects it.
+  currency        String   @default("usd")
   /// Who is running this event (EVT-04). Set to whoever created it and
   /// changeable afterwards, because an organiser often creates an event on
   /// somebody else's behalf. Nullable: events made before this column existed
@@ -258,6 +288,7 @@ model Event {
   children   Event[]      @relation("EventRecurrence")
   rsvps      Rsvp[]
   attendance Attendance[]
+  tickets    Ticket[]
 
   @@unique([orgId, slug])
   @@index([orgId, startTime])
@@ -292,6 +323,40 @@ model Rsvp {
   @@unique([eventId, userId])
   @@index([eventId])
   @@map("rsvps")
+}
+
+/// A paid ticket to an event.
+///
+/// Written only when Stripe confirms the payment, never when checkout starts —
+/// an abandoned checkout must not hold a seat, and a row created hopefully at
+/// session creation is a row somebody has to clean up.
+model Ticket {
+  id                    String   @id @default(uuid())
+  eventId               String
+  /// Null for a guest buying without an account, which is most of the public.
+  userId                String?
+  buyerEmail            String
+  buyerName             String?
+  /// What the buyer actually paid, all in. The three amounts below are how it
+  /// was split, recorded at purchase rather than recomputed later — plans and
+  /// fees change, and a receipt from March must still add up in December.
+  amountCents           Int
+  /// MaybeOS's cut (D-013), by the co-op's plan at the time of sale.
+  platformFeeCents      Int
+  /// The co-op's own additional fee, if it set one.
+  orgFeeCents           Int
+  currency              String   @default("usd")
+  stripeSessionId       String   @unique
+  stripePaymentIntentId String?
+  refundedAt            DateTime?
+  createdAt             DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([eventId])
+  @@index([userId])
+  @@map("tickets")
 }
 
 model Attendance {

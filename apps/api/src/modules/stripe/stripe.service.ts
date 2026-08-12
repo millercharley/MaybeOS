@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
+import { ConnectService } from './connect.service';
 
 /**
  * The client handed to webhook handlers. Always the transaction-scoped client,
@@ -35,6 +36,11 @@ export class StripeService {
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    // Ticket sales land on the co-op's connected account and are recorded by
+    // ConnectService; this service still owns the single webhook endpoint that
+    // Stripe posts to, so it dispatches to it (D-013 keeps the two billing
+    // systems apart, not the one signature-verified entry point).
+    private readonly connectService: ConnectService,
   ) {
     const stripeKey = this.configService.get<string>('STRIPE_SECRET_KEY');
     if (!stripeKey) {
@@ -550,6 +556,21 @@ export class StripeService {
           tx,
         );
         break;
+
+      case 'checkout.session.completed': {
+        // Ticket sales arrive here, from the co-op's connected account rather
+        // than MaybeOS's own (D-013). Membership checkout uses subscription
+        // events above and never reaches this branch — `recordTicketFromSession`
+        // ignores anything without `kind: event_ticket` in its metadata.
+        //
+        // Recorded on the webhook, not the success redirect: a buyer who
+        // closes the tab has still paid, and a seat issued on a redirect is a
+        // seat sold on the buyer's browser behaving.
+        await this.connectService.recordTicketFromSession(
+          event.data.object as Stripe.Checkout.Session,
+        );
+        break;
+      }
 
       default:
         // Not an error: Stripe sends event types we haven't subscribed to or

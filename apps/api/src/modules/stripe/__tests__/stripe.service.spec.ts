@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { BadRequestException } from '@nestjs/common';
 import { StripeService } from '../stripe.service';
+import { ConnectService } from '../connect.service';
 import { PrismaService } from '../../../config/prisma.service';
 
 jest.mock('stripe', () => {
@@ -26,6 +27,9 @@ describe('StripeService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         StripeService,
+        // Ticket sales are recorded by ConnectService (D-013); these tests
+        // cover membership dues and never reach that branch.
+        { provide: ConnectService, useValue: { recordTicketFromSession: jest.fn() } },
         {
           provide: ConfigService,
           useValue: {
