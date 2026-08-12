@@ -16,6 +16,7 @@ import { CurrentUser, RequestUser } from '../../common/decorators/current-user.d
 import { ImpactService } from './impact.service';
 import { CreateSurveyDto } from './dto/create-survey.dto';
 import { SubmitResponseDto } from './dto/submit-response.dto';
+import { OpenWindowDto } from './dto/open-window.dto';
 
 @ApiTags('impact')
 @ApiBearerAuth()
@@ -79,6 +80,21 @@ export class ImpactController {
     @Param('surveyId') surveyId: string,
   ) {
     return this.impactService.closeSurvey(orgId, surveyId);
+  }
+
+  /**
+   * Open a new collection window — next year's round of the same survey.
+   * Responses always land in the open window, and a figure is only comparable
+   * to another from the same one (D-021, G5).
+   */
+  @Post('surveys/:surveyId/windows')
+  @Roles('ADMIN')
+  openWindow(
+    @Param('orgId') orgId: string,
+    @Param('surveyId') surveyId: string,
+    @Body() dto: OpenWindowDto,
+  ) {
+    return this.impactService.openWindow(orgId, surveyId, dto.label, dto.closesAt);
   }
 
   // ─── Responses ──────────────────────────────────────────────
