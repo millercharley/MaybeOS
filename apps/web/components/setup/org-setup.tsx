@@ -3,6 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
+import { Wordmark } from '@/components/brand/wordmark';
 
 export function OrgSetup() {
   const token = useAuthStore((s) => s.token);
@@ -54,10 +55,11 @@ export function OrgSetup() {
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-lg">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-brand-600">
-            <span className="text-2xl font-bold text-white">M</span>
+          {/* The wordmark asset, not an "M" drawn in a rounded square. */}
+          <div className="mb-5 flex justify-center">
+            <Wordmark height={32} />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Welcome to MaybeOS</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Welcome</h1>
           <p className="mt-2 text-gray-600">
             Create your organization to get started. This will be your co-op's home base.
           </p>
