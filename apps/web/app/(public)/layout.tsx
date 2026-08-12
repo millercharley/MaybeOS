@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Wordmark } from '@/components/brand/wordmark';
 
 export default function PublicLayout({
   children,
@@ -11,11 +12,15 @@ export default function PublicLayout({
       <header className="border-b border-gray-200 bg-white">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-8">
-            <Link href="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600">
-                <span className="text-sm font-bold text-white">M</span>
-              </div>
-              <span className="text-lg font-semibold text-gray-900">MaybeOS</span>
+            {/*
+              The wordmark asset, never a hand-drawn substitute. This header
+              used to draw an "M" in a rounded square next to the name in a
+              system font, so the same site showed two different logos
+              depending on which page you were on — this one on /events and
+              /orgs/[slug], the real mark on the landing page.
+            */}
+            <Link href="/" className="flex items-center">
+              <Wordmark height={26} />
             </Link>
 
             <nav className="hidden sm:flex items-center gap-6">
