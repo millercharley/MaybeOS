@@ -467,7 +467,7 @@ export class ImpactService {
    * nothing wrote, so every score was null against real data.
    */
   async getDashboard(orgId: string) {
-    const [surveys, members, events, attendance] = await Promise.all([
+    const [surveys, members, events, attendance, pastEvents] = await Promise.all([
       this.prisma.survey.findMany({
         where: { orgId },
         include: { _count: { select: { responses: true } } },
@@ -475,6 +475,9 @@ export class ImpactService {
       this.prisma.userOrg.count({ where: { orgId } }),
       this.prisma.event.count({ where: { orgId } }),
       this.prisma.attendance.count({ where: { event: { orgId } } }),
+      this.prisma.event.count({
+        where: { orgId, endTime: { lt: new Date() }, canceledAt: null },
+      }),
     ]);
 
     const grouped = await this.prisma.surveyAnswer.groupBy({
@@ -520,9 +523,19 @@ export class ImpactService {
       totalMembers: members,
       totalEvents: events,
       totalResponses,
-      // Structurally zero until check-in has a caller (IMP-10). Reported
-      // honestly rather than omitted.
       totalAttendance: attendance,
+      /**
+       * Reach, per event that has actually happened (IMP-10).
+       *
+       * `totalAttendance` alone answers nothing: 40 check-ins across 2 events
+       * and across 40 tell very different stories. Dividing by *past* events
+       * rather than all of them keeps next month's programme from dragging
+       * the average down — an event nobody has attended yet is not a poorly
+       * attended event.
+       */
+      avgAttendance:
+        pastEvents > 0 ? Math.round((attendance / pastEvents) * 10) / 10 : 0,
+      pastEvents,
       participationRate: members > 0 ? Math.round((totalResponses / members) * 100) : 0,
       scores,
       surveys: surveys.map((s) => ({

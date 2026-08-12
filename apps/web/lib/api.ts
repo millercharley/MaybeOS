@@ -286,6 +286,29 @@ class ApiClient {
     myRsvps: (orgId: string, token: string) =>
       this.request<MyRsvp[]>(`/orgs/${orgId}/events/my-rsvps`, { token }),
 
+    // ── Door list (IMP-10) — organisers only ──────────
+    attendees: (orgId: string, eventId: string, token: string) =>
+      this.request<DoorList>(`/orgs/${orgId}/events/${eventId}/attendees`, { token }),
+
+    checkIn: (orgId: string, eventId: string, rsvpId: string, token: string) =>
+      this.request<{ alreadyCheckedIn: boolean }>(
+        `/orgs/${orgId}/events/${eventId}/rsvps/${rsvpId}/check-in`,
+        { method: 'POST', token },
+      ),
+
+    undoCheckIn: (orgId: string, eventId: string, rsvpId: string, token: string) =>
+      this.request(`/orgs/${orgId}/events/${eventId}/rsvps/${rsvpId}/check-in`, {
+        method: 'DELETE',
+        token,
+      }),
+
+    recordWalkIn: (orgId: string, eventId: string, name: string, token: string) =>
+      this.request(`/orgs/${orgId}/events/${eventId}/walk-ins`, {
+        method: 'POST',
+        body: JSON.stringify(name ? { name } : {}),
+        token,
+      }),
+
     listPublic: async (orgId: string): Promise<Event[]> => {
       const res = await this.request<PaginatedResponse<Event>>(`/orgs/${orgId}/events/public`);
       return res.data;
@@ -733,6 +756,31 @@ export interface Member {
   subscriptionStatus?: string;
   memberSince: string;
   tags: string[];
+}
+
+/**
+ * An event's door list (IMP-10). Verified against a live response.
+ *
+ * `expected` is everyone who said they were coming; `walkIns` is everyone who
+ * did not and turned up anyway. `attendanceCount` is what the impact
+ * dashboard aggregates, returned here so the door and the report cannot
+ * disagree about the same evening.
+ */
+export interface DoorList {
+  expected: Array<{
+    rsvpId: string;
+    userId: string | null;
+    name: string;
+    avatarUrl: string | null;
+    isGuest: boolean;
+    status: string;
+    plusOnes: number;
+    checkedIn: boolean;
+    checkedInAt: string | null;
+  }>;
+  walkIns: Array<{ attendanceId: string; name: string; createdAt: string }>;
+  attendanceCount: number;
+  expectedCount: number;
 }
 
 export interface Event {

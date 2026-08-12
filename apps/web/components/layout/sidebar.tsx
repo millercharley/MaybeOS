@@ -11,12 +11,13 @@ import {
   MessageSquare,
   Settings,
   CreditCard,
+  UserCircle,
   LogOut,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { Wordmark } from '@/components/brand/wordmark';
 
-const navItems = [
+const adminNav = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/members', label: 'Members', icon: Users },
   { href: '/admin/tiers', label: 'Tiers & Dues', icon: CreditCard },
@@ -28,10 +29,30 @@ const navItems = [
   { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 
+/**
+ * What a member's own dashboard offers (IMP-11).
+ *
+ * The sidebar had one list and showed it to everybody, and the dashboard
+ * layout wraps `/member/*` as well as `/admin/*` — so a member on their own
+ * profile page was looking at Members, Tiers & Dues and Settings, every one
+ * of which answers 403. These pages all exist and are all theirs.
+ */
+const memberNav = [
+  { href: '/member', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/member/rsvps', label: 'My RSVPs', icon: Calendar },
+  { href: '/member/bookings', label: 'My Bookings', icon: DoorOpen },
+  { href: '/member/billing', label: 'Billing', icon: CreditCard },
+  { href: '/member/profile', label: 'Profile', icon: UserCircle },
+];
+
 export function Sidebar() {
   const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
+  const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const logout = useAuthStore((s) => s.logout);
+
+  const role = user?.orgs?.find((o) => o.orgId === currentOrgId)?.role;
+  const navItems = role === 'ADMIN' || role === 'STAFF' ? adminNav : memberNav;
 
   return (
     /* Dark ink sidebar, per the design system's admin-app layout spec — it
