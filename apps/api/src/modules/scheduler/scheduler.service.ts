@@ -93,9 +93,14 @@ export class SchedulerService {
    * clock closed it.
    */
   private async closeDueProposals(now: Date): Promise<TaskResult> {
+    // Selects across every org — this is system-level work, not a request —
+    // and reads each proposal's own org so it can be passed back into the
+    // org-scoped service method (CMN-07). The scheduler is the one caller
+    // entitled to cross org boundaries, and it still names the org it is
+    // acting in rather than being handed an unscoped back door.
     const due = await this.prisma.proposal.findMany({
       where: { status: 'OPEN', closesAt: { not: null, lte: now } },
-      select: { id: true },
+      select: { id: true, channel: { select: { orgId: true } } },
     });
 
     const result: TaskResult = {
@@ -105,9 +110,9 @@ export class SchedulerService {
       errors: [],
     };
 
-    for (const { id } of due) {
+    for (const { id, channel } of due) {
       try {
-        await this.commons.closeProposal(id);
+        await this.commons.closeProposal(channel.orgId, id);
         result.processed++;
       } catch (error) {
         result.failed++;
