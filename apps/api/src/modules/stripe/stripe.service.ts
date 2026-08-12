@@ -61,9 +61,12 @@ export class StripeService {
     cancelUrl: string,
     amountCents?: number,
   ): Promise<string> {
-    // 1. Look up the tier
-    const tier = await this.prisma.membershipTier.findUnique({
-      where: { id: tierId },
+    // 1. Look up the tier — scoped to the org being joined (SEC-04). This
+    // method already received `orgId` and resolved the tier without it, so a
+    // member could open a checkout session against *another* co-op's tier:
+    // its price, its Stripe product, charged under this org's join flow.
+    const tier = await this.prisma.membershipTier.findFirst({
+      where: { id: tierId, orgId },
     });
 
     if (!tier) {

@@ -64,9 +64,31 @@ export class EventsService {
 
   /* ─── Update ────────────────────────────────────────────────── */
 
-  async update(eventId: string, dto: UpdateEventDto) {
-    const event = await this.prisma.event.findUnique({ where: { id: eventId } });
+  /**
+   * Load an event and confirm it belongs to the org in the URL (SEC-04).
+   *
+   * Every method below took a bare `eventId`, and the controller named its
+   * route param `_orgId` — underscore-prefixed, the convention for a value
+   * deliberately ignored. The org was not overlooked so much as discarded.
+   *
+   * The guards did not cover the gap either. `RolesGuard` does check
+   * `user.orgRoles[orgId]`, so the admin-only routes (update, publish,
+   * cancel, check-in) at least required a role *in the org named in the
+   * URL* — but the caller writes that URL, so pairing your own org id with
+   * another co-op's event id was enough to edit, publish or cancel it.
+   *
+   * NotFound rather than Forbidden, as in SPC-02, IMP-01 and CMN-07.
+   */
+  private async findEventInOrg(orgId: string, eventId: string) {
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, orgId },
+    });
     if (!event) throw new NotFoundException('Event not found');
+    return event;
+  }
+
+  async update(orgId: string, eventId: string, dto: UpdateEventDto) {
+    const event = await this.findEventInOrg(orgId, eventId);
 
     // If title or startTime changed, regenerate slug
     let slug: string | undefined;
@@ -112,9 +134,8 @@ export class EventsService {
 
   /* ─── Publish ───────────────────────────────────────────────── */
 
-  async publish(eventId: string) {
-    const event = await this.prisma.event.findUnique({ where: { id: eventId } });
-    if (!event) throw new NotFoundException('Event not found');
+  async publish(orgId: string, eventId: string) {
+    await this.findEventInOrg(orgId, eventId);
 
     return this.prisma.event.update({
       where: { id: eventId },
@@ -127,9 +148,8 @@ export class EventsService {
 
   /* ─── Cancel ────────────────────────────────────────────────── */
 
-  async cancel(eventId: string) {
-    const event = await this.prisma.event.findUnique({ where: { id: eventId } });
-    if (!event) throw new NotFoundException('Event not found');
+  async cancel(orgId: string, eventId: string) {
+    await this.findEventInOrg(orgId, eventId);
 
     return this.prisma.event.update({
       where: { id: eventId },
@@ -141,9 +161,9 @@ export class EventsService {
 
   /* ─── Find by ID ────────────────────────────────────────────── */
 
-  async findById(eventId: string) {
-    const event = await this.prisma.event.findUnique({
-      where: { id: eventId },
+  async findById(orgId: string, eventId: string) {
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, orgId },
       include: {
         rsvps: true,
         room: true,
@@ -299,13 +319,44 @@ export class EventsService {
 
   /* ─── RSVP ──────────────────────────────────────────────────── */
 
-  async rsvp(eventId: string, userId: string | null, dto: RsvpDto) {
-    const event = await this.prisma.event.findUnique({
-      where: { id: eventId },
+  /**
+   * RSVP to an event.
+   *
+   * `userId` is null for the guest route, which has no guards at all. That
+   * route existed so a stranger can RSVP to a public event — but nothing
+   * checked that the event *was* public, or published, or even that it
+   * belonged to the org in the URL. Anyone who knew or guessed an event's
+   * UUID could RSVP to another co-op's unpublished, PRIVATE event, and land
+   * their name on its attendee list.
+   *
+   * The rule now: the event must belong to the org in the path, and anyone
+   * who is not a member of that org may only RSVP to an event the org is
+   * already publishing to the world — the same predicate `listPublicEvents`
+   * uses. Members are unaffected, so no existing behaviour changes for them.
+   */
+  async rsvp(orgId: string, eventId: string, userId: string | null, dto: RsvpDto) {
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, orgId },
       include: { _count: { select: { rsvps: { where: { status: 'CONFIRMED' } } } } },
     });
     if (!event) throw new NotFoundException('Event not found');
     if (event.canceledAt) throw new BadRequestException('Event has been canceled');
+
+    const isMember = userId
+      ? Boolean(
+          await this.prisma.userOrg.findFirst({
+            where: { orgId, userId },
+            select: { id: true },
+          }),
+        )
+      : false;
+
+    if (!isMember && !(event.visibility === 'PUBLIC' && event.isPublished)) {
+      // Deliberately the same message a missing event gets: a stranger
+      // probing ids should not be able to tell "no such event" from "exists
+      // but is not public".
+      throw new NotFoundException('Event not found');
+    }
 
     // Check for existing RSVP
     if (userId) {
@@ -363,7 +414,9 @@ export class EventsService {
 
   /* ─── Cancel RSVP ──────────────────────────────────────────── */
 
-  async cancelRsvp(eventId: string, userId: string) {
+  async cancelRsvp(orgId: string, eventId: string, userId: string) {
+    await this.findEventInOrg(orgId, eventId);
+
     const rsvp = await this.prisma.rsvp.findUnique({
       where: { eventId_userId: { eventId, userId } },
     });
@@ -396,7 +449,9 @@ export class EventsService {
 
   /* ─── Check-in ──────────────────────────────────────────────── */
 
-  async checkIn(eventId: string, userId: string) {
+  async checkIn(orgId: string, eventId: string, userId: string) {
+    await this.findEventInOrg(orgId, eventId);
+
     const rsvp = await this.prisma.rsvp.findUnique({
       where: { eventId_userId: { eventId, userId } },
     });

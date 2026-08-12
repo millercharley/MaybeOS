@@ -63,21 +63,21 @@ export class SpaceController {
   @Get('rooms/:roomId')
   @ApiOperation({ summary: 'Get room details with rules and upcoming bookings' })
   getRoom(
-    @Param('orgId', ParseUUIDPipe) _orgId: string,
+    @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('roomId', ParseUUIDPipe) roomId: string,
   ) {
-    return this.spaceService.getRoom(roomId);
+    return this.spaceService.getRoom(orgId, roomId);
   }
 
   @Patch('rooms/:roomId')
   @Roles('ADMIN')
   @ApiOperation({ summary: 'Update a room' })
   updateRoom(
-    @Param('orgId', ParseUUIDPipe) _orgId: string,
+    @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('roomId', ParseUUIDPipe) roomId: string,
     @Body() dto: CreateRoomDto,
   ) {
-    return this.spaceService.updateRoom(roomId, dto);
+    return this.spaceService.updateRoom(orgId, roomId, dto);
   }
 
   /* ------------------------------------------------------------------ */
@@ -88,22 +88,22 @@ export class SpaceController {
   @Roles('ADMIN')
   @ApiOperation({ summary: 'Add an availability rule to a room' })
   addAvailabilityRule(
-    @Param('orgId', ParseUUIDPipe) _orgId: string,
+    @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('roomId', ParseUUIDPipe) roomId: string,
     @Body() dto: AvailabilityRuleDto,
   ) {
-    return this.spaceService.addAvailabilityRule(roomId, dto);
+    return this.spaceService.addAvailabilityRule(orgId, roomId, dto);
   }
 
   @Delete('rooms/:roomId/rules/:ruleId')
   @Roles('ADMIN')
   @ApiOperation({ summary: 'Remove an availability rule' })
   removeAvailabilityRule(
-    @Param('orgId', ParseUUIDPipe) _orgId: string,
+    @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('roomId', ParseUUIDPipe) _roomId: string,
     @Param('ruleId', ParseUUIDPipe) ruleId: string,
   ) {
-    return this.spaceService.removeAvailabilityRule(ruleId);
+    return this.spaceService.removeAvailabilityRule(orgId, ruleId);
   }
 
   /* ------------------------------------------------------------------ */
@@ -113,12 +113,12 @@ export class SpaceController {
   @Post('rooms/:roomId/bookings')
   @ApiOperation({ summary: 'Create a booking for a room' })
   createBooking(
-    @Param('orgId', ParseUUIDPipe) _orgId: string,
+    @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('roomId', ParseUUIDPipe) roomId: string,
     @CurrentUser() user: RequestUser,
     @Body() dto: CreateBookingDto,
   ) {
-    return this.spaceService.createBooking(roomId, user.userId, dto);
+    return this.spaceService.createBooking(orgId, roomId, user.userId, dto);
   }
 
   @Get('rooms/:roomId/bookings')
@@ -126,34 +126,34 @@ export class SpaceController {
   @ApiQuery({ name: 'from', required: true, type: String, description: 'ISO date string' })
   @ApiQuery({ name: 'to', required: true, type: String, description: 'ISO date string' })
   listBookings(
-    @Param('orgId', ParseUUIDPipe) _orgId: string,
+    @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('roomId', ParseUUIDPipe) roomId: string,
     @Query('from') from: string,
     @Query('to') to: string,
   ) {
-    return this.spaceService.listBookings(roomId, new Date(from), new Date(to));
+    return this.spaceService.listBookings(orgId, roomId, new Date(from), new Date(to));
   }
 
   @Post('bookings/:bookingId/approve')
   @Roles('ADMIN', 'STAFF')
   @ApiOperation({ summary: 'Approve a pending booking' })
   approveBooking(
-    @Param('orgId', ParseUUIDPipe) _orgId: string,
+    @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('bookingId', ParseUUIDPipe) bookingId: string,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.spaceService.approveBooking(bookingId, user.userId);
+    return this.spaceService.approveBooking(orgId, bookingId, user.userId);
   }
 
   @Post('bookings/:bookingId/reject')
   @Roles('ADMIN', 'STAFF')
   @ApiOperation({ summary: 'Reject a pending booking' })
   rejectBooking(
-    @Param('orgId', ParseUUIDPipe) _orgId: string,
+    @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('bookingId', ParseUUIDPipe) bookingId: string,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.spaceService.rejectBooking(bookingId, user.userId);
+    return this.spaceService.rejectBooking(orgId, bookingId, user.userId);
   }
 
   @Patch('bookings/:bookingId/reschedule')
