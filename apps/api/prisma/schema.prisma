@@ -35,6 +35,7 @@ model Organization {
 
   locations      Location[]
   users          UserOrg[]
+  directMessages DirectMessage[]
   tiers          MembershipTier[]
   events         Event[]
   rooms          Room[]
@@ -472,18 +473,34 @@ model Reaction {
   @@map("reactions")
 }
 
+/// A message between two members *of one organization* (CMN-08).
+///
+/// `orgId` is the tenant boundary, not a convenience. Without it a message
+/// had a sender and a receiver and nothing else, so the `orgs/:orgId` on the
+/// DM routes was decorative: any authenticated user could message any user in
+/// the system by id. CMN-07 patched that at the boundary by requiring the
+/// other party to belong to the org in the URL, but the data itself still had
+/// no tenant — two people who shared two co-ops shared one thread across both,
+/// and a conversation could not be retained, exported or deleted per-org.
+///
+/// Charley's decision, 2026-08-12: orgs are firewalled. A member of one co-op
+/// must not see or message a member of another, and two people who happen to
+/// share two co-ops hold two separate conversations, one in each.
 model DirectMessage {
   id         String    @id @default(uuid())
+  orgId      String
   senderId   String
   receiverId String
   body       String
   readAt     DateTime?
   createdAt  DateTime  @default(now())
 
-  sender   User @relation("SentMessages", fields: [senderId], references: [id])
-  receiver User @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  sender   User         @relation("SentMessages", fields: [senderId], references: [id])
+  receiver User         @relation("ReceivedMessages", fields: [receiverId], references: [id])
 
-  @@index([senderId, receiverId])
+  @@index([orgId, senderId, receiverId])
+  @@index([orgId])
   @@map("direct_messages")
 }
 

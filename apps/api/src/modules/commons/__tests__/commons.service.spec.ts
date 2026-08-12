@@ -113,6 +113,40 @@ describe('CommonsService — tenant isolation (CMN-07)', () => {
     expect(prisma.channel.update).not.toHaveBeenCalled();
   });
 
+  it('reads direct messages only within the org (CMN-08)', async () => {
+    const OWN = 'org-mine';
+    prisma.userOrg.findFirst.mockResolvedValue({ id: 'membership-1' } as never);
+    prisma.directMessage.findMany.mockResolvedValue([]);
+
+    await service.listConversations(OWN, 'u1');
+    await service.getConversation(OWN, 'u1', 'u2');
+    await service.markConversationRead(OWN, 'u1', 'u2');
+
+    // Every read and write names the org. Before CMN-08 a conversation had a
+    // sender and a receiver and nothing else, so the org in the URL could not
+    // restrict what came back — it could only be checked against the people.
+    for (const call of prisma.directMessage.findMany.mock.calls) {
+      expect(call[0].where).toEqual(expect.objectContaining({ orgId: OWN }));
+    }
+    expect(prisma.directMessage.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ orgId: OWN }) }),
+    );
+  });
+
+  it('stamps a new message with the org it was sent in (CMN-08)', async () => {
+    const OWN = 'org-mine';
+    prisma.userOrg.findFirst.mockResolvedValue({ id: 'membership-1' } as never);
+    prisma.directMessage.create.mockResolvedValue({ id: 'dm-1' } as never);
+
+    await service.sendMessage(OWN, 'u1', 'u2', 'hello');
+
+    expect(prisma.directMessage.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ orgId: OWN, senderId: 'u1', receiverId: 'u2' }),
+      }),
+    );
+  });
+
   it('resolves entities through their org, not by id alone', async () => {
     const OWN = 'org-mine';
     await service.getPost(OWN, 'post-1').catch(() => undefined);
