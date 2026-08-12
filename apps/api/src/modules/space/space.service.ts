@@ -167,6 +167,43 @@ export class SpaceService {
    * though the member dashboard links to it. Sending members to a 404 would be
    * worse than sending them somewhere real but general. See SPC-07.
    */
+  /**
+   * Render a booking window in the co-op's own timezone (SPC-08).
+   *
+   * These emails used to send `toUTCString()` — "Mon, 05 Apr 2027 10:00:00
+   * GMT" — for a booking the member had made at 6am in the app. Everyone read
+   * an hour that did not match what they booked, and the further from UTC a
+   * co-op sits the worse it got.
+   *
+   * The org timezone this needed already existed on `Organization`, defaulting
+   * to America/New_York, and Settings has had a selector for it all along;
+   * SPC-08 recorded it as missing. The zone abbreviation is included because a
+   * time without one is exactly the ambiguity being fixed.
+   */
+  private formatWhen(start: Date, end: Date, timeZone: string): string {
+    const zone = timeZone || 'America/New_York';
+    const day = (d: Date) =>
+      d.toLocaleDateString('en-US', {
+        timeZone: zone,
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      });
+    const clock = (d: Date, withZone = false) =>
+      d.toLocaleTimeString('en-US', {
+        timeZone: zone,
+        hour: 'numeric',
+        minute: '2-digit',
+        ...(withZone ? { timeZoneName: 'short' } : {}),
+      });
+
+    // Same day is the common case; spanning midnight needs both dates.
+    return day(start) === day(end)
+      ? `${day(start)}, ${clock(start)} – ${clock(end, true)}`
+      : `${day(start)}, ${clock(start)} – ${day(end)}, ${clock(end, true)}`;
+  }
+
   private async notifyBooking(
     bookingId: string,
     kind: 'received' | 'confirmed' | 'rejected' | 'canceled' | 'rescheduled',
@@ -178,7 +215,9 @@ export class SpaceService {
         where: { id: bookingId },
         include: {
           user: { select: { email: true, name: true } },
-          room: { include: { org: { select: { name: true, slug: true } } } },
+          room: {
+            include: { org: { select: { name: true, slug: true, timezone: true } } },
+          },
         },
       });
       if (!b?.user?.email) return;
@@ -189,7 +228,7 @@ export class SpaceService {
         roomName: b.room.name,
         orgName: b.room.org.name,
         title: b.title,
-        when: `${b.startTime.toUTCString()} — ${b.endTime.toUTCString()}`,
+        when: this.formatWhen(b.startTime, b.endTime, b.room.org.timezone),
         manageUrl: `${webUrl}/portal/${b.room.org.slug}/rooms`,
       };
 
