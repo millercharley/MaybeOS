@@ -821,7 +821,13 @@ export interface Proposal {
   status: string;
   quorum?: number;
   closesAt?: string;
-  votes?: { yes: number; no: number; abstain: number; total: number };
+  /**
+   * Named to match the API. This was declared as `votes`, which the API has
+   * never returned in this shape — the list gave `_count.votes` (a number)
+   * and the detail gives `voteTally` — so every read was undefined and every
+   * proposal card rendered 0% (OPS-05).
+   */
+  voteTally?: { yes: number; no: number; abstain: number; total: number };
 }
 
 export interface Survey {
