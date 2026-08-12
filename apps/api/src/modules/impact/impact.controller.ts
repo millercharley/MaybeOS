@@ -3,6 +3,8 @@ import {
   Get,
   Post,
   Patch,
+  Put,
+  Delete,
   Body,
   Param,
   UseGuards,
@@ -17,6 +19,7 @@ import { ImpactService } from './impact.service';
 import { CreateSurveyDto } from './dto/create-survey.dto';
 import { SubmitResponseDto } from './dto/submit-response.dto';
 import { OpenWindowDto } from './dto/open-window.dto';
+import { UpdateDemographicsDto } from './dto/update-demographics.dto';
 
 @ApiTags('impact')
 @ApiBearerAuth()
@@ -115,7 +118,6 @@ export class ImpactController {
       surveyId,
       user.userId,
       dto.answers,
-      dto.demographics,
     );
   }
 
@@ -137,5 +139,48 @@ export class ImpactController {
   @Roles('ADMIN', 'STAFF')
   getDashboard(@Param('orgId') orgId: string) {
     return this.impactService.getDashboard(orgId);
+  }
+
+  // ─── Demographic profile (IMP-17) ───────────────────────────
+  //
+  // Member-owned: no @Roles, because these three routes act on the caller's
+  // own membership and nobody else's. There is deliberately no route that
+  // reads another member's profile — the PRD makes this data member-owned,
+  // and the only admin-facing view is the suppressed aggregate below.
+
+  @Get('me/demographics')
+  getMyDemographics(
+    @Param('orgId') orgId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.impactService.getMyDemographics(orgId, user.userId);
+  }
+
+  @Put('me/demographics')
+  updateMyDemographics(
+    @Param('orgId') orgId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: UpdateDemographicsDto,
+  ) {
+    return this.impactService.updateMyDemographics(orgId, user.userId, dto.answers);
+  }
+
+  @Delete('me/demographics')
+  deleteMyDemographics(
+    @Param('orgId') orgId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.impactService.deleteMyDemographics(orgId, user.userId);
+  }
+
+  /**
+   * Who the space serves, in aggregate and suppressed. Never individual rows —
+   * §10: "Individual responses are never exposed to admins except in
+   * aggregate."
+   */
+  @Get('impact/demographics')
+  @Roles('ADMIN', 'STAFF')
+  getDemographicSummary(@Param('orgId') orgId: string) {
+    return this.impactService.getDemographicSummary(orgId);
   }
 }

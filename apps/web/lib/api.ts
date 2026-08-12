@@ -567,6 +567,23 @@ class ApiClient {
 
     dashboard: (orgId: string, token: string) =>
       this.request<ImpactDashboardData>(`/orgs/${orgId}/impact/dashboard`, { token }),
+
+    // ── The member's own demographic profile (IMP-17) ──
+    myDemographics: (orgId: string, token: string) =>
+      this.request<MyDemographics>(`/orgs/${orgId}/me/demographics`, { token }),
+
+    saveMyDemographics: (
+      orgId: string,
+      answers: Record<string, string>,
+      token: string,
+    ) =>
+      this.request<{ answers: Record<string, string> }>(
+        `/orgs/${orgId}/me/demographics`,
+        { method: 'PUT', body: JSON.stringify({ answers }), token },
+      ),
+
+    deleteMyDemographics: (orgId: string, token: string) =>
+      this.request(`/orgs/${orgId}/me/demographics`, { method: 'DELETE', token }),
   };
 
   // ── Stripe ───────────────────────────────────────
@@ -1038,6 +1055,20 @@ export interface ImpactDashboardData {
     closesAt: string | null;
     responses: number;
   }>;
+}
+
+/**
+ * The member's demographic profile (IMP-17). Verified against a live response.
+ *
+ * The field list comes from the server rather than being duplicated here — a
+ * second copy of the vocabulary would drift, and a mismatched key becomes a
+ * question nobody can answer.
+ */
+export interface MyDemographics {
+  fields: Array<{ key: string; label: string; options?: string[] }>;
+  answers: Record<string, string>;
+  /** Segments smaller than this are never reported. Shown to the member. */
+  suppressionThreshold: number;
 }
 
 export interface PaginatedResponse<T> {
