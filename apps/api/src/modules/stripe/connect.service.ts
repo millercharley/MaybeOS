@@ -280,4 +280,99 @@ export class ConnectService {
     this.logger.log(`Ticket ${ticket.id} recorded for event ${meta.eventId}`);
     return ticket;
   }
+
+  /**
+   * Refund one ticket, in full, including MaybeOS's cut.
+   *
+   * `refund_application_fee: true` is the important part and it is a policy
+   * choice, not a default. Without it Stripe returns the buyer's money from
+   * the co-op's balance and MaybeOS quietly keeps its fee — so a co-op that
+   * cancels an event pays MaybeOS for tickets nobody used. The buyer got
+   * nothing; nobody should be charged a platform fee for an event that did
+   * not happen.
+   *
+   * `reverse_transfer` is not set: the charge was created directly on the
+   * co-op's account rather than transferred to it, so there is no transfer to
+   * reverse.
+   *
+   * What cannot be given back is Stripe's own processing fee. Stripe keeps
+   * that on a refund, so a co-op cancelling an event is out of pocket by
+   * roughly 2.9% + 30c per ticket. That is Stripe's policy, not ours, and it
+   * belongs in the copy the organiser reads before confirming.
+   */
+  async refundTicket(ticketId: string): Promise<{ refunded: boolean; reason?: string }> {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      include: { event: { include: { org: true } } },
+    });
+    if (!ticket) throw new NotFoundException('Ticket not found');
+
+    if (ticket.refundedAt) {
+      // Idempotent rather than an error: a retried cancellation must not
+      // double-refund, and "already refunded" is the desired end state.
+      return { refunded: false, reason: 'already refunded' };
+    }
+    if (!ticket.stripePaymentIntentId) {
+      return { refunded: false, reason: 'no payment recorded to refund' };
+    }
+
+    const accountId = ticket.event.org.stripeAccountId;
+    if (!accountId) {
+      return { refunded: false, reason: 'the co-op has no connected account' };
+    }
+
+    await this.stripe.refunds.create(
+      {
+        payment_intent: ticket.stripePaymentIntentId,
+        refund_application_fee: true,
+      },
+      { stripeAccount: accountId },
+    );
+
+    await this.prisma.ticket.update({
+      where: { id: ticketId },
+      data: { refundedAt: new Date() },
+    });
+
+    this.logger.log(`Refunded ticket ${ticketId} (${ticket.amountCents} ${ticket.currency})`);
+    return { refunded: true };
+  }
+
+  /**
+   * Refund every outstanding ticket for an event.
+   *
+   * Each refund is attempted independently and a failure never stops the
+   * rest: if Stripe rejects one card's refund, the other forty buyers should
+   * still get their money. The caller gets a summary naming what failed, so a
+   * partial failure is visible rather than logged and forgotten.
+   */
+  async refundEventTickets(eventId: string) {
+    const tickets = await this.prisma.ticket.findMany({
+      where: { eventId, refundedAt: null },
+      select: { id: true, buyerEmail: true, amountCents: true },
+    });
+
+    const refunded: string[] = [];
+    const failed: { ticketId: string; buyerEmail: string; reason: string }[] = [];
+
+    for (const ticket of tickets) {
+      try {
+        const result = await this.refundTicket(ticket.id);
+        if (result.refunded) refunded.push(ticket.id);
+        else failed.push({ ...ticket, ticketId: ticket.id, reason: result.reason ?? 'unknown' });
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : 'unknown error';
+        this.logger.error(`Refund failed for ticket ${ticket.id}: ${reason}`);
+        failed.push({ ticketId: ticket.id, buyerEmail: ticket.buyerEmail, reason });
+      }
+    }
+
+    return {
+      attempted: tickets.length,
+      refunded: refunded.length,
+      // Named individually because somebody has to chase these by hand, and a
+      // count alone does not say whose money is still missing.
+      failed,
+    };
+  }
 }

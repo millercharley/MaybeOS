@@ -47,6 +47,25 @@ export class ConnectController {
   }
 
   /**
+   * Refund one ticket — a buyer who asked, or a mistake.
+   *
+   * ADMIN and STAFF only. A member hosting an event can cancel it, which
+   * refunds everyone; picking individual people to refund is the co-op's
+   * money and the co-op's decision.
+   */
+  @Post('tickets/:ticketId/refund')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Refund a ticket in full, including the MaybeOS fee' })
+  refund(
+    @Param('orgId', ParseUUIDPipe) _orgId: string,
+    @Param('ticketId', ParseUUIDPipe) ticketId: string,
+  ) {
+    return this.connectService.refundTicket(ticketId);
+  }
+
+  /**
    * Buying a ticket. Deliberately not guarded: a public event's tickets have
    * to be buyable by somebody with no account, which is most of the public.
    * The service refuses anything that is not a published, on-sale, public

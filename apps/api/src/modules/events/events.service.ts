@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
   ConflictException,
@@ -10,6 +11,7 @@ import { ContactViewer } from '../../common/access/contact-visibility';
 import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
 import { PublishBookingEventDto } from './dto/publish-booking-event.dto';
+import { ConnectService } from '../stripe/connect.service';
 import ical, { ICalCalendarMethod } from 'ical-generator';
 
 /* ───────────────────────────── helpers ───────────────────────────── */
@@ -54,7 +56,13 @@ function withRsvpCount<T extends { _count: { rsvps: number } }>(
 
 @Injectable()
 export class EventsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(EventsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    // Cancelling an event has to return anyone's money (D-013 ticketing).
+    private readonly connectService: ConnectService,
+  ) {}
 
   /* ─── Create ────────────────────────────────────────────────── */
 
@@ -295,6 +303,17 @@ export class EventsService {
 
   /* ─── Cancel ────────────────────────────────────────────────── */
 
+  /**
+   * Cancel an event, refunding anyone who paid.
+   *
+   * The cancel is written first and never made conditional on the refunds.
+   * If Stripe is unreachable, people still need to be told the event is off —
+   * an event that stays "live" because a refund failed is the worse outcome,
+   * and the money can be returned on a retry while a wasted journey cannot.
+   *
+   * The refund summary comes back with the event so the caller can say what
+   * actually happened rather than implying everyone has their money.
+   */
   async cancel(
     orgId: string,
     eventId: string,
@@ -302,12 +321,31 @@ export class EventsService {
   ) {
     await this.loadEventForActor(orgId, eventId, actor.userId, actor.isStaff);
 
-    return this.prisma.event.update({
+    const event = await this.prisma.event.update({
       where: { id: eventId },
-      data: {
-        canceledAt: new Date(),
-      },
+      data: { canceledAt: new Date() },
     });
+
+    const refunds = await this.refundTicketsFor(eventId);
+    return { ...event, refunds };
+  }
+
+  /**
+   * Return everyone's money for an event that is no longer happening.
+   *
+   * Kept here rather than in the caller because *every* route to a cancelled
+   * event has to do it — an organiser cancelling directly, and a member
+   * cancelling the room booking the event was published from (EVT-05). The
+   * second is easy to miss and is the one that will happen most.
+   */
+  private async refundTicketsFor(eventId: string) {
+    try {
+      return await this.connectService.refundEventTickets(eventId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'unknown error';
+      this.logger.error(`Event ${eventId} cancelled but refunds failed: ${message}`);
+      return { attempted: 0, refunded: 0, failed: [], error: message };
+    }
   }
 
   /**
@@ -333,7 +371,7 @@ export class EventsService {
     });
     if (!event) return null;
 
-    return this.prisma.event.update({
+    const updated = await this.prisma.event.update({
       where: { id: event.id },
       data: {
         ...(change.startTime ? { startTime: change.startTime } : {}),
@@ -343,6 +381,15 @@ export class EventsService {
         ...(change.canceled && !event.canceledAt ? { canceledAt: new Date() } : {}),
       },
     });
+
+    // Cancelling the room refunds the tickets. This is the path that will
+    // actually be taken — a member cancels a booking without necessarily
+    // thinking about the people who bought tickets to what they booked it for.
+    if (change.canceled && !event.canceledAt) {
+      await this.refundTicketsFor(event.id);
+    }
+
+    return updated;
   }
 
   /* ─── Find by ID ────────────────────────────────────────────── */
