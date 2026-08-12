@@ -21,11 +21,33 @@ export class ImpactService {
     });
   }
 
-  async updateSurvey(surveyId: string, dto: Partial<CreateSurveyDto>) {
-    const survey = await this.prisma.survey.findUnique({ where: { id: surveyId } });
+  /**
+   * Load a survey and confirm it belongs to the org in the URL.
+   *
+   * Every method that took a bare `surveyId` resolved it globally, while the
+   * org guard only proved the caller belonged to the org they named in the
+   * path. An admin of one co-op could therefore read, retitle and publish
+   * another co-op's survey by pairing their own org id with its survey id —
+   * verified against the dev API on 2026-08-11 (IMP-01). Same family as D-009
+   * and the booking-cancel hole in SpaceOS.
+   *
+   * A survey in another org raises NotFound rather than Forbidden, so the
+   * response cannot be used to confirm that a given survey id exists.
+   */
+  private async findSurveyInOrg(orgId: string, surveyId: string) {
+    const survey = await this.prisma.survey.findFirst({
+      where: { id: surveyId, orgId },
+    });
+
     if (!survey) {
       throw new NotFoundException('Survey not found');
     }
+
+    return survey;
+  }
+
+  async updateSurvey(orgId: string, surveyId: string, dto: Partial<CreateSurveyDto>) {
+    await this.findSurveyInOrg(orgId, surveyId);
 
     return this.prisma.survey.update({
       where: { id: surveyId },
@@ -39,11 +61,8 @@ export class ImpactService {
     });
   }
 
-  async publishSurvey(surveyId: string) {
-    const survey = await this.prisma.survey.findUnique({ where: { id: surveyId } });
-    if (!survey) {
-      throw new NotFoundException('Survey not found');
-    }
+  async publishSurvey(orgId: string, surveyId: string) {
+    await this.findSurveyInOrg(orgId, surveyId);
 
     return this.prisma.survey.update({
       where: { id: surveyId },
@@ -51,11 +70,8 @@ export class ImpactService {
     });
   }
 
-  async closeSurvey(surveyId: string) {
-    const survey = await this.prisma.survey.findUnique({ where: { id: surveyId } });
-    if (!survey) {
-      throw new NotFoundException('Survey not found');
-    }
+  async closeSurvey(orgId: string, surveyId: string) {
+    await this.findSurveyInOrg(orgId, surveyId);
 
     return this.prisma.survey.update({
       where: { id: surveyId },
@@ -71,9 +87,9 @@ export class ImpactService {
     });
   }
 
-  async getSurvey(surveyId: string) {
-    const survey = await this.prisma.survey.findUnique({
-      where: { id: surveyId },
+  async getSurvey(orgId: string, surveyId: string) {
+    const survey = await this.prisma.survey.findFirst({
+      where: { id: surveyId, orgId },
       include: { _count: { select: { responses: true } } },
     });
 
@@ -87,15 +103,13 @@ export class ImpactService {
   // ─── Responses ──────────────────────────────────────────────
 
   async submitResponse(
+    orgId: string,
     surveyId: string,
-    userId: string | null,
+    userId: string,
     answers: Record<string, any>,
     demographics?: Record<string, any>,
   ) {
-    const survey = await this.prisma.survey.findUnique({ where: { id: surveyId } });
-    if (!survey) {
-      throw new NotFoundException('Survey not found');
-    }
+    await this.findSurveyInOrg(orgId, surveyId);
 
     return this.prisma.surveyResponse.create({
       data: {
@@ -107,39 +121,10 @@ export class ImpactService {
     });
   }
 
-  async getResponses(surveyId: string, page: number, perPage: number) {
-    const skip = (page - 1) * perPage;
-
-    const [responses, total] = await this.prisma.$transaction([
-      this.prisma.surveyResponse.findMany({
-        where: { surveyId },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: perPage,
-        include: {
-          user: { select: { id: true, name: true, email: true } },
-        },
-      }),
-      this.prisma.surveyResponse.count({ where: { surveyId } }),
-    ]);
-
-    return { data: responses, total, page, perPage };
-  }
-
-  async exportResponses(surveyId: string) {
-    const survey = await this.prisma.survey.findUnique({ where: { id: surveyId } });
-    if (!survey) {
-      throw new NotFoundException('Survey not found');
-    }
-
-    return this.prisma.surveyResponse.findMany({
-      where: { surveyId },
-      orderBy: { createdAt: 'asc' },
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-      },
-    });
-  }
+  // getResponses() and exportResponses() were removed here — see the note in
+  // impact.controller.ts. Both returned individual answers joined to the
+  // respondent's name and email; D-021 puts individual responses out of an
+  // admin's reach entirely.
 
   // ─── Dashboard / Aggregate Metrics ──────────────────────────
 
