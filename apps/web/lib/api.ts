@@ -171,7 +171,11 @@ class ApiClient {
     getBySlug: (slug: string) =>
       this.request<Org>(`/orgs/by-slug/${slug}`),
 
-    update: (orgId: string, data: Partial<CreateOrgData> & { brandColor?: string }, token: string) =>
+    update: (
+      orgId: string,
+      data: Partial<CreateOrgData> & { brandColor?: string; allowPublicJoin?: boolean },
+      token: string,
+    ) =>
       this.request<Org>(`/orgs/${orgId}`, { method: 'PATCH', body: JSON.stringify(data), token }),
 
     listTiers: (orgId: string) =>
@@ -574,6 +578,13 @@ export interface Org {
   logoUrl?: string;
   brandColor: string;
   timezone: string;
+  /**
+   * Whether a stranger can join from the public page. Off by default: a
+   * housing co-op or members' club must not be joinable by anyone with a
+   * card (D-020). The API refuses the self-join endpoint when this is false,
+   * so the public page must not offer it either.
+   */
+  allowPublicJoin: boolean;
   locations?: Location[];
   tiers?: MembershipTier[];
 }

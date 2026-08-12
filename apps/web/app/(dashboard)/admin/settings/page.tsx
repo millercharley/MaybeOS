@@ -34,6 +34,12 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
 
+  // Public joining (MEM-03, D-020)
+  const [allowPublicJoin, setAllowPublicJoin] = useState(false);
+  const [confirmingOpen, setConfirmingOpen] = useState(false);
+  const [joinSaving, setJoinSaving] = useState(false);
+  const [joinError, setJoinError] = useState('');
+
   useEffect(() => {
     if (org) {
       setOrgName(org.name || '');
@@ -42,8 +48,33 @@ export default function SettingsPage() {
       setOrgMission(org.mission || '');
       setTimezone(org.timezone || 'America/New_York');
       setBrandColor(org.brandColor || '#6366f1');
+      setAllowPublicJoin(Boolean(org.allowPublicJoin));
     }
   }, [org]);
+
+  /**
+   * Saves immediately rather than waiting for the form's Save button.
+   *
+   * This switch decides whether strangers can join the co-op, and a control
+   * that looks flipped but has not been saved is the worst possible way to
+   * get that wrong — an admin would leave the page believing the doors were
+   * open, or closed, when they were not.
+   */
+  async function setPublicJoin(next: boolean) {
+    if (!token || !currentOrgId) return;
+    setJoinSaving(true);
+    setJoinError('');
+    try {
+      await api.orgs.update(currentOrgId, { allowPublicJoin: next }, token);
+      setAllowPublicJoin(next);
+      setConfirmingOpen(false);
+      refetch();
+    } catch (err: unknown) {
+      setJoinError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setJoinSaving(false);
+    }
+  }
 
   async function handleSaveGeneral(e: FormEvent) {
     e.preventDefault();
@@ -190,6 +221,85 @@ export default function SettingsPage() {
             </button>
           </div>
         </form>
+      )}
+
+      {/*
+        Deliberately outside the form above: this saves on change. Bundling it
+        into a submit-everything button would let an admin leave the page
+        believing the doors were open when they were not.
+      */}
+      {activeTab === 'general' && (
+        <section className="card max-w-2xl space-y-4">
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">Who can join</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                {allowPublicJoin
+                  ? 'Anyone can join from your public page by choosing a membership tier and paying.'
+                  : 'Invitation only. Your public page still shows your tiers, but nobody can join themselves — you invite them.'}
+              </p>
+            </div>
+            <span
+              className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
+                allowPublicJoin ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'
+              }`}
+            >
+              {allowPublicJoin ? 'Open to the public' : 'Invitation only'}
+            </span>
+          </div>
+
+          {joinError && (
+            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{joinError}</div>
+          )}
+
+          {confirmingOpen ? (
+            /*
+              Enabling is the direction that goes wrong quietly, so it asks
+              once. Disabling does not — closing the doors is always safe and
+              should never carry friction.
+            */
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-medium text-amber-900">
+                Open {org?.name || 'this co-op'} to the public?
+              </p>
+              <p className="mt-1 text-sm text-amber-800">
+                Anyone who finds your page and pays becomes a member immediately, with nobody
+                approving them. You can switch this off again at any time.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPublicJoin(true)}
+                  disabled={joinSaving}
+                  className="btn-primary text-sm"
+                >
+                  {joinSaving ? 'Saving...' : 'Yes, allow anyone to join'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingOpen(false)}
+                  disabled={joinSaving}
+                  className="btn-secondary text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => (allowPublicJoin ? setPublicJoin(false) : setConfirmingOpen(true))}
+              disabled={joinSaving}
+              className={allowPublicJoin ? 'btn-secondary text-sm' : 'btn-primary text-sm'}
+            >
+              {joinSaving
+                ? 'Saving...'
+                : allowPublicJoin
+                  ? 'Make invitation only'
+                  : 'Allow anyone to join'}
+            </button>
+          )}
+        </section>
       )}
 
       {activeTab === 'branding' && (
