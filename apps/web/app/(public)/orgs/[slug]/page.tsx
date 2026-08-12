@@ -2,9 +2,9 @@
 
 import { use, useMemo } from 'react';
 import Link from 'next/link';
-import { Calendar, Clock, MapPin, Users, Check, Star } from 'lucide-react';
+import { Calendar, CalendarPlus, Clock, MapPin, Users, Check, Star } from 'lucide-react';
 import { usePublicApi } from '@/hooks/use-api';
-import { api } from '@/lib/api';
+import { api, apiUrl } from '@/lib/api';
 
 export default function OrgProfilePage(props: { params: Promise<{ slug: string }> }) {
   const { slug } = use(props.params);
@@ -199,12 +199,24 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
       <section className="mt-16">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold text-gray-900">Upcoming Events</h2>
-          <Link
-            href="/events"
-            className="text-sm font-medium text-brand-600 hover:text-brand-700 transition-colors"
-          >
-            View all events
-          </Link>
+          <div className="flex items-center gap-4">
+            {/* The .ics feed has existed since EventOS was built and nothing
+                has ever linked to it, so no one could subscribe. It carries
+                exactly the public, published, uncancelled events. */}
+            <a
+              href={apiUrl(`/orgs/${org.id}/events/feed.ics`)}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+            >
+              <CalendarPlus className="h-4 w-4" />
+              Add to calendar
+            </a>
+            <Link
+              href="/events"
+              className="text-sm font-medium text-brand-600 hover:text-brand-700 transition-colors"
+            >
+              View all events
+            </Link>
+          </div>
         </div>
 
         {eventsLoading ? (
