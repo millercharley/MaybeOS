@@ -12,6 +12,7 @@ import { EventsModule } from './modules/events/events.module';
 import { SpaceModule } from './modules/space/space.module';
 import { CommonsModule } from './modules/commons/commons.module';
 import { ImpactModule } from './modules/impact/impact.module';
+import { SchedulerModule } from './modules/scheduler/scheduler.module';
 import { StripeModule } from './modules/stripe/stripe.module';
 import { EmailModule } from './modules/email/email.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
@@ -90,6 +91,7 @@ import { HealthModule } from './modules/health/health.module';
     StripeModule,
     EmailModule,
     CalendarModule,
+    SchedulerModule,
   ],
   providers: [
     {
