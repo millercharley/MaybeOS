@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Plus, MapPin, Users, Clock, Eye, EyeOff } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
@@ -96,9 +97,12 @@ export default function EventsPage() {
           const capacity = event.capacity ?? 0;
 
           return (
-            <div
+            // The card has looked clickable since it was built and led
+            // nowhere. It now opens the door list (IMP-10).
+            <Link
               key={event.id}
-              className="card cursor-pointer transition-shadow hover:shadow-md"
+              href={`/admin/events/${event.id}`}
+              className="card block cursor-pointer transition-shadow hover:shadow-md"
             >
               <div className="mb-3 flex items-start justify-between">
                 <h3 className="text-base font-semibold text-gray-900">{event.title}</h3>
@@ -154,7 +158,7 @@ export default function EventsPage() {
                   </div>
                 )}
               </div>
-            </div>
+            </Link>
           );
         })}
 
