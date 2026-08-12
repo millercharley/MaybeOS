@@ -51,11 +51,14 @@ Get MaybeOS Suite production-ready and launch MaybeItsFate LCA as the first live
 - [ ] Prepare github.com/millercharley/MaybeOS for open-source release — license, README, contributing guide, history scrub for secrets
 
 ## In Progress
-- [ ] None. Both 2026-08-11 branches are merged and **live on maybeos.org**: `claude/impact-deletion-pass` (merge `f5faea7`) and `claude/scheduler` (merge `0a19ee0`).
+- [ ] None. Three branches merged and **live on maybeos.org**: `claude/impact-deletion-pass` (`f5faea7`), `claude/scheduler` (`0a19ee0`), `claude/cmn-07` (`3e16aad`).
+- **Tenant isolation is now fixed in three modules and unexamined in two.** The pattern is identical every time: a controller declared `@Controller('orgs/:orgId')` with `OrgMembershipGuard`, and service methods that resolve an entity by bare id and never compare it to that org. The guard proves the caller belongs to the org *they named in the URL*. See SEC-04 under Next.
+- **Verification limit worth repeating:** every cross-tenant fix has been proven against the **dev** database by standing up a real second co-op. Production has one org and an empty database, so the same probe cannot be run there. The code is identical and the unit tests travel with it, but "verified in production" has not been said and should not be.
 - **ImpactOS now has no user-facing surface at all.** That is the intended state under D-021, but it means impact tracking is invisible in the product until the Signals view and the touchpoint questions exist.
 
 ## Next
-- **CMN-07 — proposal tenant isolation is the same hole as IMP-01, still open, in a shipped module.** `castVote`, `getProposal`, `openProposal` and `closeProposal` take a bare `proposalId` under `@Controller('orgs/:orgId')` and never compare it to the org in the path, so a member of one co-op can read, vote on, open and close another co-op's proposals. Governance, live. Fix with the `findProposalInOrg(orgId, proposalId)` pattern from `impact.service.ts`, resolving through `Proposal.channelId -> Channel.orgId`. Check the channel, collection, page and DM routes in the same controller while there. `castVote` also accepts votes on DRAFT proposals and past `closesAt`.
+- **SEC-04 — sweep EventOS and MemberOS for the same org-scoping hole.** Three modules examined, three holes found and fixed: SPC-02, IMP-01, and CMN-07 (twenty methods). These two have never been checked, and three for three is not a reason to assume they are clean. Answer the standing question in the same pass: should a lint rule or a base class make it impossible for an org-scoped controller to resolve an entity by bare id?
+- **CMN-08 — decide whether `DirectMessage` gets an `orgId`.** CMN-07 enforced org membership at the boundary, which stops cross-co-op messaging, but the data still has no tenant. Two people who share two co-ops have one thread, not one per co-op, and conversations cannot be retained, exported or deleted per-org. Schema decision, deliberately not taken during CMN-07.
 - Then IMP-05/08/09 as one piece of work: the response schema (indicator, question version, collection window, uniqueness per member per window).
 
 ## How production ships
