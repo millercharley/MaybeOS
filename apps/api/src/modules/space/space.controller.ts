@@ -10,7 +10,7 @@ import {
   UseGuards,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
@@ -21,6 +21,7 @@ import { CreateRoomDto } from './dto/create-room.dto';
 import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { AvailabilityRuleDto } from './dto/availability-rule.dto';
+import { ListBookingsQueryDto } from './dto/list-bookings.dto';
 
 
 /**
@@ -123,15 +124,17 @@ export class SpaceController {
 
   @Get('rooms/:roomId/bookings')
   @ApiOperation({ summary: 'List bookings for a room within a date range' })
-  @ApiQuery({ name: 'from', required: true, type: String, description: 'ISO date string' })
-  @ApiQuery({ name: 'to', required: true, type: String, description: 'ISO date string' })
   listBookings(
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('roomId', ParseUUIDPipe) roomId: string,
-    @Query('from') from: string,
-    @Query('to') to: string,
+    @Query() query: ListBookingsQueryDto,
   ) {
-    return this.spaceService.listBookings(orgId, roomId, new Date(from), new Date(to));
+    return this.spaceService.listBookings(
+      orgId,
+      roomId,
+      new Date(query.from),
+      new Date(query.to),
+    );
   }
 
   @Post('bookings/:bookingId/approve')
