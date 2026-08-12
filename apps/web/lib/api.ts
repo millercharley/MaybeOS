@@ -777,7 +777,13 @@ export interface Booking {
   startTime: string;
   endTime: string;
   status: string;
-  room?: Room;
+  /**
+   * Present on `/my-bookings` only, and only these three columns — not a whole
+   * `Room`. The per-room list omits it, since its caller already knows the
+   * room. Declaring the full type invited a page to read `room.capacity` and
+   * silently get undefined.
+   */
+  room?: Pick<Room, 'id' | 'name'> & { locationId?: string | null };
 }
 
 export interface CreateBookingData {
