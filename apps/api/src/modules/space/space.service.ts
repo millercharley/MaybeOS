@@ -535,8 +535,21 @@ export class SpaceService {
     }
 
     // Check that at least one allow rule covers the booking time.
-    const allowRules = applicableRules.filter((r) => !r.isBlackout);
-    if (allowRules.length > 0) {
+    //
+    // The condition is whether the room defines opening hours *at all*, not
+    // whether it defines them for this particular day. Testing
+    // `applicableRules` here — already filtered to the booking's weekday —
+    // meant a room whose only rule was "Mondays 09:00-17:00" had no allow
+    // rules on a Tuesday, so the check was skipped and the booking approved.
+    // A co-op publishing one day of opening hours got a room bookable at 3am
+    // on a Sunday (SPC-05, found by executing the path rather than reading it).
+    //
+    // A room with only blackout rules still means "open except these times",
+    // which is why this asks for an allow rule specifically.
+    const definesOpeningHours = rules.some((r) => !r.isBlackout);
+
+    if (definesOpeningHours) {
+      const allowRules = applicableRules.filter((r) => !r.isBlackout);
       const isCovered = allowRules.some((rule) => {
         const ruleStart = this.parseHHmm(rule.startTime);
         const ruleEnd = this.parseHHmm(rule.endTime);
