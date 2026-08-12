@@ -2,9 +2,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Plus, MapPin, Users, Clock, Eye, EyeOff } from 'lucide-react';
+import { Plus, MapPin, Users, Clock, Eye, EyeOff, X } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
+import { useAuthStore } from '@/lib/auth-store';
 import { api } from '@/lib/api';
+import { EventForm, EventFormValues } from '@/components/events/event-form';
 
 type FilterTab = 'all' | 'upcoming' | 'past' | 'draft';
 
@@ -17,11 +19,42 @@ const tabs: { key: FilterTab; label: string }[] = [
 
 export default function EventsPage() {
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
+  const [creating, setCreating] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState('');
+  const token = useAuthStore((s) => s.token);
+  const orgId = useAuthStore((s) => s.currentOrgId);
 
-  const { data: eventsData, loading, error } = useApi(
+  const { data: eventsData, loading, error, refetch } = useApi(
     (token, orgId) => api.events.list(orgId, token),
     [],
   );
+
+  // The form quotes real ticket fees, so it needs the co-op's plan and whether
+  // Stripe onboarding is finished (EVT-06).
+  const { data: org } = useApi((token, orgId) => api.orgs.get(orgId, token), []);
+
+  // An organiser usually creates an event on somebody else's behalf, which is
+  // the case EVT-04's host column exists for.
+  const { data: members } = useApi(
+    (token, orgId) => api.members.list(orgId, token, 1, 100),
+    [],
+  );
+
+  async function create(values: EventFormValues) {
+    if (!token || !orgId) return;
+    setBusy(true);
+    setFormError('');
+    try {
+      await api.events.create(orgId, values, token);
+      setCreating(false);
+      refetch();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Could not create that');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -54,11 +87,48 @@ export default function EventsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Events</h1>
-        <button className="btn-primary inline-flex items-center gap-2">
-          <Plus className="h-4 w-4" />
-          Create Event
-        </button>
+        {/* This button has had no handler since the page was built (EVT-07),
+            so organisers — the people most likely to be programming events —
+            were the only ones who could not make one. */}
+        {!creating && (
+          <button
+            onClick={() => setCreating(true)}
+            className="btn-primary inline-flex items-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Create Event
+          </button>
+        )}
       </div>
+
+      {creating && (
+        <section className="card">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-base font-semibold text-gray-900">New event</h2>
+            <button
+              type="button"
+              onClick={() => setCreating(false)}
+              className="text-gray-400 hover:text-gray-600"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <EventForm
+            busy={busy}
+            error={formError}
+            onSubmit={create}
+            onCancel={() => setCreating(false)}
+            plan={org?.plan ?? 'FREE'}
+            orgFeeCents={org?.ticketFeeCents ?? 0}
+            canSellTickets={Boolean(org?.stripeChargesEnabled)}
+            hosts={(members?.data ?? []).map((m) => ({
+              id: m.user.id,
+              name: m.user.name || m.user.email || 'Member',
+            }))}
+          />
+        </section>
+      )}
 
       <div className="flex gap-1 border-b border-gray-200">
         {tabs.map((tab) => (

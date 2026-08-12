@@ -950,6 +950,12 @@ export interface CreateEventData {
   /** Go live immediately rather than saving a draft (EVT-05). */
   publish?: boolean;
   /**
+   * Who runs it (EVT-04). Only organisers may set this — a member creating an
+   * event always hosts it themselves, since naming someone else would
+   * volunteer them for the post-event follow-up.
+   */
+  hostId?: string;
+  /**
    * What a ticket costs, in cents. Null or absent means free — and free is not
    * the same as zero-priced: a free event never touches Stripe.
    */
