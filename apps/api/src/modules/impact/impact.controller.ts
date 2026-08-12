@@ -40,43 +40,67 @@ export class ImpactController {
     return this.impactService.listSurveys(orgId);
   }
 
+  // Every route below takes `orgId` as well as `surveyId`, and the service
+  // refuses to touch a survey belonging to a different org. The org guard only
+  // proves the caller belongs to the org *named in the URL* — which the caller
+  // chooses — so the survey has to be checked against it too. See D-009.
+
   @Get('surveys/:surveyId')
-  getSurvey(@Param('surveyId') surveyId: string) {
-    return this.impactService.getSurvey(surveyId);
+  getSurvey(
+    @Param('orgId') orgId: string,
+    @Param('surveyId') surveyId: string,
+  ) {
+    return this.impactService.getSurvey(orgId, surveyId);
   }
 
   @Patch('surveys/:surveyId')
   @Roles('ADMIN')
   updateSurvey(
+    @Param('orgId') orgId: string,
     @Param('surveyId') surveyId: string,
     @Body() dto: Partial<CreateSurveyDto>,
   ) {
-    return this.impactService.updateSurvey(surveyId, dto);
+    return this.impactService.updateSurvey(orgId, surveyId, dto);
   }
 
   @Post('surveys/:surveyId/publish')
   @Roles('ADMIN')
-  publishSurvey(@Param('surveyId') surveyId: string) {
-    return this.impactService.publishSurvey(surveyId);
+  publishSurvey(
+    @Param('orgId') orgId: string,
+    @Param('surveyId') surveyId: string,
+  ) {
+    return this.impactService.publishSurvey(orgId, surveyId);
   }
 
   @Post('surveys/:surveyId/close')
   @Roles('ADMIN')
-  closeSurvey(@Param('surveyId') surveyId: string) {
-    return this.impactService.closeSurvey(surveyId);
+  closeSurvey(
+    @Param('orgId') orgId: string,
+    @Param('surveyId') surveyId: string,
+  ) {
+    return this.impactService.closeSurvey(orgId, surveyId);
   }
 
   // ─── Responses ──────────────────────────────────────────────
 
   @Post('surveys/:surveyId/respond')
   submitResponse(
+    @Param('orgId') orgId: string,
     @Param('surveyId') surveyId: string,
     @CurrentUser() user: RequestUser,
     @Body() dto: SubmitResponseDto,
   ) {
-    // userId may be null for anonymous responses (token-based)
-    const userId = user?.userId ?? null;
-    return this.impactService.submitResponse(surveyId, userId, dto.answers, dto.demographics);
+    // JwtAuthGuard runs on this controller, so there is always a user here.
+    // An earlier comment claimed this could be an anonymous token-based
+    // response; no such path exists, and one would need its own route outside
+    // this guard rather than a null check inside it.
+    return this.impactService.submitResponse(
+      orgId,
+      surveyId,
+      user.userId,
+      dto.answers,
+      dto.demographics,
+    );
   }
 
   // Two endpoints used to live here: a paginated response list and a CSV
