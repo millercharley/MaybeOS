@@ -212,8 +212,8 @@ function ProposalsSection() {
   return (
     <div className="space-y-4">
       {proposals.map((proposal) => {
-        const total = proposal.votes?.total || 0;
-        const yesPercent = total > 0 ? Math.round(((proposal.votes?.yes || 0) / total) * 100) : 0;
+        const total = proposal.voteTally?.total || 0;
+        const yesPercent = total > 0 ? Math.round(((proposal.voteTally?.yes || 0) / total) * 100) : 0;
 
         return (
           <div key={proposal.id} className="rounded-xl border border-gray-200 bg-white p-5">
@@ -236,9 +236,9 @@ function ProposalsSection() {
             {total > 0 && (
               <div className="mt-3">
                 <div className="flex justify-between text-xs text-gray-500">
-                  <span>Yes: {proposal.votes?.yes}</span>
-                  <span>No: {proposal.votes?.no}</span>
-                  <span>Abstain: {proposal.votes?.abstain}</span>
+                  <span>Yes: {proposal.voteTally?.yes}</span>
+                  <span>No: {proposal.voteTally?.no}</span>
+                  <span>Abstain: {proposal.voteTally?.abstain}</span>
                 </div>
                 <div className="mt-1 h-2 rounded-full bg-gray-100">
                   <div

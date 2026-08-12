@@ -3,6 +3,7 @@ import {
   Logger,
   NotFoundException,
   InternalServerErrorException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { google, calendar_v3 } from 'googleapis';
@@ -47,7 +48,26 @@ export class CalendarService {
    * The `state` parameter encodes the orgId and roomId so the callback
    * can associate the tokens with the correct room.
    */
+  /** Whether Google credentials are present at all. */
+  get isConfigured(): boolean {
+    return Boolean(
+      this.configService.get<string>('GOOGLE_CLIENT_ID') &&
+        this.configService.get<string>('GOOGLE_CLIENT_SECRET'),
+    );
+  }
+
   getAuthUrl(orgId: string, roomId: string): string {
+    // Without this, an unconfigured server answered 200 with a perfectly
+    // shaped Google URL carrying `client_id=""` — so "Connect calendar"
+    // succeeded, sent the admin to Google, and landed them on an invalid_client
+    // error page with nothing explaining why. Found by executing the route
+    // (SPC-04); GOOGLE_CLIENT_ID has never been set in dev.
+    if (!this.isConfigured) {
+      throw new ServiceUnavailableException(
+        'Google Calendar is not configured on this server (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).',
+      );
+    }
+
     const state = JSON.stringify({ orgId, roomId });
 
     return this.oauth2Client.generateAuthUrl({
