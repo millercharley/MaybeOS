@@ -24,7 +24,19 @@ import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
 import { ListEventsQueryDto } from './dto/list-events.dto';
 import { WalkInDto } from './dto/walk-in.dto';
+import { PublishBookingEventDto } from './dto/publish-booking-event.dto';
 import { viewerFor } from '../../common/access/contact-visibility';
+
+/**
+ * Organisers may act on any event in their org; a member only on the ones
+ * they host. Mirrors `isStaff` in SpaceController — PLATFORM_ADMIN included so
+ * support can unstick a co-op.
+ */
+function isStaff(user: RequestUser, orgId: string): boolean {
+  if (user.globalRole === 'PLATFORM_ADMIN') return true;
+  const role = user.orgRoles?.[orgId];
+  return role === 'ADMIN' || role === 'STAFF';
+}
 
 @ApiTags('events')
 @Controller()
@@ -33,9 +45,14 @@ export class EventsController {
 
   /* ─── Create Event ──────────────────────────────────────────── */
 
+  /**
+   * Any member of the co-op may create an event (EVT-05). Charley's decision:
+   * a member should be able to go to the events system and share something,
+   * not wait for an organiser to type it in for them. They become its host,
+   * and may edit and cancel it afterwards.
+   */
   @Post('orgs/:orgId/events')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'STAFF')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new event' })
   async create(
@@ -119,6 +136,19 @@ export class EventsController {
     return this.eventsService.listUserRsvps(orgId, user.userId);
   }
 
+  // Above the `:eventId` route for the same reason as my-rsvps: Nest matches
+  // in order, so the id route would swallow "my-events" and fail its UUID pipe.
+  @Get('orgs/:orgId/events/my-events')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Events the current user hosts, drafts included' })
+  listMyEvents(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.eventsService.listHostedEvents(orgId, user.userId);
+  }
+
   @Get('orgs/:orgId/events/:eventId')
   @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
   @ApiBearerAuth()
@@ -131,47 +161,79 @@ export class EventsController {
     return this.eventsService.findById(orgId, eventId, viewerFor(user, orgId));
   }
 
+  /**
+   * Publish an event from a room booking (EVT-05) — the other way in. The
+   * member already said when and where by booking the room.
+   */
+  @Post('orgs/:orgId/bookings/:bookingId/event')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Publish an event from a confirmed booking' })
+  async createFromBooking(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('bookingId', ParseUUIDPipe) bookingId: string,
+    @Body() dto: PublishBookingEventDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.eventsService.createFromBooking(
+      orgId,
+      bookingId,
+      user.userId,
+      isStaff(user, orgId),
+      dto,
+    );
+  }
+
   /* ─── Update Event ──────────────────────────────────────────── */
 
   @Patch('orgs/:orgId/events/:eventId')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'STAFF')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update an event' })
   async update(
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
     @Body() dto: UpdateEventDto,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.eventsService.update(orgId, eventId, dto);
+    return this.eventsService.update(orgId, eventId, dto, {
+      userId: user.userId,
+      isStaff: isStaff(user, orgId),
+    });
   }
 
   /* ─── Publish Event ─────────────────────────────────────────── */
 
   @Post('orgs/:orgId/events/:eventId/publish')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'STAFF')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Publish an event' })
   async publish(
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.eventsService.publish(orgId, eventId);
+    return this.eventsService.publish(orgId, eventId, {
+      userId: user.userId,
+      isStaff: isStaff(user, orgId),
+    });
   }
 
   /* ─── Cancel Event ──────────────────────────────────────────── */
 
   @Post('orgs/:orgId/events/:eventId/cancel')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Cancel an event' })
   async cancel(
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.eventsService.cancel(orgId, eventId);
+    return this.eventsService.cancel(orgId, eventId, {
+      userId: user.userId,
+      isStaff: isStaff(user, orgId),
+    });
   }
 
   /* ─── RSVP ──────────────────────────────────────────────────── */

@@ -23,6 +23,9 @@ describe('EventsService — event host', () => {
 
   const ORG = 'org-1';
   const CREATOR = 'user-creator';
+  // Reassigning a host is an organiser act (EVT-05); a member may edit the
+  // event they host but not hand it to somebody else.
+  const ORGANISER = { userId: 'user-admin', isStaff: true };
 
   const dto = {
     title: 'Repair Café',
@@ -65,7 +68,7 @@ describe('EventsService — event host', () => {
 
   describe('updating', () => {
     it('reassigns the host', async () => {
-      await service.update(ORG, 'event-1', { hostId: 'user-sam' } as never);
+      await service.update(ORG, 'event-1', { hostId: 'user-sam' } as never, ORGANISER);
 
       expect(prisma.event.update.mock.calls[0][0].data.hostId).toBe('user-sam');
     });
@@ -74,13 +77,13 @@ describe('EventsService — event host', () => {
       // An event can legitimately have nobody running it. A truthiness check
       // would silently ignore this and leave the previous host attached to an
       // event they have handed over.
-      await service.update(ORG, 'event-1', { hostId: null } as never);
+      await service.update(ORG, 'event-1', { hostId: null } as never, ORGANISER);
 
       expect(prisma.event.update.mock.calls[0][0].data).toHaveProperty('hostId', null);
     });
 
     it('leaves the host alone when the field is absent', async () => {
-      await service.update(ORG, 'event-1', { title: 'Renamed' } as never);
+      await service.update(ORG, 'event-1', { title: 'Renamed' } as never, ORGANISER);
 
       expect(prisma.event.update.mock.calls[0][0].data).not.toHaveProperty('hostId');
     });

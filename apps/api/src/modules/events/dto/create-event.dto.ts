@@ -90,6 +90,15 @@ export class CreateEventDto {
   @IsUUID()
   hostId?: string;
 
+  @ApiPropertyOptional({
+    default: false,
+    description:
+      'Publish immediately rather than saving a draft. A member creating an event to share wants it live in one step; an organiser drafting a programme does not.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  publish?: boolean;
+
   @ApiPropertyOptional({ description: 'Allow waitlist when capacity is reached' })
   @IsOptional()
   @IsBoolean()
