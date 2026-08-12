@@ -829,6 +829,13 @@ export interface Event {
   isPublished: boolean;
   /** CONFIRMED RSVPs only — cancelled and waitlisted are not attendees. */
   rsvpCount?: number;
+  /**
+   * Who runs this event (EVT-04). Present on org-scoped reads only — the
+   * public endpoints deliberately omit it, so a member's name is not
+   * published to the internet by default. Null when nobody is assigned,
+   * which is true of every event created before the column existed.
+   */
+  host?: { id: string; name?: string; avatarUrl?: string } | null;
   location?: Location;
   room?: Room;
 }
