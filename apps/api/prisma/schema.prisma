@@ -110,6 +110,7 @@ model User {
   sentMessages     DirectMessage[]  @relation("SentMessages")
   receivedMessages DirectMessage[]  @relation("ReceivedMessages")
   collectionPages  CollectionPage[]
+  hostedEvents     Event[]          @relation("HostedEvents")
 
   @@map("users")
 }
@@ -221,6 +222,12 @@ model Event {
   recurrenceEnd   DateTime?
   parentEventId   String? // for recurring event instances
   capacity        Int?
+  /// Who is running this event (EVT-04). Set to whoever created it and
+  /// changeable afterwards, because an organiser often creates an event on
+  /// somebody else's behalf. Nullable: events made before this column existed
+  /// have no known host, and guessing one would invent a fact the product
+  /// would then act on — the PRD emails this person after their event.
+  hostId          String?
   waitlistEnabled Boolean         @default(false)
   requiresRsvp    Boolean         @default(true)
   category        String?
@@ -232,6 +239,9 @@ model Event {
   updatedAt       DateTime        @updatedAt
 
   org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  // SetNull, not Cascade: a host leaving the co-op must not delete the events
+  // they ran, along with every RSVP and attendance record attached to them.
+  host       User?        @relation("HostedEvents", fields: [hostId], references: [id], onDelete: SetNull)
   location   Location?    @relation(fields: [locationId], references: [id])
   room       Room?        @relation(fields: [roomId], references: [id])
   parent     Event?       @relation("EventRecurrence", fields: [parentEventId], references: [id])
