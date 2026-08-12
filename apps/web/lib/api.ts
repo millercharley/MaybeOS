@@ -161,6 +161,15 @@ class ApiClient {
   };
 
   // ── Orgs ─────────────────────────────────────────
+  auth_profile = {
+    update: (data: { name?: string; avatarUrl?: string | null }, token: string) =>
+      this.request<UserProfile>('/auth/profile', {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+  };
+
   orgs = {
     create: (data: CreateOrgData, token: string) =>
       this.request<Org>('/orgs', { method: 'POST', body: JSON.stringify(data), token }),
@@ -273,6 +282,9 @@ class ApiClient {
   events = {
     list: (orgId: string, token: string) =>
       this.request<PaginatedResponse<Event>>(`/orgs/${orgId}/events`, { token }),
+
+    myRsvps: (orgId: string, token: string) =>
+      this.request<MyRsvp[]>(`/orgs/${orgId}/events/my-rsvps`, { token }),
 
     listPublic: async (orgId: string): Promise<Event[]> => {
       const res = await this.request<PaginatedResponse<Event>>(`/orgs/${orgId}/events/public`);
@@ -572,15 +584,25 @@ export interface UserProfile {
   id: string;
   email: string;
   name?: string;
-  avatarUrl?: string;
+  avatarUrl?: string | null;
   globalRole: string;
+  emailVerified?: boolean;
+  createdAt?: string;
+  /**
+   * Membership rows, each with its organization nested — which is what
+   * /auth/profile returns. This previously declared flat `orgName` and
+   * `orgSlug` fields the API has never sent; nothing read them, so it caused
+   * no bug, but it is the same shape of fiction that made every proposal
+   * card render 0% (OPS-05).
+   */
   orgs: Array<{
     orgId: string;
-    orgName: string;
-    orgSlug: string;
     role: string;
-    tierId?: string;
+    tierId?: string | null;
+    /** Non-null in the database with a NONE default, so always present. */
     subscriptionStatus: string;
+    memberSince?: string;
+    org?: { id: string; name: string; slug: string; logoUrl?: string | null };
   }>;
 }
 
@@ -828,6 +850,26 @@ export interface Proposal {
    * proposal card rendered 0% (OPS-05).
    */
   voteTally?: { yes: number; no: number; abstain: number; total: number };
+}
+
+export interface MyRsvp {
+  id: string;
+  status: 'CONFIRMED' | 'WAITLISTED' | 'CANCELED' | 'TENTATIVE';
+  plusOnes?: number;
+  checkedIn?: boolean;
+  eventCanceled: boolean;
+  isPast: boolean;
+  event: {
+    id: string;
+    title: string;
+    slug: string;
+    startTime: string;
+    endTime: string;
+    timezone?: string;
+    capacity?: number | null;
+    location?: { name: string } | null;
+    room?: { name: string } | null;
+  };
 }
 
 export interface Survey {

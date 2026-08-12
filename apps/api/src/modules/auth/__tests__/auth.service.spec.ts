@@ -209,14 +209,48 @@ describe('AuthService', () => {
   describe('getProfile', () => {
     it('should return user profile with orgs', async () => {
       prisma.user.findUnique.mockResolvedValue({
-        ...mockUser,
+        id: 'user-1',
+        email: 'test@example.com',
         orgs: [{ orgId: 'org-1', role: 'ADMIN', org: { name: 'Test Org' } }],
       } as any);
 
       const result = await service.getProfile('user-1');
 
       expect(result).toBeDefined();
-      expect(result).not.toHaveProperty('passwordHash');
+      expect(result.orgs).toHaveLength(1);
+    });
+
+    /**
+     * Asserted on the query rather than the result (OPS-08).
+     *
+     * This used to check that the returned object had no `passwordHash`, which
+     * held only because the implementation fetched everything and deleted one
+     * field — so `magicLinkToken`, a live bearer credential, sailed through
+     * beside it. The service now selects, and a mocked Prisma returns whatever
+     * it is told, so the only meaningful assertion is what was asked for.
+     */
+    it('never asks the database for credentials', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-1', orgs: [] } as any);
+
+      await service.getProfile('user-1');
+
+      const { select } = prisma.user.findUnique.mock.calls[0][0];
+      expect(select).toBeDefined();
+      for (const field of ['passwordHash', 'magicLinkToken', 'magicLinkExpiry']) {
+        expect(select[field]).toBeUndefined();
+      }
+      expect(select.email).toBe(true);
+    });
+
+    it('does not publish a membership\'s Stripe identifiers', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-1', orgs: [] } as any);
+
+      await service.getProfile('user-1');
+
+      const { select } = prisma.user.findUnique.mock.calls[0][0];
+      expect(select.orgs.select.stripeCustomerId).toBeUndefined();
+      expect(select.orgs.select.stripeSubscriptionId).toBeUndefined();
+      expect(select.orgs.select.role).toBe(true);
     });
 
     it('should return null if user not found', async () => {
