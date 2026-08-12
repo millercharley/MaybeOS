@@ -50,7 +50,10 @@ async function main() {
   await prisma.collectionPage.deleteMany();
   await prisma.collection.deleteMany();
   await prisma.channel.deleteMany();
+  await prisma.surveyAnswer.deleteMany();
   await prisma.surveyResponse.deleteMany();
+  await prisma.collectionWindow.deleteMany();
+  await prisma.surveyQuestion.deleteMany();
   await prisma.survey.deleteMany();
   await prisma.attendance.deleteMany();
   await prisma.rsvp.deleteMany();
@@ -631,44 +634,73 @@ async function main() {
   console.log('  Proposals and votes created');
 
   // ── Surveys ──────────────────────────────────────────
+  // Questions are rows, not a JSON blob, and answers are typed and bound to a
+  // question version inside a collection window (IMP-05/08/09).
+  const baselineWindowClose = new Date(nextMonth.getTime() + 30 * 24 * 60 * 60 * 1000);
+
   const baselineSurvey = await prisma.survey.create({
     data: {
       orgId: org.id,
       title: 'Baseline Community Wellbeing Survey',
-      description: 'Help us understand how our community space impacts your sense of belonging and connection. This survey takes about 5 minutes.',
+      description:
+        'Help us understand how our community space impacts your sense of belonging and connection. This survey takes about 5 minutes.',
       type: SurveyType.BASELINE,
       isActive: true,
       publishedAt: now,
-      closesAt: new Date(nextMonth.getTime() + 30 * 24 * 60 * 60 * 1000),
-      questions: [
-        { id: 'q1', text: 'How often do you feel a sense of belonging in your neighborhood?', type: 'likert', category: 'belonging', required: true },
-        { id: 'q2', text: 'How often do you feel lonely or isolated?', type: 'likert', category: 'loneliness', required: true },
-        { id: 'q3', text: 'How many people in your community do you consider close connections?', type: 'number', category: 'network_size', required: true },
-        { id: 'q4', text: 'How often do you participate in community activities or events?', type: 'choice', options: ['Never', 'Rarely (few times a year)', 'Monthly', 'Weekly', 'Multiple times a week'], category: 'participation', required: true },
-        { id: 'q5', text: 'In the last year, have you volunteered or contributed to a community initiative?', type: 'choice', options: ['Yes', 'No', 'Planning to'], category: 'civic_engagement', required: true },
-        { id: 'q6', text: 'What does community mean to you?', type: 'text', category: 'belonging', required: false },
-        { id: 'q7', text: 'How satisfied are you with the gathering spaces available in your neighborhood?', type: 'likert', category: 'belonging', required: true },
-      ],
+      closesAt: baselineWindowClose,
+      questions: {
+        create: [
+          { key: 'belonging_frequency', text: 'How often do you feel a sense of belonging in your neighborhood?', type: 'SCALE', category: 'belonging', required: true, sortOrder: 0 },
+          { key: 'loneliness', text: 'How often do you feel lonely or isolated?', type: 'SCALE', category: 'loneliness', required: true, sortOrder: 1 },
+          { key: 'network_size', text: 'How many people in your community do you consider close connections?', type: 'NUMBER', category: 'network_size', required: true, sortOrder: 2 },
+          { key: 'participation', text: 'How often do you participate in community activities or events?', type: 'CHOICE', options: ['Never', 'Rarely (few times a year)', 'Monthly', 'Weekly', 'Multiple times a week'], category: 'participation', required: true, sortOrder: 3 },
+          { key: 'civic_engagement', text: 'In the last year, have you volunteered or contributed to a community initiative?', type: 'CHOICE', options: ['Yes', 'No', 'Planning to'], category: 'civic_engagement', required: true, sortOrder: 4 },
+          { key: 'what_community_means', text: 'What does community mean to you?', type: 'TEXT', category: 'belonging', required: false, sortOrder: 5 },
+          { key: 'space_satisfaction', text: 'How satisfied are you with the gathering spaces available in your neighborhood?', type: 'SCALE', category: 'belonging', required: true, sortOrder: 6 },
+        ],
+      },
+      windows: {
+        create: { label: '2026 baseline', opensAt: now, closesAt: baselineWindowClose },
+      },
     },
+    include: { questions: true, windows: true },
   });
 
-  // Sample survey responses
-  const surveyAnswerSets = [
-    { q1: 4, q2: 2, q3: 8, q4: 'Weekly', q5: 'Yes', q6: 'A place where I feel seen and supported', q7: 4 },
-    { q1: 3, q2: 3, q3: 4, q4: 'Monthly', q5: 'No', q7: 3 },
-    { q1: 5, q2: 1, q3: 15, q4: 'Multiple times a week', q5: 'Yes', q6: 'People who show up for each other', q7: 5 },
-    { q1: 2, q2: 4, q3: 2, q4: 'Rarely (few times a year)', q5: 'Planning to', q7: 2 },
-    { q1: 4, q2: 2, q3: 10, q4: 'Weekly', q5: 'Yes', q7: 4 },
+  const questionByKey = new Map(baselineSurvey.questions.map((q) => [q.key, q]));
+  const baselineWindow = baselineSurvey.windows[0];
+
+  const surveyAnswerSets: Array<Record<string, string | number>> = [
+    { belonging_frequency: 4, loneliness: 2, network_size: 8, participation: 'Weekly', civic_engagement: 'Yes', what_community_means: 'A place where I feel seen and supported', space_satisfaction: 4 },
+    { belonging_frequency: 3, loneliness: 3, network_size: 4, participation: 'Monthly', civic_engagement: 'No', space_satisfaction: 3 },
+    { belonging_frequency: 5, loneliness: 1, network_size: 15, participation: 'Multiple times a week', civic_engagement: 'Yes', what_community_means: 'People who show up for each other', space_satisfaction: 5 },
+    { belonging_frequency: 2, loneliness: 4, network_size: 2, participation: 'Rarely (few times a year)', civic_engagement: 'Planning to', space_satisfaction: 2 },
+    { belonging_frequency: 4, loneliness: 2, network_size: 10, participation: 'Weekly', civic_engagement: 'Yes', space_satisfaction: 4 },
   ];
 
   const respondents = [member1, member2, member3, member4, member5];
   for (let i = 0; i < respondents.length; i++) {
+    const answers = surveyAnswerSets[i];
+
     await prisma.surveyResponse.create({
       data: {
         surveyId: baselineSurvey.id,
+        windowId: baselineWindow.id,
         userId: respondents[i].id,
-        answers: surveyAnswerSets[i],
         demographics: i % 2 === 0 ? { ageRange: '25-34', neighborhood: 'Fort Greene' } : undefined,
+        answers: {
+          create: Object.entries(answers).map(([key, value]) => {
+            const q = questionByKey.get(key)!;
+            return {
+              questionId: q.id,
+              category: q.category,
+              ...(q.type === 'SCALE' || q.type === 'NUMBER'
+                ? { numericValue: Number(value) }
+                : q.type === 'CHOICE'
+                  ? { choiceValue: String(value) }
+                  : { textValue: String(value) }),
+            };
+          }),
+        },
       },
     });
   }

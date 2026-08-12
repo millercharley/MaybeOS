@@ -544,39 +544,139 @@ enum SurveyType {
   CUSTOM
 }
 
+/// The canonical question types. Previously these were free-form strings in a
+/// JSON blob, and the writer and the reader disagreed about them (IMP-04).
+enum SurveyQuestionType {
+  SCALE // 1-5
+  NUMBER
+  CHOICE
+  TEXT
+}
+
 model Survey {
   id          String     @id @default(uuid())
   orgId       String
   title       String
   description String?
   type        SurveyType @default(CUSTOM)
-  questions   Json // Array of question definitions
   isActive    Boolean    @default(false)
   publishedAt DateTime?
   closesAt    DateTime?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  org       Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  org       Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  questions SurveyQuestion[]
+  windows   CollectionWindow[]
   responses SurveyResponse[]
 
   @@index([orgId])
   @@map("surveys")
 }
 
+/// A single question, as a row rather than an entry in a JSON blob.
+///
+/// `questions Json` is what produced IMP-04 and IMP-05. Question types were
+/// free-form strings, so the seed wrote "likert" while the renderer switched on
+/// "SCALE" and no member could answer anything; and answers were keyed by
+/// question id while the aggregation averaged keys named after categories, so
+/// no metric could ever be non-null. Neither mistake is expressible now: the
+/// type is an enum the database enforces, and an answer points at a question
+/// row instead of naming a string.
+///
+/// Questions are versioned and never edited in place. Changing wording retires
+/// the current version and writes a new one, so a figure can always be traced
+/// to the exact text a member was shown — the "visible seam" the PRD requires
+/// of any mid-collection wording change (D-021).
+model SurveyQuestion {
+  id        String             @id @default(uuid())
+  surveyId  String
+  key       String // stable identity across versions, e.g. "belonging_frequency"
+  version   Int                @default(1)
+  text      String
+  type      SurveyQuestionType
+  options   String[]           @default([]) // CHOICE only
+  category  String? // the indicator this feeds, e.g. "belonging"
+  required  Boolean            @default(false)
+  sortOrder Int                @default(0)
+  retiredAt DateTime? // set when a newer version supersedes this one
+  createdAt DateTime           @default(now())
+
+  survey  Survey         @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  answers SurveyAnswer[]
+
+  @@unique([surveyId, key, version])
+  @@index([surveyId])
+  @@map("survey_questions")
+}
+
+/// The period a set of responses belongs to.
+///
+/// G5 in the PRD: every figure in a report traces to a response count *and* a
+/// collection window. Without a window, "average belonging: 3.8" is a number
+/// with no denominator and no dates, which is exactly the kind of claim a
+/// funder discounts. It is also the unit that makes deduplication meaningful —
+/// one response per member per window, not one per member forever.
+model CollectionWindow {
+  id        String    @id @default(uuid())
+  surveyId  String
+  label     String // e.g. "2026 baseline"
+  opensAt   DateTime  @default(now())
+  closesAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  survey    Survey           @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  responses SurveyResponse[]
+
+  @@unique([surveyId, label])
+  @@index([surveyId])
+  @@map("collection_windows")
+}
+
 model SurveyResponse {
   id           String   @id @default(uuid())
   surveyId     String
-  userId       String? // null for anonymous
-  answers      Json // { questionId: answer }
-  demographics Json? // consent-based demographic data
+  windowId     String
+  userId       String? // null for anonymous responses
+  demographics Json? // consent-based, collected separately from answers
   createdAt    DateTime @default(now())
 
-  survey Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
-  user   User?  @relation(fields: [userId], references: [id])
+  survey  Survey           @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  window  CollectionWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
+  user    User?            @relation(fields: [userId], references: [id])
+  answers SurveyAnswer[]
 
+  /// IMP-08: one response per member per window. Postgres treats NULLs as
+  /// distinct, so anonymous responses are not collapsed by this — which is
+  /// correct, since there is no identity to deduplicate them by.
+  @@unique([windowId, userId])
   @@index([surveyId])
   @@map("survey_responses")
+}
+
+/// One answer to one version of one question, stored in a typed column.
+///
+/// `category` is copied from the question at write time. That is safe rather
+/// than drift-prone because question versions are immutable, and it lets the
+/// dashboard aggregate with a groupBy instead of loading every response into
+/// memory and matching strings — which is what the old implementation did, on
+/// keys nothing ever wrote.
+model SurveyAnswer {
+  id           String  @id @default(uuid())
+  responseId   String
+  questionId   String
+  category     String?
+  numericValue Float? // SCALE and NUMBER
+  textValue    String? // TEXT
+  choiceValue  String? // CHOICE
+
+  response SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  question SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([responseId, questionId])
+  @@index([questionId])
+  @@index([category])
+  @@map("survey_answers")
 }
 
 // ─── Platform: Webhook Idempotency ──────────────────────────
