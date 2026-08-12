@@ -67,6 +67,7 @@ export default function DashboardLayout({
   const namedRoutes: [RegExp, string][] = [
     [/^\/admin\/events\/[^/]+$/, 'Check-in'],
     [/^\/member\/rsvps$/, 'My RSVPs'],
+    [/^\/member\/events$/, 'My Events'],
     [/^\/member\/bookings$/, 'My Bookings'],
     [/^\/member\/billing$/, 'Billing'],
     [/^\/member\/profile$/, 'Profile'],

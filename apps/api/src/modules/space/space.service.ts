@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../config/prisma.service';
 import { ContactViewer } from '../../common/access/contact-visibility';
 import { EmailService } from '../email/email.service';
+import { EventsService } from '../events/events.service';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { AvailabilityRuleDto } from './dto/availability-rule.dto';
@@ -22,6 +23,9 @@ export class SpaceService {
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
     private readonly configService: ConfigService,
+    // A booking can have an event published from it (EVT-05); the two have to
+    // stay in step or the co-op advertises a room it no longer holds.
+    private readonly eventsService: EventsService,
   ) {}
 
   /* ------------------------------------------------------------------ */
@@ -339,6 +343,17 @@ export class SpaceService {
       },
     });
 
+    // A booking can hold an event and still reach REJECTED: rescheduling an
+    // approved booking sends it back into the queue (see rescheduleBooking),
+    // and an organiser can refuse the new slot. The event must not survive it.
+    await this.eventsService
+      .syncWithBooking(rejected.id, { canceled: true })
+      .catch((err) =>
+        this.logger.error(
+          `Booking ${rejected.id} rejected but its event was not cancelled: ${err.message}`,
+        ),
+      );
+
     await this.notifyBooking(rejected.id, 'rejected');
     return rejected;
   }
@@ -440,6 +455,14 @@ export class SpaceService {
       },
     });
 
+    await this.eventsService
+      .syncWithBooking(moved.id, { startTime, endTime })
+      .catch((err) =>
+        this.logger.error(
+          `Booking ${moved.id} moved but its event was not: ${err.message}`,
+        ),
+      );
+
     await this.notifyBooking(moved.id, 'rescheduled');
     return moved;
   }
@@ -463,6 +486,17 @@ export class SpaceService {
         canceledAt: new Date(),
       },
     });
+
+    // Cancelling the room cancels what was advertised in it. Doing this after
+    // the booking is safely updated, and never letting it fail the cancel:
+    // a member calling off a booking must always succeed.
+    await this.eventsService
+      .syncWithBooking(canceled.id, { canceled: true })
+      .catch((err) =>
+        this.logger.error(
+          `Booking ${canceled.id} cancelled but its event was not: ${err.message}`,
+        ),
+      );
 
     await this.notifyBooking(canceled.id, 'canceled');
     return canceled;
