@@ -5,6 +5,7 @@ import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from '../auth.service';
 import { PrismaService } from '../../../config/prisma.service';
+import { EmailService } from '../../email/email.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -55,6 +56,10 @@ describe('AuthService', () => {
           useValue: {
             get: jest.fn().mockReturnValue('test-value'),
           },
+        },
+        {
+          provide: EmailService,
+          useValue: { sendMagicLink: jest.fn() },
         },
       ],
     }).compile();

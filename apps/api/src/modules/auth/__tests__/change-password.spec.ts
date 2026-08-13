@@ -5,6 +5,7 @@ import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from '../auth.service';
 import { PrismaService } from '../../../config/prisma.service';
+import { EmailService } from '../../email/email.service';
 
 /**
  * Changing your own password (AUTH-03).
@@ -40,6 +41,7 @@ describe('AuthService — changePassword', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: JwtService, useValue: { sign: jest.fn() } },
         { provide: ConfigService, useValue: { get: () => 'x' } },
+        { provide: EmailService, useValue: { sendMagicLink: jest.fn() } },
       ],
     }).compile();
 

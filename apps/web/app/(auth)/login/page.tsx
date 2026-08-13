@@ -5,11 +5,14 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
+import { landingPathFor } from '@/lib/landing';
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get('redirect') || '/admin';
+  // Only an explicit ?redirect is honoured here; where a bare sign-in lands
+  // depends on who signed in, which is not known until the profile loads.
+  const redirectTo = searchParams.get('redirect');
   const setToken = useAuthStore((s) => s.setToken);
 
   const [email, setEmail] = useState('');
@@ -31,7 +34,20 @@ function LoginForm() {
       } else {
         const result = await api.auth.login({ email, password });
         setToken(result.accessToken);
-        router.push(redirectTo);
+
+        // Defaulted to /admin for everyone, so members signed in and were told
+        // the page was for organisers.
+        let destination = redirectTo ?? '/member';
+        if (!redirectTo) {
+          try {
+            const user = await api.auth.profile(result.accessToken);
+            destination = landingPathFor(user, localStorage.getItem('maybeos_org'));
+          } catch {
+            // Signed in but the profile would not load: /member renders for
+            // everyone, so nobody lands on a page they cannot use.
+          }
+        }
+        router.push(destination);
       }
     } catch (err: unknown) {
       const message =
@@ -132,7 +148,7 @@ function LoginForm() {
 
       <p className="mt-6 text-center text-sm text-gray-500">
         Don&apos;t have an account?{' '}
-        <Link href={`/register${redirectTo !== '/admin' ? `?redirect=${encodeURIComponent(redirectTo)}` : ''}`} className="font-medium text-blue-600 hover:text-blue-500">
+        <Link href={`/register${redirectTo ? `?redirect=${encodeURIComponent(redirectTo)}` : ''}`} className="font-medium text-blue-600 hover:text-blue-500">
           Create one
         </Link>
       </p>
