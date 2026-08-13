@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { TerminusModule } from '@nestjs/terminus';
 import { HealthController } from '../health.controller';
 import { PrismaHealthIndicator } from '../prisma.health';
+import { EmailHealthIndicator } from '../email.health';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../config/prisma.service';
 
 describe('HealthController', () => {
@@ -14,6 +16,11 @@ describe('HealthController', () => {
       controllers: [HealthController],
       providers: [
         PrismaHealthIndicator,
+        EmailHealthIndicator,
+        {
+          provide: ConfigService,
+          useValue: { get: () => undefined },
+        },
         {
           provide: PrismaService,
           useValue: {
