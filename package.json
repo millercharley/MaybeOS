@@ -25,6 +25,7 @@
     "@eslint/eslintrc": "^3.3.6",
     "@eslint/js": "^9.39.5",
     "@next/eslint-plugin-next": "^15.5.23",
+    "@stripe/cli": "^1.45.2",
     "concurrently": "^9.1.0",
     "eslint": "^9.39.5",
     "eslint-config-next": "^15.5.23",
