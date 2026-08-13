@@ -54,8 +54,10 @@ export class EmailService {
 
   constructor(private readonly configService: ConfigService) {
     const token = this.configService.get<string>('POSTMARK_API_TOKEN');
-    this.emailFrom =
-      this.configService.get<string>('EMAIL_FROM') || 'noreply@maybeos.com';
+    // No fallback: EMAIL_FROM has a validated default in app.module, and a
+    // second one here meant two different addresses could be authoritative
+    // depending on which file you read.
+    this.emailFrom = this.configService.get<string>('EMAIL_FROM') as string;
 
     if (token) {
       this.client = new postmark.ServerClient(token);

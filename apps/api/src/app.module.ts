@@ -39,7 +39,11 @@ import { HealthModule } from './modules/health/health.module';
         GOOGLE_CLIENT_SECRET: Joi.string().allow('').default(''),
         GOOGLE_REDIRECT_URI: Joi.string().allow('').default(''),
         POSTMARK_API_TOKEN: Joi.string().allow('').default(''),
-        EMAIL_FROM: Joi.string().default('noreply@maybeos.app'),
+        // The site's own domain. It was maybeos.app here and maybeos.com in
+        // EmailService — neither is a domain MaybeOS owns, so neither could
+        // ever be a verified Postmark sender, and Postmark logs that refusal
+        // rather than raising it (OPS-19).
+        EMAIL_FROM: Joi.string().default('noreply@maybeos.org'),
       }),
       validationOptions: {
         abortEarly: true,
