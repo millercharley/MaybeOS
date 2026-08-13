@@ -61,6 +61,8 @@ model Organization {
   auditLogs      AuditLog[]
   emailTemplates EmailTemplate[]
 
+  expenses            Expense[]
+
   @@map("organizations")
 }
 
@@ -127,6 +129,8 @@ model User {
   collectionPages  CollectionPage[]
   hostedEvents     Event[]          @relation("HostedEvents")
   tickets          Ticket[]
+
+  expensesCreated     Expense[]     @relation("ExpenseCreator")
 
   @@map("users")
 }
@@ -829,6 +833,52 @@ model SurveyResponse {
 /// dashboard aggregate with a groupBy instead of loading every response into
 /// memory and matching strings — which is what the old implementation did, on
 /// keys nothing ever wrote.
+/// What a co-op spent, at the smallest size that makes the PRD's composites
+/// computable (IMP-16, amending D-021).
+///
+/// D-021's non-goals list **bookkeeping**, and that stands: this is not an
+/// accounting system and must not grow into one. There are deliberately no
+/// vendors, no invoices, no payment status, no reconciliation, no attachments,
+/// no approval workflow and no double entry. A co-op's books live in its
+/// accounting software; this records only enough for "what did that outcome
+/// cost" and "how much of our spend served our goals" to have a denominator.
+///
+/// If a field here ever needs a second table to make sense, that is the signal
+/// this has outgrown its decision and should be reconsidered rather than
+/// extended.
+model Expense {
+  id          String   @id @default(uuid())
+  orgId       String
+  /// Integer cents, like every other amount in MaybeOS. Money in floats is how
+  /// a ledger stops adding up.
+  amountCents Int
+  /// The day the money went out, which is not the day it was recorded.
+  incurredOn  DateTime
+  /// A co-op's own word for the kind of spend — "Programs", "Space", "Staff".
+  /// Free text rather than an enum: a co-op naming its own categories is the
+  /// point, and an enum would need a migration every time one is added.
+  category    String
+  /// Which goal this spend served, if any. A plain key rather than a relation
+  /// because goals are not modelled yet (D-021 is not built); when they are,
+  /// this becomes the foreign key. Null is normal and honest — not all spend
+  /// serves a stated goal, and pretending otherwise is what makes an
+  /// alignment figure meaningless.
+  goalKey     String?
+  description String?
+  /// Who recorded it. Kept for the audit trail, nulled rather than cascading
+  /// so an admin leaving does not delete the co-op's financial history.
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  creator User?        @relation("ExpenseCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([orgId, incurredOn])
+  @@index([orgId, goalKey])
+  @@map("expenses")
+}
+
 model SurveyAnswer {
   id           String  @id @default(uuid())
   responseId   String

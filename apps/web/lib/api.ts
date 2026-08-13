@@ -699,6 +699,26 @@ class ApiClient {
     dismissAsk: (orgId: string, token: string) =>
       this.request(`/orgs/${orgId}/impact/ask/dismiss`, { method: 'POST', token }),
 
+    // ── Expenses (IMP-16) ──
+    listExpenses: (orgId: string, token: string) =>
+      this.request<Expense[]>(`/orgs/${orgId}/impact/expenses`, { token }),
+
+    expenseSummary: (orgId: string, token: string) =>
+      this.request<ExpenseSummary>(`/orgs/${orgId}/impact/expenses/summary`, { token }),
+
+    createExpense: (orgId: string, data: CreateExpenseData, token: string) =>
+      this.request<Expense>(`/orgs/${orgId}/impact/expenses`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    deleteExpense: (orgId: string, expenseId: string, token: string) =>
+      this.request(`/orgs/${orgId}/impact/expenses/${expenseId}`, {
+        method: 'DELETE',
+        token,
+      }),
+
     // ── The member's own demographic profile (IMP-17) ──
     myDemographics: (orgId: string, token: string) =>
       this.request<MyDemographics>(`/orgs/${orgId}/me/demographics`, { token }),
@@ -1351,4 +1371,32 @@ export interface TouchpointAsk {
   type: 'SCALE' | 'CHOICE' | 'TEXT' | 'NUMBER';
   options: string[];
   category?: string | null;
+}
+
+/** One recorded expense (IMP-16). Four fields, deliberately. */
+export interface Expense {
+  id: string;
+  amountCents: number;
+  incurredOn: string;
+  category: string;
+  goalKey?: string | null;
+  description?: string | null;
+  creator?: { id: string; name?: string } | null;
+}
+
+export interface CreateExpenseData {
+  amountCents: number;
+  incurredOn: string;
+  category: string;
+  goalKey?: string;
+  description?: string;
+}
+
+export interface ExpenseSummary {
+  totalCents: number;
+  byCategory: { category: string; totalCents: number; count: number }[];
+  byGoal: { goalKey: string | null; totalCents: number; count: number }[];
+  /** 0–1, or null when nothing has been recorded — not the same as zero. */
+  attributedShare: number | null;
+  expenseCount: number;
 }
