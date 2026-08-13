@@ -48,7 +48,19 @@ export class StripeService {
         'STRIPE_SECRET_KEY not configured – Stripe calls will fail (dev mode)',
       );
     }
-    this.stripe = new Stripe(stripeKey || 'sk_test_placeholder');
+    this.stripe = new Stripe(
+      stripeKey || 'sk_test_placeholder',
+    // Pinned rather than left to the account default (Stripe's own guidance:
+    // "Always specify the API version you're integrating against"). Without
+    // this, production billing rides whatever the Stripe account's default
+    // happens to be, so a change made in the Dashboard — or by Stripe — alters
+    // request and response shapes with no deploy and no diff to point at.
+    //
+    // `2025-02-24.acacia` is what SDK 17.7.0 targets, so pinning it changes
+    // nothing today; it just stops the ground moving. The SDK is two API
+    // generations behind current (dahlia) — see OPS-18.
+    { apiVersion: '2025-02-24.acacia' },
+    );
   }
 
   // ──────────────────────────────────────────────────────────────
