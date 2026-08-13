@@ -82,7 +82,8 @@ in the repo. The ones production needs:
 
 | Variable | Notes |
 |---|---|
-| `DATABASE_URL` | Supabase **prod** session-mode pooler |
+| `DATABASE_URL` | Supabase **prod transaction-mode** pooler, port 6543, with `?pgbouncer=true` (OPS-11) |
+| `DIRECT_URL` | Supabase **prod session-mode** pooler, port 5432 — migrations only; transaction mode cannot run them |
 | `JWT_SECRET` | |
 | `WEB_URL` | `https://maybeos.org` — also drives the CORS allow-list |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | org logo storage (D-017) |
@@ -130,11 +131,18 @@ If it happens anyway, **restarting the database** in Supabase (Settings →
 Database) drops every connection and restores service immediately; the idle
 ones are abandoned, not work in progress.
 
-**The better long-term fix is still open**: `DATABASE_URL` points at the
-session-mode pooler, and serverless wants the **transaction-mode** pooler
-(port 6543, `?pgbouncer=true`), which handles far more clients. That needs a
-`directUrl` for migrations, which D-007 deliberately removed after it broke a
-deploy — so it is a decision to revisit, not a change to make quietly.
+**`DATABASE_URL` now points at the transaction-mode pooler** (port 6543,
+`?pgbouncer=true`), which multiplexes and handles far more clients than session
+mode's fifteen. Migrations cannot run through it — they need a session that
+holds state across statements, including advisory locks — so `DIRECT_URL` holds
+the session-mode string and `schema.prisma` names it as `directUrl`.
+
+D-007 had removed `directUrl` after it broke a Railway deploy when the variable
+was unset, and chose session mode precisely to avoid needing it. That tradeoff
+is what the 2026-08-13 outages reversed. Note that `prisma generate` — the only
+Prisma command the Netlify build runs — does not resolve `directUrl`, so a
+missing `DIRECT_URL` cannot fail a deploy; it would only fail a migration,
+loudly, at the moment somebody runs one.
 
 ## Email is the one that fails without telling you
 
