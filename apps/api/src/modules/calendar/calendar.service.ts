@@ -153,6 +153,98 @@ export class CalendarService {
   // Calendar Event CRUD
   // ──────────────────────────────────────────────────────────────
 
+
+  /**
+   * Put a booking on the room's Google Calendar, or take it off (SPC-04).
+   *
+   * This is the piece that was missing. Every method below it has worked since
+   * SpaceOS was built and **nothing ever called any of them**: `SpaceModule`
+   * did not import `CalendarModule`, so no booking in the product's history
+   * has ever reached Google Calendar. Connecting a room's calendar did
+   * nothing except store tokens.
+   *
+   * It lives here rather than in SpaceService so that both callers — the
+   * booking lifecycle and the webhook that confirms a paid booking — can reach
+   * it without SpaceModule and StripeModule having to depend on each other.
+   *
+   * **Never throws.** A calendar that is unreachable, a room whose tokens have
+   * been revoked, or Google being down must not fail a member's booking. The
+   * booking is the record; the calendar is a copy of it.
+   */
+  async syncBooking(
+    orgId: string,
+    bookingId: string,
+    action: 'create' | 'update' | 'delete',
+  ): Promise<{ synced: boolean; reason?: string }> {
+    try {
+      // Resolved through the room's org rather than by bare id: every caller
+      // already knows whose booking this is, and SEC-04's guard is right that
+      // an id on its own proves nothing.
+      const booking = await this.prisma.booking.findFirst({
+        where: { id: bookingId, room: { orgId } },
+        include: {
+          room: {
+            // The tokens are omitted for every other reader (SEC-05); calling
+            // Google as the room needs them, and this object stays server-side.
+            omit: { googleTokens: false },
+          },
+        },
+      });
+
+      if (!booking) return { synced: false, reason: 'booking not found' };
+
+      // A room with no calendar connected is the normal case, not a fault.
+      if (!booking.room.googleTokens) {
+        return { synced: false, reason: 'room has no calendar connected' };
+      }
+
+      const room = booking.room as typeof booking.room & { googleTokens: unknown };
+
+      if (action === 'delete') {
+        if (!booking.googleEventId) {
+          return { synced: false, reason: 'nothing on the calendar to remove' };
+        }
+        await this.deleteCalendarEvent(room as any, {
+          id: booking.id,
+          googleEventId: booking.googleEventId,
+        });
+        return { synced: true };
+      }
+
+      // An update with nothing to update is a create: a booking approved after
+      // it was made has no calendar event yet, and treating that as an error
+      // would leave the room's calendar permanently missing it.
+      if (action === 'update' && booking.googleEventId) {
+        await this.updateCalendarEvent(room as any, {
+          id: booking.id,
+          title: booking.title,
+          description: booking.description ?? undefined,
+          startTime: booking.startTime,
+          endTime: booking.endTime,
+          googleEventId: booking.googleEventId,
+        });
+        return { synced: true };
+      }
+
+      if (booking.googleEventId) {
+        return { synced: false, reason: 'already on the calendar' };
+      }
+
+      await this.createCalendarEvent(room as any, {
+        id: booking.id,
+        title: booking.title,
+        description: booking.description ?? undefined,
+        startTime: booking.startTime,
+        endTime: booking.endTime,
+      });
+      return { synced: true };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Calendar sync (${action}) failed for booking ${bookingId}: ${reason}`);
+      return { synced: false, reason };
+    }
+  }
+
   /**
    * Create a Google Calendar event for a room booking.
    * Stores the resulting googleEventId on the booking record.

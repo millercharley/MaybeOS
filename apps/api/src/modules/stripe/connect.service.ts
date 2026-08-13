@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { PrismaService } from '../../config/prisma.service';
 import { priceTicket, priceBooking } from './ticket-pricing';
+import { CalendarService } from '../calendar/calendar.service';
 
 /**
  * Stripe Connect: paying co-ops directly, and taking MaybeOS's cut (D-013).
@@ -36,6 +37,7 @@ export class ConnectService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly calendar: CalendarService,
   ) {
     const key = this.configService.get<string>('STRIPE_SECRET_KEY');
     this.stripe = new Stripe(
@@ -584,7 +586,7 @@ export class ConnectService {
     // booking an organiser has since rejected.
     if (booking.paidAt) return booking;
 
-    return this.prisma.booking.update({
+    const confirmed = await this.prisma.booking.update({
       where: { id: booking.id },
       data: {
         status: booking.room.requiresApproval ? 'PENDING' : 'APPROVED',
@@ -599,6 +601,14 @@ export class ConnectService {
         holdExpiresAt: null,
       },
     });
+
+    // A paid booking reaches the room's calendar by this path and no other —
+    // the lifecycle methods in SpaceService never see it (SPC-04).
+    if (confirmed.status === 'APPROVED') {
+      await this.calendar.syncBooking(meta.orgId, confirmed.id, 'create');
+    }
+
+    return confirmed;
   }
 
   /**

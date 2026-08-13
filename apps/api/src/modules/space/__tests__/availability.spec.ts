@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { EmailService } from '../../email/email.service';
 import { EventsService } from '../../events/events.service';
 import { ConnectService } from '../../stripe/connect.service';
+import { CalendarService } from '../../calendar/calendar.service';
 
 /**
  * Availability rules (SPC-05).
@@ -75,6 +76,10 @@ describe('SpaceService — availability rules', () => {
             createBookingCheckout: jest.fn().mockResolvedValue({ url: 'https://checkout.test' }),
             refundBooking: jest.fn().mockResolvedValue({ refunded: false }),
           },
+        },
+        {
+          provide: CalendarService,
+          useValue: { syncBooking: jest.fn().mockResolvedValue({ synced: false }) },
         },
       ],
     }).compile();
