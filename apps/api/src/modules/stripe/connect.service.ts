@@ -161,8 +161,11 @@ export class ConnectService {
       return { connected: false, chargesEnabled: false, detailsSubmitted: false };
     }
 
+    // `defaults` has to be asked for explicitly — without it the
+    // responsibilities come back undefined, which reads alarmingly like they
+    // were never set. They were; Stripe just does not return them by default.
     const account = await this.stripe.v2.core.accounts.retrieve(org.stripeAccountId, {
-      include: ['configuration.merchant', 'requirements'],
+      include: ['configuration.merchant', 'requirements', 'defaults'],
     });
 
     const chargesEnabled =
