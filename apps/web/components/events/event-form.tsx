@@ -99,6 +99,7 @@ export function EventForm({
   const [endTime, setEndTime] = useState(toLocalInput(initial?.endTime));
   const [visibility, setVisibility] = useState(initial?.visibility ?? 'MEMBERS_ONLY');
   const [capacity, setCapacity] = useState(initial?.capacity?.toString() ?? '');
+  const [waitlist, setWaitlist] = useState(initial?.waitlistEnabled ?? false);
   // Free is the default and the common case for a co-op. Ticketed is a
   // deliberate step, not a price box sitting there inviting a number.
   const [ticketed, setTicketed] = useState(Boolean(initial?.priceCents));
@@ -142,6 +143,9 @@ export function EventForm({
       endTime: new Date(endTime).toISOString(),
       visibility,
       capacity: capacity ? Number(capacity) : undefined,
+      // Only meaningful alongside a limit — an event that cannot fill cannot
+      // overflow — so it is never sent as true without one.
+      waitlistEnabled: capacity ? waitlist : false,
       category: category.trim() || undefined,
       priceCents,
       ...(hosts && hostId ? { hostId } : {}),
@@ -298,6 +302,42 @@ export function EventForm({
             className="input w-full"
           />
         </div>
+      </div>
+
+      {/*
+        The switch that was missing (EVT-02). The waitlist engine has worked
+        since EventOS was built — over capacity a guest is WAITLISTED, and
+        cancelling a confirmed place promotes the first person waiting — but
+        nothing in the product ever set this column, so it stayed false and the
+        engine could never run. The landing page has sold it the whole time.
+
+        Disabled rather than hidden when there is no limit: an event that
+        cannot fill cannot overflow, and showing the dependency teaches it
+        better than making the control disappear.
+      */}
+      <div>
+        <label className="flex items-start gap-2.5">
+          <input
+            id="event-waitlist"
+            type="checkbox"
+            checked={Boolean(capacity) && waitlist}
+            disabled={!capacity}
+            onChange={(e) => setWaitlist(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 disabled:opacity-40"
+          />
+          <span className="text-sm">
+            <span
+              className={`font-medium ${capacity ? 'text-gray-900' : 'text-gray-400'}`}
+            >
+              Keep a waitlist once it is full
+            </span>
+            <span className="mt-0.5 block text-xs text-gray-500">
+              {capacity
+                ? 'People can still sign up after it fills, and the first one waiting takes any place that frees up.'
+                : 'Set a limit on numbers first — an event with no limit never fills.'}
+            </span>
+          </span>
+        </label>
       </div>
 
       <fieldset>
