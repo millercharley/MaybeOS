@@ -226,6 +226,8 @@ model MembershipTier {
   members UserOrg[]
 
   @@index([orgId])
+  invitations Invitation[]
+
   @@map("membership_tiers")
 }
 
@@ -915,13 +917,24 @@ model Invitation {
   orgId      String
   email      String
   role       OrgRole   @default(MEMBER)
+  /// The tier this person is being invited onto (MEM-04), if any.
+  ///
+  /// Accepting an invitation used to create a membership with no tier and no
+  /// dues, so an invited member joined for free while somebody arriving
+  /// through the public page paid — the same co-op, two prices, depending on
+  /// how you got in. Null stays valid and means exactly what it says: joining
+  /// without dues, which is right for staff and for co-ops that do not charge.
+  tierId     String?
   token      String    @unique @default(uuid())
   invitedBy  String
   expiresAt  DateTime
   acceptedAt DateTime?
   createdAt  DateTime  @default(now())
 
-  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  org  Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  /// SetNull rather than Cascade: deleting a tier must not silently delete
+  /// the invitations that referenced it, leaving people with dead links.
+  tier MembershipTier? @relation(fields: [tierId], references: [id], onDelete: SetNull)
 
   @@index([orgId])
   @@index([email])

@@ -249,22 +249,27 @@ export class MemberService {
       throw new NotFoundException('Organization not found');
     }
 
-    // Invitation-only orgs are not merely hidden in the UI — the endpoint
-    // refuses, or hiding the page would be decoration.
-    if (!org.allowPublicJoin) {
-      throw new ForbiddenException(
-        `${org.name} is invitation only. Ask an organiser for an invite.`,
-      );
-    }
-
     const existing = await this.prisma.userOrg.findUnique({
       where: { userId_orgId: { userId, orgId } },
     });
 
-    // Idempotent: someone who abandoned checkout and came back must not be
-    // blocked from their own membership.
+    // Idempotent, and checked *before* the public-join gate. Someone who is
+    // already a member is not joining, so that gate has nothing to guard —
+    // and checking it first told an invited member of an invitation-only
+    // co-op to "ask an organiser for an invite", which they had just used
+    // (MEM-04). It also blocked anyone who abandoned checkout and came back.
     if (existing) {
       return { membership: existing, alreadyMember: true };
+    }
+
+    // Invitation-only orgs are not merely hidden in the UI — the endpoint
+    // refuses, or hiding the page would be decoration. This still guards
+    // every actual join: only an existing membership skips it, and one can
+    // only exist because an invitation or an open door created it.
+    if (!org.allowPublicJoin) {
+      throw new ForbiddenException(
+        `${org.name} is invitation only. Ask an organiser for an invite.`,
+      );
     }
 
     if (tierId) {
@@ -506,6 +511,7 @@ export class MemberService {
     email: string,
     role: string,
     invitedByUserId: string,
+    tierId?: string,
   ) {
     const normalizedEmail = email.toLowerCase().trim();
 
@@ -545,6 +551,17 @@ export class MemberService {
         orgId,
         email: normalizedEmail,
         role: role as any,
+        // Verified against this org before it is stored: an invitation
+        // pointing at another co-op's tier would fail at checkout, long after
+        // the admin who sent it has moved on.
+        tierId: tierId
+          ? (
+              await this.prisma.membershipTier.findFirst({
+                where: { id: tierId, orgId, isActive: true },
+                select: { id: true },
+              })
+            )?.id
+          : null,
         invitedBy: invitedByUserId,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },
@@ -566,7 +583,13 @@ export class MemberService {
   async getInviteByToken(token: string) {
     const invitation = await this.prisma.invitation.findUnique({
       where: { token },
-      include: { org: { select: { id: true, name: true, slug: true, logoUrl: true, brandColor: true } } },
+      include: {
+        org: { select: { id: true, name: true, slug: true, logoUrl: true, brandColor: true } },
+        // What joining costs, said before they accept rather than at Stripe.
+        // Deliberately not the whole tier row: this endpoint is public, and a
+        // token is a guessable-length string somebody may have been forwarded.
+        tier: { select: { id: true, name: true, priceMonthly: true, priceYearly: true } },
+      },
     });
 
     if (!invitation) throw new NotFoundException('Invitation not found');
@@ -578,6 +601,7 @@ export class MemberService {
       email: invitation.email,
       role: invitation.role,
       org: invitation.org,
+      tier: invitation.tier,
       expiresAt: invitation.expiresAt,
     };
   }
@@ -599,7 +623,7 @@ export class MemberService {
         where: { id: invitation.id },
         data: { acceptedAt: new Date() },
       });
-      return { status: 'already_member', orgId: invitation.orgId };
+      return { status: 'already_member', orgId: invitation.orgId, tierId: null };
     }
 
     await this.prisma.$transaction([
@@ -608,6 +632,11 @@ export class MemberService {
           userId,
           orgId: invitation.orgId,
           role: invitation.role,
+          // The tier the invitation named (MEM-04). Without this an invited
+          // member joined with no tier and no dues, while somebody arriving
+          // through the public page paid — one co-op, two prices, decided by
+          // which door you came through.
+          tierId: invitation.tierId,
         },
       }),
       this.prisma.invitation.update({
@@ -616,7 +645,14 @@ export class MemberService {
       }),
     ]);
 
-    return { status: 'accepted', orgId: invitation.orgId };
+    // The tier travels back so the web app knows whether to hand off to
+    // checkout. Returning only the org is what made the invitation path stop
+    // short of payment.
+    return {
+      status: 'accepted',
+      orgId: invitation.orgId,
+      tierId: invitation.tierId,
+    };
   }
 
   async listInvitations(orgId: string) {

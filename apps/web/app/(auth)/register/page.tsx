@@ -5,15 +5,23 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
+import { landingPathFor } from '@/lib/landing';
 
 function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get('redirect') || '/admin';
+  // Only an explicit ?redirect is honoured; where a bare registration lands
+  // depends on who registered. This defaulted to /admin, so somebody who had
+  // just created an account was shown "This page is for organisers" — the same
+  // bug fixed on the login page, left behind here.
+  const redirectTo = searchParams.get('redirect');
   const setToken = useAuthStore((s) => s.setToken);
 
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  // Prefilled from an invitation (MEM-04), so an invitee does not retype the
+  // address they were invited at — and does not accidentally register a
+  // different one.
+  const [email, setEmail] = useState(searchParams.get('email') ?? '');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,7 +34,17 @@ function RegisterForm() {
     try {
       const result = await api.auth.register({ name, email, password });
       setToken(result.accessToken);
-      router.push(redirectTo);
+      let destination = redirectTo ?? '/member';
+      if (!redirectTo) {
+        try {
+          const user = await api.auth.profile(result.accessToken);
+          destination = landingPathFor(user, localStorage.getItem('maybeos_org'));
+        } catch {
+          // Registered, but the profile would not load. /member renders for
+          // everyone, so nobody lands on a page they cannot use.
+        }
+      }
+      router.push(destination);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : 'Something went wrong. Please try again.';
@@ -101,7 +119,12 @@ function RegisterForm() {
 
       <p className="mt-6 text-center text-sm text-gray-500">
         Already have an account?{' '}
-        <Link href={`/login${redirectTo !== '/admin' ? `?redirect=${encodeURIComponent(redirectTo)}` : ''}`} className="font-medium text-blue-600 hover:text-blue-500">
+        <Link
+          href={`/login${redirectTo ? `?redirect=${encodeURIComponent(redirectTo)}` : ''}${
+            email ? `${redirectTo ? '&' : '?'}email=${encodeURIComponent(email)}` : ''
+          }`}
+          className="font-medium text-blue-600 hover:text-blue-500"
+        >
           Sign in
         </Link>
       </p>

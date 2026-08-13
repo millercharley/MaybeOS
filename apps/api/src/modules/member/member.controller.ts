@@ -100,7 +100,13 @@ export class MemberController {
     @Body() dto: InviteMemberDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.memberService.inviteMember(orgId, dto.email, dto.role || 'MEMBER', user.userId);
+    return this.memberService.inviteMember(
+      orgId,
+      dto.email,
+      dto.role || 'MEMBER',
+      user.userId,
+      dto.tierId,
+    );
   }
 
   @Get('invitations')

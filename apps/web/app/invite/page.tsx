@@ -53,6 +53,19 @@ function InviteContent() {
       const role = useAuthStore
         .getState()
         .user?.orgs?.find((o) => o.orgId === result.orgId)?.role;
+      // An invitation that named a tier owes dues (MEM-04). Accepting used to
+      // stop at the membership, so an invited member joined free while
+      // somebody arriving through the public page paid — one co-op, two
+      // prices, decided by which door you came through. /join already knows
+      // how to create the membership and hand off to Stripe, and is safe to
+      // re-enter: it treats an existing membership as done rather than an
+      // error.
+      if (result.tierId && invite?.org?.slug) {
+        const next = `/join?org=${encodeURIComponent(invite.org.slug)}&tier=${encodeURIComponent(result.tierId)}`;
+        setTimeout(() => router.push(next), 1200);
+        return;
+      }
+
       const home = role === 'ADMIN' || role === 'STAFF' ? '/admin' : '/member';
       setTimeout(() => router.push(home), 2000);
     } catch (err) {
@@ -123,6 +136,18 @@ function InviteContent() {
           <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>
         )}
 
+        {invite?.tier && (
+          <div className="mt-4 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700">
+            Membership: <strong>{invite.tier.name}</strong>
+            {invite.tier.priceMonthly > 0 && (
+              <> — ${(invite.tier.priceMonthly / 100).toFixed(2)}/month</>
+            )}
+            <span className="mt-0.5 block text-xs text-gray-500">
+              You&apos;ll be asked to set this up after joining.
+            </span>
+          </div>
+        )}
+
         <div className="mt-6">
           {token ? (
             <button
@@ -138,13 +163,17 @@ function InviteContent() {
                 Sign in or create an account to accept this invitation.
               </p>
               <Link
-                href={`/login?redirect=${encodeURIComponent(`/invite?token=${inviteToken}`)}`}
+                href={`/login?redirect=${encodeURIComponent(`/invite?token=${inviteToken}`)}${
+                  invite?.email ? `&email=${encodeURIComponent(invite.email)}` : ''
+                }`}
                 className="btn-primary block w-full text-center"
               >
                 Sign In
               </Link>
               <Link
-                href={`/register?redirect=${encodeURIComponent(`/invite?token=${inviteToken}`)}`}
+                href={`/register?redirect=${encodeURIComponent(`/invite?token=${inviteToken}`)}${
+                  invite?.email ? `&email=${encodeURIComponent(invite.email)}` : ''
+                }`}
                 className="btn-secondary block w-full text-center"
               >
                 Create Account
