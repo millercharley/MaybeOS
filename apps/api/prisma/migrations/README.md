@@ -43,6 +43,25 @@ Apply it **before** merging the code that depends on it. A column that does not
 exist yet is a 500 on every request that selects it, and Prisma selects every
 column unless a query says otherwise.
 
+### A new table needs its own `ENABLE ROW LEVEL SECURITY`
+
+SEC-09 turned RLS on for every table in `public`, with no policies, so that
+`anon` and `authenticated` are denied twice over — once by SEC-08's revoked
+privileges and once by RLS. The API is unaffected: it connects as `postgres`,
+which owns these tables and carries `rolbypassrls`.
+
+**A table created later does not inherit any of that.** It arrives with RLS
+disabled, which is how `tickets` and `expenses` were created. Add this to the
+same migration that creates it:
+
+```sql
+ALTER TABLE "your_new_table" ENABLE ROW LEVEL SECURITY;
+```
+
+Supabase's linter reporting `rls_enabled_no_policy` (INFO) for every table is
+the expected state, not a list of things to fix — that lint assumes you want
+PostgREST access, and MaybeOS never uses the Data API.
+
 ## Baselining another environment
 
 If a database already has the schema but no `_prisma_migrations` table, mark
