@@ -1,5 +1,6 @@
 import {
   Injectable,
+  BadRequestException,
   ConflictException,
   UnauthorizedException,
   NotFoundException,
@@ -203,6 +204,58 @@ export class AuthService {
   }
 
   /** Update the fields a member owns about themselves. */
+  /**
+   * Change your own password.
+   *
+   * MaybeOS had no way to do this — no endpoint, no screen, and no
+   * forgot-password either. A password, once set at registration, was
+   * permanent. That is ordinarily an annoyance; it became urgent when
+   * SEC-08 exposed every stored hash to anyone holding a public key, and
+   * there was no way to rotate the one credential that had been disclosed.
+   *
+   * Requires the current password rather than just a session. A stolen or
+   * borrowed browser session should not be enough to take an account
+   * permanently, which is exactly what silently changing the password does.
+   *
+   * Deliberately not a password *reset*: that needs a verified delivery
+   * channel, and magic-link email is not wired up (AuthModule does not import
+   * EmailModule), so a reset link would be generated and never sent. See
+   * AUTH-02.
+   */
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    if (!user.passwordHash) {
+      throw new BadRequestException(
+        'This account has no password set, so there is nothing to change',
+      );
+    }
+
+    const matches = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!matches) {
+      throw new UnauthorizedException('Your current password is not correct');
+    }
+    if (currentPassword === newPassword) {
+      throw new BadRequestException('That is the password you already have');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: await bcrypt.hash(newPassword, 10),
+        // Any outstanding magic-link token is invalidated too: if the reason
+        // for changing a password is that somebody else may have it, leaving
+        // them another way in defeats the point.
+        magicLinkToken: null,
+        magicLinkExpiry: null,
+      },
+    });
+
+    return { changed: true };
+  }
+
   async updateProfile(userId: string, dto: { name?: string; avatarUrl?: string | null }) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {

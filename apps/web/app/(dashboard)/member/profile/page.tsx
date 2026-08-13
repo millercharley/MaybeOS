@@ -6,6 +6,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
 import { DemographicProfile } from '@/components/member/demographic-profile';
+import { ChangePassword } from '@/components/member/change-password';
 
 /**
  * "My Profile" (MEM-01).
@@ -156,6 +157,8 @@ export default function MyProfilePage() {
           </button>
         </div>
       </form>
+
+      <ChangePassword />
 
       <DemographicProfile />
 
