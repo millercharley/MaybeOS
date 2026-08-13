@@ -7,7 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { PrismaService } from '../../config/prisma.service';
-import { priceTicket } from './ticket-pricing';
+import { priceTicket, priceBooking } from './ticket-pricing';
 
 /**
  * Stripe Connect: paying co-ops directly, and taking MaybeOS's cut (D-013).
@@ -450,5 +450,210 @@ export class ConnectService {
       // count alone does not say whose money is still missing.
       failed,
     };
+  }
+
+  /**
+   * Send a member to Stripe to pay for a room (SPC-06).
+   *
+   * The booking row already exists in `PENDING_PAYMENT` and is holding the
+   * slot. A room hour is exclusive — unlike a ticket it cannot be sold twice
+   * and reconciled afterwards — so the hold is taken first and this only
+   * arranges the payment for it.
+   */
+  async createBookingCheckout({
+    orgId,
+    bookingId,
+    successUrl,
+    cancelUrl,
+    payerEmail,
+  }: {
+    orgId: string;
+    bookingId: string;
+    successUrl: string;
+    cancelUrl: string;
+    payerEmail?: string;
+  }): Promise<{ url: string }> {
+    const booking = await this.prisma.booking.findFirst({
+      where: { id: bookingId, room: { orgId } },
+      include: {
+        room: {
+          include: { org: { omit: { stripeAccountId: false } } },
+        },
+      },
+    });
+    if (!booking) throw new NotFoundException('Booking not found');
+
+    const { room } = booking;
+    const org = room.org;
+
+    if (!room.chargeForBooking || !room.hourlyRate) {
+      throw new BadRequestException('This room is free to book — no payment needed');
+    }
+    if (booking.paidAt) {
+      throw new BadRequestException('This booking has already been paid for');
+    }
+    if (booking.status === 'CANCELED' || booking.status === 'REJECTED') {
+      throw new BadRequestException('This booking is no longer active');
+    }
+    if (!org.stripeAccountId || !org.stripeChargesEnabled) {
+      // Naming the reason: an organiser reading "payments are not set up"
+      // knows what to do, where "checkout failed" sends them to support.
+      throw new BadRequestException(
+        'This co-op has not finished setting up payments, so rooms cannot be charged for yet',
+      );
+    }
+
+    const price = priceBooking({
+      hourlyRateCents: room.hourlyRate,
+      startTime: booking.startTime,
+      endTime: booking.endTime,
+      plan: org.plan,
+    });
+
+    const session = await this.stripe.checkout.sessions.create(
+      {
+        mode: 'payment',
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: booking.currency,
+              unit_amount: price.totalCents,
+              product_data: {
+                name: `${room.name} — room hire`,
+                description: `${org.name} · ${booking.startTime.toDateString()}`,
+              },
+            },
+          },
+        ],
+        payment_intent_data: {
+          // MaybeOS's cut only. The hire itself is the co-op's money.
+          application_fee_amount: price.applicationFeeCents,
+        },
+        ...(payerEmail ? { customer_email: payerEmail } : {}),
+        metadata: {
+          kind: 'room_booking',
+          orgId,
+          bookingId,
+          hireCents: String(price.hireCents),
+          platformFeeCents: String(price.platformFeeCents),
+        },
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+      },
+      { stripeAccount: org.stripeAccountId },
+    );
+
+    if (!session.url) {
+      throw new BadRequestException('Stripe did not return a checkout URL');
+    }
+
+    await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: { stripeSessionId: session.id },
+    });
+
+    return { url: session.url };
+  }
+
+  /**
+   * Confirm a paid booking once Stripe says the money moved.
+   *
+   * On the webhook rather than the success redirect, for the same reason as
+   * tickets: a member who closes the tab has still paid, and a room confirmed
+   * on a redirect is a room confirmed on the browser behaving.
+   *
+   * A room that requires approval goes to PENDING, not APPROVED — paying does
+   * not overrule an organiser. Rejecting it refunds.
+   */
+  async confirmBookingFromSession(session: Stripe.Checkout.Session) {
+    const meta = session.metadata ?? {};
+    if (meta.kind !== 'room_booking') return null;
+
+    // Scoped through the room's org rather than fetched by bare id. The org
+    // comes from metadata MaybeOS itself wrote at checkout, so this cannot be
+    // steered from outside — but a booking id that does not belong to the org
+    // in its own session is a mismatch worth refusing rather than trusting.
+    const booking = await this.prisma.booking.findFirst({
+      where: { id: meta.bookingId, room: { orgId: meta.orgId } },
+      include: { room: { select: { requiresApproval: true } } },
+    });
+    if (!booking) return null;
+
+    // Idempotent: Stripe retries, and a second delivery must not re-confirm a
+    // booking an organiser has since rejected.
+    if (booking.paidAt) return booking;
+
+    return this.prisma.booking.update({
+      where: { id: booking.id },
+      data: {
+        status: booking.room.requiresApproval ? 'PENDING' : 'APPROVED',
+        priceCents: Number(meta.hireCents ?? 0),
+        platformFeeCents: Number(meta.platformFeeCents ?? 0),
+        amountCents: session.amount_total ?? 0,
+        currency: session.currency ?? 'usd',
+        stripePaymentIntentId:
+          typeof session.payment_intent === 'string' ? session.payment_intent : null,
+        paidAt: new Date(),
+        // Paid, so it is no longer a hold that can expire.
+        holdExpiresAt: null,
+      },
+    });
+  }
+
+  /**
+   * Give a member their money back for a room they will not get.
+   *
+   * Called when a booking is rejected or cancelled. Returns MaybeOS's fee as
+   * well (`refund_application_fee`): at Stripe's default the co-op would pay
+   * MaybeOS for an hour nobody used, which is the co-op subsidising a
+   * cancellation it may not have caused.
+   *
+   * Idempotent and non-throwing by design — a refund that fails must not stop
+   * a cancellation, or the member keeps a room they asked to give up *and*
+   * their money is stuck.
+   */
+  async refundBooking(
+    orgId: string,
+    bookingId: string,
+  ): Promise<{ refunded: boolean; reason?: string }> {
+    const booking = await this.prisma.booking.findFirst({
+      where: { id: bookingId, room: { orgId } },
+      include: { room: { include: { org: { omit: { stripeAccountId: false } } } } },
+    });
+    if (!booking) throw new NotFoundException('Booking not found');
+
+    if (!booking.paidAt || !booking.stripePaymentIntentId) {
+      return { refunded: false, reason: 'nothing was paid' };
+    }
+    if (booking.refundedAt) {
+      return { refunded: true, reason: 'already refunded' };
+    }
+
+    const accountId = booking.room.org.stripeAccountId;
+    if (!accountId) {
+      return { refunded: false, reason: 'the co-op has no connected account' };
+    }
+
+    try {
+      await this.stripe.refunds.create(
+        {
+          payment_intent: booking.stripePaymentIntentId,
+          refund_application_fee: true,
+        },
+        { stripeAccount: accountId },
+      );
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Refund failed for booking ${bookingId}: ${reason}`);
+      return { refunded: false, reason };
+    }
+
+    await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: { refundedAt: new Date() },
+    });
+
+    return { refunded: true };
   }
 }

@@ -53,6 +53,7 @@ export class SchedulerService {
     for (const task of [
       { name: 'close-due-proposals', run: () => this.closeDueProposals(now) },
       { name: 'close-due-surveys', run: () => this.closeDueSurveys(now) },
+      { name: 'release-expired-booking-holds', run: () => this.releaseExpiredHolds(now) },
     ]) {
       try {
         tasks.push(await task.run());
@@ -76,6 +77,53 @@ export class SchedulerService {
     );
 
     return result;
+  }
+
+
+  /**
+   * Release room slots held for a payment that never arrived (SPC-06).
+   *
+   * A paid room takes a `PENDING_PAYMENT` hold before sending the member to
+   * Stripe, because a room hour is exclusive and cannot be sold twice and
+   * reconciled afterwards. Most abandoned checkouts are simply people closing
+   * the tab, and without this the slot they never paid for would block that
+   * room forever.
+   *
+   * `checkConflicts` already ignores an expired hold, so a room is bookable
+   * again the moment the hold lapses rather than whenever this next runs —
+   * this only tidies the rows up. That ordering matters: if the sweep were
+   * what freed the slot, a member could be told a room was taken for up to
+   * fifteen minutes after it was not.
+   *
+   * Filters on `paidAt: null` as well as the status, so a webhook that lands
+   * in the same moment cannot have its confirmed booking cancelled underneath
+   * it.
+   */
+  private async releaseExpiredHolds(now: Date): Promise<TaskResult> {
+    try {
+      const { count } = await this.prisma.booking.updateMany({
+        where: {
+          status: 'PENDING_PAYMENT',
+          paidAt: null,
+          holdExpiresAt: { lt: now },
+        },
+        data: { status: 'CANCELED', canceledAt: now, holdExpiresAt: null },
+      });
+
+      if (count > 0) {
+        this.logger.log(`Released ${count} expired booking hold(s)`);
+      }
+      return { task: 'release-expired-booking-holds', processed: count, failed: 0, errors: [] };
+    } catch (error) {
+      const message = (error as Error).message;
+      this.logger.error('Failed to release expired booking holds', error as Error);
+      return {
+        task: 'release-expired-booking-holds',
+        processed: 0,
+        failed: 1,
+        errors: [message],
+      };
+    }
   }
 
   /**

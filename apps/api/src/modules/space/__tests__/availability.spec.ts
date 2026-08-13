@@ -5,6 +5,7 @@ import { PrismaService } from '../../../config/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { EmailService } from '../../email/email.service';
 import { EventsService } from '../../events/events.service';
+import { ConnectService } from '../../stripe/connect.service';
 
 /**
  * Availability rules (SPC-05).
@@ -68,6 +69,13 @@ describe('SpaceService — availability rules', () => {
         // SpaceService now keeps a booking's published event in step with it
         // (EVT-05); these tests do not exercise that path.
         { provide: EventsService, useValue: { syncWithBooking: jest.fn() } },
+        {
+          provide: ConnectService,
+          useValue: {
+            createBookingCheckout: jest.fn().mockResolvedValue({ url: 'https://checkout.test' }),
+            refundBooking: jest.fn().mockResolvedValue({ refunded: false }),
+          },
+        },
       ],
     }).compile();
 

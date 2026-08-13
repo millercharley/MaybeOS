@@ -391,7 +391,12 @@ model Room {
   isActive         Boolean  @default(true)
   requiresApproval Boolean  @default(false)
   memberOnly       Boolean  @default(true)
-  hourlyRate       Int? // cents, null = free
+  /// Whether this room charges for hire (SPC-06). Off by default — Charley,
+  /// 2026-08-13: rooms have no booking fee unless an admin activates one.
+  /// Separate from `hourlyRate` so that turning charging off does not throw
+  /// away the rate, and so a half-filled form cannot start billing people.
+  chargeForBooking Boolean  @default(false)
+  hourlyRate       Int? // cents per hour, null = not set
   googleCalendarId String?
   googleTokens     Json? // encrypted OAuth tokens
   createdAt        DateTime @default(now())
@@ -426,6 +431,11 @@ model AvailabilityRule {
 }
 
 enum BookingStatus {
+  /// Held while the member is in Stripe Checkout (SPC-06). A room slot is
+  /// exclusive, so unlike a ticket it cannot be sold twice and sorted out
+  /// later — the hold is what stops two people paying for the same hour.
+  /// Swept by the scheduler if the checkout is abandoned.
+  PENDING_PAYMENT
   PENDING
   APPROVED
   REJECTED
@@ -445,6 +455,26 @@ model Booking {
   reviewedBy    String?
   reviewedAt    DateTime?
   canceledAt    DateTime?
+
+  /// Hire charges (SPC-06). Null throughout on a free room, which is the
+  /// default and the common case for a co-op.
+  ///
+  /// Recorded at booking rather than recomputed from the room later: an
+  /// admin who changes the hourly rate in June must not change what somebody
+  /// was charged in March.
+  priceCents            Int?
+  /// MaybeOS's cut (D-013), by the co-op's plan at the time of booking.
+  platformFeeCents      Int?
+  /// What the member actually paid, all in.
+  amountCents           Int?
+  currency              String    @default("usd")
+  stripeSessionId       String?   @unique
+  stripePaymentIntentId String?
+  paidAt                DateTime?
+  refundedAt            DateTime?
+  /// When an unpaid hold stops blocking the slot. Null once paid.
+  holdExpiresAt         DateTime?
+
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 

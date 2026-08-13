@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Loader2, AlertCircle, CheckCircle2, Users, DoorOpen } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
+import { useApi } from '@/hooks/use-api';
 import { api, Room, CreateRoomData, ApiError } from '@/lib/api';
 
 type Draft = {
@@ -12,6 +13,7 @@ type Draft = {
   amenities: string;
   requiresApproval: boolean;
   memberOnly: boolean;
+  chargeForBooking: boolean;
   hourlyRate: string;
 };
 
@@ -22,6 +24,7 @@ const emptyDraft: Draft = {
   amenities: '',
   requiresApproval: false,
   memberOnly: true,
+  chargeForBooking: false,
   hourlyRate: '',
 };
 
@@ -32,6 +35,7 @@ const draftFrom = (r: Room): Draft => ({
   amenities: (r.amenities ?? []).join('\n'),
   requiresApproval: r.requiresApproval,
   memberOnly: r.memberOnly,
+  chargeForBooking: r.chargeForBooking ?? false,
   hourlyRate: r.hourlyRate ? (r.hourlyRate / 100).toFixed(2).replace(/\.00$/, '') : '',
 });
 
@@ -42,6 +46,9 @@ const toPayload = (d: Draft): CreateRoomData => ({
   amenities: d.amenities.split('\n').map((a) => a.trim()).filter(Boolean),
   requiresApproval: d.requiresApproval,
   memberOnly: d.memberOnly,
+  // Never sent as true without a rate: charging is two deliberate steps, and
+  // a switch on its own would take a member to a checkout for $0.00.
+  chargeForBooking: d.chargeForBooking && Boolean(d.hourlyRate),
   hourlyRate: d.hourlyRate ? Math.round(parseFloat(d.hourlyRate) * 100) : undefined,
 });
 
@@ -50,6 +57,9 @@ export default function AdminRoomsPage() {
   const user = useAuthStore((s) => s.user);
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const orgId = currentOrgId ?? user?.orgs?.[0]?.orgId;
+  // Charging needs a connected account, exactly as ticket sales do (EVT-06).
+  const { data: org } = useApi((t, o) => api.orgs.get(o, t), []);
+  const canCharge = Boolean(org?.stripeChargesEnabled);
 
   const [rooms, setRooms] = useState<Room[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -236,26 +246,58 @@ export default function AdminRoomsPage() {
               </span>
             </label>
 
-            <label className="block">
-              <span className="text-sm font-medium">Hourly rate</span>
-              <div className="mt-1 flex items-center gap-2">
-                <span className="text-[var(--text-tertiary)]">$</span>
+            {/*
+              Charging is off unless an admin turns it on AND sets a rate
+              (SPC-06). Two steps rather than "a rate means charge", so that
+              typing a number to note what a room is worth cannot start
+              billing members.
+            */}
+            <fieldset className="rounded-lg border border-[var(--border)] p-3">
+              <legend className="px-1 text-sm font-medium">Charging for hire</legend>
+
+              <label className="flex items-start gap-2.5">
                 <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="input w-32"
-                  value={draft.hourlyRate}
-                  onChange={(e) => setDraft({ ...draft, hourlyRate: e.target.value })}
-                  placeholder="0.00"
+                  id="room-charge"
+                  type="checkbox"
+                  checked={draft.chargeForBooking}
+                  disabled={!canCharge}
+                  onChange={(e) => setDraft({ ...draft, chargeForBooking: e.target.checked })}
+                  className="mt-0.5 h-4 w-4 disabled:opacity-40"
                 />
-                <span className="text-sm text-[var(--text-tertiary)]">per hour</span>
-              </div>
-              <p className="mt-1 text-xs text-[var(--warning)]">
-                Recorded but not charged — booking payments aren&apos;t built yet (SPC-06). Leave
-                blank for free rooms.
-              </p>
-            </label>
+                <span className="text-sm">
+                  <span className={canCharge ? '' : 'text-[var(--text-tertiary)]'}>
+                    Charge members to book this room
+                  </span>
+                  <span className="mt-0.5 block text-xs text-[var(--text-tertiary)]">
+                    {canCharge
+                      ? 'Off by default. Members pay when they book, and are refunded automatically if the booking is rejected or cancelled.'
+                      : 'Finish setting up payments in Settings → Ticket sales before you can charge for rooms.'}
+                  </span>
+                </span>
+              </label>
+
+              <label className="mt-3 block">
+                <span className="text-sm font-medium">Hourly rate</span>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="text-[var(--text-tertiary)]">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="input w-32"
+                    value={draft.hourlyRate}
+                    onChange={(e) => setDraft({ ...draft, hourlyRate: e.target.value })}
+                    placeholder="0.00"
+                  />
+                  <span className="text-sm text-[var(--text-tertiary)]">per hour</span>
+                </div>
+                <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+                  {draft.chargeForBooking && draft.hourlyRate
+                    ? `A three-hour booking costs $${(parseFloat(draft.hourlyRate || '0') * 3).toFixed(2)}, plus MaybeOS's flat per-booking fee. You receive the full rate.`
+                    : 'Part-hours are billed pro rata. Nothing is charged until you switch charging on.'}
+                </p>
+              </label>
+            </fieldset>
 
             <div className="flex gap-3">
               <button

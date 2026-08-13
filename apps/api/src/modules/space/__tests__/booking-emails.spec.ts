@@ -4,6 +4,7 @@ import { SpaceService } from '../space.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { EmailService } from '../../email/email.service';
 import { EventsService } from '../../events/events.service';
+import { ConnectService } from '../../stripe/connect.service';
 
 /**
  * Booking emails state times in the co-op's timezone (SPC-08).
@@ -56,6 +57,13 @@ describe('SpaceService — booking email times', () => {
         // SpaceService now keeps a booking's published event in step with it
         // (EVT-05); these tests do not exercise that path.
         { provide: EventsService, useValue: { syncWithBooking: jest.fn() } },
+        {
+          provide: ConnectService,
+          useValue: {
+            createBookingCheckout: jest.fn().mockResolvedValue({ url: 'https://checkout.test' }),
+            refundBooking: jest.fn().mockResolvedValue({ refunded: false }),
+          },
+        },
       ],
     }).compile();
 
