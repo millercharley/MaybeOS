@@ -20,6 +20,7 @@ import {
 import { useApi } from '@/hooks/use-api';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Comment as CommentT, Post, PaginatedResponse, CollectionPage, DirectMessage } from '@/lib/api';
+import { sanitizeWikiHtml } from '@/lib/wiki-html';
 
 type View =
   | { type: 'channel'; id: string }
@@ -391,7 +392,7 @@ export default function CommonsPage() {
                 <h2 className="text-xl font-semibold text-gray-900">{pageContent.title}</h2>
                 <div
                   className="prose prose-sm mt-4 max-w-none text-gray-700"
-                  dangerouslySetInnerHTML={{ __html: pageContent.body }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeWikiHtml(pageContent.body) }}
                 />
               </div>
             )
