@@ -79,12 +79,49 @@ in the repo. The ones production needs:
 | `WEB_URL` | `https://maybeos.org` — also drives the CORS allow-list |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | org logo storage (D-017) |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | live mode in production |
-| `POSTMARK_API_TOKEN` | email delivery |
+| `POSTMARK_API_TOKEN` | email delivery — **see below, this one fails silently** |
+| `EMAIL_FROM` | must be a Postmark-verified sender; defaults to `noreply@maybeos.org` |
 | `SENTRY_DSN` | error tracking |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | optional; calendar sync refuses with 503 when unset |
 
 Dev and prod Supabase credentials are **not interchangeable**, and the two
 dashboards look identical. Check the project name before pasting anything.
+
+## Email is the one that fails without telling you
+
+Every transactional email — invitations, the five booking emails, magic links,
+dues dunning — goes through one `EmailService`. It has two deliberate
+behaviours that combine badly:
+
+- with `POSTMARK_API_TOKEN` unset it **logs the message and returns
+  successfully**, so nothing errors;
+- send failures are **caught and logged, never thrown**, so a Postmark outage
+  cannot fail a member's registration.
+
+Both are right on their own. Together they mean a deployment that cannot send
+a single email looks exactly like one that can. That is how OPS-19 went
+unnoticed until 2026-08-13: every email in the product's production history
+had been a log line.
+
+Two things are needed, and a token alone is not enough:
+
+1. **A Postmark server token** → `POSTMARK_API_TOKEN`.
+2. **A verified sender.** Postmark refuses any From address that is not a
+   verified Sender Signature or on a verified domain, and *that refusal is
+   logged rather than raised* — indistinguishable from having no token at all.
+   Set `EMAIL_FROM` to an address you have verified.
+
+Check the first from outside:
+
+```bash
+curl -s https://maybeos.org/api/health | python3 -m json.tool
+```
+
+`email.configured: true` and `transport: "postmark"` prove the token landed.
+That is necessary and **not sufficient** — only an email actually arriving
+proves the sender is verified. Request a magic link and watch for it; if it
+does not arrive while `configured` is true, the reason is in Postmark's
+Activity log.
 
 ## What is not the deployment target
 

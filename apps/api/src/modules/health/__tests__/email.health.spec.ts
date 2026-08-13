@@ -16,7 +16,7 @@ describe('EmailHealthIndicator', () => {
     } as unknown as ConfigService);
 
   it('says log-only when no token is configured', () => {
-    const result = indicator({ EMAIL_FROM: 'noreply@maybeos.app' }).isHealthy('email');
+    const result = indicator({ EMAIL_FROM: 'noreply@maybeos.org' }).isHealthy('email');
 
     expect(result.email.configured).toBe(false);
     expect(result.email.transport).toBe('log-only');
