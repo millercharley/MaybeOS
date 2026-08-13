@@ -15,7 +15,9 @@ function LoginForm() {
   const redirectTo = searchParams.get('redirect');
   const setToken = useAuthStore((s) => s.setToken);
 
-  const [email, setEmail] = useState('');
+  // Prefilled when an invitation sent them here (MEM-04), so somebody
+  // following an invite does not retype the address it was addressed to.
+  const [email, setEmail] = useState(searchParams.get('email') ?? '');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

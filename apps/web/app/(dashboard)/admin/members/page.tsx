@@ -25,6 +25,7 @@ export default function MembersPage() {
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('MEMBER');
+  const [inviteTierId, setInviteTierId] = useState('');
   const [inviting, setInviting] = useState(false);
   const [inviteResult, setInviteResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
@@ -33,6 +34,11 @@ export default function MembersPage() {
 
   const { data, loading, error } = useApi(
     (token, orgId) => api.members.list(orgId, token, 1, 50),
+    [],
+  );
+
+  const { data: tiers } = useApi(
+    (token, orgId) => api.members.listTiersForAdmin(orgId, token),
     [],
   );
 
@@ -47,10 +53,22 @@ export default function MembersPage() {
     setInviting(true);
     setInviteResult(null);
     try {
-      await api.members.invite(currentOrgId, { email: inviteEmail.trim(), role: inviteRole }, token);
+      await api.members.invite(
+        currentOrgId,
+        {
+          email: inviteEmail.trim(),
+          role: inviteRole,
+          // Sent only when chosen. An invitation with no tier means joining
+          // without dues, which is right for staff and for co-ops that do not
+          // charge — so an empty picker must not become an empty-string tier.
+          ...(inviteTierId ? { tierId: inviteTierId } : {}),
+        },
+        token,
+      );
       setInviteResult({ type: 'success', message: `Invitation sent to ${inviteEmail.trim()}` });
       setInviteEmail('');
       setInviteRole('MEMBER');
+      setInviteTierId('');
       refetchInvites();
       setTimeout(() => {
         setShowInvite(false);
@@ -146,6 +164,34 @@ export default function MembersPage() {
               <option value="ADMIN">Admin</option>
               <option value="GUEST">Guest</option>
             </select>
+          </div>
+          {/*
+            The tier the invitation is for (MEM-04). Accepting used to create a
+            membership with no tier, so an invited member joined free while
+            somebody arriving through the public page paid — one co-op, two
+            prices, decided by which door you came through.
+          */}
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Membership tier <span className="font-normal text-gray-400">(optional)</span>
+            </label>
+            <select
+              value={inviteTierId}
+              onChange={(e) => setInviteTierId(e.target.value)}
+              className="input w-full"
+            >
+              <option value="">No dues</option>
+              {(tiers ?? []).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                  {t.priceMonthly > 0 ? ` — $${(t.priceMonthly / 100).toFixed(2)}/mo` : ''}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              They&apos;ll be taken to payment after accepting. Leave as “No dues” for
+              staff, or if your co-op doesn&apos;t charge.
+            </p>
           </div>
           {inviteResult && (
             <div className={`rounded-lg p-3 text-sm ${inviteResult.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>

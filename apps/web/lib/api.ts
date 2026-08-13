@@ -263,7 +263,11 @@ class ApiClient {
     get: (orgId: string, userId: string, token: string) =>
       this.request<Member>(`/orgs/${orgId}/members/${userId}`, { token }),
 
-    invite: (orgId: string, data: { email: string; role?: string }, token: string) =>
+    invite: (
+      orgId: string,
+      data: { email: string; role?: string; tierId?: string },
+      token: string,
+    ) =>
       this.request<{ id: string; email: string; status: string }>(`/orgs/${orgId}/members/invite`, {
         method: 'POST',
         body: JSON.stringify(data),
@@ -317,8 +321,14 @@ class ApiClient {
     get: (inviteToken: string) =>
       this.request<InviteInfo>(`/invites?token=${inviteToken}`),
 
+    /**
+     * Returns the org joined and the tier the invitation named (MEM-04). A
+     * caller that ignores `tierId` leaves an invited member joined but never
+     * asked to pay, which is how invitations and the public join page ended
+     * up charging two different prices for the same co-op.
+     */
     accept: (inviteToken: string, authToken: string) =>
-      this.request<{ status: string; orgId: string }>(`/invites/accept?token=${inviteToken}`, {
+      this.request<{ status: string; orgId: string; tierId: string | null }>(`/invites/accept?token=${inviteToken}`, {
         method: 'POST',
         token: authToken,
       }),
@@ -1355,12 +1365,24 @@ export interface Invitation {
   createdAt: string;
 }
 
+export interface InviteTier {
+  id: string;
+  name: string;
+  priceMonthly: number;
+  priceYearly?: number | null;
+}
+
 export interface InviteInfo {
   id: string;
   email: string;
   role: string;
   org: { id: string; name: string; slug: string; logoUrl?: string; brandColor: string };
   expiresAt: string;
+  /**
+   * The tier this invitation is for (MEM-04), or null for a membership with
+   * no dues. Shown before accepting rather than discovered at Stripe.
+   */
+  tier?: InviteTier | null;
 }
 
 /** A micro-question attached to a moment (IMP-15, PRD §6.2). */

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsOptional, IsEnum } from 'class-validator';
+import { IsEmail, IsOptional, IsEnum, IsString } from 'class-validator';
 
 enum InviteRole {
   ADMIN = 'ADMIN',
@@ -17,4 +17,12 @@ export class InviteMemberDto {
   @IsOptional()
   @IsEnum(InviteRole)
   role?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'The tier to invite them onto (MEM-04). Omit for a membership with no dues — right for staff, and for co-ops that do not charge.',
+  })
+  @IsOptional()
+  @IsString()
+  tierId?: string;
 }
