@@ -150,6 +150,19 @@ model UserOrg {
   /// to tell one co-op is not consent to tell another. Null means never
   /// answered; an absent key means that field was skipped.
   demographics         Json?
+
+  /// The fatigue budget (D-021, PRD §6.2), which that decision calls the
+  /// load-bearing constraint of the whole product: one micro-question per
+  /// member per 30 days across *all* touchpoints, dismissal widening the gap,
+  /// and three dismissals moving a member to an annual check-in only — with
+  /// no admin override, deliberately.
+  ///
+  /// Scoped to the membership rather than the user, for the same reason as
+  /// `demographics`: orgs are firewalled, and one co-op's questions must not
+  /// spend another's budget.
+  lastAskedAt          DateTime?
+  askDismissals        Int                @default(0)
+
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
 
@@ -731,6 +744,15 @@ model Survey {
 /// the current version and writes a new one, so a figure can always be traced
 /// to the exact text a member was shown — the "visible seam" the PRD requires
 /// of any mid-collection wording change (D-021).
+/// Where a micro-question is asked (PRD §6.2, D-021). The four P0 moments
+/// that already exist in MaybeOS, so a question costs a member no extra trip.
+enum Touchpoint {
+  TICKET_PURCHASE
+  BOOKING
+  POST_EVENT
+  COMMONS
+}
+
 model SurveyQuestion {
   id        String             @id @default(uuid())
   surveyId  String
@@ -740,6 +762,9 @@ model SurveyQuestion {
   type      SurveyQuestionType
   options   String[]           @default([]) // CHOICE only
   category  String? // the indicator this feeds, e.g. "belonging"
+  /// The moment this question is attached to (IMP-15). Null means it belongs
+  /// to a survey answered in one sitting rather than to a touchpoint.
+  touchpoint Touchpoint?
   required  Boolean            @default(false)
   sortOrder Int                @default(0)
   retiredAt DateTime? // set when a newer version supersedes this one

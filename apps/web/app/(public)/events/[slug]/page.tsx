@@ -1,10 +1,11 @@
 'use client';
 
-import { use, useState } from 'react';
+import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Calendar, Clock, MapPin, Users, ArrowLeft, ExternalLink } from 'lucide-react';
+import { Calendar, Clock, MapPin, Users, ArrowLeft, ExternalLink, CheckCircle2 } from 'lucide-react';
 import { usePublicApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
+import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 
 export default function EventDetailPage(props: { params: Promise<{ slug: string }> }) {
   const { slug } = use(props.params);
@@ -23,6 +24,17 @@ export default function EventDetailPage(props: { params: Promise<{ slug: string 
 
   const [working, setWorking] = useState(false);
   const [rsvpError, setRsvpError] = useState('');
+
+  // Stripe sends the buyer back here with ?purchased=1. The flag was written
+  // when ticketing shipped and **never read**, so paying returned somebody to
+  // an unchanged event page with no acknowledgement that anything had
+  // happened. It is also the screen the PRD attaches its ticket-purchase
+  // question to (IMP-15), which could not exist while the screen did not.
+  const [purchased, setPurchased] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setPurchased(new URLSearchParams(window.location.search).get('purchased') === '1');
+  }, []);
 
   /**
    * This used to be `setSubmitted(true)` and nothing else — the form said "a
@@ -138,6 +150,27 @@ export default function EventDetailPage(props: { params: Promise<{ slug: string 
         <ArrowLeft className="h-4 w-4" />
         Back to Events
       </Link>
+
+      {purchased && (
+        <div className="mt-6 rounded-xl border border-green-200 bg-green-50 p-4">
+          <p className="flex items-center gap-2 text-sm font-medium text-green-800">
+            <CheckCircle2 className="h-5 w-5" />
+            You&apos;re in — your ticket is confirmed.
+          </p>
+          <p className="mt-1 text-sm text-green-700">
+            A receipt is on its way to the email address you paid with.
+          </p>
+
+          {/*
+            One question, only for a signed-in member, and only if their
+            fatigue budget allows it (IMP-15). Renders nothing far more often
+            than it renders something, which is the intended behaviour.
+          */}
+          {event.org?.id && (
+            <TouchpointAsk orgId={event.org.id} touchpoint="TICKET_PURCHASE" />
+          )}
+        </div>
+      )}
 
       <div className="mt-6 grid gap-8 lg:grid-cols-3">
         {/* Main Content */}

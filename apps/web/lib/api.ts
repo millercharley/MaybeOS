@@ -149,7 +149,16 @@ class ApiClient {
       return undefined as T;
     }
 
-    return response.json();
+    // A 200 with no body is not a parse failure. Nest sends one whenever a
+    // handler returns null or undefined, and `response.json()` throws a
+    // SyntaxError on it — which reads to a caller as the request having
+    // failed, exactly when nothing went wrong.
+    const body = await response.text();
+    if (!body) {
+      return undefined as T;
+    }
+
+    return JSON.parse(body);
   }
 
   // ── Auth ─────────────────────────────────────────
@@ -667,6 +676,28 @@ class ApiClient {
 
     dashboard: (orgId: string, token: string) =>
       this.request<ImpactDashboardData>(`/orgs/${orgId}/impact/dashboard`, { token }),
+
+    // ── Touchpoints (IMP-15) ──
+    /**
+     * The one question to ask at this moment, or null. Null is the ordinary
+     * answer and the caller renders nothing: the fatigue budget allows one
+     * question per member per 30 days across every touchpoint (D-021).
+     */
+    nextAsk: (orgId: string, touchpoint: string, token: string) =>
+      this.request<{ question: TouchpointAsk | null }>(
+        `/orgs/${orgId}/impact/ask?touchpoint=${encodeURIComponent(touchpoint)}`,
+        { token },
+      ),
+
+    answerAsk: (orgId: string, questionId: string, value: string | number, token: string) =>
+      this.request(`/orgs/${orgId}/impact/ask/${questionId}/answer`, {
+        method: 'POST',
+        body: JSON.stringify({ value }),
+        token,
+      }),
+
+    dismissAsk: (orgId: string, token: string) =>
+      this.request(`/orgs/${orgId}/impact/ask/dismiss`, { method: 'POST', token }),
 
     // ── The member's own demographic profile (IMP-17) ──
     myDemographics: (orgId: string, token: string) =>
@@ -1310,4 +1341,14 @@ export interface InviteInfo {
   role: string;
   org: { id: string; name: string; slug: string; logoUrl?: string; brandColor: string };
   expiresAt: string;
+}
+
+/** A micro-question attached to a moment (IMP-15, PRD §6.2). */
+export interface TouchpointAsk {
+  id: string;
+  surveyId: string;
+  text: string;
+  type: 'SCALE' | 'CHOICE' | 'TEXT' | 'NUMBER';
+  options: string[];
+  category?: string | null;
 }

@@ -6,6 +6,7 @@ import {
   Put,
   Delete,
   Body,
+  Query,
   Param,
   UseGuards,
 } from '@nestjs/common';
@@ -16,6 +17,9 @@ import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { ImpactService } from './impact.service';
+import { TouchpointService } from './touchpoint.service';
+import { TouchpointAnswerDto } from './dto/touchpoint-answer.dto';
+import { Touchpoint } from '@prisma/client';
 import { CreateSurveyDto } from './dto/create-survey.dto';
 import { SubmitResponseDto } from './dto/submit-response.dto';
 import { OpenWindowDto } from './dto/open-window.dto';
@@ -26,7 +30,10 @@ import { UpdateDemographicsDto } from './dto/update-demographics.dto';
 @Controller('orgs/:orgId')
 @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
 export class ImpactController {
-  constructor(private readonly impactService: ImpactService) {}
+  constructor(
+    private readonly impactService: ImpactService,
+    private readonly touchpoints: TouchpointService,
+  ) {}
 
   // ─── Surveys CRUD ───────────────────────────────────────────
 
@@ -182,5 +189,49 @@ export class ImpactController {
   @Roles('ADMIN', 'STAFF')
   getDemographicSummary(@Param('orgId') orgId: string) {
     return this.impactService.getDemographicSummary(orgId);
+  }
+
+  // ─── Touchpoints (IMP-15) ───────────────────────────────────
+
+  /**
+   * The one question to ask this member at this moment, or null.
+   *
+   * Null is the ordinary answer and the caller renders nothing: the fatigue
+   * budget (D-021) allows one question per member per 30 days across every
+   * touchpoint, so most visits must ask nothing at all.
+   *
+   * Scoped to the caller's own membership — a member can only ever pull their
+   * own question, and asking on somebody else's behalf is not a thing.
+   */
+  @Get('impact/ask')
+  async nextAsk(
+    @Param('orgId') orgId: string,
+    @Query('touchpoint') touchpoint: Touchpoint,
+    @CurrentUser() user: RequestUser,
+  ) {
+    // Wrapped rather than returned bare. A bare `null` leaves Nest sending a
+    // 200 with an empty body, which `response.json()` throws on — so "no
+    // question" and "the request failed" would arrive at the client as the
+    // same thing, and the common case is no question.
+    return { question: await this.touchpoints.nextAskFor(orgId, user.userId, touchpoint) };
+  }
+
+  @Post('impact/ask/:questionId/answer')
+  answerAsk(
+    @Param('orgId') orgId: string,
+    @Param('questionId') questionId: string,
+    @Body() dto: TouchpointAnswerDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.touchpoints.recordAnswer(orgId, user.userId, questionId, dto.value);
+  }
+
+  /**
+   * Closed without answering. Recorded rather than ignored: dismissal widens
+   * this member's window, and three move them to an annual check-in only.
+   */
+  @Post('impact/ask/dismiss')
+  dismissAsk(@Param('orgId') orgId: string, @CurrentUser() user: RequestUser) {
+    return this.touchpoints.dismiss(orgId, user.userId);
   }
 }
