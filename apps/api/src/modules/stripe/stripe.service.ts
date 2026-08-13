@@ -55,11 +55,7 @@ export class StripeService {
     // this, production billing rides whatever the Stripe account's default
     // happens to be, so a change made in the Dashboard — or by Stripe — alters
     // request and response shapes with no deploy and no diff to point at.
-    //
-    // `2025-02-24.acacia` is what SDK 17.7.0 targets, so pinning it changes
-    // nothing today; it just stops the ground moving. The SDK is two API
-    // generations behind current (dahlia) — see OPS-18.
-    { apiVersion: '2025-02-24.acacia' },
+    { apiVersion: '2026-07-29.dahlia' },
     );
   }
 
@@ -686,10 +682,22 @@ export class StripeService {
   }
 
   private async handleInvoicePaymentFailed(invoice: Stripe.Invoice, tx: PrismaTx) {
+    /**
+     * `invoice.subscription` was removed between acacia and dahlia; the
+     * subscription now hangs off `invoice.parent.subscription_details`.
+     *
+     * This is the one breaking change in the SDK upgrade that reached live
+     * code, and it would have failed quietly rather than loudly: on dahlia the
+     * old path is simply `undefined`, so every failed dues payment would have
+     * hit the "no subscription ID found" branch below and returned. Nobody
+     * would ever be marked PAST_DUE, no dunning would follow, and the only
+     * symptom would be members keeping access they had stopped paying for.
+     */
+    const parentSubscription = invoice.parent?.subscription_details?.subscription;
     const subscriptionId =
-      typeof invoice.subscription === 'string'
-        ? invoice.subscription
-        : invoice.subscription?.id;
+      typeof parentSubscription === 'string'
+        ? parentSubscription
+        : parentSubscription?.id;
 
     if (!subscriptionId) {
       this.logger.warn('Invoice payment failed but no subscription ID found');

@@ -45,11 +45,7 @@ export class ConnectService {
     // this, production billing rides whatever the Stripe account's default
     // happens to be, so a change made in the Dashboard — or by Stripe — alters
     // request and response shapes with no deploy and no diff to point at.
-    //
-    // `2025-02-24.acacia` is what SDK 17.7.0 targets, so pinning it changes
-    // nothing today; it just stops the ground moving. The SDK is two API
-    // generations behind current (dahlia) — see OPS-18.
-    { apiVersion: '2025-02-24.acacia' },
+    { apiVersion: '2026-07-29.dahlia' },
     );
   }
 
@@ -62,23 +58,32 @@ export class ConnectService {
    * halfway would strand the first and confuse Stripe's own dashboard.
    */
   /**
-   * ⚠️ DEPRECATED PATTERN — must not reach production. See OPS-18.
+   * Start or resume Connect onboarding for a co-op.
    *
-   * Stripe's current guidance is unambiguous: create connected accounts with
-   * Accounts v2 (`POST /v2/core/accounts`) and never with `type: 'standard'`,
-   * `'express'` or `'custom'`. This uses the v1 pattern because SDK 17.7.0 has
-   * no `v2.core.accounts` at all — the fix needs an SDK upgrade first.
+   * Accounts v2 (`/v2/core/accounts`), not `accounts.create({ type })` — the
+   * v1 account types are deprecated, and SDK 22 warns about them at runtime.
+   * The distinction is not cosmetic: an account's configuration is fixed when
+   * it is created, so a co-op onboarded on a v1 `standard` account could never
+   * be restructured into these dimensions without re-verifying its identity
+   * and bank details from scratch.
    *
-   * Why this is worth blocking a merge rather than fixing later: an account's
-   * configuration is set when it is created. Once a co-op has onboarded on a
-   * v1 `standard` account, it cannot be restructured into v2's dimensions
-   * (dashboard / fees_collector / losses_collector) — you would be asking real
-   * co-ops to re-onboard and re-verify their identity and bank details. No
-   * co-op has onboarded yet, so this is the last cheap moment to get it right.
+   * The three dimensions below are Stripe's SaaS-platform mapping, and they
+   * follow from what MaybeOS is. Co-ops run their own spaces under their own
+   * brand with their own members — the platform is software, not a shop —
+   * so the co-op is merchant of record and takes direct charges:
    *
-   * The target, per Stripe's SaaS-platform mapping:
-   *   dashboard: 'full', fees_collector: 'stripe', losses_collector: 'stripe',
-   *   configuration.merchant requesting card_payments.
+   *   dashboard: 'full'            the co-op gets the real Stripe Dashboard
+   *   fees_collector: 'stripe'     Stripe bills the co-op its processing fees
+   *   losses_collector: 'stripe'   Stripe carries negative-balance liability
+   *
+   * `losses_collector: 'stripe'` is what keeps MaybeOS off the hook for a
+   * co-op's chargebacks, and it is only permitted with direct charges — the
+   * same reasoning D-013 reached about money transmission, arrived at from
+   * Stripe's side.
+   *
+   * Stripe's onboarding links are single-use and short-lived, so one is made
+   * per visit. The account is created once and reused: a second account for a
+   * co-op that abandoned onboarding halfway would strand the first.
    */
   async createOnboardingLink(
     orgId: string,
@@ -94,8 +99,20 @@ export class ConnectService {
     let accountId = org.stripeAccountId;
 
     if (!accountId) {
-      const account = await this.stripe.accounts.create({
-        type: 'standard',
+      const account = await this.stripe.v2.core.accounts.create({
+        display_name: org.name,
+        dashboard: 'full',
+        defaults: {
+          responsibilities: {
+            fees_collector: 'stripe',
+            losses_collector: 'stripe',
+          },
+        },
+        identity: { country: 'us' },
+        include: ['configuration.merchant'],
+        configuration: {
+          merchant: { capabilities: { card_payments: { requested: true } } },
+        },
         metadata: { orgId },
       });
       accountId = account.id;
@@ -107,11 +124,16 @@ export class ConnectService {
       this.logger.log(`Created Connect account ${accountId} for org ${orgId}`);
     }
 
-    const link = await this.stripe.accountLinks.create({
+    const link = await this.stripe.v2.core.accountLinks.create({
       account: accountId,
-      type: 'account_onboarding',
-      return_url: returnUrl,
-      refresh_url: refreshUrl,
+      use_case: {
+        type: 'account_onboarding',
+        account_onboarding: {
+          configurations: ['merchant'],
+          return_url: returnUrl,
+          refresh_url: refreshUrl,
+        },
+      },
     });
 
     return { url: link.url };
@@ -120,16 +142,13 @@ export class ConnectService {
   /**
    * Whether this co-op can actually take money yet.
    *
+   * Reads `configuration.merchant.capabilities.card_payments.status`, not
+   * `charges_enabled` — that field is v1 and deprecated, and for a direct-charge
+   * platform the merchant capability is the thing that actually gates a charge.
+   *
    * Asks Stripe rather than trusting the stored flag, because onboarding
-   * completes on Stripe's side and the webhook that tells us can be late or
-   * missed. The stored flag is refreshed as a side effect, so the fast path
-   * elsewhere stays true.
-   */
-  /**
-   * ⚠️ Uses `charges_enabled`, which Stripe's guidance names as a deprecated
-   * v1 field. For direct charges the correct check is
-   * `configuration.merchant.capabilities.card_payments.status === 'active'`.
-   * Blocked behind the same SDK upgrade — see OPS-18.
+   * finishes on Stripe's side and the webhook telling us can be late or lost.
+   * The stored flag is refreshed as a side effect so the fast path stays true.
    */
   async refreshAccountStatus(orgId: string) {
     const org = await this.prisma.organization.findUnique({
@@ -142,21 +161,28 @@ export class ConnectService {
       return { connected: false, chargesEnabled: false, detailsSubmitted: false };
     }
 
-    const account = await this.stripe.accounts.retrieve(org.stripeAccountId);
+    const account = await this.stripe.v2.core.accounts.retrieve(org.stripeAccountId, {
+      include: ['configuration.merchant', 'requirements'],
+    });
 
-    if (account.charges_enabled !== org.stripeChargesEnabled) {
+    const chargesEnabled =
+      account.configuration?.merchant?.capabilities?.card_payments?.status === 'active';
+
+    if (chargesEnabled !== org.stripeChargesEnabled) {
       await this.prisma.organization.update({
         where: { id: orgId },
-        data: { stripeChargesEnabled: account.charges_enabled },
+        data: { stripeChargesEnabled: chargesEnabled },
       });
     }
 
     return {
       connected: true,
-      chargesEnabled: account.charges_enabled,
-      detailsSubmitted: account.details_submitted,
+      chargesEnabled,
+      detailsSubmitted: (account.requirements?.entries ?? []).length === 0,
       // Stripe names what is still outstanding; surfacing it beats "not ready".
-      requirements: account.requirements?.currently_due ?? [],
+      requirements: (account.requirements?.entries ?? [])
+        .map((entry) => entry.description ?? entry.awaiting_action_from ?? '')
+        .filter(Boolean),
     };
   }
 
