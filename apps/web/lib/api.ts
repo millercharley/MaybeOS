@@ -477,8 +477,14 @@ class ApiClient {
         token,
       }),
 
+    /**
+     * Book a room. A room that charges for hire (SPC-06) answers with a
+     * `checkoutUrl` and a booking that is only a hold until it is paid for —
+     * a caller that ignores the URL leaves the member holding a slot they
+     * were never given the chance to pay for, and it lapses in 30 minutes.
+     */
     createBooking: (orgId: string, roomId: string, data: CreateBookingData, token: string) =>
-      this.request<Booking>(`/orgs/${orgId}/rooms/${roomId}/bookings`, {
+      this.request<Booking & { checkoutUrl?: string }>(`/orgs/${orgId}/rooms/${roomId}/bookings`, {
         method: 'POST',
         body: JSON.stringify(data),
         token,
@@ -1038,6 +1044,12 @@ export interface Room {
   amenities: string[];
   requiresApproval: boolean;
   memberOnly: boolean;
+  /**
+   * Whether hire is charged for (SPC-06). Off unless an admin switched it on
+   * and set a rate — a rate on its own records what a room is worth without
+   * billing anybody for it.
+   */
+  chargeForBooking?: boolean;
   hourlyRate?: number | null;
   isActive?: boolean;
 }
@@ -1045,6 +1057,7 @@ export interface Room {
 export interface CreateRoomData {
   name: string;
   description?: string;
+  chargeForBooking?: boolean;
   capacity?: number;
   amenities?: string[];
   locationId?: string;
@@ -1055,6 +1068,11 @@ export interface CreateRoomData {
 }
 
 export interface Booking {
+  /** Set only on a room that charges for hire (SPC-06). */
+  priceCents?: number | null;
+  amountCents?: number | null;
+  paidAt?: string | null;
+  refundedAt?: string | null;
   id: string;
   roomId: string;
   title: string;

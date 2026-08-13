@@ -574,9 +574,13 @@ export class StripeService {
         // Recorded on the webhook, not the success redirect: a buyer who
         // closes the tab has still paid, and a seat issued on a redirect is a
         // seat sold on the buyer's browser behaving.
-        await this.connectService.recordTicketFromSession(
-          event.data.object as Stripe.Checkout.Session,
-        );
+        const session = event.data.object as Stripe.Checkout.Session;
+
+        // Two kinds of connected-account checkout land here and each ignores
+        // the other's metadata, so an unrecognised session is a no-op rather
+        // than a mis-recorded sale.
+        await this.connectService.recordTicketFromSession(session);
+        await this.connectService.confirmBookingFromSession(session);
         break;
       }
 

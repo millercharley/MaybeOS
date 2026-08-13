@@ -14,6 +14,7 @@ import { EventsService } from '../events/events.service';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { AvailabilityRuleDto } from './dto/availability-rule.dto';
+import { ConnectService } from '../stripe/connect.service';
 
 @Injectable()
 export class SpaceService {
@@ -26,6 +27,9 @@ export class SpaceService {
     // A booking can have an event published from it (EVT-05); the two have to
     // stay in step or the co-op advertises a room it no longer holds.
     private readonly eventsService: EventsService,
+    // Room hire is charged through the co-op's own connected account (SPC-06),
+    // the same path ticket sales take.
+    private readonly connect: ConnectService,
   ) {}
 
   /* ------------------------------------------------------------------ */
@@ -286,7 +290,16 @@ export class SpaceService {
       throw new ConflictException('This time slot conflicts with an existing booking');
     }
 
-    const status = room.requiresApproval ? 'PENDING' : 'APPROVED';
+    // A room only charges once an admin has switched it on and set a rate
+    // (SPC-06). Either alone means free, so a half-filled form cannot start
+    // billing people.
+    const charges = room.chargeForBooking && !!room.hourlyRate;
+
+    const status = charges
+      ? 'PENDING_PAYMENT'
+      : room.requiresApproval
+        ? 'PENDING'
+        : 'APPROVED';
 
     const created = await this.prisma.booking.create({
       data: {
@@ -297,14 +310,51 @@ export class SpaceService {
         startTime,
         endTime,
         status,
+        // The hold that stops the slot being sold twice while the member is in
+        // Stripe. Thirty minutes is long enough to find a card and short
+        // enough that an abandoned checkout does not block a room all day.
+        ...(charges ? { holdExpiresAt: new Date(Date.now() + 30 * 60 * 1000) } : {}),
       },
     });
+
+    if (charges) {
+      // Deliberately no email yet: nothing is booked until it is paid for, and
+      // "your booking is confirmed" for an unpaid hold is a lie the member
+      // acts on. The confirmation goes out from the webhook.
+      try {
+        const { url } = await this.connect.createBookingCheckout({
+          orgId,
+          bookingId: created.id,
+          successUrl: `${this.webUrl()}/member/bookings?paid=1`,
+          cancelUrl: `${this.webUrl()}/member/bookings?canceled=1`,
+        });
+        return { ...created, checkoutUrl: url };
+      } catch (err) {
+        // The hold exists to protect a payment that is starting. If no payment
+        // can start, it protects nothing and blocks the slot for half an hour
+        // — so a co-op still finishing Stripe onboarding would fill its own
+        // calendar with holds while members are told the room is taken.
+        await this.prisma.booking.delete({ where: { id: created.id } }).catch(() => {
+          this.logger.error(
+            `Checkout failed for booking ${created.id} and the hold could not be removed`,
+          );
+        });
+        throw err;
+      }
+    }
 
     // 'received' when it still needs an organiser; 'confirmed' when the room
     // auto-approves and the member can just turn up.
     await this.notifyBooking(created.id, status === 'PENDING' ? 'received' : 'confirmed');
 
     return created;
+  }
+
+  /** Where the member comes back to after Stripe. */
+  private webUrl(): string {
+    const configured =
+      this.configService.get<string>('WEB_URL') || 'http://localhost:3000';
+    return configured.split(',')[0].trim().replace(/\/+$/, '');
   }
 
   async approveBooking(orgId: string, bookingId: string, reviewerId: string) {
@@ -342,6 +392,14 @@ export class SpaceService {
         reviewedAt: new Date(),
       },
     });
+
+    // Refused, so the money goes back — including MaybeOS's fee. Charging a
+    // co-op for an hour its own organiser declined would be indefensible.
+    await this.connect.refundBooking(orgId, rejected.id).catch((err) =>
+      this.logger.error(
+        `Booking ${rejected.id} rejected but the refund failed: ${err.message}`,
+      ),
+    );
 
     // A booking can hold an event and still reach REJECTED: rescheduling an
     // approved booking sends it back into the queue (see rescheduleBooking),
@@ -487,6 +545,15 @@ export class SpaceService {
       },
     });
 
+    // Paid for, so the money goes back — MaybeOS's fee included. Never allowed
+    // to fail the cancellation: a member calling off a booking must always
+    // succeed, or they keep a room they gave up and their money is stuck too.
+    await this.connect.refundBooking(orgId, canceled.id).catch((err) =>
+      this.logger.error(
+        `Booking ${canceled.id} cancelled but the refund failed: ${err.message}`,
+      ),
+    );
+
     // Cancelling the room cancels what was advertised in it. Doing this after
     // the booking is safely updated, and never letting it fail the cancel:
     // a member calling off a booking must always succeed.
@@ -556,8 +623,18 @@ export class SpaceService {
     const conflicting = await this.prisma.booking.findFirst({
       where: {
         roomId,
-        status: { in: ['APPROVED', 'PENDING'] },
         ...(excludeBookingId && { id: { not: excludeBookingId } }),
+        OR: [
+          { status: { in: ['APPROVED', 'PENDING'] } },
+          // A slot being paid for is taken (SPC-06). Ignoring these would let
+          // two members pay for the same hour, and only one can have it.
+          // Expired holds are ignored, so an abandoned checkout frees the room
+          // even before the scheduler sweeps it.
+          {
+            status: 'PENDING_PAYMENT',
+            holdExpiresAt: { gt: new Date() },
+          },
+        ],
         // Overlapping: existing.start < newEnd AND existing.end > newStart
         startTime: { lt: endTime },
         endTime: { gt: startTime },

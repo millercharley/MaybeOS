@@ -26,6 +26,7 @@ describe('SchedulerService', () => {
           useValue: {
             proposal: { findMany: jest.fn().mockResolvedValue([]) },
             survey: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+            booking: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
           },
         },
         {

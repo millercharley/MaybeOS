@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
 import { EmailModule } from '../email/email.module';
 import { EventsModule } from '../events/events.module';
+import { StripeModule } from '../stripe/stripe.module';
 import { SpaceService } from './space.service';
 import { SpaceController } from './space.controller';
 
 @Module({
-  imports: [EmailModule, EventsModule],
+  imports: [EmailModule, EventsModule, StripeModule],
   controllers: [SpaceController],
   providers: [SpaceService],
   exports: [SpaceService],

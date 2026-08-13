@@ -28,7 +28,11 @@ export default function PortalRoomsPage() {
     api.rooms
       .list(org.id, token)
       .then(setRooms)
-      .catch(() => {})
+      // Was `catch(() => {})`: the page showed "no rooms" whether the co-op
+      // had none or the request had failed, which are different problems.
+      .catch((err) =>
+        setBookingResult(err instanceof Error ? err.message : 'Could not load the rooms'),
+      )
       .finally(() => setLoading(false));
   }, [org, token]);
 
@@ -37,7 +41,7 @@ export default function PortalRoomsPage() {
     setBooking(true);
     setBookingResult(null);
     try {
-      await api.rooms.createBooking(
+      const created = await api.rooms.createBooking(
         org.id,
         selectedRoom,
         {
@@ -47,6 +51,16 @@ export default function PortalRoomsPage() {
         },
         token,
       );
+
+      // A room that charges for hire answers with a Stripe URL, and the
+      // booking is only a hold on the slot until it is paid for (SPC-06).
+      // Saying "booking submitted" and staying put would leave the member
+      // believing they had the room while their hold quietly lapsed.
+      if (created.checkoutUrl) {
+        window.location.href = created.checkoutUrl;
+        return;
+      }
+
       setBookingResult('Booking submitted!');
       setTitle('');
       setDate('');
@@ -123,6 +137,20 @@ export default function PortalRoomsPage() {
                 {room.requiresApproval && (
                   <span className="rounded-full bg-yellow-50 px-2 py-0.5 text-yellow-700">
                     Requires approval
+                  </span>
+                )}
+                {/*
+                  What it costs, before choosing it rather than at the Stripe
+                  page (SPC-06). Finding out a room is paid only once you have
+                  filled in the form is how people abandon a booking.
+                */}
+                {room.chargeForBooking && room.hourlyRate ? (
+                  <span className="rounded-full bg-gray-100 px-2 py-0.5 font-medium text-gray-700">
+                    ${(room.hourlyRate / 100).toFixed(2)}/hour
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-green-50 px-2 py-0.5 text-green-700">
+                    Free
                   </span>
                 )}
               </div>

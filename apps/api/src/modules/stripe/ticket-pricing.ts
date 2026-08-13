@@ -93,3 +93,61 @@ export function describeFees(breakdown: TicketBreakdown): string | null {
 
   return `+ ${money(platformFeeCents + orgFeeCents)} in fees (${parts.join(', ')})`;
 }
+
+export interface BookingBreakdown {
+  /** The room's rate for the hours booked — the co-op's own price. */
+  hireCents: number;
+  /** MaybeOS's cut, by plan (D-013). */
+  platformFeeCents: number;
+  /** What the member is charged, all in. */
+  totalCents: number;
+  /** Stripe's application fee: MaybeOS's cut only. */
+  applicationFeeCents: number;
+}
+
+/**
+ * What hiring a room costs (SPC-06).
+ *
+ * The co-op sets an hourly rate and MaybeOS takes the same flat
+ * per-transaction fee as a ticket sale — D-013's number for their plan, not a
+ * percentage of the hire. A percentage would make MaybeOS's cut of a full-day
+ * booking many times its cut of a ticket for no extra work.
+ *
+ * The fee is added on top, so a co-op charging $45/hour for three hours
+ * receives $135. Charging the member $135 and passing on less is the co-op
+ * quietly earning under its own published rate.
+ *
+ * Part-hours are billed pro rata and **rounded up to the cent**, because
+ * rounding down means a co-op billing 90 minutes at $45/hour receives
+ * $67.49 and wonders where the penny went.
+ */
+export function priceBooking({
+  hourlyRateCents,
+  startTime,
+  endTime,
+  plan,
+}: {
+  hourlyRateCents: number;
+  startTime: Date;
+  endTime: Date;
+  plan: MaybeOsPlan;
+}): BookingBreakdown {
+  if (!Number.isInteger(hourlyRateCents) || hourlyRateCents <= 0) {
+    throw new Error('Hourly rate must be a positive whole number of cents');
+  }
+
+  const ms = endTime.getTime() - startTime.getTime();
+  if (!(ms > 0)) {
+    throw new Error('A booking must end after it starts');
+  }
+
+  const hireCents = Math.ceil((ms / 3_600_000) * hourlyRateCents);
+  const platformFeeCents = PLATFORM_FEE_CENTS[plan];
+
+  return {
+    hireCents,
+    platformFeeCents,
+    totalCents: hireCents + platformFeeCents,
+    applicationFeeCents: platformFeeCents,
+  };
+}
