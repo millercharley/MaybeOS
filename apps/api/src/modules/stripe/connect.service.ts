@@ -38,7 +38,19 @@ export class ConnectService {
     private readonly configService: ConfigService,
   ) {
     const key = this.configService.get<string>('STRIPE_SECRET_KEY');
-    this.stripe = new Stripe(key || 'sk_test_placeholder');
+    this.stripe = new Stripe(
+      key || 'sk_test_placeholder',
+    // Pinned rather than left to the account default (Stripe's own guidance:
+    // "Always specify the API version you're integrating against"). Without
+    // this, production billing rides whatever the Stripe account's default
+    // happens to be, so a change made in the Dashboard — or by Stripe — alters
+    // request and response shapes with no deploy and no diff to point at.
+    //
+    // `2025-02-24.acacia` is what SDK 17.7.0 targets, so pinning it changes
+    // nothing today; it just stops the ground moving. The SDK is two API
+    // generations behind current (dahlia) — see OPS-18.
+    { apiVersion: '2025-02-24.acacia' },
+    );
   }
 
   /**
@@ -48,6 +60,25 @@ export class ConnectService {
    * one every time rather than storing it. The account itself is created once
    * and reused — making a second account for a co-op that abandoned onboarding
    * halfway would strand the first and confuse Stripe's own dashboard.
+   */
+  /**
+   * ⚠️ DEPRECATED PATTERN — must not reach production. See OPS-18.
+   *
+   * Stripe's current guidance is unambiguous: create connected accounts with
+   * Accounts v2 (`POST /v2/core/accounts`) and never with `type: 'standard'`,
+   * `'express'` or `'custom'`. This uses the v1 pattern because SDK 17.7.0 has
+   * no `v2.core.accounts` at all — the fix needs an SDK upgrade first.
+   *
+   * Why this is worth blocking a merge rather than fixing later: an account's
+   * configuration is set when it is created. Once a co-op has onboarded on a
+   * v1 `standard` account, it cannot be restructured into v2's dimensions
+   * (dashboard / fees_collector / losses_collector) — you would be asking real
+   * co-ops to re-onboard and re-verify their identity and bank details. No
+   * co-op has onboarded yet, so this is the last cheap moment to get it right.
+   *
+   * The target, per Stripe's SaaS-platform mapping:
+   *   dashboard: 'full', fees_collector: 'stripe', losses_collector: 'stripe',
+   *   configuration.merchant requesting card_payments.
    */
   async createOnboardingLink(
     orgId: string,
@@ -93,6 +124,12 @@ export class ConnectService {
    * completes on Stripe's side and the webhook that tells us can be late or
    * missed. The stored flag is refreshed as a side effect, so the fast path
    * elsewhere stays true.
+   */
+  /**
+   * ⚠️ Uses `charges_enabled`, which Stripe's guidance names as a deprecated
+   * v1 field. For direct charges the correct check is
+   * `configuration.merchant.capabilities.card_payments.status === 'active'`.
+   * Blocked behind the same SDK upgrade — see OPS-18.
    */
   async refreshAccountStatus(orgId: string) {
     const org = await this.prisma.organization.findUnique({
