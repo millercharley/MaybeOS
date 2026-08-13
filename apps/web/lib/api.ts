@@ -182,7 +182,16 @@ class ApiClient {
       this.request<{ accessToken: string }>('/auth/refresh', { method: 'POST', token }),
   };
 
-  // ── Orgs ─────────────────────────────────────────
+  auth_password = {
+    /** Change your own password (AUTH-03). Requires the current one. */
+    change: (data: { currentPassword: string; newPassword: string }, token: string) =>
+      this.request<{ changed: boolean }>('/auth/password', {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+  };
+
   auth_profile = {
     update: (data: { name?: string; avatarUrl?: string | null }, token: string) =>
       this.request<UserProfile>('/auth/profile', {
@@ -192,6 +201,7 @@ class ApiClient {
       }),
   };
 
+  // ── Orgs ─────────────────────────────────────────
   orgs = {
     create: (data: CreateOrgData, token: string) =>
       this.request<Org>('/orgs', { method: 'POST', body: JSON.stringify(data), token }),

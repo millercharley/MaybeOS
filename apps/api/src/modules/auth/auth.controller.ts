@@ -17,6 +17,7 @@ import { MagicLinkDto } from './dto/magic-link.dto';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('auth')
@@ -84,5 +85,25 @@ export class AuthController {
     @Body() dto: UpdateProfileDto,
   ) {
     return this.authService.updateProfile(user.userId, dto);
+  }
+
+  /**
+   * Rate-limited like the login routes: this endpoint takes a password and
+   * says whether it was right, which is a guessing oracle if left open.
+   */
+  @Patch('password')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Change your own password' })
+  async changePassword(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(
+      user.userId,
+      dto.currentPassword,
+      dto.newPassword,
+    );
   }
 }
