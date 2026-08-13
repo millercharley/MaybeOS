@@ -11,7 +11,10 @@ export default function PortalEventsPage() {
   const { org } = usePortal();
   const token = useAuthStore((s) => s.token);
   const [rsvpingId, setRsvpingId] = useState<string | null>(null);
-  const [rsvpDone, setRsvpDone] = useState<Set<string>>(new Set());
+  // What the API actually decided, per event — not merely that a request
+  // was made. A waitlisted place and a confirmed one are different news.
+  const [rsvpStatus, setRsvpStatus] = useState<Record<string, 'CONFIRMED' | 'WAITLISTED'>>({});
+  const [rsvpError, setRsvpError] = useState<Record<string, string>>({});
 
   const { data: events, loading } = usePublicApi(
     () => (org ? api.events.listPublic(org.id) : Promise.resolve([])),
@@ -21,11 +24,18 @@ export default function PortalEventsPage() {
   async function handleRsvp(eventId: string) {
     if (!token || !org) return;
     setRsvpingId(eventId);
+    setRsvpError((prev) => ({ ...prev, [eventId]: '' }));
     try {
-      await api.events.rsvp(org.id, eventId, token);
-      setRsvpDone((prev) => new Set(prev).add(eventId));
-    } catch {
-      // ignore
+      const rsvp = await api.events.rsvp(org.id, eventId, token);
+      setRsvpStatus((prev) => ({ ...prev, [eventId]: rsvp.status }));
+    } catch (err) {
+      // This was `catch {}`. A full event answers "Event is at capacity" and
+      // the page said nothing at all — the member pressed RSVP, the button
+      // stayed put, and no reason was ever given.
+      setRsvpError((prev) => ({
+        ...prev,
+        [eventId]: err instanceof Error ? err.message : 'Could not RSVP',
+      }));
     } finally {
       setRsvpingId(null);
     }
@@ -91,16 +101,33 @@ export default function PortalEventsPage() {
                 </div>
                 <div className="ml-4 shrink-0">
                   {token ? (
-                    rsvpDone.has(event.id) ? (
-                      <span className="text-sm font-medium text-green-600">RSVP&apos;d</span>
-                    ) : (
-                      <button
-                        onClick={() => handleRsvp(event.id)}
-                        disabled={rsvpingId === event.id}
-                        className="btn-primary text-sm"
+                    rsvpStatus[event.id] ? (
+                      <span
+                        className={`text-sm font-medium ${
+                          rsvpStatus[event.id] === 'WAITLISTED'
+                            ? 'text-amber-600'
+                            : 'text-green-600'
+                        }`}
                       >
-                        {rsvpingId === event.id ? 'Sending...' : 'RSVP'}
-                      </button>
+                        {rsvpStatus[event.id] === 'WAITLISTED'
+                          ? "You're on the waitlist"
+                          : "RSVP'd"}
+                      </span>
+                    ) : (
+                      <div className="text-right">
+                        <button
+                          onClick={() => handleRsvp(event.id)}
+                          disabled={rsvpingId === event.id}
+                          className="btn-primary text-sm"
+                        >
+                          {rsvpingId === event.id ? 'Sending...' : 'RSVP'}
+                        </button>
+                        {rsvpError[event.id] && (
+                          <p className="mt-1 max-w-[12rem] text-xs text-red-600" role="alert">
+                            {rsvpError[event.id]}
+                          </p>
+                        )}
+                      </div>
                     )
                   ) : (
                     <span className="text-xs text-gray-400">Sign in to RSVP</span>

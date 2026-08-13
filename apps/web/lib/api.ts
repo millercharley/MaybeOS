@@ -427,8 +427,16 @@ class ApiClient {
         token,
       }),
 
+    /**
+     * The response carries the status the API decided (EVT-02). A full event
+     * with a waitlist answers WAITLISTED rather than refusing, and a caller
+     * that discards this tells someone they have a place when they do not.
+     */
     rsvp: (orgId: string, eventId: string, token: string) =>
-      this.request(`/orgs/${orgId}/events/${eventId}/rsvp`, { method: 'POST', token }),
+      this.request<{ id: string; status: 'CONFIRMED' | 'WAITLISTED' }>(
+        `/orgs/${orgId}/events/${eventId}/rsvp`,
+        { method: 'POST', token },
+      ),
 
     publicFeedJson: (orgId: string) =>
       this.request<Event[]>(`/orgs/${orgId}/events/feed.json`),
@@ -928,6 +936,13 @@ export interface Event {
   category?: string;
   tags: string[];
   capacity?: number;
+  /**
+   * Whether people may still sign up once `capacity` is reached (EVT-02).
+   * Returned by the org-scoped reads and declared here so an edit form
+   * prefills it — a form that renders this unchecked on an event that has a
+   * waitlist would switch it off the moment anything else was saved.
+   */
+  waitlistEnabled?: boolean;
   isPublished: boolean;
   /** CONFIRMED RSVPs only — cancelled and waitlisted are not attendees. */
   rsvpCount?: number;
@@ -954,6 +969,12 @@ export interface CreateEventData {
   endTime: string;
   visibility?: string;
   capacity?: number;
+  /**
+   * Keep a waitlist once `capacity` is reached (EVT-02). The engine that acts
+   * on this has always worked; until now nothing in the product could set it,
+   * so it stayed at its `false` default and never ran.
+   */
+  waitlistEnabled?: boolean;
   category?: string;
   locationId?: string;
   roomId?: string;
