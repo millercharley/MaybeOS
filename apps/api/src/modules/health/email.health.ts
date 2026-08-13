@@ -30,7 +30,18 @@ export class EmailHealthIndicator extends HealthIndicator {
     const token = this.config.get<string>('POSTMARK_API_TOKEN');
     const configured = Boolean(token && token.trim());
 
+    // Which Postmark-ish variables the function can actually see, by NAME
+    // only — never a value, and never anything outside this narrow pattern.
+    // Added because production reported `log-only` after the token was set and
+    // a deploy had landed, which leaves exactly two candidates: the variable is
+    // named something else, or it is not scoped to Functions. A list of names
+    // distinguishes those in one request instead of a guessing game.
+    const visibleNames = Object.keys(process.env)
+      .filter((n) => /postmark/i.test(n))
+      .sort();
+
     return this.getStatus(key, true, {
+      visibleNames,
       // 'up' regardless: an unconfigured mailer must not fail the readiness
       // probe and take a working deployment out of rotation over it.
       transport: configured ? 'postmark' : 'log-only',
