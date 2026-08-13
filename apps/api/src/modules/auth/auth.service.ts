@@ -4,19 +4,24 @@ import {
   ConflictException,
   UnauthorizedException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../config/prisma.service';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private email: EmailService,
   ) {}
 
   /**
@@ -91,15 +96,34 @@ export class AuthService {
   }
 
   /**
-   * Generate a magic-link token for passwordless authentication.
-   * Stores a random UUID token with a 15-minute expiry on the user record.
-   * Actual email sending is delegated to the caller / email module.
+   * Where the web app verifies a magic-link token.
+   *
+   * WEB_URL doubles as the CORS allowlist and may therefore hold several
+   * comma-separated origins; the first one is the canonical site. A trailing
+   * slash would produce `https://maybeos.org//magic-link`, which routes but
+   * looks broken in an email client's link preview.
+   */
+  private magicLinkUrl(token: string): string {
+    const configured =
+      this.configService.get<string>('WEB_URL') || 'http://localhost:3000';
+    const base = configured.split(',')[0].trim().replace(/\/+$/, '');
+    return `${base}/magic-link?token=${encodeURIComponent(token)}`;
+  }
+
+  /**
+   * Issue a magic-link token and email it to the address that asked.
+   *
+   * The token used to be generated, stored, and then dropped on the floor:
+   * nothing was wired to send it, so the login screen said "we sent a magic
+   * link" and nobody ever received one (AUTH-02). With no password reset
+   * either, that made a forgotten password unrecoverable.
+   *
+   * An unknown address still gets a token-shaped return value and no email,
+   * so the endpoint cannot be used to enumerate who has an account.
    */
   async sendMagicLink(email: string): Promise<string> {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user) {
-      // Return a token-shaped string to avoid leaking whether the email exists.
-      // The caller should still "send" the email so timing is consistent.
       return uuidv4();
     }
 
@@ -113,6 +137,21 @@ export class AuthService {
         magicLinkExpiry: expiry,
       },
     });
+
+    // Caught here rather than trusting EmailService to swallow everything:
+    // it builds the template outside its own try block, so a bad template
+    // would throw. That would make this endpoint answer 500 for a real
+    // address and 200 for an unknown one — an account-enumeration oracle
+    // built out of an error path.
+    try {
+      await this.email.sendMagicLink(user.email, this.magicLinkUrl(token));
+    } catch (err) {
+      this.logger.error(
+        `Magic link stored but not sent for ${user.email}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
 
     return token;
   }

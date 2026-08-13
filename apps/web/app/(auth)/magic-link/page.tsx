@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
+import { landingPathFor } from '@/lib/landing';
 
 function MagicLinkVerifier() {
   const searchParams = useSearchParams();
@@ -24,10 +25,25 @@ function MagicLinkVerifier() {
 
     api.auth
       .verifyMagicLink(token)
-      .then((result) => {
+      .then(async (result) => {
         setToken(result.accessToken);
         setStatus('success');
-        router.push('/admin');
+
+        // Signing in is not the same as being an organiser. This used to push
+        // everyone at /admin, so a member following a link from their inbox
+        // arrived at "This page is for organisers".
+        let destination = '/member';
+        try {
+          const user = await api.auth.profile(result.accessToken);
+          destination = landingPathFor(
+            user,
+            typeof window !== 'undefined' ? localStorage.getItem('maybeos_org') : null,
+          );
+        } catch {
+          // Signed in, but we could not read the profile. /member renders for
+          // everyone, so it is the safe place to land — never a locked page.
+        }
+        router.push(destination);
       })
       .catch((err: unknown) => {
         const message =
