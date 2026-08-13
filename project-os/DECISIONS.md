@@ -24,6 +24,21 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-024 — A minimal expense record, amending D-021's bookkeeping non-goal
+
+- **Date:** 2026-08-13
+- **Status:** Active
+- **Area:** ImpactOS, Database, Product
+- **Trigger:** IMP-16 sat open because it could not be built without contradicting D-021, whose non-goals list **bookkeeping** alongside CRM and grant management. The PRD's §7 composites — cost-per-outcome, mission-alignment-of-spend — have no denominator without expenses, and it is the PRD's own open question 7 whether significant expenses live inside the platform at all. Charley was offered three ways forward (close it as a non-goal; a deliberately minimal record; defer to the first report cycle) and chose the minimal record on 2026-08-13.
+- **Decision:** MaybeOS records expenses, at the smallest size that makes the P1 composites computable: an **amount in integer cents**, the **date it was incurred**, a **category the co-op names itself** (free text, not an enum — a co-op naming its own categories is the point), and **optionally the goal it served**. Nothing else. The `expenses` table is organiser-only end to end, with no member-facing surface: members see aggregate impact, not what the co-op spends.
+- **What this deliberately does not become:** there are no vendors, no invoice numbers, no payment status, no reconciliation, no attachments, no recurring schedules, no approval workflow and no double entry. **D-021's bookkeeping non-goal is narrowed, not withdrawn** — a co-op's books stay in its accounting software, and this exists only so that "what did that outcome cost" and "how much of our spending served our goals" have a denominator. The test of whether a future addition belongs is written on the model itself: *if a field here needs a second table to make sense, this has outgrown its decision and should be reconsidered rather than extended.*
+- **Two consequences worth recording because they decide whether the numbers mean anything:**
+  - **Unattributed spend is recorded, not omitted.** Mission-alignment-of-spend is computed over *all* recorded spend, so a co-op that attributes half its spending sees 50%. Computing it over attributed rows alone would return 100% forever and be worthless.
+  - **The alignment share is `null` when nothing has been recorded, never `0`.** "None of our spend serves our goals" and "we have not recorded any spend" are different claims, and a generated report must not let the second read as the first.
+- **The summary returns spend broken down and stops there.** No cost-per-outcome is computed at this layer: dividing money by survey responses would produce a figure that looks like a finding and is not one. The composites are P1 and belong with the outcomes they divide.
+- **Alternatives rejected:** **Closing IMP-16 as a non-goal** — defensible, and the cheapest option, but it permanently forecloses two of the PRD's §7 composites and leaves ImpactOS able to describe what a co-op achieved and never what it cost. **Deferring to the first report cycle** — attractive because a real co-op would answer open question 7 better than we can, rejected because the denominator has to exist *before* the year it describes; a co-op that starts recording spend in month twelve has no year to report on. **A full accounting model** — never seriously considered; it is what D-021 ruled out, and the non-goal exists because bookkeeping is a product in its own right that MaybeOS would do badly.
+- **Supersedes:** none. **Amends D-021** by narrowing its bookkeeping non-goal to exclude this specific record; every other part of that decision stands, including the fatigue budget, the survey-builder non-goal, and §10's rule that individual responses are never exposed to admins.
+
 ### D-023 — Postmark is the transactional email provider, and a verified sender is part of the decision
 
 - **Date:** 2026-08-13
