@@ -6,6 +6,24 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  /// Migrations and introspection connect straight to Postgres rather than
+  /// through the transaction pooler (OPS-11).
+  ///
+  /// `DATABASE_URL` now points at Supabase's **transaction-mode** pooler, which
+  /// is what serverless wants: it multiplexes, so many Lambda containers share
+  /// far fewer server connections. Session mode allowed 15 clients in total and
+  /// took the API down twice on 2026-08-13 — 502 on every request, login
+  /// included — once from several deploys in quick succession and once from a
+  /// burst of concurrent requests.
+  ///
+  /// Transaction mode cannot run migrations: they need a session that holds
+  /// state across statements, including advisory locks. Hence this second URL.
+  ///
+  /// D-007 removed `directUrl` after it broke a Railway deploy when the
+  /// variable was unset, and chose session mode to avoid needing it. That
+  /// tradeoff is what has now been reversed — with the reason recorded rather
+  /// than rediscovered.
+  directUrl = env("DIRECT_URL")
 }
 
 // ─── Multi-Tenant Foundation ─────────────────────────────────
