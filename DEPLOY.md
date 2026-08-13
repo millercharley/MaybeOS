@@ -95,6 +95,44 @@ in the repo. The ones production needs:
 Dev and prod Supabase credentials are **not interchangeable**, and the two
 dashboards look identical. Check the project name before pasting anything.
 
+## Database connections are the thing that takes the site down
+
+Twice now (OPS-11, and again on 2026-08-13): the API returns **502 to every
+request, login included**, with
+
+```
+max clients reached in session mode - max clients are limited to pool_size: 15
+```
+
+Every warm Netlify container is a separate process with its own Prisma pool,
+and Prisma's default is `CPUs × 2 + 1` per process. Supabase's session-mode
+pooler allows 15 clients **in total**, so a handful of warm containers exhausts
+it. Deploying several times in quick succession is a reliable way to cause
+this, because each deploy creates fresh containers while the old ones are still
+holding connections.
+
+Two things now prevent it, and both live in the repository rather than in a
+secret — the first fix lived only inside `DATABASE_URL`, which is precisely why
+it vanished without anyone noticing:
+
+- **`apps/api/src/config/database-url.ts`** forces `connection_limit=1` at the
+  Prisma client, so 15 clients means fifteen containers rather than three. An
+  explicit value in `DATABASE_URL` still wins, so it can be tuned without a
+  deploy.
+- **`idle_session_timeout = '30min'`** on the `postgres` role, so connections
+  abandoned by recycled containers are reclaimed. One had been idle for four
+  days.
+
+If it happens anyway, **restarting the database** in Supabase (Settings →
+Database) drops every connection and restores service immediately; the idle
+ones are abandoned, not work in progress.
+
+**The better long-term fix is still open**: `DATABASE_URL` points at the
+session-mode pooler, and serverless wants the **transaction-mode** pooler
+(port 6543, `?pgbouncer=true`), which handles far more clients. That needs a
+`directUrl` for migrations, which D-007 deliberately removed after it broke a
+deploy — so it is a decision to revisit, not a change to make quietly.
+
 ## Email is the one that fails without telling you
 
 Every transactional email — invitations, the five booking emails, magic links,
