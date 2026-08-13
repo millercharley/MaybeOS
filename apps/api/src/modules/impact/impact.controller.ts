@@ -19,6 +19,8 @@ import { CurrentUser, RequestUser } from '../../common/decorators/current-user.d
 import { ImpactService } from './impact.service';
 import { TouchpointService } from './touchpoint.service';
 import { TouchpointAnswerDto } from './dto/touchpoint-answer.dto';
+import { ExpenseService } from './expense.service';
+import { CreateExpenseDto, UpdateExpenseDto } from './dto/expense.dto';
 import { Touchpoint } from '@prisma/client';
 import { CreateSurveyDto } from './dto/create-survey.dto';
 import { SubmitResponseDto } from './dto/submit-response.dto';
@@ -33,6 +35,7 @@ export class ImpactController {
   constructor(
     private readonly impactService: ImpactService,
     private readonly touchpoints: TouchpointService,
+    private readonly expenses: ExpenseService,
   ) {}
 
   // ─── Surveys CRUD ───────────────────────────────────────────
@@ -233,5 +236,59 @@ export class ImpactController {
   @Post('impact/ask/dismiss')
   dismissAsk(@Param('orgId') orgId: string, @CurrentUser() user: RequestUser) {
     return this.touchpoints.dismiss(orgId, user.userId);
+  }
+
+  // ─── Expenses (IMP-16) ──────────────────────────────────────
+
+  /**
+   * A co-op's own spending, which is why every route here is organiser-only.
+   * Members can see aggregate impact; what the co-op spends is not theirs to
+   * read, and there is no member-facing surface for it anywhere.
+   */
+  @Get('impact/expenses')
+  @Roles('ADMIN', 'STAFF')
+  listExpenses(
+    @Param('orgId') orgId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.expenses.list(orgId, from ? new Date(from) : undefined, to ? new Date(to) : undefined);
+  }
+
+  /** Spend broken down — the denominator, not a cost-per-outcome. */
+  @Get('impact/expenses/summary')
+  @Roles('ADMIN', 'STAFF')
+  expenseSummary(
+    @Param('orgId') orgId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.expenses.summary(orgId, from ? new Date(from) : undefined, to ? new Date(to) : undefined);
+  }
+
+  @Post('impact/expenses')
+  @Roles('ADMIN')
+  createExpense(
+    @Param('orgId') orgId: string,
+    @Body() dto: CreateExpenseDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.expenses.create(orgId, user.userId, dto);
+  }
+
+  @Patch('impact/expenses/:expenseId')
+  @Roles('ADMIN')
+  updateExpense(
+    @Param('orgId') orgId: string,
+    @Param('expenseId') expenseId: string,
+    @Body() dto: UpdateExpenseDto,
+  ) {
+    return this.expenses.update(orgId, expenseId, dto);
+  }
+
+  @Delete('impact/expenses/:expenseId')
+  @Roles('ADMIN')
+  deleteExpense(@Param('orgId') orgId: string, @Param('expenseId') expenseId: string) {
+    return this.expenses.remove(orgId, expenseId);
   }
 }

@@ -17,6 +17,25 @@ interface AuthState {
   init: () => void;
 }
 
+
+/**
+ * The user id inside a JWT, without verifying it.
+ *
+ * Only used to decide whether the profile in memory belongs to the account
+ * that just signed in. Nothing is trusted on the strength of it — the API
+ * verifies every token itself — so a malformed one simply means "assume a
+ * different person" and refetch, which is the safe direction.
+ */
+function subjectOf(token: string): string | null {
+  try {
+    const [, payload] = token.split('.');
+    if (!payload) return null;
+    return JSON.parse(atob(payload)).sub ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   token: null,
   user: null,
@@ -27,7 +46,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (typeof window !== 'undefined') {
       localStorage.setItem('maybeos_token', token);
     }
-    set({ token });
+
+    // The profile that belonged to the previous token is now stale, and
+    // AuthProvider only fetches one when there is none — `token && !user`. So
+    // signing in as somebody else in the same browser left the *previous*
+    // person's name, role and org on screen: an admin signing in after a
+    // member saw the member's nav and a locked page, and the reverse showed a
+    // member somebody else's name. The API was never fooled — every request
+    // used the new token — but the screen was.
+    const previousUserId = get().user?.id;
+    const nextUserId = subjectOf(token);
+    const sameperson = previousUserId && nextUserId && previousUserId === nextUserId;
+
+    if (sameperson) {
+      // A refreshed token for the same account, as after creating an org.
+      // Clear the profile so it reloads with the new roles, but keep which
+      // org they were looking at.
+      set({ token, user: null });
+      return;
+    }
+
+    // A different account: the selected org belonged to the last one and may
+    // not even be an org this person belongs to.
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('maybeos_org');
+    }
+    set({ token, user: null, currentOrgId: null });
   },
 
   setCurrentOrg: (orgId: string) => {

@@ -14,6 +14,7 @@ import {
   CreditCard,
   UserCircle,
   LogOut,
+  Receipt,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { Wordmark } from '@/components/brand/wordmark';
@@ -25,8 +26,11 @@ const adminNav = [
   { href: '/admin/events', label: 'Events', icon: Calendar },
   { href: '/admin/rooms', label: 'Rooms & Booking', icon: DoorOpen },
   { href: '/admin/commons', label: 'Commons', icon: MessageSquare },
-  // Impact is intentionally absent: the admin Impact page was removed pending
-  // the ImpactOS rebuild (D-021). Re-add it when the Signals view exists.
+  // Spending, not Impact: the admin Impact page was removed pending the
+  // ImpactOS rebuild (D-021), and the Signals view that replaces it does not
+  // exist yet. This is the one piece of it that stands alone (IMP-16) — an
+  // API nobody can reach is how the last one ended up unused for months.
+  { href: '/admin/expenses', label: 'Spending', icon: Receipt },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 
