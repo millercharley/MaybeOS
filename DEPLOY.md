@@ -67,6 +67,14 @@ node tools/prod-smoke.js
 ones answer 401 rather than 500, malformed queries answer 400. It exits
 non-zero on anything unexpected. This is what caught the outage above.
 
+`tools/prod-write-probe.js` is its counterpart and is **not** routine — it
+writes. It registers a throwaway account, creates a disposable org, and
+exercises the write paths inside it: rooms, bookings, events, RSVPs, channels,
+posts, comments and org settings. Run it before a launch or after a change to
+a write path, then tear the org down; the run prints the org id to remove.
+It deliberately never touches Stripe, because creating a tier provisions a
+real live-mode Product and Price.
+
 ## Environment variables
 
 Set in the Netlify dashboard (Site configuration → Environment variables), not
