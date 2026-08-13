@@ -111,17 +111,20 @@ it. Deploying several times in quick succession is a reliable way to cause
 this, because each deploy creates fresh containers while the old ones are still
 holding connections.
 
-Two things now prevent it, and both live in the repository rather than in a
-secret — the first fix lived only inside `DATABASE_URL`, which is precisely why
-it vanished without anyone noticing:
+**`apps/api/src/config/database-url.ts`** now forces `connection_limit=1` at
+the Prisma client, so 15 clients means fifteen containers rather than three. An
+explicit value in `DATABASE_URL` still wins, so it can be tuned without a
+deploy. It lives in the repository rather than in a secret because the previous
+fix lived only inside `DATABASE_URL` — which is precisely why it vanished
+without anyone noticing.
 
-- **`apps/api/src/config/database-url.ts`** forces `connection_limit=1` at the
-  Prisma client, so 15 clients means fifteen containers rather than three. An
-  explicit value in `DATABASE_URL` still wins, so it can be tuned without a
-  deploy.
-- **`idle_session_timeout = '30min'`** on the `postgres` role, so connections
-  abandoned by recycled containers are reclaimed. One had been idle for four
-  days.
+Note what the ceiling is, because it is easy to misread: `pool_size: 15` is
+**Supavisor's client limit** — how many clients may connect to the pooler — not
+a limit on Postgres backends. The long-idle connections visible in
+`pg_stat_activity` are Supavisor's own backend pool and a `pg_net` extension
+connection; they are Supabase's infrastructure behaving normally, not leaked
+application sessions, and reaping them with `idle_session_timeout` achieves
+nothing. Count Lambda containers, not rows in `pg_stat_activity`.
 
 If it happens anyway, **restarting the database** in Supabase (Settings →
 Database) drops every connection and restores service immediately; the idle
