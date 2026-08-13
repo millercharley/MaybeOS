@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { withConnectionDefaults } from './database-url';
 
 @Injectable()
 export class PrismaService
@@ -8,6 +9,14 @@ export class PrismaService
 {
   constructor() {
     super({
+      /**
+       * One connection per Lambda container (OPS-11). Forced here rather than
+       * left to `DATABASE_URL`, because that is exactly where the previous fix
+       * was and exactly why it disappeared — see `database-url.ts`.
+       */
+      datasources: {
+        db: { url: withConnectionDefaults(process.env.DATABASE_URL) },
+      },
       log:
         process.env.NODE_ENV === 'development'
           ? ['query', 'info', 'warn', 'error']
