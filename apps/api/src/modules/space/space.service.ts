@@ -15,6 +15,7 @@ import { CreateRoomDto } from './dto/create-room.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { AvailabilityRuleDto } from './dto/availability-rule.dto';
 import { ConnectService } from '../stripe/connect.service';
+import { CalendarService } from '../calendar/calendar.service';
 
 @Injectable()
 export class SpaceService {
@@ -30,6 +31,9 @@ export class SpaceService {
     // Room hire is charged through the co-op's own connected account (SPC-06),
     // the same path ticket sales take.
     private readonly connect: ConnectService,
+    // A booking that never reaches the room's calendar is invisible to
+    // everyone not looking at MaybeOS (SPC-04).
+    private readonly calendar: CalendarService,
   ) {}
 
   /* ------------------------------------------------------------------ */
@@ -343,6 +347,13 @@ export class SpaceService {
       }
     }
 
+    // Only a confirmed booking goes on the calendar. Publishing a request
+    // that an organiser may refuse would show the room as taken when it is
+    // not, which is worse than showing nothing.
+    if (status === 'APPROVED') {
+      await this.calendar.syncBooking(orgId, created.id, 'create');
+    }
+
     // 'received' when it still needs an organiser; 'confirmed' when the room
     // auto-approves and the member can just turn up.
     await this.notifyBooking(created.id, status === 'PENDING' ? 'received' : 'confirmed');
@@ -373,6 +384,8 @@ export class SpaceService {
       },
     });
 
+    await this.calendar.syncBooking(orgId, approved.id, 'create');
+
     await this.notifyBooking(approved.id, 'confirmed');
     return approved;
   }
@@ -392,6 +405,8 @@ export class SpaceService {
         reviewedAt: new Date(),
       },
     });
+
+    await this.calendar.syncBooking(orgId, rejected.id, 'delete');
 
     // Refused, so the money goes back — including MaybeOS's fee. Charging a
     // co-op for an hour its own organiser declined would be indefensible.
@@ -521,6 +536,10 @@ export class SpaceService {
         ),
       );
 
+    // 'update' falls back to creating when there is nothing on the calendar
+    // yet, which is the case for a booking rescheduled before approval.
+    await this.calendar.syncBooking(orgId, moved.id, 'update');
+
     await this.notifyBooking(moved.id, 'rescheduled');
     return moved;
   }
@@ -544,6 +563,8 @@ export class SpaceService {
         canceledAt: new Date(),
       },
     });
+
+    await this.calendar.syncBooking(orgId, canceled.id, 'delete');
 
     // Paid for, so the money goes back — MaybeOS's fee included. Never allowed
     // to fail the cancellation: a member calling off a booking must always

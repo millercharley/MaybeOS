@@ -5,6 +5,7 @@ import { PrismaService } from '../../../config/prisma.service';
 import { EmailService } from '../../email/email.service';
 import { EventsService } from '../../events/events.service';
 import { ConnectService } from '../../stripe/connect.service';
+import { CalendarService } from '../../calendar/calendar.service';
 
 /**
  * Charging for room hire (SPC-06).
@@ -59,6 +60,10 @@ describe('SpaceService — charging for hire', () => {
         { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },
         { provide: EventsService, useValue: { syncWithBooking: jest.fn().mockResolvedValue(undefined) } },
         { provide: ConnectService, useValue: connect },
+        {
+          provide: CalendarService,
+          useValue: { syncBooking: jest.fn().mockResolvedValue({ synced: false }) },
+        },
       ],
     }).compile();
 

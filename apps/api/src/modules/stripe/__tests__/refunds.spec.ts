@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { ConnectService } from '../connect.service';
 import { PrismaService } from '../../../config/prisma.service';
+import { CalendarService } from '../../calendar/calendar.service';
 
 /**
  * Refunding tickets.
@@ -47,6 +48,10 @@ describe('ConnectService — refunds', () => {
         ConnectService,
         { provide: PrismaService, useValue: prisma },
         { provide: ConfigService, useValue: { get: () => 'sk_test_x' } },
+        {
+          provide: CalendarService,
+          useValue: { syncBooking: jest.fn().mockResolvedValue({ synced: false }) },
+        },
       ],
     }).compile();
 

@@ -32,7 +32,14 @@ let orgId = null;
 
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function call(name, path, { method = 'GET', body, auth = true } = {}) {
+/** The next occurrence of a weekday, at least 30 days out. */
+function nextWeekday(dow) {
+  const d = new Date(Date.now() + 30 * 864e5);
+  while (d.getUTCDay() !== dow) d.setUTCDate(d.getUTCDate() + 1);
+  return d;
+}
+
+async function call(name, path, { method = 'GET', body, auth = true } = {}, opts = {}) {
   // The global limiter is 100/60s and this suite is small; the pause keeps a
   // burst from turning a real failure into an indistinguishable 429.
   await pause(500);
@@ -57,7 +64,10 @@ async function call(name, path, { method = 'GET', body, auth = true } = {}) {
     return { ok: false, json: null };
   }
 
-  const ok = res.status < 400;
+  // Some checks are *supposed* to be refused; a rule that does not refuse is
+  // the failure. Without this the probe could only ever test the happy path,
+  // which is the half that was never in doubt.
+  const ok = opts.expect ? res.status === opts.expect : res.status < 400;
   results.push({
     name,
     ok,
@@ -117,7 +127,7 @@ async function call(name, path, { method = 'GET', body, auth = true } = {}) {
   });
 
   if (room.ok) {
-    const start = new Date(Date.now() + 30 * 864e5);
+    const start = new Date(Date.now() + 40 * 864e5);
     start.setUTCHours(15, 0, 0, 0);
     const end = new Date(start.getTime() + 36e5);
     const booking = await call('book that room', `/orgs/${orgId}/rooms/${room.json.id}/bookings`, {
@@ -132,6 +142,112 @@ async function call(name, path, { method = 'GET', body, auth = true } = {}) {
       await call('cancel the booking', `/orgs/${orgId}/bookings/${booking.json.id}/cancel`, {
         method: 'POST',
       });
+    }
+  }
+
+  // ── SpaceOS edges: the rules, not just the happy path (SPC-05) ────────
+  if (room.ok) {
+    const roomId = room.json.id;
+
+    // A rule of "Mondays 09:00–17:00" is what SPC-09 fixed: coverage used to
+    // be required only on days that had a rule, so a Tuesday sailed through.
+    const rule = await call('publish opening hours', `/orgs/${orgId}/rooms/${roomId}/rules`, {
+      method: 'POST',
+      body: { dayOfWeek: 1, startTime: '09:00', endTime: '17:00' },
+    });
+
+    if (rule.ok) {
+      // Monday the 5th of a month 30+ days out, inside the published hours.
+      const monday = nextWeekday(1);
+      const inside = new Date(monday);
+      inside.setUTCHours(14, 0, 0, 0);
+      const insideEnd = new Date(inside.getTime() + 36e5);
+
+      const ok = await call('book inside the published hours', `/orgs/${orgId}/rooms/${roomId}/bookings`, {
+        method: 'POST',
+        body: {
+          title: 'Inside hours',
+          startTime: inside.toISOString(),
+          endTime: insideEnd.toISOString(),
+        },
+      });
+
+      // The same room on a day with no rule at all must be refused.
+      const tuesday = nextWeekday(2);
+      const outside = new Date(tuesday);
+      outside.setUTCHours(14, 0, 0, 0);
+      const refused = await call(
+        'refuse a day the room does not open (expects 400)',
+        `/orgs/${orgId}/rooms/${roomId}/bookings`,
+        {
+          method: 'POST',
+          body: {
+            title: 'Outside hours',
+            startTime: outside.toISOString(),
+            endTime: new Date(outside.getTime() + 36e5).toISOString(),
+          },
+        },
+        { expect: 400 },
+      );
+      void refused;
+
+      // Double-booking the slot just taken must conflict.
+      if (ok.ok) {
+        await call(
+          'refuse a double booking (expects 409)',
+          `/orgs/${orgId}/rooms/${roomId}/bookings`,
+          {
+            method: 'POST',
+            body: {
+              title: 'Clash',
+              startTime: inside.toISOString(),
+              endTime: insideEnd.toISOString(),
+            },
+          },
+          { expect: 409 },
+        );
+      }
+    }
+
+    // Approval flow: a room that requires it must answer PENDING, and an
+    // approve must move it. This path has never run in production.
+    const approvalRoom = await call('create a room that requires approval', `/orgs/${orgId}/rooms`, {
+      method: 'POST',
+      body: { name: 'Probe Room (approval)', capacity: 2, requiresApproval: true },
+    });
+
+    if (approvalRoom.ok) {
+      const when = nextWeekday(3);
+      when.setUTCHours(11, 0, 0, 0);
+      const pending = await call(
+        'book it — must come back PENDING',
+        `/orgs/${orgId}/rooms/${approvalRoom.json.id}/bookings`,
+        {
+          method: 'POST',
+          body: {
+            title: 'Needs approval',
+            startTime: when.toISOString(),
+            endTime: new Date(when.getTime() + 36e5).toISOString(),
+          },
+        },
+      );
+
+      if (pending.ok) {
+        if (pending.json.status !== 'PENDING') {
+          results.push({
+            name: 'a room requiring approval books as PENDING',
+            ok: false,
+            status: pending.json.status,
+            detail: `expected PENDING, got ${pending.json.status}`,
+          });
+        }
+        await call('approve it', `/orgs/${orgId}/bookings/${pending.json.id}/approve`, {
+          method: 'POST',
+        });
+        await call('reject is refused once approved (expects 400)', `/orgs/${orgId}/bookings/${pending.json.id}/reject`, {
+          method: 'POST',
+        }, { expect: 400 });
+      }
     }
   }
 
