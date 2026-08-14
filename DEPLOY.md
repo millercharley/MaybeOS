@@ -87,7 +87,8 @@ in the repo. The ones production needs:
 | `JWT_SECRET` | |
 | `WEB_URL` | `https://maybeos.org` — also drives the CORS allow-list |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | org logo storage (D-017) |
-| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | live mode in production |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | live mode in production. If this is a **restricted** key (`rk_live_`), it needs Connect permissions — see below |
+| `STRIPE_CONNECT_CLIENT_ID` | `ca_…` from Stripe → Connect → Settings. Lets a co-op link a Stripe account it already has (PAY-05); unset just hides that option |
 | `POSTMARK_API_TOKEN` | email delivery — **see below, this one fails silently** |
 | `EMAIL_FROM` | must be a Postmark-verified sender; defaults to `noreply@maybeos.org` |
 | `SENTRY_DSN` | error tracking |
@@ -143,6 +144,39 @@ is what the 2026-08-13 outages reversed. Note that `prisma generate` — the onl
 Prisma command the Netlify build runs — does not resolve `directUrl`, so a
 missing `DIRECT_URL` cannot fail a deploy; it would only fail a migration,
 loudly, at the moment somebody runs one.
+
+## Two ways a co-op connects Stripe
+
+A co-op with no Stripe account gets one **created** for it: `v2.core.accounts.create`
+plus a hosted onboarding link. A co-op that already takes payments — most
+established ones — **links its existing account** over OAuth instead, so it
+keeps one bank connection, one payout schedule and one set of books.
+
+Both live in Settings → Ticket payouts. The existing-account option is listed
+first, because creating a second Stripe account for an organisation that
+already has one is the expensive mistake and it is hard to undo.
+
+OAuth needs two things set up once, in **live mode**:
+
+- **`STRIPE_CONNECT_CLIENT_ID`** — the `ca_…` id from Stripe → Connect → Settings.
+- **A redirect URI registered with Stripe**: `https://maybeos.org/api/connect/oauth/callback`.
+  Stripe rejects any redirect it has not been told about, and these do **not**
+  copy from a sandbox to live.
+
+The callback is deliberately unauthenticated — Stripe redirects a browser, so
+there is no token to check. What makes it safe is the signed `state`: HMAC'd
+with `JWT_SECRET`, carrying the org and the admin who started the flow, expiring
+in ten minutes, and verified before anything is written. **The org is never
+taken from a query parameter**, because that is precisely how somebody would
+point a completed OAuth at a co-op they do not run. See
+`apps/api/src/modules/stripe/connect-oauth.ts`.
+
+If a restricted key is in use, Connect needs: **Accounts** (write),
+**Account links** (write), **Application fees** (write), plus **Checkout
+Sessions** and **Refunds** (write) with the key permitted to act on connected
+accounts. All Connect permissions set to *none* produces
+`API Key does not have permission to access account` on exactly one call while
+everything else keeps working — which is a slow thing to diagnose.
 
 ## Email is the one that fails without telling you
 

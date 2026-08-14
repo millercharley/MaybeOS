@@ -35,6 +35,11 @@ import { HealthModule } from './modules/health/health.module';
         SENTRY_DSN: Joi.string().allow('').default(''),
         STRIPE_SECRET_KEY: Joi.string().allow('').default(''),
         STRIPE_WEBHOOK_SECRET: Joi.string().allow('').default(''),
+        // The platform's Connect client id (ca_...), which lets a co-op link a
+        // Stripe account it already has instead of being made a second one
+        // (PAY-05). Unset simply means that option is unavailable and the
+        // create-an-account path still works.
+        STRIPE_CONNECT_CLIENT_ID: Joi.string().allow('').default(''),
         GOOGLE_CLIENT_ID: Joi.string().allow('').default(''),
         GOOGLE_CLIENT_SECRET: Joi.string().allow('').default(''),
         GOOGLE_REDIRECT_URI: Joi.string().allow('').default(''),
