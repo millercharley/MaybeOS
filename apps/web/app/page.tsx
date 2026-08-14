@@ -185,9 +185,15 @@ export default function HomePage() {
       <footer className="border-t-[1.5px] border-ink">
         <div className="mx-auto flex max-w-container flex-wrap items-center justify-between gap-4 px-6 py-10">
           <Wordmark height={22} />
-          <p className="data text-xs text-ink-faint">
-            Built by a co-op, for co-ops · {new Date().getFullYear()}
-          </p>
+          <div className="data flex flex-wrap items-center gap-5 text-xs text-ink-faint">
+            <Link href="/privacy" className="hover:text-ink">
+              Privacy
+            </Link>
+            <Link href="/terms" className="hover:text-ink">
+              Terms
+            </Link>
+            <span>Built by a co-op, for co-ops · {new Date().getFullYear()}</span>
+          </div>
         </div>
       </footer>
     </div>
