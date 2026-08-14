@@ -31,7 +31,15 @@ if (dsn) {
     // short as possible so the flush in lambda.ts has little left to do.
     maxBreadcrumbs: 30,
 
+    // Never send names, emails, IPs or cookies inferred from the request.
+    sendDefaultPii: false,
+
     beforeSend(event) {
+      // No IP addresses leave the application. `sendDefaultPii: false` stops
+      // the SDK attaching one, but Sentry still infers it from the connection
+      // unless `user.ip_address` is explicitly null — so both are needed.
+      event.user = { ...(event.user ?? {}), ip_address: null as unknown as undefined };
+
       // Belt-and-braces scrub. Sentry masks common credential keys already,
       // but the Authorization header and the Supabase connection string would
       // both be genuinely damaging to leak into a third-party dashboard.

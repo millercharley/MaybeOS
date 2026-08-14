@@ -13,11 +13,17 @@ export const metadata: Metadata = {
  * Every claim here was checked against the code before it was written, because
  * this is the one document where a sentence that is *nearly* true is a lie
  * somebody may rely on. Where the product does something less absolute than
- * "we track nothing" — Sentry receiving an IP address, Stripe seeing a buyer's
- * email — it says so plainly rather than rounding in MaybeOS's favour.
+ * "we track nothing" — Stripe seeing a buyer's email, Postmark seeing an
+ * address — it says so plainly rather than rounding in MaybeOS's favour.
+ *
+ * The IP claim is the one that changed the product rather than the wording.
+ * Sentry used to receive the request IP and resolve it to a city; that was
+ * written down honestly first, then switched off (14 Aug 2026) so the stronger
+ * sentence could be true. Tightening a promise is only allowed in that order.
  *
  * The claims and where they come from:
  *   no analytics / ad tech  — nothing in apps/web; verified by search
+ *   no IP sent              — scrubEvent forces user.ip_address null; tested
  *   Sentry gets id only     — auth-store.ts, `Sentry.setUser({ id })`
  *   URLs scrubbed           — sentry.shared.ts, `scrubEvent` (OPS-07)
  *   members can't see each  — contact-visibility.ts (SEC-06)
@@ -31,7 +37,7 @@ export default function PrivacyPage() {
     <LegalPage
       title="Privacy"
       updated="14 August 2026"
-      summary="MaybeOS does not advertise, does not sell or share your data, and runs no analytics or tracking of any kind. What follows is the specific version of that — including the handful of companies that necessarily see something, and exactly what."
+      summary="MaybeOS does not advertise, does not sell or share your data, runs no analytics or tracking of any kind, and sends no IP addresses anywhere. What follows is the specific version of that — including the handful of companies that necessarily see something, and exactly what."
     >
       <Section heading="What we do not do">
         <ul className="list-disc space-y-2 pl-5">
@@ -53,6 +59,12 @@ export default function PrivacyPage() {
             <strong>No tracking cookies.</strong> MaybeOS sets no advertising or
             analytics cookies. Signing in stores a session token in your browser so
             you stay signed in; that is all it is for.
+          </li>
+          <li>
+            <strong>No IP addresses sent anywhere.</strong> Your network address is
+            not passed to any third party, including our error-reporting service —
+            not merely unused, but explicitly refused on every report, so nobody
+            downstream can resolve it to a location.
           </li>
           <li>
             <strong>No cross-co-op profiles.</strong> Co-ops are walled off from one
@@ -132,12 +144,13 @@ export default function PrivacyPage() {
           </li>
           <li>
             <strong>Sentry</strong> — receives error reports when something breaks.
-            This is the one worth being precise about: a report identifies you by an
-            internal account ID, <em>never</em> your name or email address, and is
-            cleared when you sign out. Reports do include the IP address the request
-            came from, which Sentry may resolve to a city. Web addresses and the
-            trail of actions leading to an error are stripped of sign-in links and
-            tokens before they are sent.
+            A report identifies you by an internal account ID, <em>never</em> your
+            name or email address, and is cleared when you sign out.{' '}
+            <strong>No IP address is sent</strong>, and none is inferred: we
+            explicitly refuse the network address on every report, so error
+            reporting cannot be used to locate anyone. Web addresses and the trail
+            of actions leading to an error are stripped of sign-in links and tokens
+            before they are sent.
           </li>
           <li>
             <strong>Google Calendar</strong> — only if your co-op connects a room

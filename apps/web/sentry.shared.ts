@@ -83,6 +83,18 @@ const IGNORED_ERRORS = [
 ];
 
 export function scrubEvent(event: ErrorEvent, _hint: EventHint): ErrorEvent | null {
+  // No IP addresses leave the application, which is what the privacy statement
+  // promises. Two things had to be true for that, not one:
+  //
+  //   - the SDK must not attach one (`sendDefaultPii: false`, the default), and
+  //   - Sentry must not *infer* one from the connection, which it does whenever
+  //     `user.ip_address` is absent or set to the sentinel "{{auto}}".
+  //
+  // Explicit null is the documented way to refuse the inference. Without it a
+  // report identified an anonymous visitor by their IP and resolved it to a
+  // city — which is precisely what this now prevents.
+  event.user = { ...(event.user ?? {}), ip_address: null as unknown as undefined };
+
   if (event.request) {
     if (event.request.url) {
       event.request.url = scrubUrl(event.request.url);
@@ -131,6 +143,11 @@ export function scrubBreadcrumb(crumb: Breadcrumb): Breadcrumb | null {
 
 /** Options that should be identical across every runtime. */
 export const sharedOptions = {
+  // Never send names, emails, IPs or cookies inferred from the request. This
+  // is the SDK default; stated explicitly because the privacy statement makes
+  // a promise about it and a default that changes silently would break it.
+  sendDefaultPii: false,
+
   environment: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
 
   // Traces are the expensive part of the quota and this is a small co-op
