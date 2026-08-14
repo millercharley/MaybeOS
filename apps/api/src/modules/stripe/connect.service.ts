@@ -9,6 +9,7 @@ import Stripe from 'stripe';
 import { PrismaService } from '../../config/prisma.service';
 import { priceTicket, priceBooking } from './ticket-pricing';
 import { CalendarService } from '../calendar/calendar.service';
+import { encodeState, decodeState } from './connect-oauth';
 
 /**
  * Stripe Connect: paying co-ops directly, and taking MaybeOS's cut (D-013).
@@ -49,6 +50,120 @@ export class ConnectService {
     // request and response shapes with no deploy and no diff to point at.
     { apiVersion: '2026-07-29.dahlia' },
     );
+  }
+
+
+  // ─── Connecting an existing Stripe account (PAY-05) ─────────
+
+  /**
+   * Where to send an admin who already has a Stripe account.
+   *
+   * The other path — `createOnboardingLink` — makes a *new* account, which is
+   * right for a co-op starting fresh and wrong for one that has been taking
+   * money for years. Forcing a second account on them means a second identity
+   * verification, a second bank connection, split books and two payout
+   * streams, for an organisation that already solved all of that.
+   *
+   * OAuth is Stripe's documented route for this: "if you're an application
+   * that needs access to an existing account so you can provide services to
+   * your users, you can still use OAuth". It links rather than creates.
+   */
+  buildOAuthUrl(orgId: string, userId: string): { url: string } {
+    const clientId = this.configService.get<string>('STRIPE_CONNECT_CLIENT_ID');
+    if (!clientId) {
+      // Named, because "connect failed" would send an organiser to support for
+      // something only Charley can fix.
+      throw new BadRequestException(
+        'MaybeOS is not configured to connect existing Stripe accounts yet (STRIPE_CONNECT_CLIENT_ID is unset)',
+      );
+    }
+
+    const secret = this.configService.get<string>('JWT_SECRET') ?? '';
+    const state = encodeState({ orgId, userId, issuedAt: Date.now() }, secret);
+
+    return {
+      url: this.stripe.oauth.authorizeUrl({
+        client_id: clientId,
+        response_type: 'code',
+        scope: 'read_write',
+        state,
+        // Direct charges on an account the co-op already controls, which is
+        // the same shape as the accounts MaybeOS creates.
+        stripe_user: {},
+      } as never),
+    };
+  }
+
+  /**
+   * Finish OAuth: turn the code Stripe sent back into a connected account.
+   *
+   * The org comes from the signed `state`, never from a query parameter —
+   * this endpoint is a browser redirect with no Authorization header, so a
+   * caller-supplied org id would let anyone point a completed OAuth at a co-op
+   * they do not run.
+   */
+  async completeOAuth(code: string, rawState: string | undefined) {
+    const secret = this.configService.get<string>('JWT_SECRET') ?? '';
+    const state = decodeState(rawState, secret);
+    if (!state) {
+      throw new BadRequestException(
+        'That Stripe connection link was invalid or has expired. Start again from Settings.',
+      );
+    }
+
+    const org = await this.prisma.organization.findUnique({
+      where: { id: state.orgId },
+      omit: { stripeAccountId: false },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    if (org.stripeAccountId) {
+      throw new BadRequestException(
+        'This co-op already has a Stripe account connected. Disconnect it first.',
+      );
+    }
+
+    let accountId: string;
+    try {
+      const token = await this.stripe.oauth.token({
+        grant_type: 'authorization_code',
+        code,
+      });
+      accountId = token.stripe_user_id as string;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`OAuth token exchange failed for org ${state.orgId}: ${message}`);
+      throw new BadRequestException('Stripe refused that connection. Please try again.');
+    }
+
+    if (!accountId) {
+      throw new BadRequestException('Stripe did not return an account id');
+    }
+
+    // One Stripe account cannot serve two co-ops: their money and their
+    // refunds would be indistinguishable, and the second co-op could refund
+    // the first one's charges.
+    const taken = await this.prisma.organization.findFirst({
+      where: { stripeAccountId: accountId, NOT: { id: state.orgId } },
+      select: { id: true },
+    });
+    if (taken) {
+      throw new BadRequestException(
+        'That Stripe account is already connected to another co-op on MaybeOS.',
+      );
+    }
+
+    await this.prisma.organization.update({
+      where: { id: state.orgId },
+      data: { stripeAccountId: accountId },
+    });
+    this.logger.log(`Connected existing Stripe account to org ${state.orgId} via OAuth`);
+
+    // Ask Stripe what the account can actually do rather than assuming a
+    // connected account is a ready one.
+    const status = await this.refreshAccountStatus(state.orgId);
+
+    return { orgId: state.orgId, ...status };
   }
 
   /**

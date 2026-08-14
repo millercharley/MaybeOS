@@ -37,6 +37,23 @@ export class ConnectController {
     return this.connectService.createOnboardingLink(orgId, dto.returnUrl, dto.refreshUrl);
   }
 
+  /**
+   * Send an admin who already has Stripe to Stripe's own authorize page
+   * (PAY-05). Same permission as creating an account: connecting one is the
+   * co-op agreeing to take money in its name.
+   */
+  @Post('connect/oauth/start')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Connect an existing Stripe account' })
+  startOAuth(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.connectService.buildOAuthUrl(orgId, user.userId);
+  }
+
   @Get('connect/status')
   @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
   @Roles('ADMIN', 'STAFF')

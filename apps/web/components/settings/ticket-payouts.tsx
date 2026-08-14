@@ -68,6 +68,27 @@ export function TicketPayouts({ org, onSaved }: { org: Org; onSaved?: () => void
     }
   }
 
+  /**
+   * For a co-op that already has Stripe (PAY-05).
+   *
+   * The other button makes a *new* Stripe account, which is right for a co-op
+   * starting fresh and wrong for one that has been taking money for years —
+   * a second account means a second identity check, a second bank connection
+   * and two sets of books for one organisation.
+   */
+  async function connectExisting() {
+    if (!token || !orgId) return;
+    setBusy(true);
+    setError('');
+    try {
+      const { url } = await api.connect.startOAuth(orgId, token);
+      window.location.assign(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not start that');
+      setBusy(false);
+    }
+  }
+
   async function saveFee() {
     if (!token || !orgId) return;
     const cents = Math.round(Number(fee) * 100);
@@ -132,16 +153,57 @@ export function TicketPayouts({ org, onSaved }: { org: Org; onSaved?: () => void
               ))}
             </ul>
           )}
-          <button
-            type="button"
-            onClick={connect}
-            disabled={busy}
-            className="btn-primary mt-3 inline-flex items-center gap-2 text-sm"
-          >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-            {status?.connected ? 'Finish setup on Stripe' : 'Connect Stripe'}
-            <ExternalLink className="h-3.5 w-3.5" />
-          </button>
+          {status?.connected ? (
+            // Mid-onboarding: there is one account and it needs finishing.
+            // Offering a choice here would suggest they could start over.
+            <button
+              type="button"
+              onClick={connect}
+              disabled={busy}
+              className="btn-primary mt-3 inline-flex items-center gap-2 text-sm"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+              Finish setup on Stripe
+              <ExternalLink className="h-3.5 w-3.5" />
+            </button>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {/*
+                Already-have-Stripe first, deliberately. Most co-ops with any
+                history have an account, and the costly mistake is creating a
+                second one before noticing the option to link the first.
+              */}
+              <button
+                type="button"
+                onClick={connectExisting}
+                disabled={busy}
+                className="btn-primary inline-flex w-full items-center justify-center gap-2 text-sm sm:w-auto"
+              >
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                Connect an existing Stripe account
+                <ExternalLink className="h-3.5 w-3.5" />
+              </button>
+
+              <div>
+                <button
+                  type="button"
+                  onClick={connect}
+                  disabled={busy}
+                  className="btn-secondary inline-flex w-full items-center justify-center gap-2 text-sm sm:w-auto"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Create a new one
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </button>
+                <p className="mt-1.5 text-xs text-gray-500">
+                  Already take payments through Stripe? Connect that account —
+                  your existing bank details, payouts and records stay in one
+                  place. Only create a new one if your co-op has never used
+                  Stripe.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

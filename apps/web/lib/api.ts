@@ -763,6 +763,16 @@ class ApiClient {
         token,
       }),
 
+    /**
+     * Connect a Stripe account the co-op already has (PAY-05), rather than
+     * being made a new one. Returns Stripe's authorize URL to redirect to.
+     */
+    startOAuth: (orgId: string, token: string) =>
+      this.request<{ url: string }>(`/orgs/${orgId}/connect/oauth/start`, {
+        method: 'POST',
+        token,
+      }),
+
     refundTicket: (orgId: string, ticketId: string, token: string) =>
       this.request<{ refunded: boolean; reason?: string }>(
         `/orgs/${orgId}/tickets/${ticketId}/refund`,
