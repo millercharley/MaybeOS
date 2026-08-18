@@ -6,6 +6,7 @@ import { Plus, MapPin, Users, Clock, Eye, EyeOff, X, Lock, Pencil } from 'lucide
 import { useApi } from '@/hooks/use-api';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Event } from '@/lib/api';
+import { toUpdatePayload } from '@/lib/events';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
 
 type FilterTab = 'all' | 'upcoming' | 'past' | 'draft';
@@ -50,7 +51,18 @@ export default function EventsPage() {
     setBusy(true);
     setFormError('');
     try {
-      await api.events.update(orgId, editing.id, values, token);
+      // `publish` is a create-only field: UpdateEventDto does not accept it and
+      // the API rejects the whole request with "property publish should not
+      // exist", so an edit failed outright rather than saving. Publishing is
+      // its own endpoint precisely because going live is a distinct act from
+      // correcting a date.
+      await api.events.update(orgId, editing.id, toUpdatePayload(values), token);
+
+      // Editing a draft and choosing publish should still publish it.
+      if (values.publish && !editing.isPublished) {
+        await api.events.publish(orgId, editing.id, token);
+      }
+
       setEditing(null);
       refetch();
     } catch (err) {
@@ -141,6 +153,7 @@ export default function EventsPage() {
             // the wrong values.
             key={editing?.id ?? 'new'}
             initial={editing ?? undefined}
+            alreadyPublished={Boolean(editing?.isPublished)}
             submitLabel={editing ? 'Save changes' : 'Create event'}
             busy={busy}
             error={formError}
