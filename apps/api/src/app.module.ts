@@ -35,6 +35,12 @@ import { HealthModule } from './modules/health/health.module';
         SENTRY_DSN: Joi.string().allow('').default(''),
         STRIPE_SECRET_KEY: Joi.string().allow('').default(''),
         STRIPE_WEBHOOK_SECRET: Joi.string().allow('').default(''),
+        // The signing secret of the *Connect* webhook endpoint, which listens
+        // to connected accounts. Ticket and room-hire charges are direct
+        // charges on the co-op's account, so their events only ever reach a
+        // Connect endpoint — and Stripe signs those with a different secret
+        // than the platform endpoint, even when both point at the same URL.
+        STRIPE_CONNECT_WEBHOOK_SECRET: Joi.string().allow('').default(''),
         // The platform's Connect client id (ca_...), which lets a co-op link a
         // Stripe account it already has instead of being made a second one
         // (PAY-05). Unset simply means that option is unavailable and the
