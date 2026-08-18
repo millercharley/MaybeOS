@@ -24,6 +24,21 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-027 — No page names a specific co-op
+
+- **Date:** 2026-08-18
+- **Status:** Active
+- **Area:** Frontend, Multi-tenancy, Testing
+- **Trigger:** On 2026-08-18 a member signed in to maybeos.org, followed the events link from his own dashboard, and was told `Organization with slug "sunrise" not found`. Two public pages called the API with the literal `'sunrise'`, an org existing only in the dev database. Neither had ever been capable of working in production, and both were reachable from four places including the member dashboard and the RSVPs list.
+- **Decision:** **No page, component or hook may contain an organization identifier as a literal** — neither slug nor uuid. An org identifier is always something a surface is *given*: by its route (`/portal/[orgSlug]`), by the signed-in member's selected org, or by the hostname once SCL-01's wildcard DNS exists. Enforced by `apps/web/__tests__/no-hardcoded-org.spec.ts`, which fails the build rather than relying on review.
+- **Why this is worth a rule rather than a fix:** the defect was not a wrong slug, it was a **single-tenant assumption surviving into a multi-tenant app**. MaybeOS serves many co-ops; a page that knows which one it is about is wrong even when the literal happens to be right. That class of bug fails *only* in the environment nobody develops in, which is precisely why it survived from the day it was written until a real member hit it.
+- **Why a test rather than a convention:** the same reasoning as OPS-11's connection limit. A rule that lives only in someone's memory is one that gets lost; this one now fails on the commit that introduces it. The test is validated in both directions — it catches the two real offenders taken from git history, and reintroducing the call makes it fail naming the exact file and line — so it cannot pass while enforcing nothing. A third case pins the known-bad samples and asserts the correct shapes do *not* match, so it cannot be "fixed" by weakening it until everything passes.
+- **Known limit, recorded honestly:** it is a lexical check, not a type-level one. It catches the literal-argument and pasted-uuid shapes that actually occurred; it would not catch an org identifier assembled from a constant or read from a config file. That is an acceptable ceiling for a guard costing under a second, not a claim of completeness.
+- **Alternatives rejected:** *Code review* — this shipped through review already. *A lint rule* — more precise, but needs a custom ESLint plugin for one pattern, and a test is readable by whoever hits it. *Branding org ids in the type system* — genuinely stronger and worth doing if this recurs, but a much larger change, and it would not have caught the slug case, which is a plain string by nature.
+- **Supersedes:** none.
+
+---
+
 ### D-026 — Two kinds of connected Stripe account, each asked its own question
 
 - **Date:** 2026-08-18
