@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Calendar, Users } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { usePublicApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
+import { ticketCost, describeFees, money } from '@/lib/fees';
 
 export default function PortalEventsPage() {
   const { org } = usePortal();
@@ -33,6 +34,63 @@ export default function PortalEventsPage() {
           : api.events.listPublic(org.id),
     [org?.id, isMember, token],
   );
+
+  /**
+   * What Stripe sent them back with.
+   *
+   * A buyer who has just paid needs to be told so. There was a confirmation
+   * screen for this on the old public event page, and that page was deleted
+   * with the hardcoded org it was wired to (OPS-22) — so the acknowledgement
+   * went with it and `?purchased=1` was being written and read by nobody.
+   *
+   * Deliberately says the ticket is *confirmed*, not that it exists: the
+   * ticket is written by the webhook, which may land a moment after the
+   * redirect. Claiming a row that is not there yet would be the one lie a
+   * payment screen must not tell.
+   */
+  const [returned, setReturned] = useState<'purchased' | 'cancelled' | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('purchased') === '1') setReturned('purchased');
+    else if (params.get('purchase') === 'cancelled') setReturned('cancelled');
+  }, []);
+
+  const [buyingId, setBuyingId] = useState<string | null>(null);
+  const [buyError, setBuyError] = useState<Record<string, string>>({});
+
+  /**
+   * Send a buyer to Stripe for a ticketed event.
+   *
+   * The charge is created on the co-op's own connected account, so the co-op
+   * is the merchant and MaybeOS's cut rides along as the application fee
+   * (D-013). Nothing is recorded here: the ticket is written by the
+   * `checkout.session.completed` webhook, never on the redirect back, because
+   * a buyer who closes the tab has still paid.
+   */
+  async function handleBuy(eventId: string) {
+    if (!org) return;
+    setBuyingId(eventId);
+    setBuyError((e) => ({ ...e, [eventId]: '' }));
+    try {
+      const here = `${window.location.origin}${window.location.pathname}`;
+      const { url } = await api.events.buyTicket(
+        org.id,
+        eventId,
+        { successUrl: `${here}?purchased=1`, cancelUrl: `${here}?purchase=cancelled` },
+        token ?? undefined,
+      );
+      window.location.assign(url);
+    } catch (err) {
+      // Left on the page with a reason, rather than a dead button. The common
+      // one is a co-op that has not finished Stripe onboarding.
+      setBuyError((e) => ({
+        ...e,
+        [eventId]: err instanceof Error ? err.message : 'Could not start checkout',
+      }));
+      setBuyingId(null);
+    }
+  }
 
   async function handleRsvp(eventId: string) {
     if (!token || !org) return;
@@ -69,6 +127,25 @@ export default function PortalEventsPage() {
   return (
     <div className="space-y-8">
       <h1 className="text-2xl font-bold text-gray-900">Events</h1>
+
+      {returned === 'purchased' && (
+        <div className="rounded-xl border border-green-200 bg-green-50 p-4" role="status">
+          <p className="text-sm font-medium text-green-800">Payment received — thank you.</p>
+          <p className="mt-1 text-sm text-green-700">
+            Your ticket is confirmed and a receipt is on its way from Stripe. If it does not
+            appear in your RSVPs within a minute or two, tell an organiser — your payment
+            went through either way.
+          </p>
+        </div>
+      )}
+
+      {returned === 'cancelled' && (
+        <div className="rounded-xl border border-gray-200 bg-white p-4" role="status">
+          <p className="text-sm text-gray-600">
+            Checkout cancelled — you have not been charged.
+          </p>
+        </div>
+      )}
 
       {upcoming.length === 0 && past.length === 0 && (
         <p className="py-12 text-center text-sm text-gray-500">No events yet.</p>
@@ -113,7 +190,49 @@ export default function PortalEventsPage() {
                   </div>
                 </div>
                 <div className="ml-4 shrink-0">
-                  {token ? (
+                  {/* Charley's call: on a ticketed event, buying *is* the
+                      action. An RSVP beside a price is two ways to say you are
+                      coming, only one of which pays the co-op. */}
+                  {event.priceCents ? (
+                    (() => {
+                      const cost = ticketCost({
+                        ticketCents: event.priceCents,
+                        plan: org?.plan,
+                        orgFeeCents: org?.ticketFeeCents ?? 0,
+                      });
+                      const fees = describeFees(cost);
+
+                      if (!org?.stripeChargesEnabled) {
+                        return (
+                          <span className="text-xs text-gray-400">
+                            Tickets aren&apos;t on sale yet
+                          </span>
+                        );
+                      }
+
+                      return (
+                        <div className="text-right">
+                          <button
+                            onClick={() => handleBuy(event.id)}
+                            disabled={buyingId === event.id}
+                            className="btn-primary text-sm"
+                          >
+                            {buyingId === event.id
+                              ? 'Opening checkout...'
+                              : `Buy ticket · ${money(cost.totalCents)}`}
+                          </button>
+                          {/* Named before they leave the page, not discovered
+                              on Stripe's. */}
+                          {fees && <p className="mt-1 text-xs text-gray-400">{fees}</p>}
+                          {buyError[event.id] && (
+                            <p className="mt-1 max-w-[14rem] text-xs text-red-600" role="alert">
+                              {buyError[event.id]}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()
+                  ) : token ? (
                     rsvpStatus[event.id] ? (
                       <span
                         className={`text-sm font-medium ${
