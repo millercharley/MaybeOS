@@ -12,6 +12,9 @@ type FlatResult =
   | { kind: 'event'; id: string; label: string }
   | { kind: 'page'; id: string; label: string; collectionName: string };
 
+/** Dispatch on `window` to open the palette from anywhere. */
+export const OPEN_SEARCH_EVENT = 'maybeos:open-search';
+
 export function CommandPalette() {
   const router = useRouter();
   const token = useAuthStore((s) => s.token);
@@ -32,8 +35,21 @@ export function CommandPalette() {
         setOpen(false);
       }
     }
+    // The header's Search control is rendered by the layout, not here, so it
+    // has no way to reach this state. It looked like a button and did nothing
+    // on click — the shortcut was the only way in, which is invisible to
+    // anyone who has not been told about it. An event keeps the two decoupled
+    // without lifting this state through the layout.
+    function onOpenRequest() {
+      setOpen(true);
+    }
+
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    window.addEventListener(OPEN_SEARCH_EVENT, onOpenRequest);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener(OPEN_SEARCH_EVENT, onOpenRequest);
+    };
   }, []);
 
   useEffect(() => {
