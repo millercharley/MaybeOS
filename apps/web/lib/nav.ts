@@ -116,3 +116,54 @@ export function navSectionsFor(membership?: NavMembership | null): NavSection[] 
     { label: 'My membership', items: memberNav.slice(1) },
   ];
 }
+
+/**
+ * The portal's left column (option B, Charley 2026-08-18).
+ *
+ * The portal is "the portal and core user experience", and it previously had
+ * its own top-bar nav while the dashboard had a left sidebar — so a member
+ * moving between their co-op and their own settings changed chrome, and
+ * neither surface offered a route to the other. One column carries both.
+ *
+ * The hard constraint is that **the portal is public**. A signed-out visitor
+ * is a legitimate viewer of a co-op's page, so the co-op section renders for
+ * everyone and only the personal and organiser sections depend on a session.
+ * Building the whole thing behind a token check would have hidden a co-op's
+ * public face from the public.
+ */
+export function portalSectionsFor({
+  orgSlug,
+  membership,
+  signedIn,
+}: {
+  orgSlug: string;
+  membership?: NavMembership | null;
+  signedIn: boolean;
+}): NavSection[] {
+  const base = `/portal/${orgSlug}`;
+
+  const sections: NavSection[] = [
+    {
+      items: [
+        { href: base, label: 'Home', icon: LayoutDashboard },
+        { href: `${base}/events`, label: 'Events', icon: Calendar },
+        { href: `${base}/rooms`, label: 'Rooms', icon: DoorOpen },
+        { href: `${base}/commons`, label: 'Commons', icon: MessageSquare },
+        { href: `${base}/directory`, label: 'Directory', icon: Users },
+      ],
+    },
+  ];
+
+  if (!signedIn) return sections;
+
+  const role = membership?.role;
+  if (role === 'ADMIN' || role === 'STAFF') {
+    sections.push({ label: 'Organising', items: adminNav });
+  }
+
+  // `memberNav` already leads with the member's own dashboard, which is the
+  // way back out of the portal and into their settings.
+  sections.push({ label: 'My membership', items: memberNav });
+
+  return sections;
+}

@@ -1,4 +1,4 @@
-import { navSectionsFor } from '@/lib/nav';
+import { navSectionsFor, portalSectionsFor } from '@/lib/nav';
 
 /**
  * A member must have a route to their own co-op.
@@ -70,5 +70,56 @@ describe('the member sidebar', () => {
     expect(links).toContain('/admin/commons');
     expect(links.some((h) => h.startsWith('/portal/'))).toBe(false);
     expect(links.some((h) => h.startsWith('/member'))).toBe(false);
+  });
+});
+
+/**
+ * The portal's own column (option B).
+ *
+ * One nav now carries both the co-op and the member's settings, so the two
+ * halves of the product stop being separate apps. The constraint that shapes
+ * it: **the portal is public**. A signed-out visitor is a legitimate viewer of
+ * a co-op's page, so hiding the co-op section behind a session would hide a
+ * co-op's public face from the public — which is the failure worth pinning.
+ */
+describe('the portal sidebar', () => {
+  const hrefs = (sections: ReturnType<typeof portalSectionsFor>) =>
+    sections.flatMap((s) => s.items.map((i) => i.href));
+
+  const member = { role: 'MEMBER', org: { name: 'MaybeItsFate', slug: 'maybeitsfate' } };
+
+  it('shows a signed-out visitor the co-op, and nothing personal', () => {
+    const links = hrefs(portalSectionsFor({ orgSlug: 'maybeitsfate', signedIn: false }));
+
+    expect(links).toContain('/portal/maybeitsfate/commons');
+    expect(links).toContain('/portal/maybeitsfate/events');
+    // A visitor has no membership and no admin; offering either would be a
+    // guaranteed redirect to the sign-in page.
+    expect(links.some((h) => h.startsWith('/member'))).toBe(false);
+    expect(links.some((h) => h.startsWith('/admin'))).toBe(false);
+  });
+
+  it('gives a signed-in member a route back to their own settings', () => {
+    const links = hrefs(portalSectionsFor({ orgSlug: 'maybeitsfate', membership: member, signedIn: true }));
+
+    expect(links).toContain('/portal/maybeitsfate/commons');
+    expect(links).toContain('/member');
+    expect(links).toContain('/member/profile');
+    expect(links.some((h) => h.startsWith('/admin'))).toBe(false);
+  });
+
+  it('gives an organiser the admin tools without taking away the co-op', () => {
+    const organiser = { role: 'ADMIN', org: { name: 'MaybeItsFate', slug: 'maybeitsfate' } };
+    const sections = portalSectionsFor({ orgSlug: 'maybeitsfate', membership: organiser, signedIn: true });
+    const links = hrefs(sections);
+
+    expect(links).toContain('/admin/members');
+    expect(links).toContain('/portal/maybeitsfate/commons');
+    expect(sections.map((s) => s.label)).toEqual(expect.arrayContaining(['Organising', 'My membership']));
+  });
+
+  it('points Home at the portal root rather than a sub-page', () => {
+    const links = hrefs(portalSectionsFor({ orgSlug: 'maybeitsfate', signedIn: false }));
+    expect(links).toContain('/portal/maybeitsfate');
   });
 });
