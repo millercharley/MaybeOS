@@ -2,10 +2,10 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Plus, MapPin, Users, Clock, Eye, EyeOff, X } from 'lucide-react';
+import { Plus, MapPin, Users, Clock, Eye, EyeOff, X, Lock, Pencil } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
 import { useAuthStore } from '@/lib/auth-store';
-import { api } from '@/lib/api';
+import { api, Event } from '@/lib/api';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
 
 type FilterTab = 'all' | 'upcoming' | 'past' | 'draft';
@@ -20,6 +20,10 @@ const tabs: { key: FilterTab; label: string }[] = [
 export default function EventsPage() {
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
   const [creating, setCreating] = useState(false);
+  // The event being edited, or null. Editing did not exist at all: the only
+  // route off this page was the door list, so an event created with the wrong
+  // date, price or visibility could never be corrected — only cancelled.
+  const [editing, setEditing] = useState<Event | null>(null);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
   const token = useAuthStore((s) => s.token);
@@ -40,6 +44,21 @@ export default function EventsPage() {
     (token, orgId) => api.members.list(orgId, token, 1, 100),
     [],
   );
+
+  async function saveEdit(values: EventFormValues) {
+    if (!token || !orgId || !editing) return;
+    setBusy(true);
+    setFormError('');
+    try {
+      await api.events.update(orgId, editing.id, values, token);
+      setEditing(null);
+      refetch();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Could not save that');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function create(values: EventFormValues) {
     if (!token || !orgId) return;
@@ -101,13 +120,15 @@ export default function EventsPage() {
         )}
       </div>
 
-      {creating && (
+      {(creating || editing) && (
         <section className="card">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-gray-900">New event</h2>
+            <h2 className="text-base font-semibold text-gray-900">
+              {editing ? `Edit ${editing.title}` : 'New event'}
+            </h2>
             <button
               type="button"
-              onClick={() => setCreating(false)}
+              onClick={() => { setCreating(false); setEditing(null); }}
               className="text-gray-400 hover:text-gray-600"
               aria-label="Close"
             >
@@ -115,10 +136,16 @@ export default function EventsPage() {
             </button>
           </div>
           <EventForm
+            // Remounted per event so the fields reload; without the key, React
+            // keeps the previous event's state and an edit silently opens on
+            // the wrong values.
+            key={editing?.id ?? 'new'}
+            initial={editing ?? undefined}
+            submitLabel={editing ? 'Save changes' : 'Create event'}
             busy={busy}
             error={formError}
-            onSubmit={create}
-            onCancel={() => setCreating(false)}
+            onSubmit={editing ? saveEdit : create}
+            onCancel={() => { setCreating(false); setEditing(null); }}
             plan={org?.plan ?? 'FREE'}
             orgFeeCents={org?.ticketFeeCents ?? 0}
             canSellTickets={Boolean(org?.stripeChargesEnabled)}
@@ -203,14 +230,38 @@ export default function EventsPage() {
                 </div>
               </div>
 
-              <div className="mt-4 flex items-center gap-2 border-t border-gray-100 pt-3">
+              <button
+                type="button"
+                onClick={(e) => {
+                  // Inside the card's <Link>: without both of these, editing
+                  // navigates to the door list instead of opening the form.
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setCreating(false);
+                  setEditing(event);
+                }}
+                className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-brand-600"
+              >
+                <Pencil className="h-3 w-3" /> Edit
+              </button>
+
+              <div className="mt-2 flex items-center gap-2 border-t border-gray-100 pt-3">
+                {/* Three visibilities, and this drew two: everything that was
+                    not PUBLIC was labelled "Members Only", so a PRIVATE event
+                    told its organiser it was members-only. Charley created the
+                    first real event, read this badge, and reasonably concluded
+                    the portal was broken when it did not appear. */}
                 {event.visibility === 'PUBLIC' ? (
                   <span className="inline-flex items-center gap-1 text-xs text-gray-500">
                     <Eye className="h-3 w-3" /> Public
                   </span>
-                ) : (
+                ) : event.visibility === 'MEMBERS_ONLY' ? (
                   <span className="inline-flex items-center gap-1 text-xs text-gray-500">
-                    <EyeOff className="h-3 w-3" /> Members Only
+                    <EyeOff className="h-3 w-3" /> Members only
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-xs text-amber-700">
+                    <Lock className="h-3 w-3" /> Just you — not listed
                   </span>
                 )}
 

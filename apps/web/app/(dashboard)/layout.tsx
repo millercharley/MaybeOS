@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { Lock } from 'lucide-react';
 import { useEffect } from 'react';
 import { Sidebar } from '@/components/layout/sidebar';
-import { CommandPalette } from '@/components/layout/command-palette';
+import { CommandPalette, OPEN_SEARCH_EVENT } from '@/components/layout/command-palette';
 import { useAuthStore } from '@/lib/auth-store';
 import { OrgSetup } from '@/components/setup/org-setup';
 
@@ -115,10 +115,17 @@ export default function DashboardLayout({
               </>
             )}
           </nav>
-          <div className="ml-auto flex items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-400">
+          {/* Was a div: it looked exactly like a button and did nothing when
+              clicked, so the only way to search was a shortcut nobody had been
+              told about. */}
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event(OPEN_SEARCH_EVENT))}
+            className="ml-auto flex items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-400 transition-colors hover:border-gray-300 hover:text-gray-600"
+          >
             <span>Search</span>
             <kbd className="rounded border border-gray-200 bg-gray-50 px-1 font-sans">⌘K</kbd>
-          </div>
+          </button>
         </header>
 
         <main className="flex-1 overflow-auto">
