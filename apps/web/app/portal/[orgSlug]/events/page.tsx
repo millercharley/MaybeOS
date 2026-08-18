@@ -10,15 +10,28 @@ import { api } from '@/lib/api';
 export default function PortalEventsPage() {
   const { org } = usePortal();
   const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
   const [rsvpingId, setRsvpingId] = useState<string | null>(null);
   // What the API actually decided, per event — not merely that a request
   // was made. A waitlisted place and a confirmed one are different news.
   const [rsvpStatus, setRsvpStatus] = useState<Record<string, 'CONFIRMED' | 'WAITLISTED'>>({});
   const [rsvpError, setRsvpError] = useState<Record<string, string>>({});
 
+  // A member of *this* co-op sees its members-only events too. Anonymous
+  // visitors, and members of some other co-op, see only what is public.
+  // Without this the portal showed the public list to everybody, while a new
+  // event defaults to MEMBERS_ONLY — so a co-op's own events were invisible
+  // to its own members and the page looked empty rather than restricted.
+  const isMember = Boolean(org && user?.orgs?.some((o) => o.orgId === org.id));
+
   const { data: events, loading } = usePublicApi(
-    () => (org ? api.events.listPublic(org.id) : Promise.resolve([])),
-    [org?.id],
+    () =>
+      !org
+        ? Promise.resolve([])
+        : isMember && token
+          ? api.events.listVisible(org.id, token)
+          : api.events.listPublic(org.id),
+    [org?.id, isMember, token],
   );
 
   async function handleRsvp(eventId: string) {

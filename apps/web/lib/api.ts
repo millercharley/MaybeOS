@@ -371,6 +371,21 @@ class ApiClient {
     },
 
     /**
+     * The portal listing for a signed-in member: published, uncancelled, and
+     * widened from PUBLIC to include MEMBERS_ONLY. `listPublic` is what an
+     * anonymous visitor sees, and a new event defaults to MEMBERS_ONLY — so
+     * showing every viewer the public list made a co-op's own events invisible
+     * to its own members.
+     */
+    listVisible: async (orgId: string, token: string): Promise<Event[]> => {
+      const res = await this.request<PaginatedResponse<Event>>(
+        `/orgs/${orgId}/events/visible`,
+        { token },
+      );
+      return res.data;
+    },
+
+    /**
      * The same list, addressed by slug.
      *
      * The public pages know a co-op by its slug — that is what sits in the URL

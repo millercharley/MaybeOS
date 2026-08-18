@@ -96,6 +96,42 @@ export class EventsController {
     });
   }
 
+  /* ─── List Events Visible to a Member ──────────────────────── */
+
+  /**
+   * The portal listing for somebody signed in to this co-op.
+   *
+   * A sibling of the anonymous route rather than an optional-auth version of
+   * it: that route is deliberately incapable of returning anything unpublished
+   * or non-public, and making its behaviour depend on a header would make it
+   * harder to reason about than adding one guarded route.
+   *
+   * Not `listByOrg`, which returns drafts and cancelled events — correct for
+   * an organiser's console, wrong for the page members read.
+   */
+  @Get('orgs/:orgId/events/visible')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List published events visible to a member' })
+  async listVisibleEvents(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Query() query: ListEventsQueryDto,
+  ) {
+    // Same rule as the anonymous route: the caller does not name a visibility.
+    // Membership is proven by the guard, not claimed by a query parameter.
+    return this.eventsService.listPublicEvents(
+      orgId,
+      {
+        category: query.category,
+        from: query.from,
+        to: query.to,
+        page: query.page,
+        perPage: query.perPage,
+      },
+      true,
+    );
+  }
+
   /* ─── JSON Feed (no auth, cached) ──────────────────────────── */
 
   @Get('orgs/:orgId/events/feed.json')

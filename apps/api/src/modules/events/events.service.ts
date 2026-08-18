@@ -495,6 +495,24 @@ export class EventsService {
 
   /* ─── List Public Events ────────────────────────────────────── */
 
+  /**
+   * What a viewer may see on a co-op's portal.
+   *
+   * `viewerIsMember` widens this from PUBLIC to PUBLIC + MEMBERS_ONLY, and
+   * nothing else — the caller never names a visibility, so a member cannot ask
+   * for PRIVATE and an anonymous request cannot ask for anything.
+   *
+   * The default for a new event is MEMBERS_ONLY (`create`, above), and this
+   * listing was PUBLIC-only for everybody. So a co-op creating an event the
+   * ordinary way got one that was **invisible on its own portal, to its own
+   * members** — and would reasonably conclude events were broken rather than
+   * that the default and the listing disagreed. Charley hit exactly that on
+   * 2026-08-18 with the first real event.
+   *
+   * PRIVATE stays unlisted for everyone, which is what the word promises. A
+   * member can still open one by id — `getPublicEvent`'s member branch allows
+   * it — so PRIVATE means "not advertised", not "sealed".
+   */
   async listPublicEvents(
     orgId: string,
     filters: {
@@ -504,6 +522,7 @@ export class EventsService {
       page?: number;
       perPage?: number;
     },
+    viewerIsMember = false,
   ) {
     const page = filters.page ?? 1;
     const perPage = filters.perPage ?? 20;
@@ -511,7 +530,7 @@ export class EventsService {
 
     const where: any = {
       orgId,
-      visibility: 'PUBLIC',
+      visibility: viewerIsMember ? { in: ['PUBLIC', 'MEMBERS_ONLY'] } : 'PUBLIC',
       isPublished: true,
       canceledAt: null,
     };
