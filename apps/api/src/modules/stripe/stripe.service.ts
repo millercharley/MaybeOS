@@ -498,9 +498,21 @@ export class StripeService {
     // the claim rolls back with the work and the error propagates, so Stripe
     // retries on its own schedule.
     //
-    // Requires a session-mode connection: Prisma interactive transactions do
-    // not work over PgBouncer in transaction mode. See D-010 — DATABASE_URL is
-    // deliberately the Supabase session pooler (5432), not 6543.
+    // This block used to carry a warning that it required a session-mode
+    // connection, because Prisma interactive transactions were said not to
+    // survive PgBouncer in transaction mode (D-014, D-018). It is left
+    // corrected rather than deleted, because the warning was worse than
+    // merely stale: acting on it means moving DATABASE_URL back to port
+    // 5432, and that pooler's 15-client ceiling is what took production down
+    // twice in OPS-11.
+    //
+    // Supavisor in transaction mode pins one server connection for the whole
+    // of a transaction, so BEGIN…COMMIT holds together across round trips.
+    // Measured rather than argued: event evt_1U48zSD14bhghVE2djZUee8A was
+    // written by this transaction and committed at 00:29 UTC on 2026-08-14,
+    // eighteen minutes after the redeploy that moved DATABASE_URL to the
+    // transaction pooler (6543). The row is created here and nowhere else, so
+    // it could not exist if the transaction had failed.
     try {
       await this.prisma.$transaction(async (tx) => {
         await tx.webhookEvent.create({
