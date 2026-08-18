@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
+import { Prisma } from '@prisma/client';
 import { StripeAccountApi } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { priceTicket, priceBooking } from './ticket-pricing';
@@ -510,16 +511,39 @@ export class ConnectService {
    * The unique index on `stripeSessionId` is the idempotency guard — Stripe
    * retries, and a duplicate delivery must not sell the same seat twice.
    */
-  async recordTicketFromSession(session: Stripe.Checkout.Session) {
+  /**
+   * Record a paid ticket, inside the caller's transaction.
+   *
+   * `db` is the webhook's transaction client, and threading it through is not
+   * tidiness — it is the difference between this working and not. The webhook
+   * claim and the work it authorises must commit together (D-014), and these
+   * writes used to go through `this.prisma`, which asks the pool for a *second*
+   * connection while the transaction is holding the only one the runtime
+   * allows (`connection_limit=1`, D-018).
+   *
+   * The result was the worst-shaped failure available: the ticket committed on
+   * its own connection, then the transaction blew its 5s budget waiting —
+   * `5064 ms passed since the start of the transaction` — and rolled back the
+   * claim. Stripe saw a non-2xx, retried, and failed identically. The buyer had
+   * a ticket, the co-op had the money, and the webhook was in a retry loop that
+   * would run until Stripe gave up. Nothing on any screen said so.
+   *
+   * Found on 2026-08-18 by the first real ticket sale, which looked like a
+   * success from every angle except the one that mattered.
+   */
+  async recordTicketFromSession(
+    session: Stripe.Checkout.Session,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
     const meta = session.metadata ?? {};
     if (meta.kind !== 'event_ticket') return null;
 
-    const existing = await this.prisma.ticket.findUnique({
+    const existing = await db.ticket.findUnique({
       where: { stripeSessionId: session.id },
     });
     if (existing) return existing;
 
-    const ticket = await this.prisma.ticket.create({
+    const ticket = await db.ticket.create({
       data: {
         eventId: meta.eventId,
         userId: meta.userId || null,
@@ -538,13 +562,13 @@ export class ConnectService {
     // A ticket is also an RSVP. Buying one and then being asked to say whether
     // you are coming would be absurd, and the door list reads RSVPs.
     if (meta.userId) {
-      await this.prisma.rsvp.upsert({
+      await db.rsvp.upsert({
         where: { eventId_userId: { eventId: meta.eventId, userId: meta.userId } },
         create: { eventId: meta.eventId, userId: meta.userId, status: 'CONFIRMED' },
         update: { status: 'CONFIRMED' },
       });
     } else {
-      await this.prisma.rsvp.create({
+      await db.rsvp.create({
         data: {
           eventId: meta.eventId,
           guestEmail: ticket.buyerEmail,
@@ -772,7 +796,14 @@ export class ConnectService {
    * A room that requires approval goes to PENDING, not APPROVED — paying does
    * not overrule an organiser. Rejecting it refunds.
    */
-  async confirmBookingFromSession(session: Stripe.Checkout.Session) {
+  /**
+   * Confirm a paid room booking, inside the caller's transaction. Same
+   * reasoning as `recordTicketFromSession` — see there.
+   */
+  async confirmBookingFromSession(
+    session: Stripe.Checkout.Session,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
     const meta = session.metadata ?? {};
     if (meta.kind !== 'room_booking') return null;
 
@@ -780,7 +811,7 @@ export class ConnectService {
     // comes from metadata MaybeOS itself wrote at checkout, so this cannot be
     // steered from outside — but a booking id that does not belong to the org
     // in its own session is a mismatch worth refusing rather than trusting.
-    const booking = await this.prisma.booking.findFirst({
+    const booking = await db.booking.findFirst({
       where: { id: meta.bookingId, room: { orgId: meta.orgId } },
       include: { room: { select: { requiresApproval: true } } },
     });
@@ -790,7 +821,7 @@ export class ConnectService {
     // booking an organiser has since rejected.
     if (booking.paidAt) return booking;
 
-    const confirmed = await this.prisma.booking.update({
+    const confirmed = await db.booking.update({
       where: { id: booking.id },
       data: {
         status: booking.room.requiresApproval ? 'PENDING' : 'APPROVED',
@@ -809,7 +840,12 @@ export class ConnectService {
     // A paid booking reaches the room's calendar by this path and no other —
     // the lifecycle methods in SpaceService never see it (SPC-04).
     if (confirmed.status === 'APPROVED') {
-      await this.calendar.syncBooking(meta.orgId, confirmed.id, 'create');
+      // Deliberately not awaited while a transaction may be open: this is an
+      // HTTP round trip to Google, and holding a database transaction across
+      // it is the same mistake that made every ticket webhook time out. The
+      // booking is the record and the calendar a copy, so a slow or failing
+      // sync must not cost the member their room — it already never throws.
+      void this.calendar.syncBooking(meta.orgId, confirmed.id, 'create');
     }
 
     return confirmed;

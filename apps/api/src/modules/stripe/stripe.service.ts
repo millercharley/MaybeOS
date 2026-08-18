@@ -541,13 +541,24 @@ export class StripeService {
     // transaction pooler (6543). The row is created here and nowhere else, so
     // it could not exist if the transaction had failed.
     try {
-      await this.prisma.$transaction(async (tx) => {
-        await tx.webhookEvent.create({
-          data: { id: event.id, source: 'stripe' },
-        });
+      await this.prisma.$transaction(
+        async (tx) => {
+          await tx.webhookEvent.create({
+            data: { id: event.id, source: 'stripe' },
+          });
 
-        await this.dispatchEvent(event, tx);
-      });
+          await this.dispatchEvent(event, tx);
+        },
+        {
+          // Prisma's default is 5s, and the first real ticket sale missed it by
+          // 64ms. Threading the transaction client into the Connect writers
+          // removed the contention that caused that, so this is headroom rather
+          // than the fix: a cold Lambda talking to a pooler in another region
+          // should not lose a paid ticket to a default.
+          timeout: 20_000,
+          maxWait: 10_000,
+        },
+      );
     } catch (err) {
       if (this.isAlreadyProcessed(err)) {
         this.logger.log(`Event ${event.id} already processed, skipping`);
@@ -618,8 +629,12 @@ export class StripeService {
         // Two kinds of connected-account checkout land here and each ignores
         // the other's metadata, so an unrecognised session is a no-op rather
         // than a mis-recorded sale.
-        await this.connectService.recordTicketFromSession(session);
-        await this.connectService.confirmBookingFromSession(session);
+        // `tx`, not the ambient client: these writes belong to the same
+        // transaction as the claim above, and asking the pool for a second
+        // connection while this one holds the only allowed connection is what
+        // timed out every ticket webhook until 2026-08-18.
+        await this.connectService.recordTicketFromSession(session, tx);
+        await this.connectService.confirmBookingFromSession(session, tx);
         break;
       }
 
