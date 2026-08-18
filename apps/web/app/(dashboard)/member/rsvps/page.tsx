@@ -53,7 +53,7 @@ export default function MyRsvpsPage() {
           <p className="mt-3 text-sm text-[var(--text-secondary)]">
             You haven&apos;t RSVPed to anything yet.
           </p>
-          <Link href="/events" className="btn-secondary mt-4 inline-block text-sm">
+          <Link href="/member/events" className="btn-secondary mt-4 inline-block text-sm">
             Browse events
           </Link>
         </div>
@@ -125,7 +125,7 @@ function RsvpCard({ rsvp }: { rsvp: MyRsvp }) {
     <div className="card flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0">
         <Link
-          href={`/events/${rsvp.event.slug}`}
+          href="/member/events"
           className="font-medium text-[var(--text-primary)] hover:text-brand-600"
         >
           {rsvp.event.title}

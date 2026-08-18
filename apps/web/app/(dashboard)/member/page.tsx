@@ -157,7 +157,7 @@ export default function MemberPortalPage() {
               <p className="mt-3 text-sm text-gray-500">
                 You haven&apos;t RSVPed to anything coming up.
               </p>
-              <Link href="/events" className="mt-4 inline-block text-sm font-medium text-brand-600 hover:text-brand-700">
+              <Link href="/member/events" className="mt-4 inline-block text-sm font-medium text-brand-600 hover:text-brand-700">
                 Browse upcoming events
               </Link>
             </div>
