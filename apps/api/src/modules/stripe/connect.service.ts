@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
+import { StripeAccountApi } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { priceTicket, priceBooking } from './ticket-pricing';
 import { CalendarService } from '../calendar/calendar.service';
@@ -155,7 +156,10 @@ export class ConnectService {
 
     await this.prisma.organization.update({
       where: { id: state.orgId },
-      data: { stripeAccountId: accountId },
+      // Recorded, not inferred. OAuth hands back an account the co-op already
+      // had, which is always a v1 Standard account — nothing in the id says so,
+      // and asking a v1 account a v2 question fails outright.
+      data: { stripeAccountId: accountId, stripeAccountApi: StripeAccountApi.V1 },
     });
     this.logger.log(`Connected existing Stripe account to org ${state.orgId} via OAuth`);
 
@@ -236,9 +240,20 @@ export class ConnectService {
 
       await this.prisma.organization.update({
         where: { id: orgId },
-        data: { stripeAccountId: accountId },
+        data: { stripeAccountId: accountId, stripeAccountApi: StripeAccountApi.V2 },
       });
       this.logger.log(`Created Connect account ${accountId} for org ${orgId}`);
+    }
+
+    // A co-op that linked its own Stripe account has already onboarded — with
+    // Stripe directly, years ago in MaybeItsFate's case. There is no MaybeOS
+    // onboarding left to finish, and a v2 account link over a v1 account fails
+    // the same way the status read did. Say so plainly rather than forwarding
+    // Stripe's internal error to an organiser.
+    if (org.stripeAccountApi === StripeAccountApi.V1) {
+      throw new BadRequestException(
+        'This co-op is connected through a Stripe account it already had, which it manages in its own Stripe Dashboard. There is no setup left to finish here.',
+      );
     }
 
     const link = await this.stripe.v2.core.accountLinks.create({
@@ -259,9 +274,12 @@ export class ConnectService {
   /**
    * Whether this co-op can actually take money yet.
    *
-   * Reads `configuration.merchant.capabilities.card_payments.status`, not
-   * `charges_enabled` — that field is v1 and deprecated, and for a direct-charge
-   * platform the merchant capability is the thing that actually gates a charge.
+   * Asked through the API generation the account belongs to, because there are
+   * two kinds of connected account and they do not answer the same question.
+   * An account MaybeOS created is v2, where the merchant capability is what
+   * gates a charge. An account a co-op already had and linked over OAuth is v1
+   * Standard, where `charges_enabled` is Stripe's own answer — and where a v2
+   * read fails outright with "v1 Accounts cannot be used in v2 Account APIs".
    *
    * Asks Stripe rather than trusting the stored flag, because onboarding
    * finishes on Stripe's side and the webhook telling us can be late or lost.
@@ -278,31 +296,66 @@ export class ConnectService {
       return { connected: false, chargesEnabled: false, detailsSubmitted: false };
     }
 
-    // `defaults` has to be asked for explicitly — without it the
-    // responsibilities come back undefined, which reads alarmingly like they
-    // were never set. They were; Stripe just does not return them by default.
-    const account = await this.stripe.v2.core.accounts.retrieve(org.stripeAccountId, {
-      include: ['configuration.merchant', 'requirements', 'defaults'],
-    });
+    // Stripe's own account of the failure was that a freshly linked v1 account
+    // becomes v2-compatible "within ten minutes". It had not after twenty, and
+    // a setup screen cannot depend on an unbounded wait. Asking the API that
+    // matches the account removes the race rather than timing it — and stays
+    // correct whenever v2 does catch up.
+    //
+    // Anything not explicitly v2 is read as v1. That is the safe default rather
+    // than the arbitrary one: every account connected in production to date
+    // arrived through OAuth, and a v2 account has never been created here.
+    const status =
+      org.stripeAccountApi === StripeAccountApi.V2
+        ? await this.readV2AccountStatus(org.stripeAccountId)
+        : await this.readV1AccountStatus(org.stripeAccountId);
 
-    const chargesEnabled =
-      account.configuration?.merchant?.capabilities?.card_payments?.status === 'active';
-
-    if (chargesEnabled !== org.stripeChargesEnabled) {
+    if (status.chargesEnabled !== org.stripeChargesEnabled) {
       await this.prisma.organization.update({
         where: { id: orgId },
-        data: { stripeChargesEnabled: chargesEnabled },
+        data: { stripeChargesEnabled: status.chargesEnabled },
       });
     }
 
+    return { connected: true, ...status };
+  }
+
+  /** Status of an account MaybeOS created for a co-op (Accounts v2). */
+  private async readV2AccountStatus(accountId: string) {
+    // `defaults` has to be asked for explicitly — without it the
+    // responsibilities come back undefined, which reads alarmingly like they
+    // were never set. They were; Stripe just does not return them by default.
+    const account = await this.stripe.v2.core.accounts.retrieve(accountId, {
+      include: ['configuration.merchant', 'requirements', 'defaults'],
+    });
+
+    const entries = account.requirements?.entries ?? [];
+
     return {
-      connected: true,
-      chargesEnabled,
-      detailsSubmitted: (account.requirements?.entries ?? []).length === 0,
+      chargesEnabled:
+        account.configuration?.merchant?.capabilities?.card_payments?.status === 'active',
+      detailsSubmitted: entries.length === 0,
       // Stripe names what is still outstanding; surfacing it beats "not ready".
-      requirements: (account.requirements?.entries ?? [])
+      requirements: entries
         .map((entry) => entry.description ?? entry.awaiting_action_from ?? '')
         .filter(Boolean),
+    };
+  }
+
+  /**
+   * Status of an account the co-op already had, linked over OAuth (v1 Standard).
+   *
+   * `charges_enabled` is the correct field here rather than the v2 merchant
+   * capability: a Standard account onboarded with Stripe directly, and this is
+   * the flag Stripe itself uses to decide whether it will accept a charge.
+   */
+  private async readV1AccountStatus(accountId: string) {
+    const account = await this.stripe.accounts.retrieve(accountId);
+
+    return {
+      chargesEnabled: account.charges_enabled === true,
+      detailsSubmitted: account.details_submitted === true,
+      requirements: account.requirements?.currently_due ?? [],
     };
   }
 

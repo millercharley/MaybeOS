@@ -4,8 +4,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   /// Migrations and introspection connect straight to Postgres rather than
   /// through the transaction pooler (OPS-11).
   ///
@@ -46,22 +46,30 @@ model Organization {
 
   // Off by default: a housing co-op or members' club must not be joinable by
   // anyone with a card. Each org opts in. See D-020.
-  allowPublicJoin Boolean @default(false)
+  allowPublicJoin      Boolean           @default(false)
   /// The co-op's MaybeOS plan (D-013). Everyone starts on FREE.
-  plan            MaybeOsPlan @default(FREE)
+  plan                 MaybeOsPlan       @default(FREE)
   /// The co-op's own Stripe account, from Connect onboarding. Ticket money is
   /// paid here directly and MaybeOS's cut is taken as an application fee —
   /// routing other co-ops' takings through MaybeOS's own account would be
   /// money transmission, not billing (D-013). Null until onboarding completes.
-  stripeAccountId String?
+  stripeAccountId      String?
   /// Whether Stripe says the account can actually accept charges. Onboarding
   /// can be started and abandoned halfway, and an account that exists is not
   /// the same as one that can be paid.
-  stripeChargesEnabled Boolean @default(false)
+  stripeChargesEnabled Boolean           @default(false)
+  /// Which generation of Stripe's Accounts API this account belongs to.
+  /// Creating an account uses Accounts v2; linking one the co-op already has
+  /// uses Connect OAuth, which always hands back a v1 Standard account because
+  /// it predates MaybeOS. A v1 account read through a v2 endpoint fails with
+  /// "v1 Accounts cannot be used in v2 Account APIs", and nothing in the id
+  /// says which generation it is — so it is recorded when the account is
+  /// connected rather than guessed at read time. Null only when none is.
+  stripeAccountApi     StripeAccountApi?
   /// A fee the co-op adds to its own ticket sales, on top of MaybeOS's, in
   /// cents per ticket. Charley's requirement: org admins set their own fee in
   /// addition. Zero by default — a co-op that has not chosen one charges none.
-  ticketFeeCents  Int     @default(0)
+  ticketFeeCents       Int               @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -79,7 +87,7 @@ model Organization {
   auditLogs      AuditLog[]
   emailTemplates EmailTemplate[]
 
-  expenses            Expense[]
+  expenses Expense[]
 
   @@map("organizations")
 }
@@ -148,7 +156,7 @@ model User {
   hostedEvents     Event[]          @relation("HostedEvents")
   tickets          Ticket[]
 
-  expensesCreated     Expense[]     @relation("ExpenseCreator")
+  expensesCreated Expense[] @relation("ExpenseCreator")
 
   @@map("users")
 }
@@ -182,11 +190,11 @@ model UserOrg {
   /// Scoped to the membership rather than the user, for the same reason as
   /// `demographics`: orgs are firewalled, and one co-op's questions must not
   /// spend another's budget.
-  lastAskedAt          DateTime?
-  askDismissals        Int                @default(0)
+  lastAskedAt   DateTime?
+  askDismissals Int       @default(0)
 
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   org  Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
@@ -204,6 +212,12 @@ enum MaybeOsPlan {
   FREE
   PLUS
   UNLIMITED
+}
+
+/// See `Organization.stripeAccountApi`. Two ways in, two kinds of account.
+enum StripeAccountApi {
+  V1
+  V2
 }
 
 enum SubscriptionStatus {
@@ -240,12 +254,11 @@ model MembershipTier {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  members UserOrg[]
-
-  @@index([orgId])
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  members     UserOrg[]
   invitations Invitation[]
 
+  @@index([orgId])
   @@map("membership_tiers")
 }
 
@@ -288,7 +301,7 @@ model Event {
   /// free event never touches Stripe at all.
   priceCents      Int?
   /// ISO 4217, lowercase, as Stripe expects it.
-  currency        String   @default("usd")
+  currency        String          @default("usd")
   /// Who is running this event (EVT-04). Set to whoever created it and
   /// changeable afterwards, because an organiser often creates an event on
   /// somebody else's behalf. Nullable: events made before this column existed
@@ -368,7 +381,7 @@ model Rsvp {
 /// an abandoned checkout must not hold a seat, and a row created hopefully at
 /// session creation is a row somebody has to clean up.
 model Ticket {
-  id                    String   @id @default(uuid())
+  id                    String    @id @default(uuid())
   eventId               String
   /// Null for a guest buying without an account, which is most of the public.
   userId                String?
@@ -382,11 +395,11 @@ model Ticket {
   platformFeeCents      Int
   /// The co-op's own additional fee, if it set one.
   orgFeeCents           Int
-  currency              String   @default("usd")
-  stripeSessionId       String   @unique
+  currency              String    @default("usd")
+  stripeSessionId       String    @unique
   stripePaymentIntentId String?
   refundedAt            DateTime?
-  createdAt             DateTime @default(now())
+  createdAt             DateTime  @default(now())
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
   user  User? @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -512,8 +525,8 @@ model Booking {
   /// When an unpaid hold stops blocking the slot. Null once paid.
   holdExpiresAt         DateTime?
 
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   room  Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
   user  User   @relation(fields: [userId], references: [id])
@@ -778,21 +791,21 @@ enum Touchpoint {
 }
 
 model SurveyQuestion {
-  id        String             @id @default(uuid())
-  surveyId  String
-  key       String // stable identity across versions, e.g. "belonging_frequency"
-  version   Int                @default(1)
-  text      String
-  type      SurveyQuestionType
-  options   String[]           @default([]) // CHOICE only
-  category  String? // the indicator this feeds, e.g. "belonging"
+  id         String             @id @default(uuid())
+  surveyId   String
+  key        String // stable identity across versions, e.g. "belonging_frequency"
+  version    Int                @default(1)
+  text       String
+  type       SurveyQuestionType
+  options    String[]           @default([]) // CHOICE only
+  category   String? // the indicator this feeds, e.g. "belonging"
   /// The moment this question is attached to (IMP-15). Null means it belongs
   /// to a survey answered in one sitting rather than to a touchpoint.
   touchpoint Touchpoint?
-  required  Boolean            @default(false)
-  sortOrder Int                @default(0)
-  retiredAt DateTime? // set when a newer version supersedes this one
-  createdAt DateTime           @default(now())
+  required   Boolean            @default(false)
+  sortOrder  Int                @default(0)
+  retiredAt  DateTime? // set when a newer version supersedes this one
+  createdAt  DateTime           @default(now())
 
   survey  Survey         @relation(fields: [surveyId], references: [id], onDelete: Cascade)
   answers SurveyAnswer[]
