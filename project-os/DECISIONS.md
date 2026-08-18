@@ -24,6 +24,44 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-026 — Two kinds of connected Stripe account, each asked its own question
+
+- **Date:** 2026-08-18
+- **Status:** Active
+- **Area:** Billing, Backend, Database
+- **Trigger:** PAY-04. MaybeItsFate linked its existing Stripe account on 2026-08-18. The OAuth handshake, the token exchange and the stored account id all succeeded; the setup screen then reported `v1 Accounts cannot be used in v2 Account APIs`. The account was live and able to take money throughout — only the question was wrong.
+- **Decision:** A connected account's **API generation is recorded** on `organizations.stripeAccountApi` (`V1` | `V2`) at the moment the account is connected, and its status is read through the API that matches. Accounts MaybeOS **creates** are v2 (`/v2/core/accounts`), read via the merchant capability. Accounts a co-op **links over Connect OAuth** are always **v1 Standard**, because they existed before MaybeOS did, and are read via `charges_enabled`. Anything not explicitly `V2` is read as v1.
+- **Why recorded rather than inferred:** nothing in an `acct_…` id distinguishes the two. Inferring by attempting v2 and falling back when it fails would key product behaviour on matching an error string, and would cost every OAuth-linked co-op two API calls on every status read. OPS-11's lesson applies directly: a protection that lives only where nothing references it is one that gets lost.
+- **Why not wait for propagation:** Stripe's guidance is that a linked v1 account becomes v2-compatible within ten minutes, signalled by `v2.core.account.created`. It had not after twenty. A setup screen cannot depend on an unbounded wait. Asking the matching API removes the race rather than timing it, and stays correct whenever v2 does catch up.
+- **Measured before deciding, not reasoned:** `acct_1MhgKwDaRqv0hdwb` reports `type: "standard"`, `charges_enabled: true`, `details_submitted: true` and zero outstanding requirements, while `/v2/core/accounts` returns empty. **No account has ever been created through the v2 path in production** — the path the code treated as primary is the one that has never run, and the path every real co-op uses was the one being read incorrectly.
+- **Consequence for onboarding:** `createOnboardingLink` now refuses for a v1 account instead of forwarding Stripe's internal error to an organiser. A co-op that onboarded with Stripe directly, years ago, has no MaybeOS setup left to finish.
+- **What does not change:** the money paths. Checkout sessions and refunds are v1 APIs carrying the `stripeAccount` header and were compatible with a linked account throughout — D-013's direct-charge-with-application-fee model is untouched, and ticket sales were never actually blocked by this.
+- **Alternatives rejected:**
+  - *Wait for the `v2.core.account.created` webhook* (Stripe's option 1) — correct in principle and still worth adding, but not a fix on its own: twenty minutes in it had produced no usable v2 account, and the admin looks at a red banner meanwhile.
+  - *Use v1 endpoints for everything* — works today, but abandons v2 for accounts MaybeOS creates and reverses the reasoning recorded in `connect.service.ts`: v1 account types are deprecated, and an account's configuration is fixed at creation, so a co-op onboarded on v1 could never be restructured without re-verifying identity and bank details.
+  - *Create accounts with v2 rather than linking* (Stripe's option 3) — rejected outright. It is precisely the second-Stripe-account mistake PAY-05 exists to prevent.
+  - *Enable Accounts v1 support in the Dashboard* (option 4) — held in reserve. It addresses v1 account *creation*, which is not this scenario, and it is a platform-wide setting not worth flipping on a guess.
+- **Supersedes:** none. Extends **D-013** and the connection paths built for PAY-05.
+
+---
+
+### D-025 — The session-pooler constraint in D-014 and D-018 no longer holds
+
+- **Date:** 2026-08-18
+- **Status:** Active
+- **Area:** Database, Backend, Reliability
+- **Decision:** `DATABASE_URL` is the Supabase **transaction** pooler (port 6543, `pgbouncer=true`) and stays there. Prisma interactive transactions — specifically D-014's claim-and-dispatch of Stripe webhooks — work over it. The constraint recorded in **D-014** and repeated in **D-018**, that session mode (5432) is required or webhook processing breaks, is **withdrawn**.
+- **Evidence, measured rather than argued:** webhook event `evt_1U48zSD14bhghVE2djZUee8A` is written inside that interactive transaction and nowhere else, and it committed at **00:29 UTC on 2026-08-14** — eighteen minutes after the redeploy (`59f6da1`) that moved `DATABASE_URL` to 6543. The row could not exist if the transaction had failed. Supavisor pins one server connection for the whole of a transaction, so `BEGIN…COMMIT` holds together across round trips; the classic PgBouncer problem was prepared statements, which `pgbouncer=true` already addresses.
+- **Why this needed an entry rather than a code comment:** the stale half was the dangerous half. Port 5432's 15-client ceiling is what took production down three times on 2026-08-13 (OPS-11), and moving to the transaction pooler was the fix. A reader following D-018's instruction would undo the remedy in order to honour a constraint that no longer binds. `stripe.service.ts` carried exactly that instruction until it was corrected on 2026-08-18 (`cba6a7d`), and DECISIONS.md is what this project reads before touching an established decision.
+- **What remains true from D-014:** everything else. The `WebhookEvent` row as both idempotency record and lock, `P2002` treated as another delivery winning the race, the handler running inside the same transaction so a throwing handler rolls back the claim, and the controller deliberately not catching so `GlobalExceptionFilter` still reports 5xx. Only the connection-mode constraint is withdrawn.
+- **Alternatives rejected:**
+  - *Leave the entries and rely on the corrected code comment* — rejected: the comment was the thing that was wrong, and a decision log that contradicts production is worse than none, because it looks authoritative.
+  - *Revert `DATABASE_URL` to 5432 so D-014 stays true as written* — rejected: it reinstates the outage the move was made to end.
+- **Caveat worth recording:** one committed transaction proves the mechanism works, not that it is immune under concurrency. The first ticket-sale webhook will be the first to exercise `dispatchEvent` on this path in production; if a charge succeeds and no ticket appears, this is where to look, and Stripe retries on its own schedule rather than losing the event.
+- **Supersedes:** the connection-mode constraint in **D-014**, and **D-018**'s dependent claim that moving to the transaction pooler "is not an available fix". Both entries otherwise stand in full.
+
+---
+
 ### D-024 — A minimal expense record, amending D-021's bookkeeping non-goal
 
 - **Date:** 2026-08-13
