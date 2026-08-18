@@ -64,6 +64,7 @@ function toLocalInput(iso?: string): string {
 
 export function EventForm({
   initial,
+  alreadyPublished = false,
   submitLabel = 'Create event',
   busy = false,
   error = '',
@@ -75,6 +76,8 @@ export function EventForm({
   hosts,
 }: {
   initial?: Partial<EventFormValues>;
+  /** Editing something already live: there is no unpublish, so no draft button. */
+  alreadyPublished?: boolean;
   submitLabel?: string;
   busy?: boolean;
   error?: string;
@@ -451,15 +454,21 @@ export function EventForm({
           {busy ? 'Saving...' : submitLabel}
         </button>
         {/* Saving without publishing is what lets somebody write a description
-            over two sittings without broadcasting a half-finished event. */}
-        <button
-          type="button"
-          onClick={(e) => submit(e, false)}
-          className="btn-secondary"
-          disabled={busy}
-        >
-          Save as draft
-        </button>
+            over two sittings without broadcasting a half-finished event.
+
+            Hidden once an event is published, because there is no unpublish:
+            the button would claim to withdraw something it cannot, which is
+            the same kind of lie the visibility badge was telling. */}
+        {!alreadyPublished && (
+          <button
+            type="button"
+            onClick={(e) => submit(e, false)}
+            className="btn-secondary"
+            disabled={busy}
+          >
+            Save as draft
+          </button>
+        )}
         {onCancel && (
           <button
             type="button"
