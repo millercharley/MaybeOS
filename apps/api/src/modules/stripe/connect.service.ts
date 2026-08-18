@@ -360,6 +360,32 @@ export class ConnectService {
   }
 
   /**
+   * Turn a Stripe failure into something a buyer should see.
+   *
+   * Stripe's own messages are written for the developer holding the key, and
+   * they say so literally: a permissions failure names the restricted key —
+   * `rk_live_****BuW4ie` — the connected account id, the exact scope required,
+   * and a dashboard link to edit it. All of that rendered straight onto the
+   * page a member buys a ticket on (2026-08-18).
+   *
+   * That is two problems in one. A buyer cannot act on any of it, so the page
+   * is broken *and* incomprehensible; and it publishes a fragment of a live
+   * credential plus the platform's account id to anyone who opens the event.
+   * Neither is catastrophic on its own — the key fragment is not usable — but
+   * a checkout page is the last place to be careless about either.
+   *
+   * The real reason is logged in full, where the person who can fix it looks.
+   */
+  private checkoutFailed(err: unknown, context: string): never {
+    const detail = err instanceof Error ? err.message : String(err);
+    this.logger.error(`Checkout session failed (${context}): ${detail}`);
+
+    throw new BadRequestException(
+      "This co-op can't take payments right now. Nothing has been charged — please tell an organiser.",
+    );
+  }
+
+  /**
    * Buy a ticket.
    *
    * The charge is created **on the co-op's account** (`stripeAccount` header),
@@ -424,43 +450,48 @@ export class ConnectService {
       orgFeeCents: org.ticketFeeCents,
     });
 
-    const session = await this.stripe.checkout.sessions.create(
-      {
-        mode: 'payment',
-        line_items: [
-          {
-            quantity: 1,
-            price_data: {
-              currency: event.currency,
-              unit_amount: price.totalCents,
-              product_data: {
-                name: event.title,
-                description: `${org.name} · ${event.startTime.toDateString()}`,
+    let session: Stripe.Checkout.Session;
+    try {
+      session = await this.stripe.checkout.sessions.create(
+        {
+          mode: 'payment',
+          line_items: [
+            {
+              quantity: 1,
+              price_data: {
+                currency: event.currency,
+                unit_amount: price.totalCents,
+                product_data: {
+                  name: event.title,
+                  description: `${org.name} · ${event.startTime.toDateString()}`,
+                },
               },
             },
+          ],
+          payment_intent_data: {
+            // MaybeOS's cut only. The co-op's own fee stays in the co-op's
+            // account — sweeping it in here would be MaybeOS taking it.
+            application_fee_amount: price.applicationFeeCents,
           },
-        ],
-        payment_intent_data: {
-          // MaybeOS's cut only. The co-op's own fee stays in the co-op's
-          // account — sweeping it in here would be MaybeOS taking it.
-          application_fee_amount: price.applicationFeeCents,
+          ...(buyerEmail ? { customer_email: buyerEmail } : {}),
+          metadata: {
+            kind: 'event_ticket',
+            orgId,
+            eventId,
+            userId: userId ?? '',
+            ticketCents: String(price.ticketCents),
+            platformFeeCents: String(price.platformFeeCents),
+            orgFeeCents: String(price.orgFeeCents),
+          },
+          success_url: successUrl,
+          cancel_url: cancelUrl,
         },
-        ...(buyerEmail ? { customer_email: buyerEmail } : {}),
-        metadata: {
-          kind: 'event_ticket',
-          orgId,
-          eventId,
-          userId: userId ?? '',
-          ticketCents: String(price.ticketCents),
-          platformFeeCents: String(price.platformFeeCents),
-          orgFeeCents: String(price.orgFeeCents),
-        },
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-      },
-      // On the co-op's account, which is what makes them the merchant.
-      { stripeAccount: org.stripeAccountId },
-    );
+        // On the co-op's account, which is what makes them the merchant.
+        { stripeAccount: org.stripeAccountId },
+      );
+    } catch (err) {
+      this.checkoutFailed(err, 'event ticket');
+    }
 
     if (!session.url) {
       throw new BadRequestException('Stripe did not return a checkout URL');
@@ -680,39 +711,44 @@ export class ConnectService {
       plan: org.plan,
     });
 
-    const session = await this.stripe.checkout.sessions.create(
-      {
-        mode: 'payment',
-        line_items: [
-          {
-            quantity: 1,
-            price_data: {
-              currency: booking.currency,
-              unit_amount: price.totalCents,
-              product_data: {
-                name: `${room.name} — room hire`,
-                description: `${org.name} · ${booking.startTime.toDateString()}`,
+    let session: Stripe.Checkout.Session;
+    try {
+      session = await this.stripe.checkout.sessions.create(
+        {
+          mode: 'payment',
+          line_items: [
+            {
+              quantity: 1,
+              price_data: {
+                currency: booking.currency,
+                unit_amount: price.totalCents,
+                product_data: {
+                  name: `${room.name} — room hire`,
+                  description: `${org.name} · ${booking.startTime.toDateString()}`,
+                },
               },
             },
+          ],
+          payment_intent_data: {
+            // MaybeOS's cut only. The hire itself is the co-op's money.
+            application_fee_amount: price.applicationFeeCents,
           },
-        ],
-        payment_intent_data: {
-          // MaybeOS's cut only. The hire itself is the co-op's money.
-          application_fee_amount: price.applicationFeeCents,
+          ...(payerEmail ? { customer_email: payerEmail } : {}),
+          metadata: {
+            kind: 'room_booking',
+            orgId,
+            bookingId,
+            hireCents: String(price.hireCents),
+            platformFeeCents: String(price.platformFeeCents),
+          },
+          success_url: successUrl,
+          cancel_url: cancelUrl,
         },
-        ...(payerEmail ? { customer_email: payerEmail } : {}),
-        metadata: {
-          kind: 'room_booking',
-          orgId,
-          bookingId,
-          hireCents: String(price.hireCents),
-          platformFeeCents: String(price.platformFeeCents),
-        },
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-      },
-      { stripeAccount: org.stripeAccountId },
-    );
+        { stripeAccount: org.stripeAccountId },
+      );
+    } catch (err) {
+      this.checkoutFailed(err, 'room hire');
+    }
 
     if (!session.url) {
       throw new BadRequestException('Stripe did not return a checkout URL');
