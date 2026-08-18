@@ -99,10 +99,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // send, and the id is enough to trace a report back to an account.
       Sentry.setUser({ id: user.id });
 
-      // Auto-select first org if none selected
+      // Which org is selected is restored from localStorage by `init` before
+      // the profile arrives, and until now nothing ever checked it was one of
+      // *this person's* orgs — only that it was set. So a stale id survived
+      // indefinitely and every org-scoped request answered 403 "Not a member
+      // of this organization", with no way out through the UI, because every
+      // screen that could change the selection is itself org-scoped.
+      //
+      // Charley hit this on 2026-08-18: a dev org id (Sunrise) left in a
+      // browser then pointed at production, immediately after accepting an
+      // invitation that had actually succeeded — so the one thing that looked
+      // broken was the thing that had worked. The same trap catches an org
+      // that no longer exists (the write probe tears one down on every run)
+      // and a membership revoked while somebody was signed in.
       const { currentOrgId } = get();
-      if (!currentOrgId && user.orgs.length > 0) {
-        get().setCurrentOrg(user.orgs[0].orgId);
+      const stillAMember = user.orgs.some((org) => org.orgId === currentOrgId);
+
+      if (!stillAMember) {
+        if (user.orgs.length > 0) {
+          get().setCurrentOrg(user.orgs[0].orgId);
+        } else if (currentOrgId) {
+          // Belongs to nothing: drop the selection rather than leave a
+          // guaranteed 403 behind.
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('maybeos_org');
+          }
+          set({ currentOrgId: null });
+        }
       }
     } catch (err) {
       // This used to be a bare `catch {}` that discarded the session on *any*
