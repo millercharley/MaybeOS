@@ -23,14 +23,12 @@ export default function PublicLayout({
               <Wordmark height={26} />
             </Link>
 
-            <nav className="hidden sm:flex items-center gap-6">
-              <Link
-                href="/events"
-                className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
-              >
-                Events
-              </Link>
-            </nav>
+            {/* No platform-level events nav. `/events` used to live here and
+                was hardcoded to a single co-op's slug, so it could only ever
+                show one org's events — and on production, an org that does not
+                exist. Events belong to a co-op, and are reached through that
+                co-op's portal. A cross-co-op feed would be a real feature, not
+                a nav item. */}
           </div>
 
           <div className="flex items-center gap-3">

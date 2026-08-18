@@ -211,7 +211,7 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
               Add to calendar
             </a>
             <Link
-              href="/events"
+              href={`/portal/${slug}/events`}
               className="text-sm font-medium text-brand-600 hover:text-brand-700 transition-colors"
             >
               View all events
@@ -245,7 +245,7 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
               return (
                 <Link
                   key={event.id}
-                  href={`/events/${event.slug}`}
+                  href={`/portal/${slug}/events`}
                   className="card group rounded-xl border border-gray-200 transition hover:shadow-md"
                 >
                   <h3 className="text-lg font-semibold text-gray-900 group-hover:text-brand-600 transition-colors">
