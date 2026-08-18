@@ -54,8 +54,10 @@ export default function DashboardLayout({
     return <OrgSetup />;
   }
 
-  const role = user.orgs.find((o) => o.orgId === currentOrgId)?.role;
+  const membership = user.orgs.find((o) => o.orgId === currentOrgId);
+  const role = membership?.role;
   const isOrganiser = role === 'ADMIN' || role === 'STAFF';
+  const orgSlug = membership?.org?.slug;
   const wantsAdmin = pathname?.startsWith('/admin');
 
   const breadcrumbSegments = pathname
@@ -90,8 +92,16 @@ export default function DashboardLayout({
       <div className="flex flex-1 flex-col pl-64">
         <header className="sticky top-0 z-20 flex h-16 items-center border-b border-gray-200 bg-white px-8">
           <nav className="flex items-center gap-2 text-sm">
-            {/* This said "Admin" on every member page too. */}
-            <span className="text-gray-400">{isOrganiser ? 'Admin' : 'My co-op'}</span>
+            {/* This said "Admin" on every member page too. It was also a bare
+                span, so "My co-op" named a place a member had no way to go —
+                the one crumb that should lead somewhere led nowhere. */}
+            {!isOrganiser && orgSlug ? (
+              <Link href={`/portal/${orgSlug}`} className="text-gray-400 hover:text-gray-900 transition-colors">
+                {membership?.org?.name ?? 'My co-op'}
+              </Link>
+            ) : (
+              <span className="text-gray-400">{isOrganiser ? 'Admin' : 'My co-op'}</span>
+            )}
             {breadcrumbSegments.length > 1 && (
               <>
                 <span className="text-gray-300">/</span>
