@@ -462,20 +462,47 @@ export class StripeService {
     rawBody: Buffer,
     signature: string,
   ): Promise<{ received: true }> {
-    const webhookSecret = this.configService.get<string>(
-      'STRIPE_WEBHOOK_SECRET',
-    );
+    // Two endpoints, two secrets, one URL.
+    //
+    // A Stripe endpoint listens either to the platform's own events or to its
+    // connected accounts' — never both, and the choice is fixed when the
+    // endpoint is created. Ticket charges are **direct charges on the co-op's
+    // account** (D-013), so `checkout.session.completed` fires on the connected
+    // account and only a Connect endpoint ever sees it. That endpoint can point
+    // at this same URL, but Stripe signs it with its own secret.
+    //
+    // Verifying against one secret would therefore accept dues and reject every
+    // ticket — with a 400, so Stripe would retry the same rejection until it
+    // gave up, and a member who had paid would never get a ticket. Each secret
+    // is tried in turn; only if all of them fail is the request refused.
+    const secrets = [
+      this.configService.get<string>('STRIPE_WEBHOOK_SECRET'),
+      this.configService.get<string>('STRIPE_CONNECT_WEBHOOK_SECRET'),
+    ].filter((secret): secret is string => Boolean(secret));
 
-    let event: Stripe.Event;
+    if (secrets.length === 0) {
+      this.logger.error('No webhook secret configured; refusing the event');
+      throw new BadRequestException('Webhook signature verification failed');
+    }
 
-    try {
-      event = this.stripe.webhooks.constructEvent(
-        rawBody,
-        signature,
-        webhookSecret,
+    let event: Stripe.Event | null = null;
+    let lastError = '';
+
+    for (const secret of secrets) {
+      try {
+        event = this.stripe.webhooks.constructEvent(rawBody, signature, secret);
+        break;
+      } catch (err) {
+        lastError = err.message;
+      }
+    }
+
+    if (!event) {
+      // Names how many were tried, because "verification failed" with one
+      // secret configured and with two are different problems.
+      this.logger.error(
+        `Webhook signature verification failed against ${secrets.length} secret(s): ${lastError}`,
       );
-    } catch (err) {
-      this.logger.error(`Webhook signature verification failed: ${err.message}`);
       throw new BadRequestException('Webhook signature verification failed');
     }
 

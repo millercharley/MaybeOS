@@ -158,6 +158,14 @@ already has one is the expensive mistake and it is hard to undo.
 
 OAuth needs two things set up once, in **live mode**:
 
+- **`STRIPE_CONNECT_WEBHOOK_SECRET`** — the signing secret of a **second**
+  Stripe webhook endpoint, the one listening to *connected accounts*. Ticket and
+  room-hire charges are direct charges on the co-op's account, so their
+  `checkout.session.completed` fires on that account and only a Connect endpoint
+  ever sees it. Both endpoints can point at `/api/stripe/webhooks`; Stripe signs
+  each with its own secret, so without this a paid ticket is charged and never
+  recorded. An endpoint's account-or-connect scope is fixed when it is created,
+  so this is a second endpoint rather than a setting on the first.
 - **`STRIPE_CONNECT_CLIENT_ID`** — the `ca_…` id from Stripe → Connect → Settings.
 - **A redirect URI registered with Stripe**: `https://maybeos.org/api/connect/oauth/callback`.
   Stripe rejects any redirect it has not been told about, and these do **not**
