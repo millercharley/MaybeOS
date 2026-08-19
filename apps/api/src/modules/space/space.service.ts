@@ -51,6 +51,9 @@ export class SpaceService {
         locationId: dto.locationId,
         requiresApproval: dto.requiresApproval ?? false,
         memberOnly: dto.memberOnly ?? true,
+        // Off unless asked for: a room nobody switched charging on for is free,
+        // which is what every existing room expects to stay.
+        chargeForBooking: dto.chargeForBooking ?? false,
         hourlyRate: dto.hourlyRate,
       },
     });
@@ -95,6 +98,7 @@ export class SpaceService {
         ...(dto.locationId !== undefined && { locationId: dto.locationId }),
         ...(dto.requiresApproval !== undefined && { requiresApproval: dto.requiresApproval }),
         ...(dto.memberOnly !== undefined && { memberOnly: dto.memberOnly }),
+        ...(dto.chargeForBooking !== undefined && { chargeForBooking: dto.chargeForBooking }),
         ...(dto.hourlyRate !== undefined && { hourlyRate: dto.hourlyRate }),
       },
     });
