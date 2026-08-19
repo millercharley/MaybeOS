@@ -21,6 +21,8 @@ import { useApi } from '@/hooks/use-api';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Comment as CommentT, Post, PaginatedResponse, CollectionPage, DirectMessage } from '@/lib/api';
 import { sanitizeWikiHtml } from '@/lib/wiki-html';
+import { renderBodyHtml, isBlankBody } from '@/lib/rich-text';
+import { RichComposer, composerValue } from '@/components/composer/rich-composer';
 
 type View =
   | { type: 'channel'; id: string }
@@ -57,7 +59,10 @@ function CommentThread({
               <span className="text-xs font-semibold text-gray-900">{comment.author.name ?? 'Unknown'}</span>
               <span className="text-[11px] text-gray-400">{timeAgo(comment.createdAt)}</span>
             </div>
-            <p className="mt-0.5 text-sm text-gray-700">{comment.body}</p>
+            <div
+              className="prose prose-sm mt-0.5 max-w-none whitespace-pre-wrap text-sm text-gray-700"
+              dangerouslySetInnerHTML={{ __html: renderBodyHtml(comment.body) }}
+            />
           </div>
           <button
             onClick={() => setReplying((r) => !r)}
@@ -699,21 +704,13 @@ export default function CommonsPage() {
                 </h2>
               </div>
 
-              <div className="card">
-                <textarea
-                  value={newPostBody}
-                  onChange={(e) => setNewPostBody(e.target.value)}
-                  placeholder={selectedChannel ? `Post in #${selectedChannel.name}...` : 'Write something...'}
-                  rows={2}
-                  className="input w-full resize-none"
-                />
-                <div className="mt-2 flex justify-end">
-                  <button onClick={handleCreatePost} className="btn-primary inline-flex items-center gap-2">
-                    <Plus className="h-4 w-4" />
-                    Post
-                  </button>
-                </div>
-              </div>
+              <RichComposer
+                value={newPostBody}
+                onChange={setNewPostBody}
+                onSubmit={handleCreatePost}
+                placeholder={selectedChannel ? `Post in #${selectedChannel.name}...` : 'Write something...'}
+                submitLabel="Post"
+              />
 
               {postsLoading ? (
                 <div className="flex items-center justify-center py-12">
@@ -743,7 +740,10 @@ export default function CommonsPage() {
                               <span className="text-xs text-gray-400">{timeAgo(post.createdAt)}</span>
                             </div>
                             {post.title && <h3 className="mt-1 text-sm font-medium text-gray-900">{post.title}</h3>}
-                            <p className="mt-1 text-sm text-gray-700">{post.body}</p>
+                            <div
+                              className="prose prose-sm mt-1 max-w-none whitespace-pre-wrap text-sm text-gray-700"
+                              dangerouslySetInnerHTML={{ __html: renderBodyHtml(post.body) }}
+                            />
 
                             <div className="mt-2 flex items-center gap-3">
                               {QUICK_EMOJIS.map((emoji) => (
@@ -899,29 +899,18 @@ function ReplyBox({ onSubmit }: { onSubmit: (body: string) => void }) {
   const [draft, setDraft] = useState('');
   return (
     <div className="flex gap-2">
-      <input
+      <RichComposer
         value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && draft.trim()) {
-            onSubmit(draft.trim());
-            setDraft('');
-          }
+        onChange={setDraft}
+        onSubmit={() => {
+          if (isBlankBody(draft)) return;
+          onSubmit(composerValue(draft));
+          setDraft('');
         }}
         placeholder="Add a comment..."
-        className="input flex-1 text-sm"
+        submitLabel="Send"
+        rows={2}
       />
-      <button
-        onClick={() => {
-          if (draft.trim()) {
-            onSubmit(draft.trim());
-            setDraft('');
-          }
-        }}
-        className="btn-secondary px-3"
-      >
-        <Send className="h-3.5 w-3.5" />
-      </button>
     </div>
   );
 }
