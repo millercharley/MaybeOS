@@ -41,11 +41,12 @@ describe('SpaceService — availability rules', () => {
     effectiveTo: null,
   };
 
-  const roomWith = (rules: unknown[]) => ({
+  const roomWith = (rules: unknown[], alwaysAvailable = false) => ({
     id: ROOM,
     orgId: ORG,
     requiresApproval: false,
     isActive: true,
+    alwaysAvailable,
     availabilityRules: rules,
   });
 
@@ -121,8 +122,32 @@ describe('SpaceService — availability rules', () => {
     });
   });
 
-  it('treats a room with no rules at all as always available', async () => {
+  it('refuses a room whose hours nobody has set yet', async () => {
+    // This used to succeed. "Open all hours" and "nobody has got to the
+    // opening hours" were the same state, so adding a room and stopping there
+    // published it at 3am on a Tuesday without anyone choosing that.
     prisma.room.findFirst.mockResolvedValue(roomWith([]) as never);
+
+    await expect(book(TUE(3), TUE(4))).rejects.toThrow(/no bookable hours yet/);
+  });
+
+  it('opens a room at any hour once somebody says so', async () => {
+    // The same empty rule set, with the difference now stated rather than
+    // guessed at.
+    prisma.room.findFirst.mockResolvedValue(roomWith([], true) as never);
+
+    await expect(book(TUE(3), TUE(4))).resolves.toBeDefined();
+  });
+
+  it('lets always-available beat the rules rather than fight them', async () => {
+    // A room marked open all hours that also carries a stale Tuesday rule is
+    // open; the flag is the answer, not one vote among several.
+    prisma.room.findFirst.mockResolvedValue(
+      roomWith(
+        [{ dayOfWeek: 2, startTime: '09:00', endTime: '17:00', isBlackout: false, effectiveFrom: null, effectiveTo: null }],
+        true,
+      ) as never,
+    );
 
     await expect(book(TUE(3), TUE(4))).resolves.toBeDefined();
   });

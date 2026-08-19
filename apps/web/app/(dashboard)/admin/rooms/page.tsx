@@ -13,6 +13,7 @@ type Draft = {
   amenities: string;
   requiresApproval: boolean;
   memberOnly: boolean;
+  alwaysAvailable: boolean;
   chargeForBooking: boolean;
   hourlyRate: string;
 };
@@ -24,6 +25,7 @@ const emptyDraft: Draft = {
   amenities: '',
   requiresApproval: false,
   memberOnly: true,
+  alwaysAvailable: false,
   chargeForBooking: false,
   hourlyRate: '',
 };
@@ -35,6 +37,7 @@ const draftFrom = (r: Room): Draft => ({
   amenities: (r.amenities ?? []).join('\n'),
   requiresApproval: r.requiresApproval,
   memberOnly: r.memberOnly,
+  alwaysAvailable: r.alwaysAvailable ?? false,
   chargeForBooking: r.chargeForBooking ?? false,
   hourlyRate: r.hourlyRate ? (r.hourlyRate / 100).toFixed(2).replace(/\.00$/, '') : '',
 });
@@ -46,6 +49,7 @@ const toPayload = (d: Draft): CreateRoomData => ({
   amenities: d.amenities.split('\n').map((a) => a.trim()).filter(Boolean),
   requiresApproval: d.requiresApproval,
   memberOnly: d.memberOnly,
+  alwaysAvailable: d.alwaysAvailable,
   // Never sent as true without a rate: charging is two deliberate steps, and
   // a switch on its own would take a member to a checkout for $0.00.
   chargeForBooking: d.chargeForBooking && Boolean(d.hourlyRate),
@@ -68,6 +72,32 @@ export default function AdminRoomsPage() {
 
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const [calendarError, setCalendarError] = useState('');
+
+  /**
+   * Hand a room's calendar to Google (SPC-04).
+   *
+   * The endpoint has existed since SpaceOS was built and nothing had ever
+   * called it, so bookings could sync to a calendar no admin could connect.
+   * It needs GOOGLE_CLIENT_ID, which has never been set — so the honest
+   * failure is an unconfigured platform, said plainly rather than as a
+   * Google error page.
+   */
+  async function connectCalendar(roomId: string) {
+    if (!token || !orgId) return;
+    setConnecting(roomId);
+    setCalendarError('');
+    try {
+      const { url } = await api.calendar.connectRoom(orgId, roomId, token);
+      window.location.assign(url);
+    } catch (err) {
+      setCalendarError(
+        err instanceof Error ? err.message : 'Could not start the Google connection',
+      );
+      setConnecting(null);
+    }
+  }
   const [draft, setDraft] = useState<Draft>(emptyDraft);
 
   const load = useCallback(async () => {
@@ -246,6 +276,32 @@ export default function AdminRoomsPage() {
               </span>
             </label>
 
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={draft.alwaysAvailable}
+                onChange={(e) => setDraft({ ...draft, alwaysAvailable: e.target.checked })}
+              />
+              <span className="text-sm">
+                <span className="font-medium">Always available</span>
+                <br />
+                <span className="text-[var(--text-secondary)]">
+                  Bookable at any hour, with no opening times to set. Leave this off and the
+                  room stays unbookable until you give it availability rules — a room with
+                  neither used to be quietly open at 3am.
+                </span>
+              </span>
+            </label>
+
+            {/* Booking emails are not a setting; they already happen. Saying so
+                here because an organiser has no other way to know, and "does
+                this email anyone?" is the first question about a booking. */}
+            <p className="text-sm text-[var(--text-secondary)]">
+              Members are emailed automatically at every step of a booking — requested,
+              confirmed, rejected, moved and cancelled.
+            </p>
+
             {/*
               Charging is off unless an admin turns it on AND sets a rate
               (SPC-06). Two steps rather than "a rate means charge", so that
@@ -317,6 +373,12 @@ export default function AdminRoomsPage() {
       )}
 
       <div className="mt-8 grid gap-3">
+        {calendarError && (
+          <p className="mb-3 text-sm text-red-600" role="alert">
+            {calendarError}
+          </p>
+        )}
+
         {rooms === null && (
           <div className="flex justify-center py-10">
             <Loader2 className="h-5 w-5 animate-spin text-[var(--text-tertiary)]" />
@@ -353,9 +415,22 @@ export default function AdminRoomsPage() {
                 </p>
               </div>
 
-              <button onClick={() => startEdit(r)} disabled={busy} className="btn-secondary">
-                Edit
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                {r.googleCalendarId ? (
+                  <span className="text-xs text-[var(--text-secondary)]">Calendar connected</span>
+                ) : (
+                  <button
+                    onClick={() => connectCalendar(r.id)}
+                    disabled={busy || connecting === r.id}
+                    className="btn-secondary"
+                  >
+                    {connecting === r.id ? 'Opening Google...' : 'Connect calendar'}
+                  </button>
+                )}
+                <button onClick={() => startEdit(r)} disabled={busy} className="btn-secondary">
+                  Edit
+                </button>
+              </div>
             </div>
           </div>
         ))}

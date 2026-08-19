@@ -59,15 +59,23 @@ export class CalendarController {
     @Res() res: Response,
   ) {
     try {
-      const { orgId, roomId } = await this.calendarService.handleCallback(
+      // The org is not in the redirect any more: /admin/rooms is scoped by the
+      // org the admin has selected, so putting one in the URL would be a second
+      // source of truth that could disagree with the sidebar.
+      const { roomId } = await this.calendarService.handleCallback(
         code,
         state,
       );
 
-      // Redirect back to the app's room settings page
+      // Back to the rooms page. This used to redirect to
+      // `/orgs/:orgId/rooms/:roomId/settings`, which has never existed — so
+      // connecting a calendar succeeded and then landed the admin on a 404.
+      // WEB_URL is what the rest of the app uses; APP_URL was read here alone.
       const appUrl =
-        this.configService.get<string>('APP_URL') || 'http://localhost:3000';
-      const redirectUrl = `${appUrl}/orgs/${orgId}/rooms/${roomId}/settings?calendar=connected`;
+        this.configService.get<string>('WEB_URL') ||
+        this.configService.get<string>('APP_URL') ||
+        'http://localhost:3000';
+      const redirectUrl = `${appUrl.split(',')[0].trim().replace(/\/+$/, '')}/admin/rooms?calendar=connected&room=${roomId}`;
 
       return res.redirect(redirectUrl);
     } catch (err) {

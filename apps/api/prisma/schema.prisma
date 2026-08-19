@@ -446,6 +446,11 @@ model Room {
   /// Separate from `hourlyRate` so that turning charging off does not throw
   /// away the rate, and so a half-filled form cannot start billing people.
   chargeForBooking Boolean  @default(false)
+  /// Bookable at any hour, said deliberately rather than inferred from having
+  /// no availability rules. Those two used to be the same state, so a room
+  /// whose opening hours nobody had set yet was silently published around the
+  /// clock. Unchecked with no rules now means not bookable.
+  alwaysAvailable  Boolean  @default(false)
   hourlyRate       Int? // cents per hour, null = not set
   googleCalendarId String?
   googleTokens     Json? // encrypted OAuth tokens

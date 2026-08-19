@@ -161,6 +161,21 @@ class ApiClient {
     return JSON.parse(body);
   }
 
+  // ── Calendar ─────────────────────────────────────
+  calendar = {
+    /**
+     * Where to send an admin to connect a room's Google Calendar (SPC-04).
+     *
+     * The endpoint has existed since SpaceOS was built and nothing in the web
+     * app had ever called it, so a room's calendar could not be connected from
+     * the product at all.
+     */
+    connectRoom: (orgId: string, roomId: string, token: string) =>
+      this.request<{ url: string }>(`/orgs/${orgId}/rooms/${roomId}/calendar/connect`, {
+        token,
+      }),
+  };
+
   // ── Auth ─────────────────────────────────────────
   auth = {
     register: (data: { email: string; password: string; name?: string }) =>
@@ -1168,6 +1183,10 @@ export interface Room {
    * billing anybody for it.
    */
   chargeForBooking?: boolean;
+  /** Bookable at any hour, said deliberately rather than inferred. */
+  alwaysAvailable?: boolean;
+  /** Set once a Google Calendar is connected to this room (SPC-04). */
+  googleCalendarId?: string | null;
   hourlyRate?: number | null;
   isActive?: boolean;
 }
@@ -1181,7 +1200,9 @@ export interface CreateRoomData {
   locationId?: string;
   requiresApproval?: boolean;
   memberOnly?: boolean;
-  /** Cents per hour. Stored but not yet charged — see SPC-06. */
+  /** Bookable at any hour, rather than inferred from having no rules. */
+  alwaysAvailable?: boolean;
+  /** Cents per hour. Charged when `chargeForBooking` is on (SPC-06). */
   hourlyRate?: number;
 }
 
