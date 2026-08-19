@@ -6,6 +6,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
 import { TicketPayouts } from '@/components/settings/ticket-payouts';
+import { WebsiteEmbed } from '@/components/settings/website-embed';
 
 type SettingsTab = 'general' | 'branding' | 'integrations' | 'billing';
 
@@ -285,6 +286,7 @@ export default function SettingsPage() {
         believing the doors were open when they were not.
       */}
       {activeTab === 'general' && org && <TicketPayouts org={org} onSaved={refetch} />}
+      {activeTab === 'general' && org && <WebsiteEmbed org={org} />}
 
       {activeTab === 'general' && (
         <section className="card max-w-2xl space-y-4">

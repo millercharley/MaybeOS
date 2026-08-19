@@ -131,6 +131,29 @@ export class EventsController {
     );
   }
 
+  /* ─── Website Embed (no auth, any origin) ──────────────────── */
+
+  /**
+   * The one route in MaybeOS that answers to any website.
+   *
+   * The app's CORS is locked to its own domains and sends credentials, so a
+   * co-op's Webflow or Squarespace site cannot read the ordinary endpoints —
+   * correctly. The embed is the deliberate exception: `*` here, and nowhere
+   * else, with no credentials, no cookies and no authorization header, so
+   * there is nothing for a hostile page to borrow. It returns what the co-op
+   * has already published publicly.
+   *
+   * Cached for five minutes at the edge. A co-op's events change on the order
+   * of days, and this is called once per visitor to their marketing site.
+   */
+  @Get('embed/:orgSlug/events')
+  @Header('Access-Control-Allow-Origin', '*')
+  @Header('Cache-Control', 'public, max-age=300, s-maxage=300')
+  @ApiOperation({ summary: 'Public events for a co-op, for a website embed' })
+  async embedEvents(@Param('orgSlug') orgSlug: string) {
+    return this.eventsService.listEmbedEvents(orgSlug);
+  }
+
   /* ─── JSON Feed (no auth, cached) ──────────────────────────── */
 
   @Get('orgs/:orgId/events/feed.json')
