@@ -1,125 +1,146 @@
-import { navSectionsFor, portalSectionsFor } from '@/lib/nav';
+import { sidebarSections, NavSection } from '@/lib/nav';
 
 /**
- * A member must have a route to their own co-op.
+ * One navigation, and it must not forget who you are.
  *
- * Every item in the member sidebar was about the member — RSVPs, events,
- * bookings, billing, profile — so signing in produced a membership admin
- * panel and no membership. No channels, no proposals, no library, no
- * directory, and no way to look at a room in order to book one, which is why
- * "My Bookings" could only ever be empty for them. The admin sidebar had
- * carried a Commons link the whole time.
+ * Two bugs, found from the member side and then the organiser side.
  *
- * Charley found it from the member side on 2026-08-18: "there seems to be no
- * way for a member to reach the actual Commons or portal... I'm stuck in the
- * settings." The surfaces already existed and already handled a signed-in
- * member correctly. Nothing linked to them — the same failure as the
- * hardcoded events pages, which is what makes it worth a test rather than a
- * one-line fix: unreachable working code looks identical to working software.
+ * First, every item in the member sidebar was about the member — RSVPs,
+ * bookings, billing, profile — so signing in produced a membership admin panel
+ * and no membership: no channels, no proposals, no directory, and no way to
+ * look at a room in order to book one. Charley, 2026-08-18: "there seems to be
+ * no way for a member to reach the actual Commons or portal... I'm stuck in the
+ * settings."
+ *
+ * Then the mirror of it: an organiser got the admin tools and *nothing else*,
+ * so the person running a co-op had no route to the co-op they run. Being an
+ * admin is a role held in addition to being a member, not instead of it.
+ *
+ * None of these surfaces were new. They existed and worked; nothing linked to
+ * them — which is the same failure as the hardcoded events pages, and why this
+ * is a test rather than four lines in an array: unreachable working code is
+ * indistinguishable from working software until somebody tries to use it.
  */
-describe('the member sidebar', () => {
-  const hrefs = (sections: ReturnType<typeof navSectionsFor>) =>
+describe('the sidebar', () => {
+  const hrefs = (sections: NavSection[]) =>
     sections.flatMap((s) => s.items.map((i) => i.href));
+
+  const labels = (sections: NavSection[]) => sections.map((s) => s.label);
 
   const member = {
     role: 'MEMBER',
     org: { name: 'MaybeItsFate', slug: 'maybeitsfate' },
   };
+  const organiser = {
+    role: 'ADMIN',
+    org: { name: 'MaybeItsFate', slug: 'maybeitsfate' },
+  };
 
-  it('gives a member a way into the Commons', () => {
-    expect(hrefs(navSectionsFor(member))).toContain('/portal/maybeitsfate/commons');
+  describe('a member', () => {
+    const sections = () => sidebarSections({ membership: member, signedIn: true });
+
+    it('can reach the Commons, and the rest of the co-op', () => {
+      expect(hrefs(sections())).toEqual(
+        expect.arrayContaining([
+          '/portal/maybeitsfate/commons',
+          '/portal/maybeitsfate/directory',
+          '/portal/maybeitsfate/events',
+          // Without this a member can list bookings they have no way to make.
+          '/portal/maybeitsfate/rooms',
+        ]),
+      );
+    });
+
+    it('keeps their own pages, and their own dashboard', () => {
+      expect(hrefs(sections())).toEqual(
+        expect.arrayContaining(['/member', '/member/rsvps', '/member/billing', '/member/profile']),
+      );
+    });
+
+    it('is offered no organising tools', () => {
+      expect(hrefs(sections()).some((h) => h.startsWith('/admin'))).toBe(false);
+    });
+
+    it('names the section after the co-op, so it reads as somewhere to go', () => {
+      expect(labels(sections())).toContain('MaybeItsFate');
+    });
   });
 
-  it('offers the rest of the co-op too, not only the Commons', () => {
-    const links = hrefs(navSectionsFor(member));
-    expect(links).toEqual(
-      expect.arrayContaining([
-        '/portal/maybeitsfate/directory',
-        '/portal/maybeitsfate/events',
-        // Without this a member can list bookings they have no way to make.
-        '/portal/maybeitsfate/rooms',
-      ]),
-    );
+  describe('an organiser', () => {
+    const sections = () => sidebarSections({ membership: organiser, signedIn: true });
+
+    it('gets the organising tools', () => {
+      expect(hrefs(sections())).toEqual(
+        expect.arrayContaining(['/admin/members', '/admin/tiers', '/admin/settings']),
+      );
+    });
+
+    it('still gets the co-op they are organising — the bug this fixes', () => {
+      // An admin who cannot reach their own Commons is the mirror of a member
+      // who cannot: same defect, other side of the app.
+      expect(hrefs(sections())).toContain('/portal/maybeitsfate/commons');
+    });
+
+    it('still gets their own membership pages', () => {
+      // Being an admin is a role held in addition to being a member.
+      expect(hrefs(sections())).toEqual(
+        expect.arrayContaining(['/member/rsvps', '/member/profile']),
+      );
+    });
+
+    it('lands on the admin dashboard rather than the member one', () => {
+      const links = hrefs(sections());
+      expect(links).toContain('/admin');
+      expect(links).not.toContain('/member');
+    });
+
+    it('separates the three with named sections', () => {
+      expect(labels(sections())).toEqual(
+        expect.arrayContaining(['MaybeItsFate', 'Organising', 'My membership']),
+      );
+    });
   });
 
-  it('still gives them their own pages', () => {
-    const links = hrefs(navSectionsFor(member));
-    expect(links).toEqual(
-      expect.arrayContaining(['/member', '/member/rsvps', '/member/billing', '/member/profile']),
-    );
+  describe('a signed-out visitor on a public portal', () => {
+    const sections = () => sidebarSections({ orgSlug: 'maybeitsfate', signedIn: false });
+
+    it('still sees the co-op, because the portal is public', () => {
+      expect(hrefs(sections())).toContain('/portal/maybeitsfate/commons');
+    });
+
+    it('is offered nothing that would just bounce them to sign-in', () => {
+      const links = hrefs(sections());
+      expect(links.some((h) => h.startsWith('/member'))).toBe(false);
+      expect(links.some((h) => h.startsWith('/admin'))).toBe(false);
+    });
   });
 
-  it('names the section after the co-op, so it reads as somewhere to go', () => {
-    expect(navSectionsFor(member).map((s) => s.label)).toContain('MaybeItsFate');
-  });
+  describe('which co-op the community section points at', () => {
+    it('follows the page when looking at another co-op’s portal', () => {
+      // Otherwise a visitor reading Sunrise's public page gets links to their
+      // own co-op and is silently navigated somewhere else entirely.
+      const links = hrefs(
+        sidebarSections({ membership: member, orgSlug: 'sunrise', signedIn: true }),
+      );
 
-  it('builds no link at all when the slug is missing', () => {
-    // `org` is optional on the profile, and `/portal/undefined/commons` would
-    // read as a broken product rather than a profile that has not loaded.
-    const links = hrefs(navSectionsFor({ role: 'MEMBER' }));
+      expect(links).toContain('/portal/sunrise/commons');
+      expect(links).not.toContain('/portal/maybeitsfate/commons');
+    });
 
-    expect(links.some((h) => h.includes('undefined'))).toBe(false);
-    expect(links.some((h) => h.startsWith('/portal/'))).toBe(false);
-    // The member's own pages survive the absence.
-    expect(links).toContain('/member/profile');
-  });
+    it('falls back to the selected membership elsewhere', () => {
+      expect(hrefs(sidebarSections({ membership: member, signedIn: true }))).toContain(
+        '/portal/maybeitsfate/commons',
+      );
+    });
 
-  it('leaves the organiser sidebar alone', () => {
-    const links = hrefs(navSectionsFor({ role: 'ADMIN', org: { slug: 'maybeitsfate' } }));
+    it('builds no community links at all when there is no slug', () => {
+      // `/portal/undefined/commons` reads as a broken product rather than a
+      // profile that has not loaded yet.
+      const links = hrefs(sidebarSections({ membership: { role: 'MEMBER' }, signedIn: true }));
 
-    expect(links).toContain('/admin/commons');
-    expect(links.some((h) => h.startsWith('/portal/'))).toBe(false);
-    expect(links.some((h) => h.startsWith('/member'))).toBe(false);
-  });
-});
-
-/**
- * The portal's own column (option B).
- *
- * One nav now carries both the co-op and the member's settings, so the two
- * halves of the product stop being separate apps. The constraint that shapes
- * it: **the portal is public**. A signed-out visitor is a legitimate viewer of
- * a co-op's page, so hiding the co-op section behind a session would hide a
- * co-op's public face from the public — which is the failure worth pinning.
- */
-describe('the portal sidebar', () => {
-  const hrefs = (sections: ReturnType<typeof portalSectionsFor>) =>
-    sections.flatMap((s) => s.items.map((i) => i.href));
-
-  const member = { role: 'MEMBER', org: { name: 'MaybeItsFate', slug: 'maybeitsfate' } };
-
-  it('shows a signed-out visitor the co-op, and nothing personal', () => {
-    const links = hrefs(portalSectionsFor({ orgSlug: 'maybeitsfate', signedIn: false }));
-
-    expect(links).toContain('/portal/maybeitsfate/commons');
-    expect(links).toContain('/portal/maybeitsfate/events');
-    // A visitor has no membership and no admin; offering either would be a
-    // guaranteed redirect to the sign-in page.
-    expect(links.some((h) => h.startsWith('/member'))).toBe(false);
-    expect(links.some((h) => h.startsWith('/admin'))).toBe(false);
-  });
-
-  it('gives a signed-in member a route back to their own settings', () => {
-    const links = hrefs(portalSectionsFor({ orgSlug: 'maybeitsfate', membership: member, signedIn: true }));
-
-    expect(links).toContain('/portal/maybeitsfate/commons');
-    expect(links).toContain('/member');
-    expect(links).toContain('/member/profile');
-    expect(links.some((h) => h.startsWith('/admin'))).toBe(false);
-  });
-
-  it('gives an organiser the admin tools without taking away the co-op', () => {
-    const organiser = { role: 'ADMIN', org: { name: 'MaybeItsFate', slug: 'maybeitsfate' } };
-    const sections = portalSectionsFor({ orgSlug: 'maybeitsfate', membership: organiser, signedIn: true });
-    const links = hrefs(sections);
-
-    expect(links).toContain('/admin/members');
-    expect(links).toContain('/portal/maybeitsfate/commons');
-    expect(sections.map((s) => s.label)).toEqual(expect.arrayContaining(['Organising', 'My membership']));
-  });
-
-  it('points Home at the portal root rather than a sub-page', () => {
-    const links = hrefs(portalSectionsFor({ orgSlug: 'maybeitsfate', signedIn: false }));
-    expect(links).toContain('/portal/maybeitsfate');
+      expect(links.some((h) => h.includes('undefined'))).toBe(false);
+      expect(links.some((h) => h.startsWith('/portal/'))).toBe(false);
+      expect(links).toContain('/member/profile');
+    });
   });
 });

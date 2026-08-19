@@ -3,10 +3,10 @@
 import { useParams } from 'next/navigation';
 import { PortalProvider, usePortal } from '@/contexts/portal-context';
 import { PortalNav } from '@/components/portal/portal-nav';
-import { PortalSidebar } from '@/components/portal/portal-sidebar';
+import { Sidebar } from '@/components/layout/sidebar';
 
 function PortalShell({ children }: { children: React.ReactNode }) {
-  const { org, loading, error } = usePortal();
+  const { org, orgSlug, loading, error } = usePortal();
 
   if (loading) {
     return (
@@ -29,9 +29,14 @@ function PortalShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      <PortalSidebar />
+      {/* The same column as every other screen (Charley, 2026-08-19). It is
+          given this page's co-op explicitly, because the portal can be showing
+          a co-op the viewer has not selected — or is not a member of at all. */}
+      <div className="fixed inset-y-0 left-0 z-30 hidden w-64 lg:block">
+        <Sidebar orgSlug={orgSlug} orgName={org?.name} />
+      </div>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col lg:pl-64">
         {/* Still the navigation below `lg`, where a permanent column does not
             fit. Above it the sidebar carries everything and this would be a
             second copy of the same links. */}
