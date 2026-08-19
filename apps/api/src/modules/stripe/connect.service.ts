@@ -377,6 +377,39 @@ export class ConnectService {
    *
    * The real reason is logged in full, where the person who can fix it looks.
    */
+  /**
+   * Turn a refund failure into something an organiser should read.
+   *
+   * Same reasoning as `checkoutFailed`, and the same leak: Stripe's message
+   * names the restricted key, the connected account, the missing scope and a
+   * dashboard link, and all of it rendered into the tickets list an organiser
+   * was refunding from (2026-08-19). The ticket path threw it raw; the booking
+   * path caught it and handed the same text back as `reason`, which looked
+   * careful and was not.
+   *
+   * Returned rather than thrown, because a refund that Stripe declines is an
+   * outcome and not a crash — the bulk path refunds forty tickets and must
+   * carry on past one.
+   */
+  private refundFailed(err: unknown, context: string): { refunded: false; reason: string } {
+    const detail = err instanceof Error ? err.message : String(err);
+    this.logger.error(`Refund failed (${context}): ${detail}`);
+
+    // Stripe's `code` is an enum-like token — `card_declined`, `resource_missing`
+    // — and is safe to show. Its `message` is the leaky part: that is where the
+    // key, the account and the dashboard link live. Keeping the code keeps the
+    // summary useful ("whose money is missing, and why") without publishing a
+    // credential to do it.
+    const code = (err as { code?: string })?.code;
+
+    return {
+      refunded: false,
+      reason: code
+        ? `Stripe refused the refund (${code}). Nothing has been returned to the buyer.`
+        : 'Stripe refused the refund, so nothing has been returned to the buyer. The reason is in the server logs.',
+    };
+  }
+
   private checkoutFailed(err: unknown, context: string): never {
     const detail = err instanceof Error ? err.message : String(err);
     this.logger.error(`Checkout session failed (${context}): ${detail}`);
@@ -665,13 +698,19 @@ export class ConnectService {
       return { refunded: false, reason: 'the co-op has no connected account' };
     }
 
-    await this.stripe.refunds.create(
-      {
-        payment_intent: ticket.stripePaymentIntentId,
-        refund_application_fee: true,
-      },
-      { stripeAccount: accountId },
-    );
+    try {
+      await this.stripe.refunds.create(
+        {
+          payment_intent: ticket.stripePaymentIntentId,
+          refund_application_fee: true,
+        },
+        { stripeAccount: accountId },
+      );
+    } catch (err) {
+      // Not marked refunded: the money did not move, and a row claiming
+      // otherwise would hide a buyer who is still owed.
+      return this.refundFailed(err, `ticket ${ticketId}`);
+    }
 
     await this.prisma.ticket.update({
       where: { id: ticketId },
@@ -940,9 +979,7 @@ export class ConnectService {
         { stripeAccount: accountId },
       );
     } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Refund failed for booking ${bookingId}: ${reason}`);
-      return { refunded: false, reason };
+      return this.refundFailed(err, `booking ${bookingId}`);
     }
 
     await this.prisma.booking.update({
