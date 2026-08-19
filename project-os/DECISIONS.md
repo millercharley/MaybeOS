@@ -24,6 +24,30 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-029 — Member avatars are copied into MaybeOS, and served privately
+
+- **Date:** 2026-08-20
+- **Status:** Active
+- **Area:** Storage / Security
+- **Decision:** Two rules. **(1) Copy, don't link.** An avatar arriving from another platform is fetched and stored in MaybeOS's own Supabase Storage; the source URL is never the answer. `User.avatarPath` records where it landed and wins over `avatarUrl`. **(2) The `avatars` bucket is private**, unlike `org-logos`, which stays public. Avatars reach a browser as short-lived signed URLs, batch-signed once per page rather than once per member. Fetching is capped (5 MB, 10s, http/https only) and the MIME type is sniffed from magic bytes rather than trusted from the response header.
+- **Alternatives rejected:** **Storing the source URL**, which is what the column already allowed — rejected because a Circle avatar URL is a signed link into a Circle account: it dies with the subscription, so a roster imported today silently becomes 212 broken images the month the co-op finishes leaving. That is a lease, not an import. **A public bucket with unguessable UUID paths** — much simpler, needs no signing pass anywhere, and every existing call site would have worked unchanged — rejected because it contradicts the standing rule that material inside MaybeOS requires auth to reach, and because "unguessable" is not "private": a URL that leaks once works forever, with no way to revoke it short of deleting the file. **Serving avatars through an authenticated API route** — rejected on mechanics, not principle: `<img src>` sends no Authorization header, and this app carries its JWT in a header rather than a cookie, so the image would simply 401. **Bytes in Postgres** — the literal reading of "load them into the database", rejected because a 5 MB base64 column read on every directory page is a slow way to serve a file a CDN exists for.
+- **Rationale:** A co-op's logo is its public identity and belongs on the open internet; a member's face is not the same kind of object, and the difference should be visible in where the two are stored rather than left to an unguessable path. Copying is what makes the import an actual migration — after it, nothing MaybeOS shows depends on an account the co-op is closing. The accepted cost is the signing pass: every payload carrying an avatar must resolve it, and today only the member list and directory do, so an imported member currently shows their photo there and a grey initial in the Commons (booked as MEM-10). That is a visible half-state, and it is the price of the private bucket — under the public-bucket alternative it would not exist.
+- **Supersedes:** none. **Extends OPS-27's** storage boundary to a third bucket.
+
+---
+
+### D-028 — An import never overwrites what MaybeOS already knows
+
+- **Date:** 2026-08-20
+- **Status:** Active
+- **Area:** Backend / Data
+- **Decision:** Bulk import (MEM-06) may **create** records and may **never modify existing ones**. An email that already has a MaybeOS account keeps its name and avatar; a person who is already a member of the importing co-op is counted, reported, and otherwise left completely untouched — role, tier, join date, bio and profile included. The import reports three outcomes separately (`created`, `linkedExistingUsers`, `alreadyMembers`) so an organiser can see which happened. Re-running the same file is therefore safe and resumes rather than duplicates. Imported accounts are created with no password and `emailVerified: false`, and **no email is sent by an import, ever**.
+- **Alternatives rejected:** **Update-on-conflict (upsert)**, the obvious default and what most importers do — rejected because a co-op's own organiser is normally row one of their own export. Charley is row one of MaybeItsFate's. An upsert would set his role from OWNER to MEMBER and replace a bio written in MaybeOS with Circle's copy, in the very act of him importing his own community. **Field-level merge — fill blanks, keep what exists** — genuinely tempting and rejected as unpredictable: whether an import changes your profile would depend on which fields happened to be empty that day, which is not a rule anybody can hold in their head. **Asking per conflict** — 314 prompts. **Emailing imported members a welcome or a claim link** — rejected outright; three hundred people receiving an unexpected message from a platform they have never heard of is the worst failure this feature has available to it, and it is unsendable back.
+- **Rationale:** An import is the one operation that writes hundreds of records from a file nobody has read line by line. The blast radius of a wrong rule is the entire membership, and the correction is manual. Creating is recoverable — delete the member. Overwriting is not — the previous value is gone. So the safe half is automated and the destructive half is refused, and a co-op that wants an existing member's details changed does it deliberately, one at a time, where a human is looking. The cost is real and accepted: an import cannot be used to bulk-update a roster, which is a feature somebody will eventually ask for. It should arrive as its own thing, named for what it does, and not as a silent behaviour of the button labelled *import*.
+- **Supersedes:** none.
+
+---
+
 ### D-027 — No page names a specific co-op
 
 - **Date:** 2026-08-18
