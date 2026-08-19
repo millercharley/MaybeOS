@@ -44,6 +44,20 @@ export class CreateRoomDto {
   @IsBoolean()
   memberOnly?: boolean;
 
+  /**
+   * Whether members are charged to book this room (SPC-06).
+   *
+   * Charging is two deliberate steps, a switch and a rate, so that typing a
+   * number to record what a room is worth cannot start billing members. The
+   * rate was accepted here and the switch was not — and since the form always
+   * sends both, the whitelist refused **every** room create and update, which
+   * is why a co-op that had shipped room charging still had no rooms.
+   */
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  chargeForBooking?: boolean;
+
   @ApiPropertyOptional({ example: 2500, description: 'Hourly rate in cents' })
   @IsOptional()
   @IsInt()
