@@ -416,7 +416,7 @@ export class EventsService {
         // Deliberately not on the public endpoints. Publishing a member's
         // name to anyone on the internet is a decision the co-op should make,
         // not a default that arrives with a schema change (see SEC-06).
-        host: { select: { id: true, name: true, avatarUrl: true } },
+        host: { select: { id: true, name: true, avatarUrl: true, avatarPath: true } },
       },
     });
 
@@ -484,7 +484,7 @@ export class EventsService {
         include: {
           location: true,
           room: true,
-          host: { select: { id: true, name: true, avatarUrl: true } },
+          host: { select: { id: true, name: true, avatarUrl: true, avatarPath: true } },
           ...CONFIRMED_RSVP_COUNT,
         },
       }),
@@ -935,7 +935,7 @@ export class EventsService {
     const [rsvps, attendance] = await Promise.all([
       this.prisma.rsvp.findMany({
         where: { eventId, status: { in: ['CONFIRMED', 'WAITLISTED'] } },
-        include: { user: { select: { id: true, name: true, avatarUrl: true } } },
+        include: { user: { select: { id: true, name: true, avatarUrl: true, avatarPath: true } } },
       }),
       this.prisma.attendance.findMany({
         where: { eventId },

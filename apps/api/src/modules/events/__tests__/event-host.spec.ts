@@ -114,7 +114,15 @@ describe('EventsService — event host', () => {
       await service.listByOrg(ORG, {});
 
       const include = listPrisma.event.findMany.mock.calls[0][0].include;
-      expect(include.host.select).toEqual({ id: true, name: true, avatarUrl: true });
+      // `avatarPath` joins them for MEM-10: avatars live in a private bucket
+      // and the global interceptor swaps the path for a signed URL on the way
+      // out, so the path has to be selected here to be resolved there.
+      expect(include.host.select).toEqual({
+        id: true,
+        name: true,
+        avatarUrl: true,
+        avatarPath: true,
+      });
       // A name, a face and an id — never an email. Contact details follow
       // SEC-06, and nothing here is a route around it.
       expect(include.host.select).not.toHaveProperty('email');
