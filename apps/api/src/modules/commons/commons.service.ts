@@ -538,12 +538,35 @@ export class CommonsService {
 
   // ─── Collections (wiki) ───────────────────────────────────────
 
+  /** One past the last, so a new section appends. */
+  private async nextCollectionOrder(orgId: string): Promise<number> {
+    const last = await this.prisma.collection.findFirst({
+      where: { orgId },
+      orderBy: { sortOrder: 'desc' },
+      select: { sortOrder: true },
+    });
+    return last ? last.sortOrder + 1 : 0;
+  }
+
+  /** One past the last page in this collection. */
+  private async nextPageOrder(collectionId: string): Promise<number> {
+    const last = await this.prisma.collectionPage.findFirst({
+      where: { collectionId },
+      orderBy: { sortOrder: 'desc' },
+      select: { sortOrder: true },
+    });
+    return last ? last.sortOrder + 1 : 0;
+  }
+
   async createCollection(orgId: string, dto: CreateCollectionDto) {
     return this.prisma.collection.create({
       data: {
         orgId,
         name: dto.name,
         emoji: dto.emoji ?? '📄',
+        // Appended rather than dropped at 0, so adding a section to a handbook
+        // does not silently land it at the top above "You BELONG".
+        sortOrder: dto.sortOrder ?? (await this.nextCollectionOrder(orgId)),
         description: dto.description,
       },
     });
@@ -580,7 +603,13 @@ export class CommonsService {
     await this.findCollectionInOrg(orgId, collectionId);
 
     return this.prisma.collectionPage.create({
-      data: { collectionId, authorId, title: dto.title, body: dto.body },
+      data: {
+        collectionId,
+        authorId,
+        title: dto.title,
+        body: dto.body,
+        sortOrder: dto.sortOrder ?? (await this.nextPageOrder(collectionId)),
+      },
     });
   }
 

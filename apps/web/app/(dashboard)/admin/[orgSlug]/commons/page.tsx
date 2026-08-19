@@ -123,6 +123,54 @@ export default function CommonsPage() {
      
   }, [searchParams]);
   const [openCollections, setOpenCollections] = useState<Record<string, boolean>>({});
+
+  // ── Writing the Library (CMN-09) ────────────────────────────────
+  //
+  // The API for this has existed since the wiki was built — create, update,
+  // delete, for collections and pages alike — and nothing in the product
+  // called it, so a co-op could read a library it had no way to write. Charley
+  // found it looking for where MaybeItsFate's Member Handbook would live.
+  const [newCollection, setNewCollection] = useState<{ name: string; emoji: string } | null>(null);
+  const [newPageIn, setNewPageIn] = useState<string | null>(null);
+  const [pageDraft, setPageDraft] = useState({ title: '', body: '' });
+  const [editingPage, setEditingPage] = useState(false);
+  const [libraryBusy, setLibraryBusy] = useState(false);
+  const [libraryError, setLibraryError] = useState('');
+
+  async function withLibrary(work: () => Promise<unknown>) {
+    setLibraryBusy(true);
+    setLibraryError('');
+    try {
+      await work();
+      await refetchCollections();
+    } catch (err) {
+      setLibraryError(err instanceof Error ? err.message : 'That did not save');
+    } finally {
+      setLibraryBusy(false);
+    }
+  }
+
+  /**
+   * Move a page within its collection.
+   *
+   * Swaps the two `sortOrder` values rather than renumbering the list: a
+   * handbook is a sequence somebody curated, and rewriting every row to move
+   * one item is how a concurrent edit loses the rest of the order.
+   */
+  async function movePage(collectionId: string, pageId: string, direction: -1 | 1) {
+    const collection = (collections ?? []).find((c) => c.id === collectionId);
+    if (!collection || !token || !currentOrgId) return;
+
+    const pages = [...collection.pages].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    const index = pages.findIndex((p) => p.id === pageId);
+    const swapWith = pages[index + direction];
+    if (index === -1 || !swapWith) return;
+
+    await withLibrary(async () => {
+      await api.commons.updatePage(currentOrgId, pageId, { sortOrder: swapWith.sortOrder ?? 0 }, token);
+      await api.commons.updatePage(currentOrgId, swapWith.id, { sortOrder: pages[index].sortOrder ?? 0 }, token);
+    });
+  }
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
   const [newPostBody, setNewPostBody] = useState('');
   const [dmDraft, setDmDraft] = useState('');
@@ -133,7 +181,7 @@ export default function CommonsPage() {
     [],
   );
 
-  const { data: collections } = useApi(
+  const { data: collections, refetch: refetchCollections } = useApi(
     (token, orgId) => api.commons.listCollections(orgId, token),
     [],
   );
@@ -173,7 +221,7 @@ export default function CommonsPage() {
     [expandedPostId],
   );
 
-  const { data: pageContent, loading: pageLoading } = useApi<CollectionPage | null>(
+  const { data: pageContent, loading: pageLoading, refetch: refetchPage } = useApi<CollectionPage | null>(
     (token, orgId) => {
       if (view?.type !== 'page') return Promise.resolve(null);
       return api.commons.getPage(orgId, view.id, token);
@@ -249,7 +297,62 @@ export default function CommonsPage() {
         <div className="w-60 shrink-0 space-y-4">
           {/* Collections */}
           <div className="card">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-500">Collections</h2>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500">Collections</h2>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setNewCollection(newCollection ? null : { name: '', emoji: '📘' })}
+                  className="text-xs font-medium text-brand-600 hover:underline"
+                >
+                  {newCollection ? 'Cancel' : 'New'}
+                </button>
+              )}
+            </div>
+
+            {libraryError && (
+              <p className="mb-2 text-xs text-red-600" role="alert">{libraryError}</p>
+            )}
+
+            {newCollection && (
+              <form
+                className="mb-3 space-y-2 rounded-md border border-gray-200 p-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!token || !currentOrgId || !newCollection.name.trim()) return;
+                  withLibrary(async () => {
+                    await api.commons.createCollection(
+                      currentOrgId,
+                      { name: newCollection.name.trim(), emoji: newCollection.emoji || '📘' },
+                      token,
+                    );
+                    setNewCollection(null);
+                  });
+                }}
+              >
+                <div className="flex gap-2">
+                  <input
+                    value={newCollection.emoji}
+                    onChange={(e) => setNewCollection({ ...newCollection, emoji: e.target.value })}
+                    className="input w-14 text-center"
+                    aria-label="Emoji"
+                    maxLength={4}
+                  />
+                  <input
+                    value={newCollection.name}
+                    onChange={(e) => setNewCollection({ ...newCollection, name: e.target.value })}
+                    placeholder="Member Handbook"
+                    className="input flex-1 text-sm"
+                    aria-label="Collection name"
+                    autoFocus
+                  />
+                </div>
+                <button type="submit" disabled={libraryBusy} className="btn-primary w-full text-xs">
+                  {libraryBusy ? 'Adding...' : 'Add collection'}
+                </button>
+              </form>
+            )}
+
             <ul className="space-y-1">
               {(collections ?? []).map((collection) => {
                 const isOpen = openCollections[collection.id] ?? false;
@@ -265,7 +368,7 @@ export default function CommonsPage() {
                     </button>
                     {isOpen && (
                       <ul className="ml-6 space-y-0.5">
-                        {collection.pages.map((page) => (
+                        {collection.pages.map((page, pageIndex) => (
                           <li key={page.id}>
                             <button
                               onClick={() => setView({ type: 'page', id: page.id })}
@@ -278,8 +381,78 @@ export default function CommonsPage() {
                               <BookOpen className="h-3.5 w-3.5 shrink-0" />
                               <span className="truncate">{page.title}</span>
                             </button>
+                            {isAdmin && (
+                              <div className="ml-6 flex gap-2 pb-1">
+                                {/* Order is the point of a handbook: "0. You
+                                    BELONG" before "1. Code of Conduct". */}
+                                <button
+                                  type="button"
+                                  onClick={() => movePage(collection.id, page.id, -1)}
+                                  disabled={libraryBusy || pageIndex === 0}
+                                  className="text-[11px] text-gray-400 hover:text-gray-700 disabled:opacity-40"
+                                >
+                                  Move up
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => movePage(collection.id, page.id, 1)}
+                                  disabled={libraryBusy || pageIndex === collection.pages.length - 1}
+                                  className="text-[11px] text-gray-400 hover:text-gray-700 disabled:opacity-40"
+                                >
+                                  Move down
+                                </button>
+                              </div>
+                            )}
                           </li>
                         ))}
+
+                        {isAdmin && (
+                          <li className="pt-1">
+                            {newPageIn === collection.id ? (
+                              <form
+                                className="space-y-2 rounded-md border border-gray-200 p-2"
+                                onSubmit={(e) => {
+                                  e.preventDefault();
+                                  if (!token || !currentOrgId || !pageDraft.title.trim()) return;
+                                  withLibrary(async () => {
+                                    const created = await api.commons.createPage(
+                                      currentOrgId,
+                                      collection.id,
+                                      { title: pageDraft.title.trim(), body: pageDraft.body },
+                                      token,
+                                    );
+                                    setNewPageIn(null);
+                                    setPageDraft({ title: '', body: '' });
+                                    setView({ type: 'page', id: created.id });
+                                  });
+                                }}
+                              >
+                                <input
+                                  value={pageDraft.title}
+                                  onChange={(e) => setPageDraft({ ...pageDraft, title: e.target.value })}
+                                  placeholder="0. You BELONG"
+                                  className="input w-full text-sm"
+                                  aria-label="Page title"
+                                  autoFocus
+                                />
+                                <button type="submit" disabled={libraryBusy} className="btn-primary w-full text-xs">
+                                  {libraryBusy ? 'Adding...' : 'Add page'}
+                                </button>
+                              </form>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setNewPageIn(collection.id);
+                                  setPageDraft({ title: '', body: '' });
+                                }}
+                                className="px-2 text-xs font-medium text-brand-600 hover:underline"
+                              >
+                                + Add page
+                              </button>
+                            )}
+                          </li>
+                        )}
                       </ul>
                     )}
                   </li>
@@ -389,11 +562,98 @@ export default function CommonsPage() {
               </div>
             ) : (
               <div className="card">
-                <h2 className="text-xl font-semibold text-gray-900">{pageContent.title}</h2>
-                <div
-                  className="prose prose-sm mt-4 max-w-none text-gray-700"
-                  dangerouslySetInnerHTML={{ __html: sanitizeWikiHtml(pageContent.body) }}
-                />
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <h2 className="text-xl font-semibold text-gray-900">{pageContent.title}</h2>
+                  {isAdmin && !editingPage && (
+                    <div className="flex shrink-0 gap-3 text-sm">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPageDraft({ title: pageContent.title, body: pageContent.body });
+                          setEditingPage(true);
+                        }}
+                        className="font-medium text-brand-600 hover:underline"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!token || !currentOrgId) return;
+                          // Deleting a handbook page removes something members
+                          // are pointed at on their first day, so it asks.
+                          if (!window.confirm(`Delete "${pageContent.title}"? This cannot be undone.`)) return;
+                          withLibrary(async () => {
+                            await api.commons.deletePage(currentOrgId, pageContent.id, token);
+                            setView(null);
+                          });
+                        }}
+                        className="text-gray-500 hover:text-red-600"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {editingPage ? (
+                  <form
+                    className="mt-4 space-y-3"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!token || !currentOrgId) return;
+                      withLibrary(async () => {
+                        await api.commons.updatePage(
+                          currentOrgId,
+                          pageContent.id,
+                          { title: pageDraft.title.trim(), body: pageDraft.body },
+                          token,
+                        );
+                        setEditingPage(false);
+                        await refetchPage();
+                      });
+                    }}
+                  >
+                    <input
+                      value={pageDraft.title}
+                      onChange={(e) => setPageDraft({ ...pageDraft, title: e.target.value })}
+                      className="input w-full"
+                      aria-label="Page title"
+                    />
+                    <textarea
+                      value={pageDraft.body}
+                      onChange={(e) => setPageDraft({ ...pageDraft, body: e.target.value })}
+                      rows={18}
+                      className="input w-full font-mono text-sm"
+                      aria-label="Page body"
+                    />
+                    {/* Said plainly, because the field takes HTML and the
+                        renderer sanitises it — a co-op pasting a stray tag
+                        should know why it vanished rather than think the save
+                        failed. */}
+                    <p className="text-xs text-gray-500">
+                      Basic HTML is allowed — headings, paragraphs, lists, links and emphasis. Anything
+                      else is stripped when the page is shown.
+                    </p>
+                    <div className="flex gap-3">
+                      <button type="submit" disabled={libraryBusy} className="btn-primary text-sm">
+                        {libraryBusy ? 'Saving...' : 'Save page'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingPage(false)}
+                        className="text-sm text-gray-500 hover:text-gray-900"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div
+                    className="prose prose-sm mt-4 max-w-none text-gray-700"
+                    dangerouslySetInnerHTML={{ __html: sanitizeWikiHtml(pageContent.body) }}
+                  />
+                )}
               </div>
             )
           ) : view?.type === 'dm' ? (

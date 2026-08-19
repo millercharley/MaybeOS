@@ -686,7 +686,7 @@ class ApiClient {
     listCollections: (orgId: string, token: string) =>
       this.request<Collection[]>(`/orgs/${orgId}/collections`, { token }),
 
-    createCollection: (orgId: string, data: { name: string; emoji?: string; description?: string }, token: string) =>
+    createCollection: (orgId: string, data: { name: string; emoji?: string; description?: string; sortOrder?: number }, token: string) =>
       this.request<Collection>(`/orgs/${orgId}/collections`, { method: 'POST', body: JSON.stringify(data), token }),
 
     deleteCollection: (orgId: string, collectionId: string, token: string) =>
@@ -695,14 +695,14 @@ class ApiClient {
     getPage: (orgId: string, pageId: string, token: string) =>
       this.request<CollectionPage>(`/orgs/${orgId}/pages/${pageId}`, { token }),
 
-    createPage: (orgId: string, collectionId: string, data: { title: string; body: string }, token: string) =>
+    createPage: (orgId: string, collectionId: string, data: { title: string; body: string; sortOrder?: number }, token: string) =>
       this.request<CollectionPage>(`/orgs/${orgId}/collections/${collectionId}/pages`, {
         method: 'POST',
         body: JSON.stringify(data),
         token,
       }),
 
-    updatePage: (orgId: string, pageId: string, data: { title?: string; body?: string }, token: string) =>
+    updatePage: (orgId: string, pageId: string, data: { title?: string; body?: string; sortOrder?: number }, token: string) =>
       this.request<CollectionPage>(`/orgs/${orgId}/pages/${pageId}`, {
         method: 'POST',
         body: JSON.stringify(data),
@@ -1292,6 +1292,8 @@ export interface CollectionPage {
   collectionId?: string;
   title: string;
   body: string;
+  /** Position within its collection. A handbook is a sequence (CMN-09). */
+  sortOrder?: number;
   updatedAt: string;
   author?: { id: string; name?: string; avatarUrl?: string };
 }
