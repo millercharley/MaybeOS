@@ -548,6 +548,17 @@ class ApiClient {
         { method: 'POST', token },
       ),
 
+    /**
+     * The post carrying an event's comments, created on first use (EVT-11).
+     *
+     * Members only. An event page is public; its conversation is not.
+     */
+    thread: (orgId: string, eventId: string, token: string) =>
+      this.request<{ postId: string | null }>(`/orgs/${orgId}/events/${eventId}/thread`, {
+        method: 'POST',
+        token,
+      }),
+
     /** Start Stripe checkout for a ticket. No token needed — public events. */
     buyTicket: (
       orgId: string,

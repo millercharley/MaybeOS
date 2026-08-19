@@ -321,6 +321,11 @@ model Event {
   /// booking has to reach the event, or the co-op keeps advertising a room
   /// that is no longer held.
   bookingId       String?         @unique
+  /// The post that carries this event's discussion (EVT-11). Created the first
+  /// time somebody needs it rather than for every event, and unique because
+  /// two events sharing a thread would mix two conversations. Chosen over
+  /// teaching Comment about events: one comment model, one moderation surface.
+  postId          String?         @unique
   waitlistEnabled Boolean         @default(false)
   requiresRsvp    Boolean         @default(true)
   category        String?
@@ -335,6 +340,9 @@ model Event {
   // SetNull, not Cascade: a host leaving the co-op must not delete the events
   // they ran, along with every RSVP and attendance record attached to them.
   host        User?        @relation("HostedEvents", fields: [hostId], references: [id], onDelete: SetNull)
+  /// SetNull, not Cascade: an event whose discussion was moderated away should
+  /// still exist.
+  post        Post?        @relation("EventThread", fields: [postId], references: [id], onDelete: SetNull)
   // SetNull rather than Cascade: if a booking row is ever hard-deleted the
   // event it produced should survive as an event, not vanish along with its
   // RSVPs. Cancellation is handled in the service, not by the database.
@@ -589,6 +597,7 @@ model Post {
   comments    Comment[]
   reactions   Reaction[]
   attachments Attachment[]
+  eventThread Event?       @relation("EventThread")
 
   @@index([channelId, createdAt])
   @@map("posts")
