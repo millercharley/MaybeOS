@@ -62,6 +62,41 @@ Supabase's linter reporting `rls_enabled_no_policy` (INFO) for every table is
 the expected state, not a list of things to fix — that lint assumes you want
 PostgREST access, and MaybeOS never uses the Data API.
 
+## Both databases are baselined (OPS-23, 2026-08-19)
+
+They were not, and the gap was not what it looked like. `prisma migrate status`
+reported **nine** migrations pending on dev; only **four** were real. The other
+five were already in dev's schema — RLS was on all 32 tables, `expenses`
+existed, every column was there — and showed as pending because
+`_prisma_migrations` was stale. Both databases had been maintained with
+`db push`, so the migration history was bookkeeping fiction rather than a
+record of anything.
+
+Production was worse: it had **no `_prisma_migrations` table at all**, so
+`prisma migrate deploy` would have tried to replay `0_init` onto a database
+already carrying every table. That is the failure this file existed to warn
+about, sitting in the live environment.
+
+Both are now correct, and were fixed differently on purpose:
+
+- **Dev** — the five already in its schema were recorded with
+  `migrate resolve --applied`; the four genuinely missing were run with
+  `migrate deploy`. Running all nine risked a non-idempotent migration failing
+  and marking itself failed, which blocks every later deploy.
+- **Production** — its `_prisma_migrations` table was created and all thirteen
+  recorded, using the checksums Prisma itself had written in dev for the same
+  files. Copied rather than computed: a checksum guessed at the wrong algorithm
+  fails later with "migration file has been modified", by which time the
+  original files are long gone from anyone's memory.
+
+Verified by fingerprint rather than by trust — every table, column and data
+type in both databases, hashed, and identical:
+`e67467deb2b23c27d58250cb6afcc958`, 352 columns each.
+
+**From here, use `prisma migrate`.** Both databases now record what has been
+applied, so drift is visible again — which it was not for the eleven days this
+went unnoticed.
+
 ## Baselining another environment
 
 If a database already has the schema but no `_prisma_migrations` table, mark
