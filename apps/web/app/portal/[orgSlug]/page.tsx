@@ -30,13 +30,17 @@ export default function PortalHomePage() {
 
   return (
     <div className="space-y-10">
-      <div className="text-center">
+      {/* Left, like every other heading in the product. `max-w-2xl` stays on
+          the prose — that is a readable line length, not a centred layout, and
+          dropping it would run a co-op's mission the full width of a large
+          monitor. */}
+      <div>
         <h1 className="text-3xl font-bold text-gray-900">{org?.name}</h1>
         {org?.mission && (
-          <p className="mx-auto mt-3 max-w-2xl text-lg text-gray-600">{org.mission}</p>
+          <p className="mt-3 max-w-2xl text-lg text-gray-600">{org.mission}</p>
         )}
         {org?.description && !org?.mission && (
-          <p className="mx-auto mt-3 max-w-2xl text-lg text-gray-600">{org.description}</p>
+          <p className="mt-3 max-w-2xl text-lg text-gray-600">{org.description}</p>
         )}
       </div>
 
