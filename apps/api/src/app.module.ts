@@ -6,6 +6,7 @@ import { LoggerModule } from 'nestjs-pino';
 import * as Joi from 'joi';
 import { PrismaModule } from './config/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { AttachmentsModule } from './modules/attachments/attachments.module';
 import { OrgModule } from './modules/org/org.module';
 import { MemberModule } from './modules/member/member.module';
 import { EventsModule } from './modules/events/events.module';
@@ -98,6 +99,7 @@ import { HealthModule } from './modules/health/health.module';
     HealthModule,
     AuthModule,
     OrgModule,
+    AttachmentsModule,
     MemberModule,
     EventsModule,
     SpaceModule,

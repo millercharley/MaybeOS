@@ -87,7 +87,8 @@ model Organization {
   auditLogs      AuditLog[]
   emailTemplates EmailTemplate[]
 
-  expenses Expense[]
+  expenses    Expense[]
+  attachments Attachment[]
 
   @@map("organizations")
 }
@@ -156,7 +157,8 @@ model User {
   hostedEvents     Event[]          @relation("HostedEvents")
   tickets          Ticket[]
 
-  expensesCreated Expense[] @relation("ExpenseCreator")
+  expensesCreated Expense[]    @relation("ExpenseCreator")
+  attachments     Attachment[]
 
   @@map("users")
 }
@@ -329,21 +331,22 @@ model Event {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   // SetNull, not Cascade: a host leaving the co-op must not delete the events
   // they ran, along with every RSVP and attendance record attached to them.
-  host       User?        @relation("HostedEvents", fields: [hostId], references: [id], onDelete: SetNull)
+  host        User?        @relation("HostedEvents", fields: [hostId], references: [id], onDelete: SetNull)
   // SetNull rather than Cascade: if a booking row is ever hard-deleted the
   // event it produced should survive as an event, not vanish along with its
   // RSVPs. Cancellation is handled in the service, not by the database.
-  booking    Booking?     @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  location   Location?    @relation(fields: [locationId], references: [id])
-  room       Room?        @relation(fields: [roomId], references: [id])
-  parent     Event?       @relation("EventRecurrence", fields: [parentEventId], references: [id])
-  children   Event[]      @relation("EventRecurrence")
-  rsvps      Rsvp[]
-  attendance Attendance[]
-  tickets    Ticket[]
+  booking     Booking?     @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  location    Location?    @relation(fields: [locationId], references: [id])
+  room        Room?        @relation(fields: [roomId], references: [id])
+  parent      Event?       @relation("EventRecurrence", fields: [parentEventId], references: [id])
+  children    Event[]      @relation("EventRecurrence")
+  rsvps       Rsvp[]
+  attendance  Attendance[]
+  tickets     Ticket[]
+  attachments Attachment[]
 
   @@unique([orgId, slug])
   @@index([orgId, startTime])
@@ -581,10 +584,11 @@ model Post {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  channel   Channel    @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  author    User       @relation(fields: [authorId], references: [id])
-  comments  Comment[]
-  reactions Reaction[]
+  channel     Channel      @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author      User         @relation(fields: [authorId], references: [id])
+  comments    Comment[]
+  reactions   Reaction[]
+  attachments Attachment[]
 
   @@index([channelId, createdAt])
   @@map("posts")
@@ -600,10 +604,11 @@ model Comment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  post    Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
-  author  User      @relation(fields: [authorId], references: [id])
-  parent  Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies Comment[] @relation("CommentReplies")
+  post        Post         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author      User         @relation(fields: [authorId], references: [id])
+  parent      Comment?     @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     Comment[]    @relation("CommentReplies")
+  attachments Attachment[]
 
   @@index([postId])
   @@index([parentId])
@@ -1013,4 +1018,38 @@ model EmailTemplate {
 
   @@unique([orgId, slug])
   @@map("email_templates")
+}
+
+/// A file a member attached to a post, a comment or an event.
+///
+/// The bytes live in the private `attachments` bucket in the same Supabase
+/// project as this database, so a file and the row referencing it can never
+/// drift into different accounts. Exactly one owner column is set, enforced by
+/// a check constraint — an attachment belonging to two things at once, or to
+/// nothing, is not a state anything downstream should have to reason about.
+model Attachment {
+  id         String   @id @default(uuid())
+  orgId      String
+  uploaderId String
+  postId     String?
+  commentId  String?
+  eventId    String?
+  /// Object key inside the bucket, always `<orgId>/<uuid>.<ext>`.
+  path       String   @unique
+  fileName   String
+  mimeType   String
+  sizeBytes  Int
+  createdAt  DateTime @default(now())
+
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  uploader User         @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+  post     Post?        @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment  Comment?     @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  event    Event?       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([postId])
+  @@index([commentId])
+  @@index([eventId])
+  @@map("attachments")
 }

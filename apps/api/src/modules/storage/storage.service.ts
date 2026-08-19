@@ -20,6 +20,39 @@ const EXTENSION: Record<string, string> = {
 
 export type LogoMimeType = (typeof LOGO_MIME_TYPES)[number];
 
+/** What the private `attachments` bucket itself enforces. Kept in step with it. */
+export const ATTACHMENT_BUCKET = 'attachments';
+export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024; // 25 MB
+export const ATTACHMENT_MIME_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  // A GIF is an image, not a separate feature. A Giphy-style picker would be a
+  // third-party search integration with its own key and content policy.
+  'image/gif',
+  'application/pdf',
+  'text/plain',
+  'text/csv',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+] as const;
+
+const ATTACHMENT_EXTENSION: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'application/pdf': 'pdf',
+  'text/plain': 'txt',
+  'text/csv': 'csv',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.ms-excel': 'xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+};
+
 /**
  * Supabase Storage, over its REST API (D-017, OPS-03c).
  *
@@ -54,6 +87,125 @@ export class StorageService {
 
   private get headers(): Record<string, string> {
     return { apikey: this.key!, Authorization: `Bearer ${this.key!}` };
+  }
+
+  /**
+   * A one-time URL the browser can upload straight to.
+   *
+   * Attachments do not travel through the API, and cannot: Netlify Functions
+   * cap a request at about 6 MB, and base64 inflates a file by a third — which
+   * is exactly why org logos stop at 2 MB. A phone photo or a GIF clears that
+   * routinely, so the bytes go from the browser to Supabase directly and only
+   * the metadata comes back here.
+   *
+   * The server chooses the path. That is the security of it: the caller never
+   * names where its file lands, so a doctored request cannot write into
+   * another co-op's folder or overwrite an existing object. The uuid also
+   * means an upload never collides with one in flight.
+   */
+  async createAttachmentUploadUrl(
+    orgId: string,
+    mimeType: string,
+  ): Promise<{ uploadUrl: string; path: string }> {
+    this.assertConfigured('Attachments');
+
+    const extension = ATTACHMENT_EXTENSION[mimeType];
+    if (!extension) {
+      throw new BadRequestException(`Files of type ${mimeType} are not accepted.`);
+    }
+
+    const path = `${orgId}/${randomUUID()}.${extension}`;
+    const response = await fetch(
+      `${this.url}/storage/v1/object/upload/sign/${ATTACHMENT_BUCKET}/${path}`,
+      { method: 'POST', headers: { ...this.headers, 'Content-Type': 'application/json' } },
+    );
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      this.logger.error(
+        `Could not sign an attachment upload for org ${orgId}: ${response.status} ${detail.slice(0, 200)}`,
+      );
+      throw new ServiceUnavailableException('Could not start that upload. Try again.');
+    }
+
+    const { url } = (await response.json()) as { url: string };
+    return { uploadUrl: `${this.url}/storage/v1${url}`, path };
+  }
+
+  /**
+   * Confirm an object is really there before a row claims it exists.
+   *
+   * The browser uploads on its own, so the API is told after the fact — and
+   * "it worked" from a client is a claim, not a fact. Without this a failed or
+   * abandoned upload leaves an attachment row pointing at nothing, which
+   * renders as a broken file forever.
+   */
+  async attachmentExists(path: string): Promise<{ sizeBytes: number } | null> {
+    if (!this.isConfigured) return null;
+
+    const response = await fetch(
+      `${this.url}/storage/v1/object/info/${ATTACHMENT_BUCKET}/${path}`,
+      { headers: this.headers },
+    );
+    if (!response.ok) return null;
+
+    const info = (await response.json()) as { size?: number; contentLength?: number };
+    return { sizeBytes: info.size ?? info.contentLength ?? 0 };
+  }
+
+  /**
+   * A short-lived URL for reading one attachment.
+   *
+   * The bucket is private on purpose. A public bucket with an unguessable path
+   * is security by obscurity, and these files hang off members-only posts and
+   * private events — a URL that escapes into a forwarded email or a browser
+   * history would be permanent. Signing per read costs a round trip and keeps
+   * the co-op's material inside the co-op.
+   */
+  async signedAttachmentUrl(path: string, expiresInSeconds = 3600): Promise<string | null> {
+    if (!this.isConfigured) return null;
+
+    const response = await fetch(
+      `${this.url}/storage/v1/object/sign/${ATTACHMENT_BUCKET}/${path}`,
+      {
+        method: 'POST',
+        headers: { ...this.headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expiresIn: expiresInSeconds }),
+      },
+    );
+    if (!response.ok) return null;
+
+    const { signedURL } = (await response.json()) as { signedURL: string };
+    return `${this.url}/storage/v1${signedURL}`;
+  }
+
+  /** Remove an attachment's object. Best-effort, like the logo equivalent. */
+  async deleteAttachment(orgId: string, path: string): Promise<void> {
+    if (!this.isConfigured) return;
+
+    // Only ever inside this org's own folder, so a doctored path cannot make
+    // this delete another co-op's file.
+    if (!path.startsWith(`${orgId}/`)) {
+      this.logger.warn(`Refusing to delete "${path}": outside org ${orgId}`);
+      return;
+    }
+
+    try {
+      await fetch(`${this.url}/storage/v1/object/${ATTACHMENT_BUCKET}/${path}`, {
+        method: 'DELETE',
+        headers: this.headers,
+      });
+    } catch (err) {
+      this.logger.warn(`Attachment cleanup failed for ${path}: ${String(err)}`);
+    }
+  }
+
+  private assertConfigured(what: string): void {
+    if (!this.isConfigured) {
+      throw new ServiceUnavailableException(
+        `${what} are not configured on this server (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).`,
+      );
+    }
   }
 
   /**
