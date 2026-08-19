@@ -44,13 +44,15 @@ function PortalShell({ children }: { children: React.ReactNode }) {
           <PortalNav />
         </div>
 
-        {/* Was `max-w-5xl` centred, which on a large monitor left a narrow
-            strip of content under a full-width bar with everything crowded
-            into the middle. With the column beside it the page can use the
-            width it has, and still stops short of the line lengths that make
-            long text unreadable. */}
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 lg:px-10">
-          {children}
+        {/* Left-aligned and uncapped, matching the dashboard's `p-8` exactly
+            (Charley, 2026-08-19). It was centred inside a max-width, so the
+            portal's content sat in the middle of the screen while the admin and
+            membership pages beside it started at the left edge — the same app
+            appearing to use two different grids depending which page you were
+            on. Consistency here beats the capped measure I reached for: the
+            portal's own pages already constrain their long text. */}
+        <main className="flex-1 overflow-auto">
+          <div className="p-8">{children}</div>
         </main>
 
         <footer className="border-t border-gray-200 bg-white py-6 text-center text-sm text-gray-400">
