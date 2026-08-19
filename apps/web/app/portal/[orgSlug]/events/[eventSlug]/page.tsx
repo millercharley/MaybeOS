@@ -31,6 +31,11 @@ export default function PortalEventPage(props: {
   const { orgSlug, eventSlug } = use(props.params);
   const { org } = usePortal();
   const token = useAuthStore((s) => s.token);
+  const user = useAuthStore((s) => s.user);
+
+  // A member of *this* co-op, not merely somebody signed in. A member of some
+  // other co-op sees exactly what the public sees.
+  const isMember = Boolean(org && user?.orgs?.some((o) => o.orgId === org.id));
 
   const [event, setEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,22 +45,24 @@ export default function PortalEventPage(props: {
   useEffect(() => {
     let cancelled = false;
 
-    // Public first, so this page renders for somebody arriving from a link
-    // shared on social with no account. A signed-in member then re-reads it
-    // through the co-op, which adds what the public payload withholds — the
-    // host's name above all.
-    api.events
-      .getPublicBySlug(orgSlug, eventSlug)
-      .then(async (found) => {
-        if (cancelled) return;
-        setEvent(found);
-        if (!token || !org) return;
-        try {
-          const full = await api.events.get(org.id, found.id, token);
-          if (!cancelled) setEvent(full);
-        } catch {
-          // The public view is already on screen and is enough to attend by.
-        }
+    // A member of this co-op reads its own list first. The public by-slug
+    // endpoint returns 404 for a members-only event — correctly, it answers
+    // to the open internet — so going public-first would have told a co-op
+    // its own event did not exist. The member list also carries the host,
+    // which the public payload deliberately withholds.
+    //
+    // Everyone else gets the public read, which is what a link shared on
+    // social has to land on.
+    const read = isMember && org && token
+      ? api.events
+          .listVisible(org.id, token)
+          .then((all) => all.find((e) => e.slug === eventSlug))
+          .then((found) => found ?? api.events.getPublicBySlug(orgSlug, eventSlug))
+      : api.events.getPublicBySlug(orgSlug, eventSlug);
+
+    read
+      .then((found) => {
+        if (!cancelled) setEvent(found);
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load that event');
@@ -67,7 +74,7 @@ export default function PortalEventPage(props: {
     return () => {
       cancelled = true;
     };
-  }, [orgSlug, eventSlug, org, token]);
+  }, [orgSlug, eventSlug, org, token, isMember]);
 
   async function buy() {
     if (!org || !event) return;
@@ -160,11 +167,11 @@ export default function PortalEventPage(props: {
             />
           )}
 
-          {org && token && <AttachmentList orgId={org.id} token={token} eventId={event.id} />}
+          {org && token && isMember && <AttachmentList orgId={org.id} token={token} eventId={event.id} />}
 
           {/* Members only, deliberately: an event page is public, the co-op's
               conversation about it is not. */}
-          {org && token ? (
+          {org && token && isMember ? (
             <EventDiscussion orgId={org.id} eventId={event.id} token={token} />
           ) : (
             <p className="border-t border-gray-200 pt-6 text-sm text-gray-500">
