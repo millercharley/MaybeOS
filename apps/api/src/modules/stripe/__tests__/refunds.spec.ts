@@ -147,9 +147,14 @@ describe('ConnectService — refunds', () => {
       prisma.ticket.findUnique.mockImplementation(({ where }) =>
         Promise.resolve(ticket({ id: where.id })),
       );
+      // Stripe errors carry a `code` alongside the message; the code is what
+      // survives into the summary.
+      const declined = Object.assign(new Error('Your card was declined.'), {
+        code: 'card_declined',
+      });
       refundsCreate
         .mockResolvedValueOnce({ id: 're_1' })
-        .mockRejectedValueOnce(new Error('card_declined'))
+        .mockRejectedValueOnce(declined)
         .mockResolvedValueOnce({ id: 're_3' });
 
       const result = await service.refundEventTickets('org-1', 'event-1');
@@ -158,10 +163,12 @@ describe('ConnectService — refunds', () => {
       // it. A count alone would not say whose money is missing.
       expect(result.refunded).toBe(2);
       expect(result.failed).toHaveLength(1);
+      // The code is useful; Stripe's prose is where credentials appear.
+      expect(result.failed[0].reason).not.toContain('Your card was declined.');
       expect(result.failed[0]).toMatchObject({
         ticketId: 't2',
         buyerEmail: 'b@example.com',
-        reason: 'card_declined',
+        reason: expect.stringContaining('card_declined'),
       });
     });
   });
@@ -189,6 +196,45 @@ describe('ConnectService — refunds', () => {
       );
 
       await expect(service.refundTicket('org-1', 'ticket-1')).rejects.toThrow(/not found/i);
+    });
+  });
+
+  describe('when Stripe refuses', () => {
+    const stripeRefusal = new Error(
+      "Permission denied. The provided key 'rk_live_****BuW4ie' does not have the required " +
+        "permissions for this endpoint on account 'acct_1MhgKwDaRqv0hdwb'. Enabling " +
+        '"Charges and Refunds Write" (\'charge_write\') permissions on this key would allow ' +
+        'this request to continue. You can edit permissions at https://dashboard.stripe.com/...',
+    );
+
+    beforeEach(() => {
+      prisma.ticket.findUnique.mockResolvedValue(ticket());
+      refundsCreate.mockRejectedValue(stripeRefusal);
+    });
+
+    it('never hands the organiser the API key or the account id', async () => {
+      // This rendered into the tickets list an organiser was refunding from.
+      const result = await service.refundTicket('org-1', 'ticket-1');
+
+      expect(result.reason).not.toContain('rk_live_');
+      expect(result.reason).not.toContain('acct_');
+      expect(result.reason).not.toContain('charge_write');
+      expect(result.reason).not.toContain('dashboard.stripe.com');
+    });
+
+    it('says the buyer has not been paid, which is the thing to know', async () => {
+      const result = await service.refundTicket('org-1', 'ticket-1');
+
+      expect(result.refunded).toBe(false);
+      expect(result.reason).toMatch(/nothing has been returned to the buyer/i);
+    });
+
+    it('does not mark the ticket refunded when the money did not move', async () => {
+      // A row claiming otherwise hides a buyer who is still owed, and blocks
+      // the retry that would pay them.
+      await service.refundTicket('org-1', 'ticket-1');
+
+      expect(prisma.ticket.update).not.toHaveBeenCalled();
     });
   });
 });
