@@ -502,6 +502,43 @@ export class EventsService {
     };
   }
 
+  /**
+   * The public events of a co-op, found by its slug, for the website embed.
+   *
+   * By slug because an admin pastes this into Webflow or Squarespace and
+   * should not have to find a uuid to do it. Public and unauthenticated by
+   * design: it answers exactly what the co-op's own public events page already
+   * shows to anybody, and nothing else.
+   *
+   * Trimmed rather than passed through whole. An endpoint that any website can
+   * read should return the smallest thing that renders a listing, so that
+   * widening the model later cannot quietly start publishing more than a co-op
+   * agreed to — RSVP counts, host identities and internal ids stay here.
+   */
+  async listEmbedEvents(orgSlug: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { slug: orgSlug },
+      select: { id: true, name: true, slug: true },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    const { data } = await this.listPublicEvents(org.id, { perPage: 50 });
+
+    return {
+      org: { name: org.name, slug: org.slug },
+      events: data.map((event) => ({
+        title: event.title,
+        slug: event.slug,
+        description: event.description,
+        startTime: event.startTime,
+        endTime: event.endTime,
+        location: event.location?.name ?? event.room?.name ?? null,
+        priceCents: event.priceCents ?? null,
+        currency: event.currency ?? 'usd',
+      })),
+    };
+  }
+
   /* ─── List Public Events ────────────────────────────────────── */
 
   /**
