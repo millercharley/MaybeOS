@@ -10,6 +10,8 @@ import { api, Channel, Post, Proposal, Collection, CollectionPage, Comment } fro
 import { sanitizeWikiHtml } from '@/lib/wiki-html';
 import { renderBodyHtml, isBlankBody } from '@/lib/rich-text';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
+import { uploadAttachments } from '@/lib/attachments';
+import { AttachmentList } from '@/components/composer/attachment-list';
 
 type Tab = 'channels' | 'library' | 'proposals';
 
@@ -114,15 +116,26 @@ function ChannelsSection() {
     }
   }
 
+  const [postFiles, setPostFiles] = useState<File[]>([]);
+
   async function handlePost(e?: FormEvent) {
     e?.preventDefault();
     // isBlankBody, not `.trim()`: an emptied contenteditable still holds
     // `<p><br></p>`, which is truthy and would post an empty message.
-    if (!org || !token || !selectedChannel || isBlankBody(newPost)) return;
+    // A file on its own is a post. Requiring words as well would mean a
+    // member sharing a photo has to caption it.
+    if (!org || !token || !selectedChannel) return;
+    if (isBlankBody(newPost) && postFiles.length === 0) return;
     setPosting(true);
     setError('');
     try {
       const post = await api.commons.createPost(org.id, selectedChannel, { body: composerValue(newPost) }, token);
+      // After the post exists, because an attachment needs its id. A failure
+      // here leaves the post standing rather than losing what was written.
+      if (postFiles.length > 0) {
+        await uploadAttachments(org.id, postFiles, { postId: post.id }, token);
+        setPostFiles([]);
+      }
       setPosts((prev) => [post, ...prev]);
       // Only cleared once the post is actually saved. Clearing first would
       // throw away what somebody wrote the moment the request failed.
@@ -184,6 +197,8 @@ function ChannelsSection() {
           placeholder="Write a message..."
           submitLabel="Post"
           busy={posting}
+          files={postFiles}
+          onFilesChange={setPostFiles}
         />
 
         {posts.length === 0 ? (
@@ -243,16 +258,23 @@ function PostCard({ post, orgId, token }: { post: Post; orgId: string; token: st
     setLoading(false);
   }
 
+  const [commentFiles, setCommentFiles] = useState<File[]>([]);
+
   async function submitComment(e?: FormEvent) {
     e?.preventDefault();
-    if (isBlankBody(draft)) return;
+    if (isBlankBody(draft) && commentFiles.length === 0) return;
     setBusy(true);
     setError('');
     try {
-      await api.commons.addComment(orgId, post.id, {
+      const comment = await api.commons.addComment(orgId, post.id, {
         body: composerValue(draft),
         ...(replyTo ? { parentId: replyTo } : {}),
       }, token);
+
+      if (commentFiles.length > 0) {
+        await uploadAttachments(orgId, commentFiles, { commentId: comment.id }, token);
+        setCommentFiles([]);
+      }
       // Re-read rather than splicing locally: a reply lands inside its parent,
       // and rebuilding that nesting by hand is how the screen and the database
       // start disagreeing.
@@ -304,6 +326,7 @@ function PostCard({ post, orgId, token }: { post: Post; orgId: string; token: st
         className="prose prose-sm mt-1 max-w-none whitespace-pre-wrap text-sm text-gray-700"
         dangerouslySetInnerHTML={{ __html: renderBodyHtml(post.body) }}
       />
+      <AttachmentList orgId={orgId} token={token} postId={post.id} />
 
       <div className="mt-3 flex items-center gap-4 border-t border-gray-100 pt-2">
         <button onClick={react} className="text-xs text-gray-500 hover:text-gray-800">
@@ -329,6 +352,8 @@ function PostCard({ post, orgId, token }: { post: Post; orgId: string; token: st
             value={draft}
             onChange={setDraft}
             onSubmit={() => submitComment()}
+            files={commentFiles}
+            onFilesChange={setCommentFiles}
             placeholder={replyTo ? 'Write a reply...' : 'Add a comment...'}
             submitLabel="Send"
             busy={busy}
@@ -357,6 +382,12 @@ function CommentNode({
   onReply: (id: string | null) => void;
   activeReply: string | null;
 }) {
+  // Its own rather than threaded through: this component is rendered
+  // recursively for every reply, and passing the org and token down each level
+  // is four props of ceremony for something both already know.
+  const { org } = usePortal();
+  const token = useAuthStore((state) => state.token);
+
   return (
     <div className={depth > 0 ? 'ml-4 border-l border-gray-100 pl-3' : ''}>
       <div className="rounded-lg bg-gray-50 px-3 py-2">
@@ -372,6 +403,9 @@ function CommentNode({
           className="prose prose-sm mt-0.5 max-w-none whitespace-pre-wrap text-sm text-gray-700"
           dangerouslySetInnerHTML={{ __html: renderBodyHtml(comment.body) }}
         />
+        {org && token && (
+          <AttachmentList orgId={org.id} token={token} commentId={comment.id} />
+        )}
         <button
           onClick={() => onReply(activeReply === comment.id ? null : comment.id)}
           className="mt-1 text-[11px] text-gray-400 hover:text-gray-600"
