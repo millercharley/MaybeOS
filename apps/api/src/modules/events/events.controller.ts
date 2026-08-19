@@ -17,7 +17,6 @@ import { Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { EventsService } from './events.service';
 import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
@@ -315,16 +314,22 @@ export class EventsController {
 
   /* ─── Check-in ──────────────────────────────────────────────── */
 
+  // Not @Roles('ADMIN','STAFF'): the person on the door is the host, who is
+  // usually an ordinary member. The service decides, through loadEventForActor,
+  // so a host reaches only their own event and an organiser reaches any.
   @Get('orgs/:orgId/events/:eventId/attendees')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'STAFF')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'The door list for an event' })
   async listAttendees(
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.eventsService.listAttendees(orgId, eventId);
+    return this.eventsService.listAttendees(orgId, eventId, {
+      userId: user.userId,
+      isStaff: isStaff(user, orgId),
+    });
   }
 
   /**
@@ -332,42 +337,53 @@ export class EventsController {
    * so a guest RSVP — which has no user — could never be checked in.
    */
   @Post('orgs/:orgId/events/:eventId/rsvps/:rsvpId/check-in')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'STAFF')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Mark an RSVP as arrived' })
   async checkIn(
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
     @Param('rsvpId', ParseUUIDPipe) rsvpId: string,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.eventsService.checkIn(orgId, eventId, rsvpId);
+    return this.eventsService.checkIn(orgId, eventId, rsvpId, {
+      userId: user.userId,
+      isStaff: isStaff(user, orgId),
+    });
   }
 
   @Delete('orgs/:orgId/events/:eventId/rsvps/:rsvpId/check-in')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'STAFF')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Undo a check-in' })
   async undoCheckIn(
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
     @Param('rsvpId', ParseUUIDPipe) rsvpId: string,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.eventsService.undoCheckIn(orgId, eventId, rsvpId);
+    return this.eventsService.undoCheckIn(orgId, eventId, rsvpId, {
+      userId: user.userId,
+      isStaff: isStaff(user, orgId),
+    });
   }
 
   @Post('orgs/:orgId/events/:eventId/walk-ins')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN', 'STAFF')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Record somebody who arrived without an RSVP' })
   async recordWalkIn(
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
     @Body() dto: WalkInDto,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.eventsService.recordWalkIn(orgId, eventId, dto.name);
+    return this.eventsService.recordWalkIn(
+      orgId,
+      eventId,
+      { userId: user.userId, isStaff: isStaff(user, orgId) },
+      dto.name,
+    );
   }
 
   /* ─── Public Event Page (by slugs, no auth) ────────────────── */
