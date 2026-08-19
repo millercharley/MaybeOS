@@ -48,7 +48,8 @@ const adminNav: NavItem[] = [
 /** A member's own things (IMP-11). */
 const memberNav: NavItem[] = [
   { href: '/member', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/member/rsvps', label: 'My RSVPs', icon: Calendar },
+  // No 'My RSVPs': it lives inside My Events now, because hosting something
+  // and going to something are the same question asked twice.
   { href: '/member/events', label: 'My Events', icon: CalendarPlus },
   { href: '/member/bookings', label: 'My Bookings', icon: DoorOpen },
   { href: '/member/billing', label: 'Billing', icon: CreditCard },

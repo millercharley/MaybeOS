@@ -53,8 +53,14 @@ describe('the sidebar', () => {
 
     it('keeps their own pages, and their own dashboard', () => {
       expect(hrefs(sections())).toEqual(
-        expect.arrayContaining(['/member', '/member/rsvps', '/member/billing', '/member/profile']),
+        expect.arrayContaining(['/member', '/member/events', '/member/billing', '/member/profile']),
       );
+    });
+
+    it('has no separate RSVPs item — it lives inside My Events', () => {
+      // Hosting something and going to something are the same question asked
+      // twice; two nav items answered it on neither screen.
+      expect(hrefs(sections())).not.toContain('/member/rsvps');
     });
 
     it('is offered no organising tools', () => {
@@ -84,7 +90,7 @@ describe('the sidebar', () => {
     it('still gets their own membership pages', () => {
       // Being an admin is a role held in addition to being a member.
       expect(hrefs(sections())).toEqual(
-        expect.arrayContaining(['/member/rsvps', '/member/profile']),
+        expect.arrayContaining(['/member/events', '/member/profile']),
       );
     });
 

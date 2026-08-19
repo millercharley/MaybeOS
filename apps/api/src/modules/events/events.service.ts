@@ -212,6 +212,13 @@ export class EventsService {
    * not the secret. What is being refused is authorship, and saying so is
    * more use than pretending the event is missing.
    */
+  /**
+   * Whoever may act on this event: an organiser, or the person hosting it.
+   *
+   * Check-in reaches for this too. The door list was ADMIN/STAFF only, which
+   * put an organiser at the door of every event a member ran — Charley, 2026-08-19:
+   * "the host of the event is responsible for checking in guests not the admin."
+   */
   private async loadEventForActor(
     orgId: string,
     eventId: string,
@@ -807,8 +814,8 @@ export class EventsService {
    * expected, and showing them invites checking in the wrong person. Sorted
    * by name so the list reads the way a person scans it, not by RSVP time.
    */
-  async listAttendees(orgId: string, eventId: string) {
-    await this.findEventInOrg(orgId, eventId);
+  async listAttendees(orgId: string, eventId: string, actor: { userId: string; isStaff: boolean }) {
+    await this.loadEventForActor(orgId, eventId, actor.userId, actor.isStaff);
 
     const [rsvps, attendance] = await Promise.all([
       this.prisma.rsvp.findMany({
@@ -872,8 +879,8 @@ export class EventsService {
    * is what makes the flag usable on the door list and the table usable as the
    * event log the dashboard aggregates.
    */
-  async checkIn(orgId: string, eventId: string, rsvpId: string) {
-    await this.findEventInOrg(orgId, eventId);
+  async checkIn(orgId: string, eventId: string, rsvpId: string, actor: { userId: string; isStaff: boolean }) {
+    await this.loadEventForActor(orgId, eventId, actor.userId, actor.isStaff);
 
     const rsvp = await this.prisma.rsvp.findFirst({ where: { id: rsvpId, eventId } });
     if (!rsvp) throw new NotFoundException('RSVP not found');
@@ -912,8 +919,8 @@ export class EventsService {
    * permanently overstated attendance — in a table whose whole purpose is to
    * be counted in a report.
    */
-  async undoCheckIn(orgId: string, eventId: string, rsvpId: string) {
-    await this.findEventInOrg(orgId, eventId);
+  async undoCheckIn(orgId: string, eventId: string, rsvpId: string, actor: { userId: string; isStaff: boolean }) {
+    await this.loadEventForActor(orgId, eventId, actor.userId, actor.isStaff);
 
     const rsvp = await this.prisma.rsvp.findFirst({ where: { id: rsvpId, eventId } });
     if (!rsvp) throw new NotFoundException('RSVP not found');
@@ -943,8 +950,13 @@ export class EventsService {
    * mostly people who did not RSVP, and the PRD leans on reach indicators
    * precisely because they cost no fatigue budget.
    */
-  async recordWalkIn(orgId: string, eventId: string, name?: string) {
-    await this.findEventInOrg(orgId, eventId);
+  async recordWalkIn(
+    orgId: string,
+    eventId: string,
+    actor: { userId: string; isStaff: boolean },
+    name?: string,
+  ) {
+    await this.loadEventForActor(orgId, eventId, actor.userId, actor.isStaff);
 
     return this.prisma.attendance.create({
       data: {

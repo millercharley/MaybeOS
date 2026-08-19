@@ -6,6 +6,7 @@ import { Calendar, Globe, Lock, Plus, Users, X } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, HostedEvent, Org } from '@/lib/api';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
+import { MyRsvps } from '@/components/events/my-rsvps';
 
 /**
  * A member's own events (EVT-05).
@@ -108,7 +109,7 @@ export default function MyEventsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">My Events</h1>
           <p className="mt-1 text-sm text-gray-500">
-            Things you are running. You can also{' '}
+            Things you are running, and things you are going to. You can also{' '}
             <Link href="/member/bookings" className="text-brand-600 hover:underline">
               publish an event from a room booking
             </Link>
@@ -178,6 +179,14 @@ export default function MyEventsPage() {
           )}
         </>
       )}
+
+      {/* Going, not just hosting. These were a separate page and a separate nav
+          item, which split "what am I doing this month" across two screens and
+          answered it on neither. */}
+      <section className="border-t border-gray-200 pt-6">
+        <h2 className="mb-3 text-lg font-semibold text-gray-900">Going</h2>
+        <MyRsvps />
+      </section>
     </div>
   );
 }
@@ -264,6 +273,16 @@ function EventRow({
 
       {!canceled && (
         <div className="flex shrink-0 items-center gap-3 text-sm">
+          {/* The host works the door, not an organiser. Published only: there
+              is nobody to check in to an event nobody can see yet. */}
+          {event.isPublished && (
+            <Link
+              href={`/member/events/${event.id}`}
+              className="font-medium text-brand-600 hover:underline"
+            >
+              Check-in
+            </Link>
+          )}
           {!event.isPublished && (
             <button
               type="button"

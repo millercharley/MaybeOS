@@ -18,6 +18,8 @@ import { ConnectService } from '../../stripe/connect.service';
  * check-in, so one mis-tap permanently overstated a number that ends up in a
  * report.
  */
+const STAFF = { userId: 'organiser-1', isStaff: true };
+
 describe('EventsService — check-in', () => {
   let service: EventsService;
   let prisma: {
@@ -31,7 +33,7 @@ describe('EventsService — check-in', () => {
 
   beforeEach(async () => {
     prisma = {
-      event: { findFirst: jest.fn().mockResolvedValue({ id: EVENT, orgId: 'org-1' }) },
+      event: { findFirst: jest.fn().mockResolvedValue({ id: EVENT, orgId: 'org-1', hostId: 'host-1' }) },
       rsvp: { findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn() },
       attendance: { create: jest.fn(), deleteMany: jest.fn(), findMany: jest.fn() },
       $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
@@ -66,7 +68,7 @@ describe('EventsService — check-in', () => {
       });
       prisma.rsvp.update.mockResolvedValue({ id: 'rsvp-1', checkedIn: true });
 
-      await service.checkIn('org-1', EVENT, 'rsvp-1');
+      await service.checkIn('org-1', EVENT, 'rsvp-1', STAFF);
 
       expect(prisma.rsvp.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ checkedIn: true }) }),
@@ -88,7 +90,7 @@ describe('EventsService — check-in', () => {
       });
       prisma.rsvp.update.mockResolvedValue({ id: 'rsvp-2', checkedIn: true });
 
-      await service.checkIn('org-1', EVENT, 'rsvp-2');
+      await service.checkIn('org-1', EVENT, 'rsvp-2', STAFF);
 
       expect(prisma.attendance.create).toHaveBeenCalledWith({
         data: {
@@ -108,7 +110,7 @@ describe('EventsService — check-in', () => {
         checkedIn: true,
       });
 
-      const result = await service.checkIn('org-1', EVENT, 'rsvp-1');
+      const result = await service.checkIn('org-1', EVENT, 'rsvp-1', STAFF);
 
       expect(result.alreadyCheckedIn).toBe(true);
       // Crucially it does not write a second attendance row, which would
@@ -124,7 +126,7 @@ describe('EventsService — check-in', () => {
         checkedIn: false,
       });
 
-      await expect(service.checkIn('org-1', EVENT, 'rsvp-3')).rejects.toBeInstanceOf(
+      await expect(service.checkIn('org-1', EVENT, 'rsvp-3', STAFF)).rejects.toBeInstanceOf(
         BadRequestException,
       );
     });
@@ -132,7 +134,7 @@ describe('EventsService — check-in', () => {
     it('will not check in an RSVP belonging to another event', async () => {
       prisma.rsvp.findFirst.mockResolvedValue(null);
 
-      await expect(service.checkIn('org-1', EVENT, 'rsvp-x')).rejects.toBeInstanceOf(
+      await expect(service.checkIn('org-1', EVENT, 'rsvp-x', STAFF)).rejects.toBeInstanceOf(
         NotFoundException,
       );
       // Scoped by eventId as well as id, so a UUID from another event misses.
@@ -151,7 +153,7 @@ describe('EventsService — check-in', () => {
       });
       prisma.rsvp.update.mockResolvedValue({ id: 'rsvp-1', checkedIn: false });
 
-      await service.undoCheckIn('org-1', EVENT, 'rsvp-1');
+      await service.undoCheckIn('org-1', EVENT, 'rsvp-1', STAFF);
 
       expect(prisma.rsvp.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -172,7 +174,7 @@ describe('EventsService — check-in', () => {
       });
       prisma.rsvp.update.mockResolvedValue({ id: 'rsvp-2' });
 
-      await service.undoCheckIn('org-1', EVENT, 'rsvp-2');
+      await service.undoCheckIn('org-1', EVENT, 'rsvp-2', STAFF);
 
       expect(prisma.attendance.deleteMany).toHaveBeenCalledWith({
         where: { eventId: EVENT, userId: null, guestEmail: 'visitor@example.com' },
@@ -182,7 +184,7 @@ describe('EventsService — check-in', () => {
 
   describe('walk-ins', () => {
     it('records someone with no RSVP', async () => {
-      await service.recordWalkIn('org-1', EVENT, 'Sam from the allotment');
+      await service.recordWalkIn('org-1', EVENT, STAFF, 'Sam from the allotment');
 
       expect(prisma.attendance.create).toHaveBeenCalledWith({
         data: {
@@ -195,7 +197,7 @@ describe('EventsService — check-in', () => {
     });
 
     it('accepts no name at all — the count is the point', async () => {
-      await service.recordWalkIn('org-1', EVENT, '   ');
+      await service.recordWalkIn('org-1', EVENT, STAFF, '   ');
 
       expect(prisma.attendance.create).toHaveBeenCalledWith({
         data: { eventId: EVENT, userId: null, guestName: null, method: 'self' },
@@ -218,7 +220,7 @@ describe('EventsService — check-in', () => {
     });
 
     it('excludes cancelled RSVPs from the query, so nobody is checked in by mistake', async () => {
-      await service.listAttendees('org-1', EVENT);
+      await service.listAttendees('org-1', EVENT, STAFF);
 
       expect(prisma.rsvp.findMany.mock.calls[0][0].where.status).toEqual({
         in: ['CONFIRMED', 'WAITLISTED'],
@@ -226,13 +228,13 @@ describe('EventsService — check-in', () => {
     });
 
     it('sorts by name, the way somebody at a door scans a list', async () => {
-      const list = await service.listAttendees('org-1', EVENT);
+      const list = await service.listAttendees('org-1', EVENT, STAFF);
 
       expect(list.expected.map((a) => a.name)).toEqual(['Alex', 'Mo', 'Zoe']);
     });
 
     it('counts the attendance rows themselves, so the door and the report agree', async () => {
-      const list = await service.listAttendees('org-1', EVENT);
+      const list = await service.listAttendees('org-1', EVENT, STAFF);
 
       // The dashboard counts this table; summing RSVP flags and walk-ins
       // separately is what let a guest be counted twice.
@@ -249,11 +251,50 @@ describe('EventsService — check-in', () => {
         { id: 'a1', userId: null, guestName: 'Passer-by', method: 'self', createdAt: new Date() },
       ]);
 
-      const list = await service.listAttendees('org-1', EVENT);
+      const list = await service.listAttendees('org-1', EVENT, STAFF);
 
       expect(list.walkIns).toHaveLength(1);
       expect(list.walkIns[0].name).toBe('Passer-by');
       expect(list.attendanceCount).toBe(2);
+    });
+  });
+
+  describe('who may work the door', () => {
+    const HOST = { userId: 'host-1', isStaff: false };
+    const SOMEONE_ELSE = { userId: 'member-9', isStaff: false };
+
+    beforeEach(() => {
+      prisma.rsvp.findFirst.mockResolvedValue({
+        id: 'rsvp-1',
+        eventId: EVENT,
+        status: 'CONFIRMED',
+        checkedInAt: null,
+      });
+      prisma.rsvp.update.mockResolvedValue({ id: 'rsvp-1', checkedInAt: new Date() });
+    });
+
+    it('lets the host check somebody in without being an organiser', async () => {
+      // Charley, 2026-08-19: "the host of the event is responsible for checking
+      // in guests not the admin." Before this, running a door meant holding
+      // ADMIN or STAFF over the whole co-op.
+      await expect(service.checkIn('org-1', EVENT, 'rsvp-1', HOST)).resolves.toBeDefined();
+    });
+
+    it('lets the host read their own door list', async () => {
+      prisma.rsvp.findMany.mockResolvedValue([]);
+      prisma.attendance.findMany.mockResolvedValue([]);
+      await expect(service.listAttendees('org-1', EVENT, HOST)).resolves.toBeDefined();
+    });
+
+    it('refuses a member who is neither the host nor an organiser', async () => {
+      // Opening the door to hosts must not open it to everybody: the list
+      // names who is coming, and check-in edits it.
+      await expect(service.checkIn('org-1', EVENT, 'rsvp-1', SOMEONE_ELSE)).rejects.toThrow();
+      expect(prisma.rsvp.update).not.toHaveBeenCalled();
+    });
+
+    it('still lets an organiser work an event they are not hosting', async () => {
+      await expect(service.checkIn('org-1', EVENT, 'rsvp-1', STAFF)).resolves.toBeDefined();
     });
   });
 });
