@@ -135,6 +135,12 @@ model User {
   passwordHash    String?
   name            String?
   avatarUrl       String?
+  /// Where MaybeOS keeps this avatar itself, in the private `avatars` bucket.
+  /// An imported avatar URL points at the platform the co-op is leaving and
+  /// dies with that account, so the bytes are copied here on import. A path
+  /// wins over `avatarUrl`, which still holds an external URL when that is
+  /// all there is.
+  avatarPath      String?
   globalRole      GlobalRole @default(USER)
   emailVerified   Boolean    @default(false)
   magicLinkToken  String?
@@ -174,6 +180,16 @@ model UserOrg {
   subscriptionStatus   SubscriptionStatus @default(NONE)
   memberSince          DateTime           @default(now())
   bio                  String?
+  /// One line under a member's name — what they do, what to ask them about.
+  headline             String?
+  /// Free text as the member wrote it ("Butchertown, KY"), not a resolved
+  /// place. Nothing geocodes it and nothing should assume it parses.
+  location             String?
+  /// Three-valued on purpose: true opted in, false opted out, null never
+  /// asked. A default would either record a refusal nobody made or
+  /// manufacture consent, and consent is the one thing a default must not
+  /// invent.
+  emailOptIn           Boolean?
   tags                 String[]           @default([])
   /// Links a member chooses to show on their profile. On the membership, not
   /// the account: what somebody publishes to one co-op is not consent to

@@ -335,7 +335,18 @@ class ApiClient {
      * Edit your own entry in a co-op's directory (MEM-09). No userId — the
      * server takes it from the token, so this cannot be aimed at anyone else.
      */
-    updateMine: (orgId: string, data: { bio?: string; tags?: string[]; links?: string[] }, token: string) =>
+    updateMine: (
+      orgId: string,
+      data: {
+        bio?: string;
+        tags?: string[];
+        links?: string[];
+        headline?: string;
+        location?: string;
+        emailOptIn?: boolean;
+      },
+      token: string,
+    ) =>
       this.request<{ id: string; bio: string | null; tags: string[]; links: string[] }>(`/orgs/${orgId}/me`, {
         method: 'PATCH',
         body: JSON.stringify(data),
@@ -353,6 +364,28 @@ class ApiClient {
       this.request<{ id: string; email: string; status: string }>(`/orgs/${orgId}/members/invite`, {
         method: 'POST',
         body: JSON.stringify(data),
+        token,
+      }),
+
+    /**
+     * Import a chunk of somebody else's export (MEM-06).
+     *
+     * Chunked by the caller: the API caps a request at 100 rows because it
+     * runs in a Lambda with a wall clock, and a co-op with three thousand
+     * members should not meet that ceiling as a timeout mid-roster.
+     */
+    import: (orgId: string, rows: ImportMemberRow[], token: string) =>
+      this.request<ImportResult>(`/orgs/${orgId}/members/import`, {
+        method: 'POST',
+        body: JSON.stringify({ rows }),
+        token,
+      }),
+
+    /** Copy imported avatars into MaybeOS storage, one batch per call. */
+    importAvatars: (orgId: string, body: { after?: string; limit?: number }, token: string) =>
+      this.request<AvatarImportResult>(`/orgs/${orgId}/members/import/avatars`, {
+        method: 'POST',
+        body: JSON.stringify(body),
         token,
       }),
 
@@ -1148,6 +1181,36 @@ export interface MembershipTier {
   benefits: string[];
 }
 
+/** One row of an export, in MaybeOS's own field names (MEM-06). */
+export interface ImportMemberRow {
+  email: string;
+  name?: string;
+  joinedAt?: string;
+  headline?: string;
+  location?: string;
+  bio?: string;
+  tags?: string[];
+  links?: string[];
+  avatarUrl?: string;
+  emailOptIn?: boolean;
+}
+
+export interface ImportResult {
+  created: number;
+  alreadyMembers: number;
+  linkedExistingUsers: number;
+  avatarsPending: number;
+  errors: Array<{ email: string; reason: string }>;
+}
+
+export interface AvatarImportResult {
+  imported: number;
+  failed: number;
+  remaining: number;
+  lastId: string | null;
+  done: boolean;
+}
+
 export interface Member {
   id: string;
   /**
@@ -1171,6 +1234,16 @@ export interface Member {
   bio?: string | null;
   /** Links this member chose to show, in this co-op. http/https only. */
   links?: string[];
+  /** One line under their name — what they do, what to ask them about. */
+  headline?: string | null;
+  /** Free text as they wrote it. Nothing geocodes it. */
+  location?: string | null;
+  /**
+   * Whether they agreed to be emailed by this co-op. Organisers only — it
+   * sits beside the email address it governs, and a member who cannot see
+   * the address has no business knowing whether it may be written to.
+   */
+  emailOptIn?: boolean | null;
 }
 
 /**

@@ -21,6 +21,7 @@ import { viewerFor } from '../../common/access/contact-visibility';
 import { UpdateMyMembershipDto } from './dto/update-my-membership.dto';
 import { MemberService } from './member.service';
 import { CreateTierDto } from './dto/create-tier.dto';
+import { ImportMembersDto, ImportAvatarsDto } from './dto/import-members.dto';
 import { UpdateTierDto } from './dto/update-tier.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 
@@ -154,12 +155,18 @@ export class MemberController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Bulk import members from CSV data' })
-  importMembers(
-    @Param('orgId') orgId: string,
-    @Body() csvData: Array<{ email: string; name?: string; tier?: string }>,
-  ) {
-    return this.memberService.importMembers(orgId, csvData);
+  @ApiOperation({ summary: 'Import members from another platform’s export (MEM-06)' })
+  importMembers(@Param('orgId') orgId: string, @Body() dto: ImportMembersDto) {
+    return this.memberService.importMembers(orgId, dto.rows);
+  }
+
+  @Post('members/import/avatars')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Copy imported avatars into MaybeOS storage, a batch at a time' })
+  importAvatars(@Param('orgId') orgId: string, @Body() dto: ImportAvatarsDto) {
+    return this.memberService.importAvatars(orgId, dto);
   }
 
   // ─── Tiers ─────────────────────────────────────────────────

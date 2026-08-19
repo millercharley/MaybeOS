@@ -4,6 +4,7 @@ import { MemberService } from '../member.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { EmailService } from '../../email/email.service';
 import { StripeService } from '../../stripe/stripe.service';
+import { StorageService } from '../../storage/storage.service';
 
 /**
  * An invitation carries the tier it is inviting somebody onto (MEM-04).
@@ -55,6 +56,7 @@ describe('MemberService — invitations with a tier', () => {
         { provide: EmailService, useValue: { sendInvite: jest.fn() } },
         { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },
         { provide: StripeService, useValue: {} },
+        { provide: StorageService, useValue: {} },
       ],
     }).compile();
 

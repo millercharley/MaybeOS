@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
-import { Search, Plus, MoreHorizontal, Clock, RefreshCw, Mail } from 'lucide-react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { Search, Plus, MoreHorizontal, Clock, RefreshCw, Mail, Upload } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
 import { useAuthStore } from '@/lib/auth-store';
 import { api } from '@/lib/api';
@@ -21,6 +23,7 @@ const statusBadge: Record<string, string> = {
 };
 
 export default function MembersPage() {
+  const orgSlug = useParams<{ orgSlug: string }>().orgSlug;
   const [search, setSearch] = useState('');
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -130,6 +133,14 @@ export default function MembersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Members</h1>
+        <div className="flex items-center gap-2">
+        <Link
+          href={`/admin/${orgSlug}/members/import`}
+          className="btn-secondary inline-flex items-center gap-2"
+        >
+          <Upload className="h-4 w-4" />
+          Import
+        </Link>
         <button
           onClick={() => { setShowInvite(true); setInviteResult(null); }}
           className="btn-primary inline-flex items-center gap-2"
@@ -137,6 +148,7 @@ export default function MembersPage() {
           <Plus className="h-4 w-4" />
           Invite Member
         </button>
+        </div>
       </div>
 
       <Modal open={showInvite} onClose={() => setShowInvite(false)} title="Invite Member">

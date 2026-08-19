@@ -4,6 +4,7 @@ import { MemberService } from '../member.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { EmailService } from '../../email/email.service';
 import { StripeService } from '../../stripe/stripe.service';
+import { StorageService } from '../../storage/storage.service';
 
 /**
  * The member directory redacts contact and billing details.
@@ -32,6 +33,9 @@ describe('MemberService — contact redaction', () => {
     stripeCustomerId: 'cus_123',
     stripeSubscriptionId: 'sub_123',
     subscriptionStatus: 'ACTIVE',
+    emailOptIn: true,
+    headline: 'Ask me about sourdough',
+    location: 'Butchertown, KY',
     user: { id: userId, email, name: 'Alex', avatarUrl: null },
     tier: { id: 'tier-1', name: 'Sustainer' },
   });
@@ -49,6 +53,7 @@ describe('MemberService — contact redaction', () => {
         { provide: EmailService, useValue: {} },
         { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },
         { provide: StripeService, useValue: {} },
+        { provide: StorageService, useValue: {} },
       ],
     }).compile();
 
@@ -79,6 +84,18 @@ describe('MemberService — contact redaction', () => {
     expect(other).not.toHaveProperty('stripeCustomerId');
     expect(other).not.toHaveProperty('stripeSubscriptionId');
     expect(other).not.toHaveProperty('subscriptionStatus');
+  });
+
+  it('withholds whether another member agreed to be emailed', async () => {
+    const [other] = await listAs({ userId: 'user-1', privileged: false });
+
+    // Marketing consent belongs beside the email address it governs (MEM-06).
+    // A member who can't see the address has no business knowing whether it
+    // may be written to.
+    expect(other).not.toHaveProperty('emailOptIn');
+    // The profile a member wrote for this co-op still shows, though.
+    expect(other.headline).toBe('Ask me about sourdough');
+    expect(other.location).toBe('Butchertown, KY');
   });
 
   it('leaves the caller\'s own record whole', async () => {

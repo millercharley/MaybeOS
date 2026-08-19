@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength, IsArray, ArrayMaxSize, IsUrl } from 'class-validator';
+import { IsOptional, IsString, MaxLength, IsArray, ArrayMaxSize, IsUrl, IsBoolean } from 'class-validator';
 
 /**
  * What a member may change about how they appear in their co-op (MEM-09).
@@ -12,13 +12,42 @@ import { IsOptional, IsString, MaxLength, IsArray, ArrayMaxSize, IsUrl } from 'c
  * is not consent to publish it in another.
  */
 export class UpdateMyMembershipDto {
+  @ApiPropertyOptional({ example: 'Ask me anything about sourdough' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  headline?: string;
+
+  @ApiPropertyOptional({ example: 'Butchertown, KY' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  location?: string;
+
   @ApiPropertyOptional({ example: 'Potter, gardener, reluctant treasurer.' })
   @IsOptional()
   @IsString()
-  // Long enough for a real introduction, short enough that the directory stays
-  // scannable — this is a card in a grid, not a homepage.
-  @MaxLength(600)
+  // Raised from 600 to match what an import can bring in (MEM-06). A member
+  // whose imported bio is 1,800 characters must be able to save their own
+  // profile without being told to cut it down; the directory truncates for
+  // scanning rather than the database truncating for storage.
+  @MaxLength(2000)
   bio?: string;
+
+  /**
+   * Whether this co-op may email them about anything beyond running their
+   * membership. Nullable in the database — never asked — but a member setting
+   * it here is answering, so only true and false arrive.
+   *
+   * Editable by the member themselves and not only by an organiser, because
+   * MEM-06 imports this consent from another platform: bringing a marketing
+   * list across without giving those people a way to withdraw it would be the
+   * wrong half of the feature.
+   */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  emailOptIn?: boolean;
 
   @ApiPropertyOptional({ example: ['ceramics', 'carpentry'] })
   @IsOptional()
@@ -41,8 +70,10 @@ export class UpdateMyMembershipDto {
   @ApiPropertyOptional({ example: ['https://www.instagram.com/millercharley/'] })
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(8)
+  // Matches the import ceiling for the same reason as `bio`: a member must
+  // always be able to re-save the profile that was imported for them.
+  @ArrayMaxSize(25)
   @IsUrl({ protocols: ['http', 'https'], require_protocol: true }, { each: true })
-  @MaxLength(300, { each: true })
+  @MaxLength(500, { each: true })
   links?: string[];
 }

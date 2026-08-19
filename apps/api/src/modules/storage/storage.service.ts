@@ -16,9 +16,22 @@ const EXTENSION: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
   'image/webp': 'webp',
+  'image/gif': 'gif',
 };
 
 export type LogoMimeType = (typeof LOGO_MIME_TYPES)[number];
+
+/**
+ * What the private `avatars` bucket itself enforces. Kept in step with it.
+ *
+ * Private, unlike `org-logos`. A co-op's logo is its public identity; a
+ * member's face is not, and Charley's rule is that material inside MaybeOS
+ * needs auth to reach. So these are served as short-lived signed URLs the
+ * same way attachments are, rather than as permanent public links.
+ */
+export const AVATAR_BUCKET = 'avatars';
+export const AVATAR_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+export const AVATAR_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
 
 /** What the private `attachments` bucket itself enforces. Kept in step with it. */
 export const ATTACHMENT_BUCKET = 'attachments';
@@ -198,6 +211,143 @@ export class StorageService {
     } catch (err) {
       this.logger.warn(`Attachment cleanup failed for ${path}: ${String(err)}`);
     }
+  }
+
+  /**
+   * Copy an avatar MaybeOS does not own into a bucket it does.
+   *
+   * An imported avatar URL points at the community platform a co-op is
+   * leaving. Those links are signed and tied to that account, so a roster
+   * imported today shows 212 broken images the week the old subscription
+   * lapses — which is not an import, it is a lease. The bytes are fetched
+   * once, here, and the URL is never stored as the answer.
+   *
+   * Returns null rather than throwing on anything that goes wrong: one
+   * unreachable avatar must not fail the member it belongs to.
+   */
+  async importAvatarFromUrl(userId: string, sourceUrl: string): Promise<string | null> {
+    if (!this.isConfigured) return null;
+
+    // http/https only. This fetches a URL that arrived in a spreadsheet, so
+    // the scheme is the difference between downloading a picture and asking
+    // the server to read its own filesystem.
+    let parsed: URL;
+    try {
+      parsed = new URL(sourceUrl);
+    } catch {
+      return null;
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+
+    let body: Buffer;
+    let mimeType: string;
+    try {
+      // Capped rather than trusted: `content-length` is whatever the far end
+      // says, so the real defence is reading the body and measuring it.
+      const response = await fetch(parsed.toString(), {
+        redirect: 'follow',
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!response.ok) return null;
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      if (buffer.byteLength === 0 || buffer.byteLength > AVATAR_MAX_BYTES) return null;
+
+      body = buffer;
+      mimeType = (response.headers.get('content-type') ?? '').split(';')[0].trim();
+    } catch (err) {
+      this.logger.warn(`Avatar fetch failed for user ${userId}: ${String(err)}`);
+      return null;
+    }
+
+    // Sniffed, not taken from the header. A platform serving avatars through a
+    // redirect often answers `application/octet-stream`, and the bucket
+    // enforces its own MIME allowlist, so trusting the header would reject
+    // perfectly good images and accept whatever a hostile host declared.
+    const sniffed = this.sniffImageMime(body);
+    if (!sniffed) return null;
+    if (!(AVATAR_MIME_TYPES as readonly string[]).includes(mimeType)) mimeType = sniffed;
+    if (mimeType !== sniffed) mimeType = sniffed;
+
+    const path = `${userId}/${randomUUID()}.${EXTENSION[mimeType] ?? 'jpg'}`;
+
+    try {
+      const upload = await fetch(`${this.url}/storage/v1/object/${AVATAR_BUCKET}/${path}`, {
+        method: 'POST',
+        headers: { ...this.headers, 'Content-Type': mimeType },
+        body: new Uint8Array(body),
+      });
+      if (!upload.ok) {
+        this.logger.warn(`Avatar upload failed for user ${userId}: ${await upload.text()}`);
+        return null;
+      }
+    } catch (err) {
+      this.logger.warn(`Avatar upload failed for user ${userId}: ${String(err)}`);
+      return null;
+    }
+
+    return path;
+  }
+
+  /**
+   * Short-lived readable URLs for many avatars at once.
+   *
+   * One request rather than one per member: a directory of 300 people would
+   * otherwise make 300 round trips to Storage to render a single page.
+   * Returns a map from path to URL, missing whatever could not be signed.
+   */
+  async signedAvatarUrls(
+    paths: string[],
+    expiresInSeconds = 3600,
+  ): Promise<Map<string, string>> {
+    const signed = new Map<string, string>();
+    const wanted = [...new Set(paths.filter(Boolean))];
+    if (!this.isConfigured || wanted.length === 0) return signed;
+
+    try {
+      const response = await fetch(`${this.url}/storage/v1/object/sign/${AVATAR_BUCKET}`, {
+        method: 'POST',
+        headers: { ...this.headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expiresIn: expiresInSeconds, paths: wanted }),
+      });
+      if (!response.ok) {
+        this.logger.warn(`Avatar signing failed: ${await response.text()}`);
+        return signed;
+      }
+
+      const results = (await response.json()) as Array<{
+        path?: string | null;
+        signedURL?: string | null;
+        error?: string | null;
+      }>;
+
+      for (const result of results) {
+        // Supabase answers per path, so one deleted file returns an error
+        // beside the rest rather than failing the batch.
+        if (result.path && result.signedURL && !result.error) {
+          signed.set(result.path, `${this.url}/storage/v1${result.signedURL}`);
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`Avatar signing failed: ${String(err)}`);
+    }
+
+    return signed;
+  }
+
+  /** Magic bytes, because a content-type header is a claim, not evidence. */
+  private sniffImageMime(body: Buffer): string | null {
+    if (body.length < 12) return null;
+    if (body[0] === 0xff && body[1] === 0xd8 && body[2] === 0xff) return 'image/jpeg';
+    if (body.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])))
+      return 'image/png';
+    if (body.subarray(0, 6).toString('ascii').startsWith('GIF8')) return 'image/gif';
+    if (
+      body.subarray(0, 4).toString('ascii') === 'RIFF' &&
+      body.subarray(8, 12).toString('ascii') === 'WEBP'
+    )
+      return 'image/webp';
+    return null;
   }
 
   private assertConfigured(what: string): void {
