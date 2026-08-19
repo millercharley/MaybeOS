@@ -10,6 +10,8 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../config/prisma.service';
 import { EmailService } from '../email/email.service';
 import { StripeService } from '../stripe/stripe.service';
+import { StorageService } from '../storage/storage.service';
+import { ImportMemberRowDto, ImportAvatarsDto } from './dto/import-members.dto';
 import { CreateTierDto } from './dto/create-tier.dto';
 import { ContactViewer } from '../../common/access/contact-visibility';
 
@@ -17,9 +19,10 @@ import { ContactViewer } from '../../common/access/contact-visibility';
  * A member as another member may see them.
  *
  * Same co-op earns you a name, a face, a role and whatever the person chose
- * to write about themselves — not their email address, and not the state of
- * their subscription. Organisers see the whole row, because contacting and
- * billing members is their job; see `contact-visibility.ts`.
+ * to write about themselves — not their email address, not the state of their
+ * subscription, and not whether they agreed to be emailed. Organisers see the
+ * whole row, because contacting and billing members is their job; see
+ * `contact-visibility.ts`.
  *
  * Everyone sees their own record untouched.
  */
@@ -29,6 +32,7 @@ function toMemberView<
     stripeCustomerId?: string | null;
     stripeSubscriptionId?: string | null;
     subscriptionStatus?: unknown;
+    emailOptIn?: boolean | null;
     user: { email?: string };
   },
 >(member: T, viewer: ContactViewer) {
@@ -40,12 +44,69 @@ function toMemberView<
     stripeCustomerId: _customer,
     stripeSubscriptionId: _subscription,
     subscriptionStatus: _status,
+    // Marketing consent is between a member and the co-op that asked. It sits
+    // beside the email address it governs, and travels with it.
+    emailOptIn: _optIn,
     user,
     ...rest
   } = member;
   const { email: _email, ...publicUser } = user;
 
   return { ...rest, user: publicUser };
+}
+
+/**
+ * Profile links, filtered to the ones safe to render as links.
+ *
+ * http and https only. These are written into a page other members read, so
+ * `javascript:` and `data:` are not a formatting quirk — they are script
+ * execution in a reader's session. The web app filters again at render time;
+ * this stops the bad ones being stored in the first place, which matters
+ * because an import writes 116 of them without a human looking at each.
+ */
+export function safeLinks(links: string[]): string[] {
+  const safe: string[] = [];
+  for (const raw of links) {
+    const value = raw.trim();
+    if (!value) continue;
+    try {
+      const url = new URL(value);
+      if (url.protocol === 'http:' || url.protocol === 'https:') safe.push(value);
+    } catch {
+      // Not a URL at all. Dropped rather than stored as decoration.
+    }
+  }
+  return safe;
+}
+
+/**
+ * Replace stored avatar paths with URLs a browser can actually load.
+ *
+ * The `avatars` bucket is private, so an imported avatar is a path rather
+ * than a link and has to be signed per request. Done in one batched call for
+ * a whole page of members: a directory of 300 people signing one at a time
+ * would be 300 round trips to render one screen.
+ *
+ * A member who never imported keeps whatever `avatarUrl` already held.
+ */
+async function resolveAvatars<T extends { user: { avatarUrl?: string | null; avatarPath?: string | null } }>(
+  storage: StorageService,
+  rows: T[],
+): Promise<T[]> {
+  const paths = rows.map((r) => r.user.avatarPath).filter((p): p is string => Boolean(p));
+  if (paths.length === 0) return rows;
+
+  const signed = await storage.signedAvatarUrls(paths);
+
+  for (const row of rows) {
+    const path = row.user.avatarPath;
+    if (path && signed.has(path)) row.user.avatarUrl = signed.get(path) as string;
+    // The path itself is never published — it is only meaningful with the
+    // service-role key, and returning it invites a client to build its own URL.
+    delete row.user.avatarPath;
+  }
+
+  return rows;
 }
 
 @Injectable()
@@ -57,6 +118,7 @@ export class MemberService {
     private readonly emailService: EmailService,
     private readonly configService: ConfigService,
     private readonly stripeService: StripeService,
+    private readonly storage: StorageService,
   ) {}
 
   // ─── Members ────────────────────────────────────────────────
@@ -105,6 +167,7 @@ export class MemberService {
               email: true,
               name: true,
               avatarUrl: true,
+              avatarPath: true,
             },
           },
           tier: {
@@ -119,7 +182,7 @@ export class MemberService {
     ]);
 
     return {
-      data: data.map((member) => toMemberView(member, viewer)),
+      data: (await resolveAvatars(this.storage, data)).map((member) => toMemberView(member, viewer)),
       meta: {
         total,
         page,
@@ -142,6 +205,7 @@ export class MemberService {
             email: true,
             name: true,
             avatarUrl: true,
+            avatarPath: true,
             createdAt: true,
           },
         },
@@ -155,6 +219,7 @@ export class MemberService {
       );
     }
 
+    await resolveAvatars(this.storage, [member]);
     return toMemberView(member, viewer);
   }
 
@@ -172,7 +237,14 @@ export class MemberService {
   async updateMyMembership(
     orgId: string,
     userId: string,
-    dto: { bio?: string; tags?: string[]; links?: string[] },
+    dto: {
+      bio?: string;
+      tags?: string[];
+      links?: string[];
+      headline?: string;
+      location?: string;
+      emailOptIn?: boolean;
+    },
   ) {
     const membership = await this.prisma.userOrg.findUnique({
       where: { userId_orgId: { userId, orgId } },
@@ -185,9 +257,15 @@ export class MemberService {
       data: {
         ...(dto.bio !== undefined && { bio: dto.bio.trim() || null }),
         ...(dto.tags !== undefined && { tags: dto.tags.map((t) => t.trim()).filter(Boolean) }),
-        ...(dto.links !== undefined && { links: dto.links.map((l) => l.trim()).filter(Boolean) }),
+        ...(dto.links !== undefined && { links: safeLinks(dto.links) }),
+        ...(dto.headline !== undefined && { headline: dto.headline.trim() || null }),
+        ...(dto.location !== undefined && { location: dto.location.trim() || null }),
+        ...(dto.emailOptIn !== undefined && { emailOptIn: dto.emailOptIn }),
       },
-      select: { id: true, bio: true, tags: true, links: true },
+      select: {
+        id: true, bio: true, tags: true, links: true,
+        headline: true, location: true, emailOptIn: true,
+      },
     });
   }
 
@@ -726,73 +804,160 @@ export class MemberService {
   // ─── Bulk Import ───────────────────────────────────────────
 
   /**
-   * Bulk import members from CSV-like data.
-   * Creates users if they don't exist and adds them to the org.
+   * Bring an existing community in from somebody else's export (MEM-06).
+   *
+   * The rule throughout is that **an import never overwrites what MaybeOS
+   * already knows**. A co-op's own organiser is usually row one of their own
+   * export — Charley is, in MaybeItsFate's — and an import that helpfully
+   * refreshed his profile would demote an OWNER to MEMBER and replace a
+   * curated bio with whatever the old platform held. So an existing
+   * membership is reported and left entirely alone, and an existing user
+   * keeps their name and avatar.
+   *
+   * **Nothing is emailed.** Three hundred people receiving a surprise message
+   * from a platform they have never heard of is the worst thing this feature
+   * could do. Imported members have no password and are not marked verified;
+   * they sign in by magic link whenever the co-op chooses to invite them.
    */
-  async importMembers(
-    orgId: string,
-    csvData: Array<{ email: string; name?: string; tier?: string }>,
-  ) {
+  async importMembers(orgId: string, rows: ImportMemberRowDto[]) {
     const results = {
       created: 0,
-      skipped: 0,
-      errors: [] as string[],
+      /** Already a member here. Left untouched, not updated. */
+      alreadyMembers: 0,
+      /** Had a MaybeOS account already; joined to this co-op. */
+      linkedExistingUsers: 0,
+      /** Imported with an avatar still to copy across. */
+      avatarsPending: 0,
+      errors: [] as Array<{ email: string; reason: string }>,
     };
 
-    // Resolve tier names to IDs
-    const tiers = await this.prisma.membershipTier.findMany({
-      where: { orgId, isActive: true },
-    });
-    const tierMap = new Map(tiers.map((t) => [t.name.toLowerCase(), t.id]));
+    for (const row of rows) {
+      const email = row.email.toLowerCase().trim();
 
-    for (const row of csvData) {
       try {
-        // Find or create the user
         let user = await this.prisma.user.findUnique({
-          where: { email: row.email.toLowerCase().trim() },
+          where: { email },
+          select: { id: true, avatarUrl: true },
         });
 
-        if (!user) {
+        if (user) {
+          results.linkedExistingUsers++;
+        } else {
           user = await this.prisma.user.create({
             data: {
-              email: row.email.toLowerCase().trim(),
+              email,
               name: row.name?.trim() || null,
+              avatarUrl: row.avatarUrl?.trim() || null,
+              // No password and unverified: this account was made *for*
+              // somebody rather than *by* them, and it must not look like a
+              // completed signup until they complete one.
             },
+            select: { id: true, avatarUrl: true },
           });
         }
 
-        // Check if already a member
         const existing = await this.prisma.userOrg.findUnique({
           where: { userId_orgId: { userId: user.id, orgId } },
+          select: { id: true },
         });
 
         if (existing) {
-          results.skipped++;
+          results.alreadyMembers++;
           continue;
         }
-
-        // Resolve tier
-        const tierId = row.tier
-          ? tierMap.get(row.tier.toLowerCase().trim()) ?? null
-          : null;
 
         await this.prisma.userOrg.create({
           data: {
             userId: user.id,
             orgId,
             role: 'MEMBER',
-            tierId,
+            // The date they actually joined the community, where the export
+            // knew it. Falls back to the column default, which is now.
+            ...(row.joinedAt && { memberSince: new Date(row.joinedAt) }),
+            bio: row.bio?.trim() || null,
+            headline: row.headline?.trim() || null,
+            location: row.location?.trim() || null,
+            tags: (row.tags ?? []).map((t) => t.trim()).filter(Boolean),
+            links: safeLinks(row.links ?? []),
+            // Only when the export actually said. Absent stays null — never
+            // asked — rather than becoming a refusal nobody made.
+            ...(row.emailOptIn !== undefined && { emailOptIn: row.emailOptIn }),
           },
         });
 
         results.created++;
+        if (user.avatarUrl) results.avatarsPending++;
       } catch (err) {
-        results.errors.push(
-          `Failed to import ${row.email}: ${(err as Error).message}`,
-        );
+        results.errors.push({ email, reason: (err as Error).message });
       }
     }
 
     return results;
+  }
+
+  /**
+   * Copy imported avatars into MaybeOS's own storage, a few at a time.
+   *
+   * Separate from the import itself because each avatar is an outbound HTTP
+   * fetch, and 200 of them do not fit in one Lambda's wall clock. The client
+   * walks the roster with a cursor and can stop and resume; a member whose
+   * avatar cannot be fetched is passed over rather than retried forever.
+   *
+   * Worth doing at all because an imported avatar URL is a link into the
+   * platform the co-op is leaving. It is signed, it is tied to that account,
+   * and it dies with the subscription — so a roster that merely *stored* the
+   * URL would quietly turn into 200 broken images.
+   */
+  async importAvatars(orgId: string, dto: ImportAvatarsDto) {
+    const limit = dto.limit ?? 8;
+
+    const memberships = await this.prisma.userOrg.findMany({
+      where: {
+        orgId,
+        ...(dto.after && { id: { gt: dto.after } }),
+        user: { avatarPath: null, avatarUrl: { not: null } },
+      },
+      orderBy: { id: 'asc' },
+      take: limit,
+      select: { id: true, user: { select: { id: true, avatarUrl: true } } },
+    });
+
+    let imported = 0;
+    let failed = 0;
+
+    for (const membership of memberships) {
+      const path = await this.storage.importAvatarFromUrl(
+        membership.user.id,
+        membership.user.avatarUrl as string,
+      );
+
+      if (path) {
+        await this.prisma.user.update({
+          where: { id: membership.user.id },
+          data: { avatarPath: path },
+        });
+        imported++;
+      } else {
+        failed++;
+      }
+    }
+
+    const lastId = memberships.at(-1)?.id ?? dto.after ?? null;
+
+    // How many remain *after* this cursor, so a run that fails every fetch
+    // still reports progress and still terminates.
+    const remaining = lastId
+      ? await this.prisma.userOrg.count({
+          where: { orgId, id: { gt: lastId }, user: { avatarPath: null, avatarUrl: { not: null } } },
+        })
+      : 0;
+
+    return {
+      imported,
+      failed,
+      remaining,
+      lastId,
+      done: memberships.length < limit,
+    };
   }
 }

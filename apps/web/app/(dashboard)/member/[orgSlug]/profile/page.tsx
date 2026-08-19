@@ -37,6 +37,11 @@ export default function MyProfilePage() {
   // a member adding a second link should not have to guess the separator, and
   // a bad row should be able to say which one it is.
   const [links, setLinks] = useState<string[]>([]);
+  const [headline, setHeadline] = useState('');
+  const [location, setLocation] = useState('');
+  // Nullable on purpose — null means nobody has ever asked this member, which
+  // is different from their having declined (MEM-06).
+  const [emailOptIn, setEmailOptIn] = useState<boolean | null>(null);
   const [linkError, setLinkError] = useState('');
   const orgId = useAuthStore((s) => s.currentOrgId);
   const [saving, setSaving] = useState(false);
@@ -53,6 +58,9 @@ export default function MyProfilePage() {
       .then((me) => {
         setBio(me.bio ?? '');
         setLinks(me.links ?? []);
+        setHeadline(me.headline ?? '');
+        setLocation(me.location ?? '');
+        setEmailOptIn(me.emailOptIn ?? null);
       })
       .catch(() => {});
   }, [token, orgId, profile?.id]);
@@ -78,7 +86,19 @@ export default function MyProfilePage() {
       if (orgId) {
         // Blank rows are the normal state of a form somebody is still filling
         // in, so they are dropped rather than rejected.
-        await api.members.updateMine(orgId, { bio, links: links.filter((l) => l.trim()) }, token);
+        await api.members.updateMine(
+          orgId,
+          {
+            bio,
+            links: links.filter((l) => l.trim()),
+            headline,
+            location,
+            // Only sent once the member has actually answered. Sending false
+            // for "never asked" would record a refusal they never made.
+            ...(emailOptIn !== null && { emailOptIn }),
+          },
+          token,
+        );
       }
       // Refresh the store too: otherwise the old name sits in the corner of
       // every other page until the next sign-in.
@@ -174,13 +194,44 @@ export default function MyProfilePage() {
 
         <div>
           <label className="mb-1 block text-sm font-medium text-[var(--text-primary)]">
+            Headline
+          </label>
+          <input
+            type="text"
+            value={headline}
+            onChange={(e) => setHeadline(e.target.value)}
+            maxLength={160}
+            placeholder="Ask me anything about sourdough"
+            className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+          />
+          <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+            One line under your name in the directory.
+          </p>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium text-[var(--text-primary)]">
+            Location
+          </label>
+          <input
+            type="text"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            maxLength={120}
+            placeholder="Butchertown, KY"
+            className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+          />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium text-[var(--text-primary)]">
             About you
           </label>
           <textarea
             value={bio}
             onChange={(e) => setBio(e.target.value)}
             rows={4}
-            maxLength={600}
+            maxLength={2000}
             placeholder="Potter, gardener, reluctant treasurer."
             className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
@@ -190,6 +241,26 @@ export default function MyProfilePage() {
             Other members see this when they open your card in the directory. It belongs to this
             co-op only — joining another won&apos;t carry it across.
           </p>
+        </div>
+
+        <div className="rounded-lg border border-[var(--border)] p-3">
+          <label className="flex items-start gap-2.5 text-sm text-[var(--text-primary)]">
+            <input
+              type="checkbox"
+              checked={emailOptIn === true}
+              onChange={(e) => setEmailOptIn(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-[var(--border)] text-brand-600 focus:ring-brand-500"
+            />
+            <span>
+              Email me about what this co-op is up to
+              <span className="mt-0.5 block text-xs text-[var(--text-tertiary)]">
+                {/* Members brought across from another platform arrive with
+                    this already set. Being able to switch it off is the other
+                    half of importing it. */}
+                Separate from the emails about your own membership, which are sent either way.
+              </span>
+            </span>
+          </label>
         </div>
 
         <div>
@@ -222,7 +293,7 @@ export default function MyProfilePage() {
             ))}
           </div>
 
-          {links.length < 8 && (
+          {links.length < 25 && (
             <button
               type="button"
               onClick={() => setLinks([...links, ''])}

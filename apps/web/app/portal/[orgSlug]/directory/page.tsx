@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Search, X, Calendar, Link2 } from 'lucide-react';
+import { Users, Search, X, Calendar, Link2, MapPin } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Member } from '@/lib/api';
@@ -109,6 +109,9 @@ export default function PortalDirectoryPage() {
                 <p className="truncate text-sm font-medium text-gray-900">
                   {member.user.name || 'Member'}
                 </p>
+                {member.headline && (
+                  <p className="truncate text-xs text-gray-500">{member.headline}</p>
+                )}
                 <div className="mt-0.5 flex items-center gap-2">
                   <span
                     className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -171,11 +174,22 @@ function MemberProfile({ member, onClose }: { member: Member; onClose: () => voi
             </div>
             <div className="min-w-0">
               <h2 className="text-xl font-semibold text-gray-900">{member.user.name || 'Member'}</h2>
-              <p className="mt-1 flex items-center gap-1.5 text-sm text-gray-500">
-                <Calendar className="h-3.5 w-3.5" />
-                Member since{' '}
-                {joined.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
-              </p>
+              {member.headline && (
+                <p className="mt-0.5 text-sm text-gray-600">{member.headline}</p>
+              )}
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-500">
+                <span className="flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5" />
+                  Member since{' '}
+                  {joined.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+                </span>
+                {member.location && (
+                  <span className="flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5" />
+                    {member.location}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           <button
