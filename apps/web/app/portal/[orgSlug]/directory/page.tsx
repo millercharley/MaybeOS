@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Search } from 'lucide-react';
+import { Users, Search, X, Calendar } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Member } from '@/lib/api';
@@ -12,6 +12,10 @@ export default function PortalDirectoryPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  // Opening a card was the whole ask: the page answered "who is in this co-op"
+  // and not "who is this person", which is the question somebody actually has
+  // before a first conversation.
+  const [openMember, setOpenMember] = useState<Member | null>(null);
 
   useEffect(() => {
     if (!org || !token) { setLoading(false); return; }
@@ -81,9 +85,11 @@ export default function PortalDirectoryPage() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((member) => (
-            <div
+            <button
               key={member.id}
-              className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4"
+              type="button"
+              onClick={() => setOpenMember(member)}
+              className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4 text-left transition hover:border-gray-300 hover:shadow-sm"
             >
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-100">
                 {member.user.avatarUrl ? (
@@ -112,10 +118,105 @@ export default function PortalDirectoryPage() {
                   </span>
                 </div>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}
+
+      {openMember && <MemberProfile member={openMember} onClose={() => setOpenMember(null)} />}
+    </div>
+  );
+}
+
+/**
+ * What one member may know about another.
+ *
+ * Deliberately not everything on the record. Charley's rule (2026-08-12):
+ * belonging to the same co-op earns you a name and a face, not everybody's
+ * email address — a member list is exactly the kind of thing that should not
+ * be harvestable by whoever joins. The API already enforces it, stripping
+ * `email` and billing for anyone who is not an organiser or the member
+ * themselves, so this renders the address when it arrives and shows nothing
+ * when it does not, rather than deciding for itself.
+ *
+ * Demographics are absent by construction rather than by omission here: D-021
+ * promises members that only suppressed aggregates are shown, and the Prisma
+ * client now redacts that column for every query that does not ask for it.
+ */
+function MemberProfile({ member, onClose }: { member: Member; onClose: () => void }) {
+  const joined = new Date(member.memberSince);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 p-4 pt-20"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-brand-100">
+              {member.user.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={member.user.avatarUrl} alt="" className="h-16 w-16 rounded-full object-cover" />
+              ) : (
+                <span className="text-xl font-medium text-brand-700">
+                  {member.user.name?.charAt(0).toUpperCase() || '?'}
+                </span>
+              )}
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-xl font-semibold text-gray-900">{member.user.name || 'Member'}</h2>
+              <p className="mt-1 flex items-center gap-1.5 text-sm text-gray-500">
+                <Calendar className="h-3.5 w-3.5" />
+                Member since{' '}
+                {joined.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 text-gray-400 hover:text-gray-600"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {member.bio ? (
+          <p className="mt-5 whitespace-pre-line text-sm leading-relaxed text-gray-700">{member.bio}</p>
+        ) : (
+          <p className="mt-5 text-sm italic text-gray-400">
+            {member.user.name?.split(' ')[0] || 'This member'} hasn&apos;t written an introduction yet.
+          </p>
+        )}
+
+        {member.tags.length > 0 && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {member.tags.map((tag) => (
+              <span key={tag} className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600">
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Present only when the API sent it — organisers, and yourself. */}
+        {member.user.email && (
+          <div className="mt-5 border-t border-gray-100 pt-4">
+            <a href={`mailto:${member.user.email}`} className="text-sm text-brand-600 hover:underline">
+              {member.user.email}
+            </a>
+            <p className="mt-1 text-xs text-gray-400">
+              Visible to organisers so they can contact members — not to the whole co-op.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

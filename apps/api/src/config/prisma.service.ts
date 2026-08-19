@@ -50,6 +50,22 @@ export class PrismaService
          * needs it.
          */
         organization: { stripeAccountId: true },
+        /**
+         * A member's demographic answers (IMP-17). D-021 and the PRD are
+         * explicit that no route reads another member's profile and that the
+         * only admin view is a suppressed aggregate — but `getMember` and the
+         * member list both read `UserOrg` with `include`, which selects every
+         * column, so opening the directory returned every member's
+         * demographics to anyone in the co-op.
+         *
+         * Nothing rendered them, which is exactly why it went unnoticed: the
+         * data was in the response, one devtools panel away, for a field
+         * collected on the promise that only aggregates would be shown.
+         *
+         * ImpactOS reads them with an explicit `select`, which is the one
+         * place that should.
+         */
+        userOrg: { demographics: true },
       },
     });
   }

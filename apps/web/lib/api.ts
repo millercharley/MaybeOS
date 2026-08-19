@@ -275,6 +275,17 @@ class ApiClient {
         { token },
       ),
 
+    /**
+     * Edit your own entry in a co-op's directory (MEM-09). No userId — the
+     * server takes it from the token, so this cannot be aimed at anyone else.
+     */
+    updateMine: (orgId: string, data: { bio?: string; tags?: string[] }, token: string) =>
+      this.request<{ id: string; bio: string | null; tags: string[] }>(`/orgs/${orgId}/me`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
     get: (orgId: string, userId: string, token: string) =>
       this.request<Member>(`/orgs/${orgId}/members/${userId}`, { token }),
 
@@ -1075,6 +1086,12 @@ export interface Member {
   subscriptionStatus?: string;
   memberSince: string;
   tags: string[];
+  /**
+   * What this member wrote about themselves for *this* co-op. Per-membership,
+   * not per-user: orgs are firewalled, so a biography written for one co-op is
+   * not consent to publish it in another (D-020, IMP-17).
+   */
+  bio?: string | null;
 }
 
 /**
