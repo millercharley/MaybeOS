@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, useCallback, FormEvent } from 'react';
 import {
-  MessageSquare, ThumbsUp, ThumbsDown, Minus, Send, Pin, BookOpen, ChevronLeft,
+  MessageSquare, Send, Pin, BookOpen, ChevronLeft,
 } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
@@ -519,25 +519,69 @@ function ErrorNote({ message }: { message: string }) {
   );
 }
 
+/**
+ * How a co-op decides things (CMN-10).
+ *
+ * The mechanism was complete and the way in was not: proposals, votes, quorum,
+ * closing dates and an outcome computed from them all existed, and no member
+ * could raise one. The record was missing too — the schema carries PASSED and
+ * FAILED, and the page printed those words raw, so "we voted on this in March
+ * and adopted it" lived nowhere the co-op could point at.
+ *
+ * Three groups rather than one list, because they answer different questions:
+ * what needs my vote, what is waiting to be opened, and what did we decide.
+ */
+
+/** What each status means to a co-op, rather than to the database. */
+const PROPOSAL_STATES: Record<string, { label: string; tone: string; note?: string }> = {
+  OPEN: { label: 'Open for voting', tone: 'bg-green-50 text-green-700' },
+  DRAFT: {
+    label: 'Raised',
+    tone: 'bg-amber-50 text-amber-700',
+    note: 'Waiting for an organiser to open voting.',
+  },
+  PASSED: { label: 'Adopted', tone: 'bg-green-50 text-green-800' },
+  FAILED: { label: 'Lacked support', tone: 'bg-gray-100 text-gray-600' },
+  CLOSED: { label: 'Closed', tone: 'bg-gray-100 text-gray-600' },
+};
+
 function ProposalsSection() {
   const { org } = usePortal();
+  const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
   const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
   const [votingId, setVotingId] = useState<string | null>(null);
   // Voting used to `catch {}`: a failed vote left the buttons exactly as they
   // were, so a member had every reason to believe it had counted.
   const [error, setError] = useState('');
 
-  useEffect(() => {
+  const [raising, setRaising] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [draft, setDraft] = useState({ title: '', body: '', channelId: '', quorum: '', closesAt: '' });
+
+  const isOrganiser = ['ADMIN', 'STAFF'].includes(
+    user?.orgs?.find((o) => o.orgId === org?.id)?.role ?? '',
+  );
+
+  const reload = useCallback(async () => {
     if (!org || !token) { setLoading(false); return; }
-    api.commons
-      .listProposals(org.id, token)
-      .then(setProposals)
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : 'Could not load proposals'),
-      )
-      .finally(() => setLoading(false));
+    try {
+      setProposals(await api.commons.listProposals(org.id, token));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load proposals');
+    } finally {
+      setLoading(false);
+    }
+  }, [org, token]);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  // A proposal lives in a channel, so raising one needs somewhere to put it.
+  useEffect(() => {
+    if (!org || !token) return;
+    api.commons.listChannels(org.id, token).then(setChannels).catch(() => setChannels([]));
   }, [org, token]);
 
   async function handleVote(proposalId: string, choice: string) {
@@ -549,9 +593,23 @@ function ProposalsSection() {
       const updated = await api.commons.getProposal(org.id, proposalId, token);
       setProposals((prev) => prev.map((p) => (p.id === proposalId ? updated : p)));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Your vote did not go through');
+      setError(err instanceof Error ? err.message : 'Your vote was not recorded');
+    } finally {
+      setVotingId(null);
     }
-    setVotingId(null);
+  }
+
+  async function act(work: () => Promise<unknown>) {
+    setBusy(true);
+    setError('');
+    try {
+      await work();
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'That did not work');
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (loading) {
@@ -562,84 +620,259 @@ function ProposalsSection() {
     );
   }
 
-  if (proposals.length === 0) {
-    return (
-      <>
-        {error && <ErrorNote message={error} />}
-        <p className="py-8 text-center text-sm text-gray-500">No proposals yet.</p>
-      </>
-    );
-  }
+  const openProposals = proposals.filter((p) => p.status === 'OPEN');
+  const raised = proposals.filter((p) => p.status === 'DRAFT');
+  const decided = proposals.filter((p) => ['PASSED', 'FAILED', 'CLOSED'].includes(p.status));
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {error && <ErrorNote message={error} />}
-      {proposals.map((proposal) => {
-        const total = proposal.voteTally?.total || 0;
-        const yesPercent = total > 0 ? Math.round(((proposal.voteTally?.yes || 0) / total) * 100) : 0;
 
-        return (
-          <div key={proposal.id} className="rounded-xl border border-gray-200 bg-white p-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-base font-semibold text-gray-900">{proposal.title}</h3>
-                <span
-                  className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                    proposal.status === 'OPEN'
-                      ? 'bg-green-50 text-green-700'
-                      : 'bg-gray-100 text-gray-600'
-                  }`}
-                >
-                  {proposal.status}
-                </span>
-              </div>
-            </div>
-            <p className="mt-2 text-sm text-gray-600">{proposal.body}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-gray-500">
+          Anyone can raise a proposal. An organiser opens it for voting, and closing it records what
+          the co-op decided.
+        </p>
+        {channels.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              setRaising(!raising);
+              setDraft({ title: '', body: '', channelId: channels[0]?.id ?? '', quorum: '', closesAt: '' });
+            }}
+            className="btn-primary shrink-0 text-sm"
+          >
+            {raising ? 'Cancel' : 'Raise a proposal'}
+          </button>
+        )}
+      </div>
 
-            {total > 0 && (
-              <div className="mt-3">
-                <div className="flex justify-between text-xs text-gray-500">
-                  <span>Yes: {proposal.voteTally?.yes}</span>
-                  <span>No: {proposal.voteTally?.no}</span>
-                  <span>Abstain: {proposal.voteTally?.abstain}</span>
-                </div>
-                <div className="mt-1 h-2 rounded-full bg-gray-100">
-                  <div
-                    className="h-2 rounded-full bg-green-500"
-                    style={{ width: `${yesPercent}%` }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {proposal.status === 'OPEN' && (
-              <div className="mt-4 flex gap-2">
-                <button
-                  onClick={() => handleVote(proposal.id, 'YES')}
-                  disabled={votingId === proposal.id}
-                  className="inline-flex items-center gap-1 rounded-lg border border-green-200 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-100"
-                >
-                  <ThumbsUp className="h-3.5 w-3.5" /> Yes
-                </button>
-                <button
-                  onClick={() => handleVote(proposal.id, 'NO')}
-                  disabled={votingId === proposal.id}
-                  className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100"
-                >
-                  <ThumbsDown className="h-3.5 w-3.5" /> No
-                </button>
-                <button
-                  onClick={() => handleVote(proposal.id, 'ABSTAIN')}
-                  disabled={votingId === proposal.id}
-                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100"
-                >
-                  <Minus className="h-3.5 w-3.5" /> Abstain
-                </button>
-              </div>
-            )}
+      {raising && (
+        <form
+          className="space-y-3 rounded-xl border border-gray-200 bg-white p-5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!org || !token || !draft.title.trim() || !draft.channelId) return;
+            act(async () => {
+              await api.commons.createProposal(
+                org.id,
+                draft.channelId,
+                {
+                  title: draft.title.trim(),
+                  body: draft.body.trim(),
+                  ...(draft.quorum ? { quorum: parseInt(draft.quorum, 10) } : {}),
+                  ...(draft.closesAt ? { closesAt: new Date(draft.closesAt).toISOString() } : {}),
+                },
+                token,
+              );
+              setRaising(false);
+            });
+          }}
+        >
+          <input
+            value={draft.title}
+            onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+            placeholder="Buy a second kiln"
+            className="input w-full"
+            aria-label="Proposal title"
+            autoFocus
+          />
+          <textarea
+            value={draft.body}
+            onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+            placeholder="What you are proposing, and why."
+            rows={5}
+            className="input w-full"
+            aria-label="Proposal detail"
+          />
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="text-sm">
+              <span className="mb-1 block text-gray-700">Channel</span>
+              <select
+                value={draft.channelId}
+                onChange={(e) => setDraft({ ...draft, channelId: e.target.value })}
+                className="input w-full"
+              >
+                {channels.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              {/* Optional on purpose: a co-op that has not agreed a quorum
+                  should not have to invent one to ask a question. */}
+              <span className="mb-1 block text-gray-700">Quorum (optional)</span>
+              <input
+                type="number"
+                min={1}
+                value={draft.quorum}
+                onChange={(e) => setDraft({ ...draft, quorum: e.target.value })}
+                placeholder="e.g. 10"
+                className="input w-full"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-gray-700">Closes (optional)</span>
+              <input
+                type="date"
+                value={draft.closesAt}
+                onChange={(e) => setDraft({ ...draft, closesAt: e.target.value })}
+                className="input w-full"
+              />
+            </label>
           </div>
-        );
-      })}
+          <p className="text-xs text-gray-500">
+            Raising it does not start the vote — an organiser opens it when the co-op is ready.
+          </p>
+          <button type="submit" disabled={busy} className="btn-primary text-sm">
+            {busy ? 'Raising...' : 'Raise proposal'}
+          </button>
+        </form>
+      )}
+
+      <ProposalGroup
+        title="Open for voting"
+        empty="Nothing to vote on right now."
+        proposals={openProposals}
+        onVote={handleVote}
+        votingId={votingId}
+        isOrganiser={isOrganiser}
+        busy={busy}
+        onClose={(id) => { if (org && token) act(() => api.commons.closeProposal(org.id, id, token)); }}
+      />
+
+      {raised.length > 0 && (
+        <ProposalGroup
+          title="Raised"
+          empty=""
+          proposals={raised}
+          isOrganiser={isOrganiser}
+          busy={busy}
+          onOpen={(id) => { if (org && token) act(() => api.commons.openProposal(org.id, id, token)); }}
+        />
+      )}
+
+      {decided.length > 0 && (
+        <ProposalGroup
+          title="Decided"
+          empty=""
+          proposals={decided}
+          isOrganiser={isOrganiser}
+          busy={busy}
+        />
+      )}
     </div>
+  );
+}
+
+function ProposalGroup({
+  title,
+  empty,
+  proposals,
+  onVote,
+  votingId,
+  isOrganiser,
+  busy,
+  onOpen,
+  onClose,
+}: {
+  title: string;
+  empty: string;
+  proposals: Proposal[];
+  onVote?: (id: string, choice: string) => void;
+  votingId?: string | null;
+  isOrganiser: boolean;
+  busy: boolean;
+  onOpen?: (id: string) => void;
+  onClose?: (id: string) => void;
+}) {
+  return (
+    <section>
+      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-500">{title}</h3>
+
+      {proposals.length === 0 ? (
+        empty ? <p className="text-sm text-gray-500">{empty}</p> : null
+      ) : (
+        <div className="space-y-4">
+          {proposals.map((proposal) => {
+            const state = PROPOSAL_STATES[proposal.status] ?? {
+              label: proposal.status,
+              tone: 'bg-gray-100 text-gray-600',
+            };
+            const total = proposal.voteTally?.total || 0;
+            const yes = proposal.voteTally?.yes || 0;
+            const yesPercent = total > 0 ? Math.round((yes / total) * 100) : 0;
+
+            return (
+              <div key={proposal.id} className="rounded-xl border border-gray-200 bg-white p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h4 className="text-base font-semibold text-gray-900">{proposal.title}</h4>
+                    <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${state.tone}`}>
+                      {state.label}
+                    </span>
+                    {state.note && <p className="mt-1 text-xs text-gray-500">{state.note}</p>}
+                  </div>
+
+                  {isOrganiser && (
+                    <div className="flex shrink-0 gap-3 text-sm">
+                      {proposal.status === 'DRAFT' && onOpen && (
+                        <button
+                          type="button"
+                          onClick={() => onOpen(proposal.id)}
+                          disabled={busy}
+                          className="font-medium text-brand-600 hover:underline"
+                        >
+                          Open voting
+                        </button>
+                      )}
+                      {proposal.status === 'OPEN' && onClose && (
+                        <button
+                          type="button"
+                          onClick={() => onClose(proposal.id)}
+                          disabled={busy}
+                          className="font-medium text-gray-600 hover:underline"
+                        >
+                          Close &amp; record
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {proposal.body && <p className="mt-2 text-sm text-gray-600">{proposal.body}</p>}
+
+                {total > 0 && (
+                  <div className="mt-3">
+                    <div className="h-1.5 w-full rounded-full bg-gray-200">
+                      <div className="h-1.5 rounded-full bg-brand-500" style={{ width: `${yesPercent}%` }} />
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {yes} in favour of {total} {total === 1 ? 'vote' : 'votes'}
+                      {proposal.quorum ? ` · quorum ${proposal.quorum}` : ''}
+                    </p>
+                  </div>
+                )}
+
+                {proposal.status === 'OPEN' && onVote && (
+                  <div className="mt-3 flex gap-2">
+                    {(['YES', 'NO', 'ABSTAIN'] as const).map((choice) => (
+                      <button
+                        key={choice}
+                        onClick={() => onVote(proposal.id, choice)}
+                        disabled={votingId === proposal.id}
+                        className="btn-secondary text-xs"
+                      >
+                        {choice === 'YES' ? 'In favour' : choice === 'NO' ? 'Against' : 'Abstain'}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }

@@ -655,6 +655,46 @@ class ApiClient {
     getProposal: (orgId: string, proposalId: string, token: string) =>
       this.request<Proposal>(`/orgs/${orgId}/proposals/${proposalId}`, { token }),
 
+    /**
+     * Raise a proposal (CMN-10).
+     *
+     * Any member may raise one; it starts as a DRAFT and an organiser opens it
+     * for voting. That split is the co-op's, not an accident of the API — the
+     * open and close routes are ADMIN-only — so the UI says which state a
+     * proposal is in rather than leaving somebody wondering why nobody voted.
+     */
+    createProposal: (
+      orgId: string,
+      channelId: string,
+      data: { title: string; body: string; quorum?: number; closesAt?: string },
+      token: string,
+    ) =>
+      this.request<Proposal>(`/orgs/${orgId}/channels/${channelId}/proposals`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    /** Open a raised proposal for voting. Organisers only. */
+    openProposal: (orgId: string, proposalId: string, token: string) =>
+      this.request<Proposal>(`/orgs/${orgId}/proposals/${proposalId}/open`, {
+        method: 'POST',
+        token,
+      }),
+
+    /**
+     * Close voting and tally. Organisers only.
+     *
+     * The outcome is computed rather than chosen: quorum, then majority. What
+     * comes back is PASSED or FAILED, which the co-op reads as adopted or
+     * lacked support.
+     */
+    closeProposal: (orgId: string, proposalId: string, token: string) =>
+      this.request<Proposal>(`/orgs/${orgId}/proposals/${proposalId}/close`, {
+        method: 'POST',
+        token,
+      }),
+
     listProposals: (orgId: string, token: string) =>
       this.request<Proposal[]>(`/orgs/${orgId}/proposals`, { token }),
 
