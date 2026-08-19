@@ -83,4 +83,37 @@ describe('MemberService — your own profile', () => {
       service.updateMyMembership('org-1', 'stranger', { bio: 'hello' }),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  describe('links', () => {
+    it('saves them in the order the member arranged them', async () => {
+      const { service, updates } = build();
+
+      await service.updateMyMembership('org-1', 'user-1', {
+        links: ['https://thegistof.me/charley', 'https://www.instagram.com/millercharley/'],
+      });
+
+      expect((updates[0].data as { links: string[] }).links).toEqual([
+        'https://thegistof.me/charley',
+        'https://www.instagram.com/millercharley/',
+      ]);
+    });
+
+    it('drops blank rows, which is what a half-filled form looks like', async () => {
+      const { service, updates } = build();
+
+      await service.updateMyMembership('org-1', 'user-1', {
+        links: ['https://example.org', '   ', ''],
+      });
+
+      expect((updates[0].data as { links: string[] }).links).toEqual(['https://example.org']);
+    });
+
+    it('leaves links alone when a member only edits their biography', async () => {
+      const { service, updates } = build();
+
+      await service.updateMyMembership('org-1', 'user-1', { bio: 'Just the bio.' });
+
+      expect(updates[0].data).not.toHaveProperty('links');
+    });
+  });
 });

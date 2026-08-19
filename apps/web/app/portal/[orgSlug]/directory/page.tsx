@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, Search, X, Calendar } from 'lucide-react';
+import { Users, Search, X, Calendar, Link2 } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Member } from '@/lib/api';
+import { safeProfileLinks, profileLinkLabel } from '@/lib/profile-links';
 
 export default function PortalDirectoryPage() {
   const { org } = usePortal();
@@ -203,6 +204,27 @@ function MemberProfile({ member, onClose }: { member: Member; onClose: () => voi
               </span>
             ))}
           </div>
+        )}
+
+        {safeProfileLinks(member.links).length > 0 && (
+          <ul className="mt-4 space-y-1.5">
+            {safeProfileLinks(member.links).map((link) => (
+              <li key={link}>
+                <a
+                  href={link}
+                  target="_blank"
+                  // noreferrer as well as noopener: these point off the co-op's
+                  // site to somewhere a member chose, and the page they land on
+                  // has no business knowing which co-op sent them.
+                  rel="noopener noreferrer nofollow"
+                  className="inline-flex items-center gap-2 text-sm text-brand-600 hover:underline"
+                >
+                  <Link2 className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                  <span className="truncate">{profileLinkLabel(link)}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
         )}
 
         {/* Present only when the API sent it — organisers, and yourself. */}

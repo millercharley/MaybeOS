@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength, IsArray, ArrayMaxSize } from 'class-validator';
+import { IsOptional, IsString, MaxLength, IsArray, ArrayMaxSize, IsUrl } from 'class-validator';
 
 /**
  * What a member may change about how they appear in their co-op (MEM-09).
@@ -27,4 +27,22 @@ export class UpdateMyMembershipDto {
   @IsString({ each: true })
   @MaxLength(40, { each: true })
   tags?: string[];
+
+  /**
+   * Links a member shows on their profile.
+   *
+   * `IsUrl` with the protocols pinned is the load-bearing part, not a
+   * formality. These are rendered as anchors on a page every other member
+   * reads, so a stored `javascript:` URL would be script running in their
+   * browser under the co-op's own domain — the classic self-XSS-by-profile.
+   * `require_protocol` also stops `evil.com` being saved as a relative link
+   * that resolves inside MaybeOS.
+   */
+  @ApiPropertyOptional({ example: ['https://www.instagram.com/millercharley/'] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(8)
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true }, { each: true })
+  @MaxLength(300, { each: true })
+  links?: string[];
 }

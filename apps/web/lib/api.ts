@@ -279,8 +279,8 @@ class ApiClient {
      * Edit your own entry in a co-op's directory (MEM-09). No userId — the
      * server takes it from the token, so this cannot be aimed at anyone else.
      */
-    updateMine: (orgId: string, data: { bio?: string; tags?: string[] }, token: string) =>
-      this.request<{ id: string; bio: string | null; tags: string[] }>(`/orgs/${orgId}/me`, {
+    updateMine: (orgId: string, data: { bio?: string; tags?: string[]; links?: string[] }, token: string) =>
+      this.request<{ id: string; bio: string | null; tags: string[]; links: string[] }>(`/orgs/${orgId}/me`, {
         method: 'PATCH',
         body: JSON.stringify(data),
         token,
@@ -1092,6 +1092,8 @@ export interface Member {
    * not consent to publish it in another (D-020, IMP-17).
    */
   bio?: string | null;
+  /** Links this member chose to show, in this co-op. http/https only. */
+  links?: string[];
 }
 
 /**

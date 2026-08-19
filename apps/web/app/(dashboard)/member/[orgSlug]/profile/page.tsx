@@ -33,6 +33,11 @@ export default function MyProfilePage() {
   // consent to publish it in another (D-020, IMP-17). The directory could show
   // a biography long before anything could write one.
   const [bio, setBio] = useState('');
+  // Kept as a list of rows rather than one textarea of newline-separated URLs:
+  // a member adding a second link should not have to guess the separator, and
+  // a bad row should be able to say which one it is.
+  const [links, setLinks] = useState<string[]>([]);
+  const [linkError, setLinkError] = useState('');
   const orgId = useAuthStore((s) => s.currentOrgId);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -45,20 +50,36 @@ export default function MyProfilePage() {
     if (!token || !orgId) return;
     api.members
       .get(orgId, profile?.id ?? '', token)
-      .then((me) => setBio(me.bio ?? ''))
+      .then((me) => {
+        setBio(me.bio ?? '');
+        setLinks(me.links ?? []);
+      })
       .catch(() => {});
   }, [token, orgId, profile?.id]);
 
   async function handleSave(e: FormEvent) {
     e.preventDefault();
     if (!token) return;
+    // Checked here as well as at the API, so a mistyped address says so beside
+    // the field instead of coming back as a validation error about an array.
+    const bad = links.find((l) => l.trim() && !/^https?:\/\/\S+$/i.test(l.trim()));
+    if (bad) {
+      setLinkError(`"${bad}" needs to start with http:// or https://`);
+      return;
+    }
+    setLinkError('');
+
     setSaving(true);
     setMessage('');
     try {
       await api.auth_profile.update({ name }, token);
       // The name lives on the account and the biography on the membership, so
       // saving this form is two writes rather than one.
-      if (orgId) await api.members.updateMine(orgId, { bio }, token);
+      if (orgId) {
+        // Blank rows are the normal state of a form somebody is still filling
+        // in, so they are dropped rather than rejected.
+        await api.members.updateMine(orgId, { bio, links: links.filter((l) => l.trim()) }, token);
+      }
       // Refresh the store too: otherwise the old name sits in the corner of
       // every other page until the next sign-in.
       await loadProfile();
@@ -168,6 +189,57 @@ export default function MyProfilePage() {
                 per co-op, and other members can read it. */}
             Other members see this when they open your card in the directory. It belongs to this
             co-op only — joining another won&apos;t carry it across.
+          </p>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium text-[var(--text-primary)]">
+            Links
+          </label>
+          <div className="space-y-2">
+            {links.map((link, index) => (
+              <div key={index} className="flex gap-2">
+                <input
+                  value={link}
+                  onChange={(e) => {
+                    const next = [...links];
+                    next[index] = e.target.value;
+                    setLinks(next);
+                  }}
+                  placeholder="https://www.instagram.com/yourname/"
+                  className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  aria-label={`Link ${index + 1}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setLinks(links.filter((_, i) => i !== index))}
+                  className="shrink-0 px-2 text-sm text-[var(--text-tertiary)] hover:text-red-600"
+                  aria-label={`Remove link ${index + 1}`}
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {links.length < 8 && (
+            <button
+              type="button"
+              onClick={() => setLinks([...links, ''])}
+              className="mt-2 text-sm font-medium text-brand-600 hover:underline"
+            >
+              + Add a link
+            </button>
+          )}
+
+          {linkError && (
+            <p className="mt-1 text-xs text-red-600" role="alert">{linkError}</p>
+          )}
+
+          <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+            Your website, shop, or wherever else you want members to find you. Shown on your card in
+            this co-op&apos;s directory, and like your introduction it doesn&apos;t follow you to
+            another co-op.
           </p>
         </div>
 
