@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useCallback, FormEvent } from 'react';
 import {
-  MessageSquare, Send, Pin, BookOpen, ChevronLeft,
+  MessageSquare, Pin, BookOpen, ChevronLeft,
 } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Channel, Post, Proposal, Collection, CollectionPage, Comment } from '@/lib/api';
 import { sanitizeWikiHtml } from '@/lib/wiki-html';
+import { renderBodyHtml, isBlankBody } from '@/lib/rich-text';
+import { RichComposer, composerValue } from '@/components/composer/rich-composer';
 
 type Tab = 'channels' | 'library' | 'proposals';
 
@@ -112,13 +114,15 @@ function ChannelsSection() {
     }
   }
 
-  async function handlePost(e: FormEvent) {
-    e.preventDefault();
-    if (!org || !token || !selectedChannel || !newPost.trim()) return;
+  async function handlePost(e?: FormEvent) {
+    e?.preventDefault();
+    // isBlankBody, not `.trim()`: an emptied contenteditable still holds
+    // `<p><br></p>`, which is truthy and would post an empty message.
+    if (!org || !token || !selectedChannel || isBlankBody(newPost)) return;
     setPosting(true);
     setError('');
     try {
-      const post = await api.commons.createPost(org.id, selectedChannel, { body: newPost }, token);
+      const post = await api.commons.createPost(org.id, selectedChannel, { body: composerValue(newPost) }, token);
       setPosts((prev) => [post, ...prev]);
       // Only cleared once the post is actually saved. Clearing first would
       // throw away what somebody wrote the moment the request failed.
@@ -173,18 +177,14 @@ function ChannelsSection() {
       </div>
 
       <div className="flex-1 space-y-4">
-        <form onSubmit={handlePost} className="flex gap-2">
-          <input
-            type="text"
-            value={newPost}
-            onChange={(e) => setNewPost(e.target.value)}
-            placeholder="Write a message..."
-            className="input flex-1"
-          />
-          <button type="submit" disabled={posting || !newPost.trim()} className="btn-primary">
-            <Send className="h-4 w-4" />
-          </button>
-        </form>
+        <RichComposer
+          value={newPost}
+          onChange={setNewPost}
+          onSubmit={() => handlePost()}
+          placeholder="Write a message..."
+          submitLabel="Post"
+          busy={posting}
+        />
 
         {posts.length === 0 ? (
           <p className="py-8 text-center text-sm text-gray-400">No posts in this channel yet. Be the first!</p>
@@ -243,14 +243,14 @@ function PostCard({ post, orgId, token }: { post: Post; orgId: string; token: st
     setLoading(false);
   }
 
-  async function submitComment(e: FormEvent) {
-    e.preventDefault();
-    if (!draft.trim()) return;
+  async function submitComment(e?: FormEvent) {
+    e?.preventDefault();
+    if (isBlankBody(draft)) return;
     setBusy(true);
     setError('');
     try {
       await api.commons.addComment(orgId, post.id, {
-        body: draft.trim(),
+        body: composerValue(draft),
         ...(replyTo ? { parentId: replyTo } : {}),
       }, token);
       // Re-read rather than splicing locally: a reply lands inside its parent,
@@ -297,7 +297,13 @@ function PostCard({ post, orgId, token }: { post: Post; orgId: string; token: st
       {post.title && (
         <h3 className="mt-2 text-sm font-semibold text-gray-900">{post.title}</h3>
       )}
-      <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">{post.body}</p>
+      {/* Bodies are HTML now, and the plain text already stored still renders
+          correctly — renderBodyHtml tells them apart rather than migrating a
+          co-op's own words. */}
+      <div
+        className="prose prose-sm mt-1 max-w-none whitespace-pre-wrap text-sm text-gray-700"
+        dangerouslySetInnerHTML={{ __html: renderBodyHtml(post.body) }}
+      />
 
       <div className="mt-3 flex items-center gap-4 border-t border-gray-100 pt-2">
         <button onClick={react} className="text-xs text-gray-500 hover:text-gray-800">
@@ -319,17 +325,15 @@ function PostCard({ post, orgId, token }: { post: Post; orgId: string; token: st
             <CommentNode key={c.id} comment={c} depth={0} onReply={setReplyTo} activeReply={replyTo} />
           ))}
 
-          <form onSubmit={submitComment} className="flex gap-2">
-            <input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder={replyTo ? 'Write a reply...' : 'Add a comment...'}
-              className="input flex-1 text-sm"
-            />
-            <button type="submit" disabled={busy || !draft.trim()} className="btn-primary text-sm">
-              {busy ? '...' : 'Send'}
-            </button>
-          </form>
+          <RichComposer
+            value={draft}
+            onChange={setDraft}
+            onSubmit={() => submitComment()}
+            placeholder={replyTo ? 'Write a reply...' : 'Add a comment...'}
+            submitLabel="Send"
+            busy={busy}
+            rows={2}
+          />
           {replyTo && (
             <button
               onClick={() => setReplyTo(null)}
@@ -364,7 +368,10 @@ function CommentNode({
             {new Date(comment.createdAt).toLocaleDateString()}
           </span>
         </div>
-        <p className="mt-0.5 whitespace-pre-wrap text-sm text-gray-700">{comment.body}</p>
+        <div
+          className="prose prose-sm mt-0.5 max-w-none whitespace-pre-wrap text-sm text-gray-700"
+          dangerouslySetInnerHTML={{ __html: renderBodyHtml(comment.body) }}
+        />
         <button
           onClick={() => onReply(activeReply === comment.id ? null : comment.id)}
           className="mt-1 text-[11px] text-gray-400 hover:text-gray-600"
