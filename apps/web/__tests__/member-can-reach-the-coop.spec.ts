@@ -53,14 +53,14 @@ describe('the sidebar', () => {
 
     it('keeps their own pages, and their own dashboard', () => {
       expect(hrefs(sections())).toEqual(
-        expect.arrayContaining(['/member', '/member/events', '/member/billing', '/member/profile']),
+        expect.arrayContaining(['/member/maybeitsfate', '/member/maybeitsfate/events', '/member/maybeitsfate/billing', '/member/maybeitsfate/profile']),
       );
     });
 
     it('has no separate RSVPs item — it lives inside My Events', () => {
       // Hosting something and going to something are the same question asked
       // twice; two nav items answered it on neither screen.
-      expect(hrefs(sections())).not.toContain('/member/rsvps');
+      expect(hrefs(sections())).not.toContain('/member/maybeitsfate/rsvps');
     });
 
     it('is offered no organising tools', () => {
@@ -77,7 +77,7 @@ describe('the sidebar', () => {
 
     it('gets the organising tools', () => {
       expect(hrefs(sections())).toEqual(
-        expect.arrayContaining(['/admin/members', '/admin/tiers', '/admin/settings']),
+        expect.arrayContaining(['/admin/maybeitsfate/members', '/admin/maybeitsfate/tiers', '/admin/maybeitsfate/settings']),
       );
     });
 
@@ -90,20 +90,41 @@ describe('the sidebar', () => {
     it('still gets their own membership pages', () => {
       // Being an admin is a role held in addition to being a member.
       expect(hrefs(sections())).toEqual(
-        expect.arrayContaining(['/member/events', '/member/profile']),
+        expect.arrayContaining(['/member/maybeitsfate/events', '/member/maybeitsfate/profile']),
       );
     });
 
     it('lands on the admin dashboard rather than the member one', () => {
       const links = hrefs(sections());
-      expect(links).toContain('/admin');
-      expect(links).not.toContain('/member');
+      expect(links).toContain('/admin/maybeitsfate');
+      expect(links).not.toContain('/member/maybeitsfate');
     });
 
     it('separates the three with named sections', () => {
       expect(labels(sections())).toEqual(
         expect.arrayContaining(['MaybeItsFate', 'Organising', 'My membership']),
       );
+    });
+  });
+
+  describe('every address names its co-op', () => {
+    it('puts the slug in admin and membership links alike', () => {
+      // `/admin` used to mean whichever org was in localStorage, so one address
+      // meant different things to different people, two tabs could not sit on
+      // two co-ops, and a stale selection made every screen answer 403 with no
+      // way out (AUTH-05).
+      const links = hrefs(sidebarSections({ membership: organiser, signedIn: true }));
+
+      expect(links.filter((h) => h.startsWith('/admin')).every((h) => h.startsWith('/admin/maybeitsfate'))).toBe(true);
+      expect(links.filter((h) => h.startsWith('/member')).every((h) => h.startsWith('/member/maybeitsfate'))).toBe(true);
+    });
+
+    it('builds no area links at all without a slug', () => {
+      // There is no address to build: a bare `/admin` is now only a redirect.
+      const links = hrefs(sidebarSections({ membership: { role: 'ADMIN' }, signedIn: true }));
+
+      expect(links.some((h) => h.startsWith('/admin'))).toBe(false);
+      expect(links.some((h) => h.startsWith('/member'))).toBe(false);
     });
   });
 
@@ -144,9 +165,11 @@ describe('the sidebar', () => {
       // profile that has not loaded yet.
       const links = hrefs(sidebarSections({ membership: { role: 'MEMBER' }, signedIn: true }));
 
+      // Nothing at all, rather than `/portal/undefined/commons` or
+      // `/member/undefined` — a half-built address reads as a broken product
+      // rather than a profile that has not loaded yet.
       expect(links.some((h) => h.includes('undefined'))).toBe(false);
-      expect(links.some((h) => h.startsWith('/portal/'))).toBe(false);
-      expect(links).toContain('/member/profile');
+      expect(links).toEqual([]);
     });
   });
 });

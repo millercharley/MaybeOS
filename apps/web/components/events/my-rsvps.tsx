@@ -1,5 +1,7 @@
 'use client';
 
+import { useParams } from 'next/navigation';
+
 import Link from 'next/link';
 import { Calendar, Clock, MapPin, Users } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
@@ -16,6 +18,7 @@ import { api, MyRsvp } from '@/lib/api';
  * Renders without a heading of its own: it sits under one now.
  */
 export function MyRsvps() {
+  const orgSlug = useParams()?.orgSlug as string;
   const { data: rsvps, loading, error } = useApi(
     (token, orgId) => api.events.myRsvps(orgId, token),
     [],
@@ -51,7 +54,7 @@ export function MyRsvps() {
           <p className="mt-3 text-sm text-[var(--text-secondary)]">
             You haven&apos;t RSVPed to anything yet.
           </p>
-          <Link href="/member/events" className="btn-secondary mt-4 inline-block text-sm">
+          <Link href={`/member/${orgSlug}/events`} className="btn-secondary mt-4 inline-block text-sm">
             Browse events
           </Link>
         </div>
@@ -93,6 +96,7 @@ function Section({
 }
 
 function RsvpCard({ rsvp }: { rsvp: MyRsvp }) {
+  const orgSlug = useParams()?.orgSlug as string;
   const start = new Date(rsvp.event.startTime);
   const end = new Date(rsvp.event.endTime);
 
@@ -123,7 +127,7 @@ function RsvpCard({ rsvp }: { rsvp: MyRsvp }) {
     <div className="card flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0">
         <Link
-          href="/member/events"
+          href={`/member/${orgSlug}/events`}
           className="font-medium text-[var(--text-primary)] hover:text-brand-600"
         >
           {rsvp.event.title}

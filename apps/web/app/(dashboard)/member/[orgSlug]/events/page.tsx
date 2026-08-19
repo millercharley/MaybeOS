@@ -1,5 +1,7 @@
 'use client';
 
+import { useParams } from 'next/navigation';
+
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Calendar, Globe, Lock, Plus, Users, X } from 'lucide-react';
@@ -17,6 +19,7 @@ import { MyRsvps } from '@/components/events/my-rsvps';
  * so without this page it would be lost the moment you navigated away.
  */
 export default function MyEventsPage() {
+  const orgSlug = useParams()?.orgSlug as string;
   const token = useAuthStore((s) => s.token);
   const orgId = useAuthStore((s) => s.currentOrgId);
 
@@ -110,7 +113,7 @@ export default function MyEventsPage() {
           <h1 className="text-2xl font-bold text-gray-900">My Events</h1>
           <p className="mt-1 text-sm text-gray-500">
             Things you are running, and things you are going to. You can also{' '}
-            <Link href="/member/bookings" className="text-brand-600 hover:underline">
+            <Link href={`/member/${orgSlug}/bookings`} className="text-brand-600 hover:underline">
               publish an event from a room booking
             </Link>
             .
@@ -237,6 +240,9 @@ function EventRow({
   onPublish: (id: string) => void;
   busy: boolean;
 }) {
+  // Its own, rather than threaded through props: the row is rendered in two
+  // places and the URL already knows which co-op this is.
+  const orgSlug = useParams()?.orgSlug as string;
   const [confirming, setConfirming] = useState(false);
   const start = new Date(event.startTime);
   const canceled = Boolean((event as { canceledAt?: string | null }).canceledAt);
@@ -277,7 +283,7 @@ function EventRow({
               is nobody to check in to an event nobody can see yet. */}
           {event.isPublished && (
             <Link
-              href={`/member/events/${event.id}`}
+              href={`/member/${orgSlug}/events/${event.id}`}
               className="font-medium text-brand-600 hover:underline"
             >
               Check-in

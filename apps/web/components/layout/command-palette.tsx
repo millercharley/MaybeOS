@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { Search, Hash, User, Calendar, BookOpen, X } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, SearchResults } from '@/lib/api';
@@ -16,6 +16,7 @@ type FlatResult =
 export const OPEN_SEARCH_EVENT = 'maybeos:open-search';
 
 export function CommandPalette() {
+  const orgSlug = useParams()?.orgSlug as string;
   const router = useRouter();
   const token = useAuthStore((s) => s.token);
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
@@ -97,16 +98,16 @@ export function CommandPalette() {
       setOpen(false);
       switch (result.kind) {
         case 'channel':
-          router.push(`/admin/commons?channel=${result.id}`);
+          router.push(`/admin/${orgSlug}/commons?channel=${result.id}`);
           break;
         case 'page':
-          router.push(`/admin/commons?page=${result.id}`);
+          router.push(`/admin/${orgSlug}/commons?page=${result.id}`);
           break;
         case 'event':
-          router.push('/admin/events');
+          router.push(`/admin/${orgSlug}/events`);
           break;
         case 'member':
-          router.push('/admin/members');
+          router.push(`/admin/${orgSlug}/members`);
           break;
       }
     },

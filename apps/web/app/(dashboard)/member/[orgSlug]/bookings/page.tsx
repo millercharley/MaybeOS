@@ -1,5 +1,7 @@
 'use client';
 
+import { useParams } from 'next/navigation';
+
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, AlertCircle, CheckCircle2, DoorOpen, CalendarClock, Megaphone, X } from 'lucide-react';
@@ -45,6 +47,7 @@ const STATUS: Record<string, { label: string; tone: string }> = {
 };
 
 export default function MemberBookingsPage() {
+  const orgSlug = useParams()?.orgSlug as string;
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
@@ -242,7 +245,7 @@ export default function MemberBookingsPage() {
                       </button>
                     )}
                     {published[b.id] && (
-                      <Link href="/member/events" className="btn-ghost text-sm">
+                      <Link href={`/member/${orgSlug}/events`} className="btn-ghost text-sm">
                         View event
                       </Link>
                     )}
