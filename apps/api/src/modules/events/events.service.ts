@@ -539,6 +539,79 @@ export class EventsService {
     };
   }
 
+  /**
+   * The post that carries an event's discussion (EVT-11).
+   *
+   * An event carries a post rather than comments learning about events
+   * (Charley, 2026-08-19). The alternative would have given every comment
+   * query and every moderation path two shapes to handle forever; this way
+   * there is one comment model, one moderation surface, one notification path,
+   * and `isFlagged` keeps working without knowing events exist.
+   *
+   * Created on demand, not for every event. Most events are never discussed,
+   * and a post per event would fill a co-op's Commons with empty threads.
+   *
+   * It lives in a channel called Events, made once per co-op. That channel is
+   * deliberately real rather than hidden: a co-op that discusses an event is
+   * having a conversation, and burying it somewhere the Commons cannot see
+   * would mean two places to look for the same thing.
+   */
+  async ensureEventThread(orgId: string, eventId: string, authorId: string) {
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, orgId },
+      select: { id: true, title: true, slug: true, postId: true },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+
+    if (event.postId) return { postId: event.postId };
+
+    // Upsert rather than find-then-create: the unique index on (orgId, slug)
+    // is what actually decides, and two members opening two event pages at
+    // the same second would otherwise both try to create the channel.
+    const channel = await this.prisma.channel.upsert({
+      where: { orgId_slug: { orgId, slug: 'events' } },
+      create: {
+        orgId,
+        name: 'Events',
+        slug: 'events',
+        description: 'Conversation about what the co-op has coming up.',
+      },
+      update: {},
+      select: { id: true },
+    });
+
+    const post = await this.prisma.post.create({
+      data: {
+        channelId: channel.id,
+        authorId,
+        title: event.title,
+        // Deliberately thin. The event page is where the detail lives, and a
+        // copy here would be a second version of the truth to keep in step.
+        body: `Discussion for ${event.title}.`,
+      },
+      select: { id: true },
+    });
+
+    // Two members opening the page at once each create a post, and the unique
+    // index does not stop them — the ids differ, so both updates would
+    // succeed and the second would orphan the first thread, comments and all.
+    // Claiming the event only while `postId` is still null is what makes one
+    // of them lose, and the loser cleans up after itself.
+    const claimed = await this.prisma.event.updateMany({
+      where: { id: event.id, postId: null },
+      data: { postId: post.id },
+    });
+
+    if (claimed.count === 1) return { postId: post.id };
+
+    await this.prisma.post.delete({ where: { id: post.id } }).catch(() => {});
+    const settled = await this.prisma.event.findFirst({
+      where: { id: event.id, orgId },
+      select: { postId: true },
+    });
+    return { postId: settled?.postId ?? null };
+  }
+
   /* ─── List Public Events ────────────────────────────────────── */
 
   /**
@@ -629,6 +702,11 @@ export class EventsService {
       include: {
         location: true,
         room: true,
+        // No host here, deliberately. Who runs an event is half of why
+        // somebody comes, but this endpoint answers to the open internet and
+        // an admin ticking "public" agreed to publish the event, not to
+        // publish a member's name. Signed-in members read the host from the
+        // org-scoped endpoint instead.
         org: { select: { id: true, name: true, slug: true, logoUrl: true, brandColor: true } },
         ...CONFIRMED_RSVP_COUNT,
       },

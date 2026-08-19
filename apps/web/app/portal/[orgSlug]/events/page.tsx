@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { Calendar, Users } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
@@ -160,8 +161,26 @@ export default function PortalEventsPage() {
                 key={event.id}
                 className="flex items-start justify-between rounded-xl border border-gray-200 bg-white p-5"
               >
-                <div className="flex-1">
-                  <h3 className="text-base font-semibold text-gray-900">{event.title}</h3>
+                {/* The poster, small. An events list of nothing but titles
+                    hides the one thing a co-op actually made to advertise
+                    itself (EVT-11). */}
+                {event.imageUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={event.imageUrl}
+                    alt=""
+                    className="mr-4 h-20 w-20 shrink-0 rounded-lg object-cover"
+                  />
+                )}
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-base font-semibold text-gray-900">
+                    <Link
+                      href={`/portal/${org?.slug}/events/${event.slug}`}
+                      className="hover:text-brand-600"
+                    >
+                      {event.title}
+                    </Link>
+                  </h3>
                   {event.description && (
                     <p className="mt-1 text-sm text-gray-500 line-clamp-2">{event.description}</p>
                   )}
@@ -280,7 +299,14 @@ export default function PortalEventsPage() {
                 key={event.id}
                 className="rounded-xl border border-gray-100 bg-white p-4 opacity-70"
               >
-                <h3 className="text-sm font-medium text-gray-700">{event.title}</h3>
+                <h3 className="text-sm font-medium text-gray-700">
+                  <Link
+                    href={`/portal/${org?.slug}/events/${event.slug}`}
+                    className="hover:text-brand-600"
+                  >
+                    {event.title}
+                  </Link>
+                </h3>
                 <p className="mt-1 text-xs text-gray-400">
                   {new Date(event.startTime).toLocaleDateString('en-US', {
                     month: 'short',

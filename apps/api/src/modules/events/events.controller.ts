@@ -131,6 +131,27 @@ export class EventsController {
     );
   }
 
+  /* ─── Event discussion ──────────────────────────────────────── */
+
+  /**
+   * The post carrying this event's comments, made if it does not exist yet.
+   *
+   * Members only: an event page is public, its conversation is not. A co-op
+   * discussing its own event in front of the internet is not what "public
+   * event" means.
+   */
+  @Post('orgs/:orgId/events/:eventId/thread')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get or create the post carrying an event’s discussion' })
+  async eventThread(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.eventsService.ensureEventThread(orgId, eventId, user.userId);
+  }
+
   /* ─── Website Embed (no auth, any origin) ──────────────────── */
 
   /**
