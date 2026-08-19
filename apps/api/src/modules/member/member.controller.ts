@@ -18,6 +18,7 @@ import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { viewerFor } from '../../common/access/contact-visibility';
+import { UpdateMyMembershipDto } from './dto/update-my-membership.dto';
 import { MemberService } from './member.service';
 import { CreateTierDto } from './dto/create-tier.dto';
 import { UpdateTierDto } from './dto/update-tier.dto';
@@ -63,6 +64,24 @@ export class MemberController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.memberService.getMember(orgId, userId, viewerFor(user, orgId));
+  }
+
+  /**
+   * Your own entry in the directory.
+   *
+   * No `:userId` deliberately: the id comes from the token, so this route has
+   * no shape that edits another member's profile.
+   */
+  @Patch('me')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update your own profile in this co-op' })
+  updateMyMembership(
+    @Param('orgId') orgId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: UpdateMyMembershipDto,
+  ) {
+    return this.memberService.updateMyMembership(orgId, user.userId, dto);
   }
 
   @Patch('members/:userId/role')

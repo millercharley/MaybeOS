@@ -29,12 +29,25 @@ export default function MyProfilePage() {
   );
 
   const [name, setName] = useState('');
+  // Per-membership, not per-user: what somebody writes for one co-op is not
+  // consent to publish it in another (D-020, IMP-17). The directory could show
+  // a biography long before anything could write one.
+  const [bio, setBio] = useState('');
+  const orgId = useAuthStore((s) => s.currentOrgId);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     if (profile) setName(profile.name || '');
   }, [profile]);
+
+  useEffect(() => {
+    if (!token || !orgId) return;
+    api.members
+      .get(orgId, profile?.id ?? '', token)
+      .then((me) => setBio(me.bio ?? ''))
+      .catch(() => {});
+  }, [token, orgId, profile?.id]);
 
   async function handleSave(e: FormEvent) {
     e.preventDefault();
@@ -43,6 +56,9 @@ export default function MyProfilePage() {
     setMessage('');
     try {
       await api.auth_profile.update({ name }, token);
+      // The name lives on the account and the biography on the membership, so
+      // saving this form is two writes rather than one.
+      if (orgId) await api.members.updateMine(orgId, { bio }, token);
       // Refresh the store too: otherwise the old name sits in the corner of
       // every other page until the next sign-in.
       await loadProfile();
@@ -132,6 +148,26 @@ export default function MyProfilePage() {
           />
           <p className="mt-1 text-xs text-[var(--text-tertiary)]">
             Shown on your posts, comments and the member directory.
+          </p>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium text-[var(--text-primary)]">
+            About you
+          </label>
+          <textarea
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            rows={4}
+            maxLength={600}
+            placeholder="Potter, gardener, reluctant treasurer."
+            className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+          />
+          <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+            {/* Said plainly, because it is not obvious and it matters: this is
+                per co-op, and other members can read it. */}
+            Other members see this when they open your card in the directory. It belongs to this
+            co-op only — joining another won&apos;t carry it across.
           </p>
         </div>
 

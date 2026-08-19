@@ -161,6 +161,35 @@ export class MemberService {
   /**
    * Update a member's role within an org.
    */
+  /**
+   * A member editing their own entry in the directory (MEM-09).
+   *
+   * Keyed on the caller's own id rather than one from the URL, so there is no
+   * shape of this request that edits somebody else. The directory could show a
+   * biography long before anybody could write one — the column has been on
+   * `UserOrg` since the schema was drawn and nothing ever set it.
+   */
+  async updateMyMembership(
+    orgId: string,
+    userId: string,
+    dto: { bio?: string; tags?: string[] },
+  ) {
+    const membership = await this.prisma.userOrg.findUnique({
+      where: { userId_orgId: { userId, orgId } },
+      select: { id: true },
+    });
+    if (!membership) throw new NotFoundException('You are not a member of this organization');
+
+    return this.prisma.userOrg.update({
+      where: { userId_orgId: { userId, orgId } },
+      data: {
+        ...(dto.bio !== undefined && { bio: dto.bio.trim() || null }),
+        ...(dto.tags !== undefined && { tags: dto.tags.map((t) => t.trim()).filter(Boolean) }),
+      },
+      select: { id: true, bio: true, tags: true },
+    });
+  }
+
   async updateMemberRole(orgId: string, userId: string, role: string) {
     const member = await this.prisma.userOrg.findUnique({
       where: { userId_orgId: { userId, orgId } },
