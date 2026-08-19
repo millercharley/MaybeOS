@@ -30,7 +30,7 @@ describe('ConnectService — refunds', () => {
     currency: 'usd',
     refundedAt: null,
     stripePaymentIntentId: 'pi_123',
-    event: { org: { stripeAccountId: 'acct_coop' } },
+    event: { orgId: 'org-1', org: { stripeAccountId: 'acct_coop' } },
     ...over,
   });
 
@@ -67,7 +67,7 @@ describe('ConnectService — refunds', () => {
     it('gives back the MaybeOS fee as well as the ticket', async () => {
       prisma.ticket.findUnique.mockResolvedValue(ticket());
 
-      await service.refundTicket('ticket-1');
+      await service.refundTicket('org-1', 'ticket-1');
 
       const [params] = refundsCreate.mock.calls[0];
       // The whole point. Without this the buyer is repaid out of the co-op's
@@ -79,7 +79,7 @@ describe('ConnectService — refunds', () => {
     it('refunds on the co-op\'s account, where the charge was made', async () => {
       prisma.ticket.findUnique.mockResolvedValue(ticket());
 
-      await service.refundTicket('ticket-1');
+      await service.refundTicket('org-1', 'ticket-1');
 
       expect(refundsCreate.mock.calls[0][1]).toEqual({ stripeAccount: 'acct_coop' });
     });
@@ -87,7 +87,7 @@ describe('ConnectService — refunds', () => {
     it('marks the ticket refunded so it cannot be refunded twice', async () => {
       prisma.ticket.findUnique.mockResolvedValue(ticket());
 
-      await service.refundTicket('ticket-1');
+      await service.refundTicket('org-1', 'ticket-1');
 
       expect(prisma.ticket.update.mock.calls[0][0].data.refundedAt).toBeInstanceOf(Date);
     });
@@ -97,7 +97,7 @@ describe('ConnectService — refunds', () => {
       // is the end state we wanted anyway.
       prisma.ticket.findUnique.mockResolvedValue(ticket({ refundedAt: new Date() }));
 
-      const result = await service.refundTicket('ticket-1');
+      const result = await service.refundTicket('org-1', 'ticket-1');
 
       expect(result).toEqual({ refunded: false, reason: 'already refunded' });
       expect(refundsCreate).not.toHaveBeenCalled();
@@ -106,7 +106,7 @@ describe('ConnectService — refunds', () => {
     it('refuses when there is no payment recorded', async () => {
       prisma.ticket.findUnique.mockResolvedValue(ticket({ stripePaymentIntentId: null }));
 
-      const result = await service.refundTicket('ticket-1');
+      const result = await service.refundTicket('org-1', 'ticket-1');
 
       expect(result.refunded).toBe(false);
       expect(refundsCreate).not.toHaveBeenCalled();
@@ -123,14 +123,14 @@ describe('ConnectService — refunds', () => {
         Promise.resolve(ticket({ id: where.id })),
       );
 
-      const result = await service.refundEventTickets('event-1');
+      const result = await service.refundEventTickets('org-1', 'event-1');
 
       expect(result).toMatchObject({ attempted: 2, refunded: 2 });
       expect(result.failed).toEqual([]);
     });
 
     it('only looks at tickets that are not already refunded', async () => {
-      await service.refundEventTickets('event-1');
+      await service.refundEventTickets('org-1', 'event-1');
 
       expect(prisma.ticket.findMany.mock.calls[0][0].where).toEqual({
         eventId: 'event-1',
@@ -152,7 +152,7 @@ describe('ConnectService — refunds', () => {
         .mockRejectedValueOnce(new Error('card_declined'))
         .mockResolvedValueOnce({ id: 're_3' });
 
-      const result = await service.refundEventTickets('event-1');
+      const result = await service.refundEventTickets('org-1', 'event-1');
 
       // Two people got their money; the third is named so somebody can chase
       // it. A count alone would not say whose money is missing.
@@ -163,6 +163,32 @@ describe('ConnectService — refunds', () => {
         buyerEmail: 'b@example.com',
         reason: 'card_declined',
       });
+    });
+  });
+
+  describe('whose ticket it is', () => {
+    it("refuses a ticket belonging to another co-op", async () => {
+      // The route's guard proves the caller organises *a* co-op, not this one.
+      // Before this check the org was ignored entirely — the parameter was
+      // named `_orgId` — so the only protection was not knowing the id, and an
+      // admin could refund another co-op's sale from that co-op's balance.
+      prisma.ticket.findUnique.mockResolvedValue(
+        ticket({ event: { orgId: 'someone-elses-org', org: { stripeAccountId: 'acct_them' } } }),
+      );
+
+      await expect(service.refundTicket('org-1', 'ticket-1')).rejects.toThrow();
+      expect(refundsCreate).not.toHaveBeenCalled();
+    });
+
+    it('reads as not-found rather than forbidden', async () => {
+      // Telling a stranger that a ticket exists but is not theirs confirms the
+      // id. There is nothing they can do with either answer, so the quieter
+      // one is the right one.
+      prisma.ticket.findUnique.mockResolvedValue(
+        ticket({ event: { orgId: 'someone-elses-org', org: { stripeAccountId: 'acct_them' } } }),
+      );
+
+      await expect(service.refundTicket('org-1', 'ticket-1')).rejects.toThrow(/not found/i);
     });
   });
 });

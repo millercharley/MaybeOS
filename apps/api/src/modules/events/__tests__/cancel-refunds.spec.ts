@@ -50,7 +50,7 @@ describe('EventsService — cancelling refunds tickets', () => {
     it('refunds the tickets', async () => {
       await service.cancel(ORG, 'event-1', ORGANISER);
 
-      expect(connect.refundEventTickets).toHaveBeenCalledWith('event-1');
+      expect(connect.refundEventTickets).toHaveBeenCalledWith(ORG, 'event-1');
     });
 
     it('reports what happened rather than implying everyone was repaid', async () => {
@@ -74,11 +74,17 @@ describe('EventsService — cancelling refunds tickets', () => {
 
   describe('a member cancelling the room booking underneath it', () => {
     it('refunds the tickets too', async () => {
-      prisma.event.findUnique.mockResolvedValue({ id: 'event-1', canceledAt: null });
+      prisma.event.findUnique.mockResolvedValue({
+        id: 'event-1',
+        canceledAt: null,
+        orgId: ORG,
+      });
 
       await service.syncWithBooking('booking-1', { canceled: true });
 
-      expect(connect.refundEventTickets).toHaveBeenCalledWith('event-1');
+      // Scoped, not just triggered: refunds move a co-op's money, so the co-op
+      // has to be named rather than inferred from the ticket id (SEC-04).
+      expect(connect.refundEventTickets).toHaveBeenCalledWith(ORG, 'event-1');
     });
 
     it('does not refund again for an event already cancelled', async () => {

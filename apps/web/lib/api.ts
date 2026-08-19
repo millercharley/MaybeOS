@@ -448,6 +448,24 @@ class ApiClient {
         token,
       }),
 
+    /**
+     * Who bought a ticket, and whether it has been refunded. Organisers only —
+     * this is a list of who paid what.
+     */
+    listTickets: (orgId: string, eventId: string, token: string) =>
+      this.request<TicketSale[]>(`/orgs/${orgId}/events/${eventId}/tickets`, { token }),
+
+    /**
+     * Refund one ticket in full, including MaybeOS's fee. Stripe keeps its own
+     * processing fee, so this costs the co-op money — the UI says so before
+     * asking.
+     */
+    refundTicket: (orgId: string, ticketId: string, token: string) =>
+      this.request<{ refunded: boolean; reason?: string }>(
+        `/orgs/${orgId}/tickets/${ticketId}/refund`,
+        { method: 'POST', token },
+      ),
+
     /** Start Stripe checkout for a ticket. No token needed — public events. */
     buyTicket: (
       orgId: string,
@@ -888,6 +906,20 @@ export interface UserProfile {
     memberSince?: string;
     org?: { id: string; name: string; slug: string; logoUrl?: string | null };
   }>;
+}
+
+export interface TicketSale {
+  id: string;
+  buyerEmail: string;
+  buyerName?: string | null;
+  /** What the buyer paid, all in. */
+  amountCents: number;
+  /** How it split, recorded at purchase — plans and fees change (D-013). */
+  platformFeeCents: number;
+  orgFeeCents: number;
+  currency: string;
+  refundedAt?: string | null;
+  createdAt: string;
 }
 
 export interface Org {

@@ -4,7 +4,8 @@ import { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Check, Search, UserPlus, Users } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
-import { api, DoorList, Event } from '@/lib/api';
+import { money } from '@/lib/fees';
+import { api, DoorList, Event, TicketSale } from '@/lib/api';
 
 /**
  * The door list (IMP-10).
@@ -34,16 +35,25 @@ export default function EventDoorListPage(props: {
   const [search, setSearch] = useState('');
   const [pending, setPending] = useState<string | null>(null);
   const [walkInName, setWalkInName] = useState('');
+  // Who paid, and whether we have given it back. There was no way to ask this
+  // at all: the refund endpoint took a ticket id nothing in the product could
+  // produce, so an organiser could neither see a sale nor undo one.
+  const [tickets, setTickets] = useState<TicketSale[]>([]);
+  const [refunding, setRefunding] = useState<string | null>(null);
+  const [refundError, setRefundError] = useState('');
 
   const load = useCallback(async () => {
     if (!token || !orgId) return;
     try {
-      const [attendees, detail] = await Promise.all([
+      const [attendees, detail, sold] = await Promise.all([
         api.events.attendees(orgId, eventId, token),
         api.events.get(orgId, eventId, token),
+        // A free event simply has none; the section hides itself.
+        api.events.listTickets(orgId, eventId, token),
       ]);
       setList(attendees);
       setEvent(detail);
+      setTickets(sold);
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load the door list');
@@ -55,6 +65,30 @@ export default function EventDoorListPage(props: {
   useEffect(() => {
     load();
   }, [load]);
+
+  async function refund(ticketId: string, who: string, amountCents: number) {
+    if (!token || !orgId) return;
+    // Money leaving the co-op's account on one click deserves a question, and
+    // the confirm names the person and the amount rather than asking "are you
+    // sure?" about nothing in particular.
+    if (!window.confirm(`Refund ${money(amountCents)} to ${who}? This cannot be undone.`)) return;
+
+    setRefunding(ticketId);
+    setRefundError('');
+    try {
+      const result = await api.events.refundTicket(orgId, ticketId, token);
+      if (!result.refunded) {
+        // Stripe declining and the ticket already being refunded are different
+        // news, and the API says which.
+        setRefundError(result.reason ? `Not refunded: ${result.reason}` : 'Not refunded');
+      }
+      await load();
+    } catch (err) {
+      setRefundError(err instanceof Error ? err.message : 'Could not refund that ticket');
+    } finally {
+      setRefunding(null);
+    }
+  }
 
   async function toggle(rsvpId: string, checkedIn: boolean) {
     if (!token || !orgId) return;
@@ -294,6 +328,66 @@ export default function EventDoorListPage(props: {
           </ul>
         )}
       </section>
+
+      {tickets.length > 0 && (
+        <section className="card">
+          <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-base font-semibold text-gray-900">Tickets</h2>
+            <p className="text-sm text-gray-500">
+              {tickets.filter((t) => !t.refundedAt).length} sold ·{' '}
+              {money(
+                tickets
+                  .filter((t) => !t.refundedAt)
+                  .reduce((sum, t) => sum + t.amountCents - t.platformFeeCents, 0),
+              )}{' '}
+              to your co-op
+            </p>
+          </div>
+          {/* Said plainly before anyone presses the button, because it is the
+              part that surprises people: Stripe keeps its processing fee on a
+              refund, so giving money back costs the co-op money. */}
+          <p className="mb-4 text-xs text-gray-500">
+            Refunding returns the buyer everything, including the MaybeOS fee. Stripe keeps its
+            own processing fee, so a refund leaves your co-op slightly out of pocket.
+          </p>
+
+          {refundError && (
+            <p className="mb-3 text-sm text-red-600" role="alert">
+              {refundError}
+            </p>
+          )}
+
+          <ul className="divide-y divide-gray-100">
+            {tickets.map((t) => (
+              <li key={t.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-gray-900">
+                    {t.buyerName || t.buyerEmail}
+                  </p>
+                  <p className="truncate text-xs text-gray-500">
+                    {money(t.amountCents)} · {new Date(t.createdAt).toLocaleDateString()}
+                    {t.buyerName ? ` · ${t.buyerEmail}` : ''}
+                  </p>
+                </div>
+                {t.refundedAt ? (
+                  <span className="text-xs font-medium text-gray-400">
+                    Refunded {new Date(t.refundedAt).toLocaleDateString()}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => refund(t.id, t.buyerName || t.buyerEmail, t.amountCents)}
+                    disabled={refunding === t.id}
+                    className="btn-secondary text-sm"
+                  >
+                    {refunding === t.id ? 'Refunding...' : 'Refund'}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

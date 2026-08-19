@@ -329,7 +329,7 @@ export class EventsService {
       data: { canceledAt: new Date() },
     });
 
-    const refunds = await this.refundTicketsFor(eventId);
+    const refunds = await this.refundTicketsFor(orgId, eventId);
     return { ...event, refunds };
   }
 
@@ -341,9 +341,9 @@ export class EventsService {
    * cancelling the room booking the event was published from (EVT-05). The
    * second is easy to miss and is the one that will happen most.
    */
-  private async refundTicketsFor(eventId: string) {
+  private async refundTicketsFor(orgId: string, eventId: string) {
     try {
-      return await this.connectService.refundEventTickets(eventId);
+      return await this.connectService.refundEventTickets(orgId, eventId);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown error';
       this.logger.error(`Event ${eventId} cancelled but refunds failed: ${message}`);
@@ -370,7 +370,9 @@ export class EventsService {
   ) {
     const event = await this.prisma.event.findUnique({
       where: { bookingId },
-      select: { id: true, canceledAt: true },
+      // orgId so cancelling can scope its refunds; this lookup is by booking,
+      // which is itself tenant-owned, so the event is reached through it.
+      select: { id: true, canceledAt: true, orgId: true },
     });
     if (!event) return null;
 
@@ -389,7 +391,7 @@ export class EventsService {
     // actually be taken — a member cancels a booking without necessarily
     // thinking about the people who bought tickets to what they booked it for.
     if (change.canceled && !event.canceledAt) {
-      await this.refundTicketsFor(event.id);
+      await this.refundTicketsFor(event.orgId, event.id);
     }
 
     return updated;
