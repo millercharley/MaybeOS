@@ -45,6 +45,19 @@ export class CreateRoomDto {
   memberOnly?: boolean;
 
   /**
+   * Bookable at any hour.
+   *
+   * Without it, a room with no availability rules was treated as always open —
+   * so "open all hours" and "nobody has set the hours yet" were the same state.
+   * Unchecked with no rules now means not bookable, which is the safe reading
+   * of an unfinished room.
+   */
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  alwaysAvailable?: boolean;
+
+  /**
    * Whether members are charged to book this room (SPC-06).
    *
    * Charging is two deliberate steps, a switch and a rate, so that typing a

@@ -54,6 +54,7 @@ export class SpaceService {
         // Off unless asked for: a room nobody switched charging on for is free,
         // which is what every existing room expects to stay.
         chargeForBooking: dto.chargeForBooking ?? false,
+        alwaysAvailable: dto.alwaysAvailable ?? false,
         hourlyRate: dto.hourlyRate,
       },
     });
@@ -99,6 +100,7 @@ export class SpaceService {
         ...(dto.requiresApproval !== undefined && { requiresApproval: dto.requiresApproval }),
         ...(dto.memberOnly !== undefined && { memberOnly: dto.memberOnly }),
         ...(dto.chargeForBooking !== undefined && { chargeForBooking: dto.chargeForBooking }),
+        ...(dto.alwaysAvailable !== undefined && { alwaysAvailable: dto.alwaysAvailable }),
         ...(dto.hourlyRate !== undefined && { hourlyRate: dto.hourlyRate }),
       },
     });
@@ -290,7 +292,7 @@ export class SpaceService {
     }
 
     // --- Check availability rules ---
-    this.validateAvailability(room.availabilityRules, startTime, endTime);
+    this.validateAvailability(room.availabilityRules, startTime, endTime, room.alwaysAvailable);
 
     // --- Check for conflicts ---
     const hasConflict = await this.checkConflicts(roomId, startTime, endTime);
@@ -504,7 +506,12 @@ export class SpaceService {
       throw new BadRequestException('Room is not currently active');
     }
 
-    this.validateAvailability(booking.room.availabilityRules, startTime, endTime);
+    this.validateAvailability(
+      booking.room.availabilityRules,
+      startTime,
+      endTime,
+      booking.room.alwaysAvailable,
+    );
 
     const hasConflict = await this.checkConflicts(
       booking.roomId,
@@ -690,10 +697,20 @@ export class SpaceService {
     }[],
     startTime: Date,
     endTime: Date,
+    alwaysAvailable: boolean,
   ): void {
-    // If no rules are configured, the room is considered always available.
-    if (rules.length === 0) {
+    // Said deliberately, or not at all.
+    if (alwaysAvailable) {
       return;
+    }
+
+    // No rules and not marked always-open is an unfinished room, not a room
+    // that is open around the clock. Those were the same state until 2026-08-19,
+    // so adding a room and not getting to its hours published it at 3am.
+    if (rules.length === 0) {
+      throw new BadRequestException(
+        'This room has no bookable hours yet. An organiser needs to set its availability, or mark it as always available.',
+      );
     }
 
     const dayOfWeek = startTime.getUTCDay();
