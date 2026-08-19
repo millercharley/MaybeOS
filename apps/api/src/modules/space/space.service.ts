@@ -622,6 +622,7 @@ export class SpaceService {
             id: true,
             name: true,
             avatarUrl: true,
+            avatarPath: true,
             // Seeing who booked the studio on Tuesday is the point of this
             // list; being handed their email address is not. Organisers keep
             // it, because chasing a booking is their job.

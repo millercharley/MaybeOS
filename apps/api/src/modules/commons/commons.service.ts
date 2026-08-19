@@ -7,7 +7,7 @@ import { CreateCollectionDto, UpdateCollectionDto } from './dto/create-collectio
 import { CreatePageDto, UpdatePageDto } from './dto/page.dto';
 import { VoteChoice } from '@prisma/client';
 
-const AUTHOR_SELECT = { id: true, name: true, avatarUrl: true } as const;
+const AUTHOR_SELECT = { id: true, name: true, avatarUrl: true, avatarPath: true } as const;
 
 @Injectable()
 export class CommonsService {
@@ -152,7 +152,7 @@ export class CommonsService {
         title: dto.title,
         body: dto.body,
       },
-      include: { author: { select: { id: true, name: true, avatarUrl: true } } },
+      include: { author: { select: AUTHOR_SELECT } },
     });
   }
 
@@ -168,7 +168,7 @@ export class CommonsService {
         skip,
         take: perPage,
         include: {
-          author: { select: { id: true, name: true, avatarUrl: true } },
+          author: { select: AUTHOR_SELECT },
           _count: { select: { comments: true, reactions: true } },
         },
       }),

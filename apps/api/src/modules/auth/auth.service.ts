@@ -220,6 +220,7 @@ export class AuthService {
         email: true,
         name: true,
         avatarUrl: true,
+        avatarPath: true,
         globalRole: true,
         emailVerified: true,
         lastLoginAt: true,

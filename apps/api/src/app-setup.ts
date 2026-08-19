@@ -4,6 +4,8 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import helmet from 'helmet';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
+import { AvatarUrlInterceptor } from './common/avatars/avatar-url.interceptor';
+import { StorageService } from './modules/storage/storage.service';
 
 /**
  * Shared setup applied to every Nest app instance, whether it ends up
@@ -73,6 +75,12 @@ export async function configureApp(app: NestExpressApplication) {
 
   app.setGlobalPrefix('api');
   app.useGlobalFilters(new GlobalExceptionFilter());
+
+  // Avatars live in a private bucket, so a stored path has to be signed before
+  // a browser can load it. Applied globally rather than per service: doing it
+  // in each one is what left an imported member with a face in the directory
+  // and a grey initial everywhere else (MEM-10).
+  app.useGlobalInterceptors(new AvatarUrlInterceptor(app.get(StorageService)));
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

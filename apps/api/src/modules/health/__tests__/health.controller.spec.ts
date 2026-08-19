@@ -3,6 +3,7 @@ import { TerminusModule } from '@nestjs/terminus';
 import { HealthController } from '../health.controller';
 import { PrismaHealthIndicator } from '../prisma.health';
 import { EmailHealthIndicator } from '../email.health';
+import { StorageHealthIndicator } from '../storage.health';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../config/prisma.service';
 
@@ -17,6 +18,7 @@ describe('HealthController', () => {
       providers: [
         PrismaHealthIndicator,
         EmailHealthIndicator,
+        StorageHealthIndicator,
         {
           provide: ConfigService,
           useValue: { get: () => undefined },

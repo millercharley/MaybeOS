@@ -79,36 +79,6 @@ export function safeLinks(links: string[]): string[] {
   return safe;
 }
 
-/**
- * Replace stored avatar paths with URLs a browser can actually load.
- *
- * The `avatars` bucket is private, so an imported avatar is a path rather
- * than a link and has to be signed per request. Done in one batched call for
- * a whole page of members: a directory of 300 people signing one at a time
- * would be 300 round trips to render one screen.
- *
- * A member who never imported keeps whatever `avatarUrl` already held.
- */
-async function resolveAvatars<T extends { user: { avatarUrl?: string | null; avatarPath?: string | null } }>(
-  storage: StorageService,
-  rows: T[],
-): Promise<T[]> {
-  const paths = rows.map((r) => r.user.avatarPath).filter((p): p is string => Boolean(p));
-  if (paths.length === 0) return rows;
-
-  const signed = await storage.signedAvatarUrls(paths);
-
-  for (const row of rows) {
-    const path = row.user.avatarPath;
-    if (path && signed.has(path)) row.user.avatarUrl = signed.get(path) as string;
-    // The path itself is never published — it is only meaningful with the
-    // service-role key, and returning it invites a client to build its own URL.
-    delete row.user.avatarPath;
-  }
-
-  return rows;
-}
-
 @Injectable()
 export class MemberService {
   private readonly logger = new Logger(MemberService.name);
@@ -182,7 +152,7 @@ export class MemberService {
     ]);
 
     return {
-      data: (await resolveAvatars(this.storage, data)).map((member) => toMemberView(member, viewer)),
+      data: data.map((member) => toMemberView(member, viewer)),
       meta: {
         total,
         page,
@@ -219,7 +189,6 @@ export class MemberService {
       );
     }
 
-    await resolveAvatars(this.storage, [member]);
     return toMemberView(member, viewer);
   }
 
