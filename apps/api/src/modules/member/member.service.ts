@@ -172,7 +172,7 @@ export class MemberService {
   async updateMyMembership(
     orgId: string,
     userId: string,
-    dto: { bio?: string; tags?: string[] },
+    dto: { bio?: string; tags?: string[]; links?: string[] },
   ) {
     const membership = await this.prisma.userOrg.findUnique({
       where: { userId_orgId: { userId, orgId } },
@@ -185,8 +185,9 @@ export class MemberService {
       data: {
         ...(dto.bio !== undefined && { bio: dto.bio.trim() || null }),
         ...(dto.tags !== undefined && { tags: dto.tags.map((t) => t.trim()).filter(Boolean) }),
+        ...(dto.links !== undefined && { links: dto.links.map((l) => l.trim()).filter(Boolean) }),
       },
-      select: { id: true, bio: true, tags: true },
+      select: { id: true, bio: true, tags: true, links: true },
     });
   }
 
