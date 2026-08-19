@@ -161,6 +161,62 @@ class ApiClient {
     return JSON.parse(body);
   }
 
+  // ── Attachments ──────────────────────────────────
+  attachments = {
+    /**
+     * Ask for somewhere to upload to. The server picks the path — a caller
+     * naming its own would be able to write into another co-op's folder.
+     */
+    uploadUrl: (orgId: string, mimeType: string, token: string) =>
+      this.request<{ uploadUrl: string; path: string }>(`/orgs/${orgId}/attachments/upload-url`, {
+        method: 'POST',
+        body: JSON.stringify({ mimeType }),
+        token,
+      }),
+
+    /** Tell the API what landed, once storage confirms it did. */
+    record: (
+      orgId: string,
+      data: {
+        path: string;
+        fileName: string;
+        mimeType: string;
+        postId?: string;
+        commentId?: string;
+        eventId?: string;
+      },
+      token: string,
+    ) =>
+      this.request<Attachment>(`/orgs/${orgId}/attachments`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    /**
+     * Attachments for one post, comment or event.
+     *
+     * Each `url` is signed and short-lived — the bucket is private, because
+     * these hang off members-only posts and private events.
+     */
+    list: (
+      orgId: string,
+      owner: { postId?: string; commentId?: string; eventId?: string },
+      token: string,
+    ) => {
+      const query = new URLSearchParams(
+        Object.entries(owner).filter(([, v]) => v) as [string, string][],
+      ).toString();
+      return this.request<Attachment[]>(`/orgs/${orgId}/attachments?${query}`, { token });
+    },
+
+    remove: (orgId: string, attachmentId: string, token: string) =>
+      this.request<{ removed: boolean }>(`/orgs/${orgId}/attachments/${attachmentId}`, {
+        method: 'DELETE',
+        token,
+      }),
+  };
+
   // ── Calendar ─────────────────────────────────────
   calendar = {
     /**
@@ -986,6 +1042,16 @@ export interface TicketSale {
   currency: string;
   refundedAt?: string | null;
   createdAt: string;
+}
+
+export interface Attachment {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+  /** Signed and short-lived. Null when storage is not configured. */
+  url?: string | null;
 }
 
 export interface Org {

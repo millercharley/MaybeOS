@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bold, Italic, Strikethrough, Underline, Quote, Link2, Smile } from 'lucide-react';
+import { Bold, Italic, Strikethrough, Underline, Quote, Link2, Smile, ImagePlus, Paperclip, X } from 'lucide-react';
 import { sanitizeWikiHtml } from '@/lib/wiki-html';
 import { isBlankBody } from '@/lib/rich-text';
+import { ATTACHMENT_ACCEPT, ATTACHMENT_MAX_BYTES, formatBytes, isImage } from '@/lib/attachments';
 
 /**
  * The one box members type into.
@@ -33,6 +34,8 @@ export function RichComposer({
   submitLabel = 'Post',
   busy = false,
   rows = 3,
+  files,
+  onFilesChange,
 }: {
   value: string;
   onChange: (html: string) => void;
@@ -41,10 +44,39 @@ export function RichComposer({
   submitLabel?: string;
   busy?: boolean;
   rows?: number;
+  /**
+   * Files chosen but not yet uploaded.
+   *
+   * Held here and uploaded by the caller *after* the post or comment exists,
+   * because an attachment needs its parent's id and neither has one until it
+   * is created. Omitting these two props turns attaching off, which is right
+   * for a composer with nothing to hang a file on.
+   */
+  files?: File[];
+  onFilesChange?: (files: File[]) => void;
 }) {
   const editor = useRef<HTMLDivElement>(null);
   const [toolbar, setToolbar] = useState<{ top: number; left: number } | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [fileError, setFileError] = useState('');
+  const filePicker = useRef<HTMLInputElement>(null);
+  const canAttach = Boolean(onFilesChange);
+
+  function addFiles(chosen: FileList | null) {
+    if (!chosen || !onFilesChange) return;
+    const picked = Array.from(chosen);
+
+    // Rejected here rather than at the far end of an upload, so somebody
+    // choosing a 60 MB video is told immediately.
+    const tooBig = picked.find((f) => f.size > ATTACHMENT_MAX_BYTES);
+    if (tooBig) {
+      setFileError(`${tooBig.name} is larger than 25 MB.`);
+      return;
+    }
+
+    setFileError('');
+    onFilesChange([...(files ?? []), ...picked]);
+  }
 
   // Written to the DOM only when it disagrees. Assigning innerHTML on every
   // render would move the caret to the start on every keystroke.
@@ -161,6 +193,35 @@ export function RichComposer({
         suppressContentEditableWarning
       />
 
+      {(files?.length ?? 0) > 0 && (
+        <ul className="flex flex-wrap gap-2 border-t border-gray-100 px-2 py-2">
+          {files!.map((file, index) => (
+            <li
+              key={`${file.name}-${index}`}
+              className="flex items-center gap-1.5 rounded-full bg-gray-100 py-1 pl-2.5 pr-1 text-xs text-gray-700"
+            >
+              {isImage(file.type) ? <ImagePlus className="h-3 w-3" /> : <Paperclip className="h-3 w-3" />}
+              <span className="max-w-[12rem] truncate">{file.name}</span>
+              <span className="text-gray-400">{formatBytes(file.size)}</span>
+              <button
+                type="button"
+                onClick={() => onFilesChange?.(files!.filter((_, i) => i !== index))}
+                className="rounded-full p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700"
+                aria-label={`Remove ${file.name}`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {fileError && (
+        <p className="border-t border-gray-100 px-3 py-1.5 text-xs text-red-600" role="alert">
+          {fileError}
+        </p>
+      )}
+
       <div className="flex items-center justify-between gap-2 border-t border-gray-100 px-2 py-1.5">
         <div className="relative flex items-center gap-1">
           <button
@@ -193,11 +254,46 @@ export function RichComposer({
           )}
         </div>
 
+          {canAttach && (
+            <>
+              <input
+                ref={filePicker}
+                type="file"
+                multiple
+                accept={ATTACHMENT_ACCEPT}
+                className="hidden"
+                onChange={(e) => {
+                  addFiles(e.target.files);
+                  // Cleared so choosing the same file twice still fires.
+                  e.target.value = '';
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => filePicker.current?.click()}
+                className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Add an image"
+                title="Image or GIF"
+              >
+                <ImagePlus className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => filePicker.current?.click()}
+                className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Attach a file"
+                title="Attach a file"
+              >
+                <Paperclip className="h-4 w-4" />
+              </button>
+            </>
+          )}
+
         {onSubmit && (
           <button
             type="button"
             onClick={onSubmit}
-            disabled={busy || isBlankBody(value)}
+            disabled={busy || (isBlankBody(value) && (files?.length ?? 0) === 0)}
             className="btn-primary text-xs disabled:opacity-40"
           >
             {busy ? 'Sending...' : submitLabel}

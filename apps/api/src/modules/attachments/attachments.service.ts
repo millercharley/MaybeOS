@@ -95,9 +95,12 @@ export class AttachmentsService {
         mimeType: a.mimeType,
         sizeBytes: a.sizeBytes,
         createdAt: a.createdAt,
-        // Signed per read, and short-lived. The bucket is private because
-        // these hang off members-only posts and private events.
-        url: await this.storage.signedAttachmentUrl(a.path),
+        // Five minutes, not the hour a public asset would get. A signed URL
+        // is a bearer token by construction — anyone holding it can read the
+        // file — so the mitigation for member material is that it dies
+        // quickly. Long enough to open a PDF, short enough that a link pasted
+        // into a group chat is useless by the time it is read.
+        url: await this.storage.signedAttachmentUrl(a.path, 300),
       })),
     );
   }
