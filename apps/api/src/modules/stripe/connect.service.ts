@@ -583,6 +583,41 @@ export class ConnectService {
   }
 
   /**
+   * Who has bought a ticket to this event.
+   *
+   * There was no way to ask. The refund endpoint took a ticket id that nothing
+   * in the product could produce, so an organiser could neither see a sale nor
+   * undo one — Charley found it looking for the refund half of PAY-04's test.
+   *
+   * Scoped through the event's org rather than by ticket id alone (SEC-04):
+   * the guard proves the caller organises a co-op, not that this event is
+   * theirs.
+   */
+  async listTicketsForEvent(orgId: string, eventId: string) {
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, orgId },
+      select: { id: true },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+
+    return this.prisma.ticket.findMany({
+      where: { eventId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        buyerEmail: true,
+        buyerName: true,
+        amountCents: true,
+        platformFeeCents: true,
+        orgFeeCents: true,
+        currency: true,
+        refundedAt: true,
+        createdAt: true,
+      },
+    });
+  }
+
+  /**
    * Refund one ticket, in full, including MaybeOS's cut.
    *
    * `refund_application_fee: true` is the important part and it is a policy
@@ -601,12 +636,20 @@ export class ConnectService {
    * roughly 2.9% + 30c per ticket. That is Stripe's policy, not ours, and it
    * belongs in the copy the organiser reads before confirming.
    */
-  async refundTicket(ticketId: string): Promise<{ refunded: boolean; reason?: string }> {
+  async refundTicket(
+    orgId: string,
+    ticketId: string,
+  ): Promise<{ refunded: boolean; reason?: string }> {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id: ticketId },
       include: { event: { include: { org: { omit: { stripeAccountId: false } } } } },
     });
     if (!ticket) throw new NotFoundException('Ticket not found');
+
+    // SEC-04: the guard proves this caller organises *some* co-op, not that
+    // the ticket belongs to it. Without this, an admin of one co-op could
+    // refund another co-op's sale by id — their money, from their balance.
+    if (ticket.event.orgId !== orgId) throw new NotFoundException('Ticket not found');
 
     if (ticket.refundedAt) {
       // Idempotent rather than an error: a retried cancellation must not
@@ -647,7 +690,10 @@ export class ConnectService {
    * still get their money. The caller gets a summary naming what failed, so a
    * partial failure is visible rather than logged and forgotten.
    */
-  async refundEventTickets(eventId: string) {
+  async refundEventTickets(orgId: string, eventId: string) {
+    // The org comes from the caller, which already resolved this event through
+    // it. Looking it up here by bare id would be the tenant-scoping mistake the
+    // repo has a test for — and it earned that test.
     const tickets = await this.prisma.ticket.findMany({
       where: { eventId, refundedAt: null },
       select: { id: true, buyerEmail: true, amountCents: true },
@@ -658,7 +704,7 @@ export class ConnectService {
 
     for (const ticket of tickets) {
       try {
-        const result = await this.refundTicket(ticket.id);
+        const result = await this.refundTicket(orgId, ticket.id);
         if (result.refunded) refunded.push(ticket.id);
         else failed.push({ ...ticket, ticketId: ticket.id, reason: result.reason ?? 'unknown' });
       } catch (err) {

@@ -76,10 +76,31 @@ export class ConnectController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Refund a ticket in full, including the MaybeOS fee' })
   refund(
-    @Param('orgId', ParseUUIDPipe) _orgId: string,
+    @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('ticketId', ParseUUIDPipe) ticketId: string,
   ) {
-    return this.connectService.refundTicket(ticketId);
+    // The org was previously ignored — `_orgId` — so the only thing standing
+    // between an admin and another co-op's sale was not knowing the id.
+    return this.connectService.refundTicket(orgId, ticketId);
+  }
+
+  /**
+   * The tickets sold for an event.
+   *
+   * ADMIN and STAFF only, and for the same reason as the refund below it:
+   * this is a list of who paid what, which is the co-op's business and not
+   * every member's.
+   */
+  @Get('events/:eventId/tickets')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List tickets sold for an event' })
+  listTickets(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+  ) {
+    return this.connectService.listTicketsForEvent(orgId, eventId);
   }
 
   /**
