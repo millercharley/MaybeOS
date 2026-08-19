@@ -1,5 +1,7 @@
 'use client';
 
+import { useParams } from 'next/navigation';
+
 import { useState } from 'react';
 import Link from 'next/link';
 import { Plus, MapPin, Users, Clock, Eye, EyeOff, X, Lock, Pencil } from 'lucide-react';
@@ -19,6 +21,7 @@ const tabs: { key: FilterTab; label: string }[] = [
 ];
 
 export default function EventsPage() {
+  const orgSlug = useParams()?.orgSlug as string;
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
   const [creating, setCreating] = useState(false);
   // The event being edited, or null. Editing did not exist at all: the only
@@ -210,7 +213,7 @@ export default function EventsPage() {
             // nowhere. It now opens the door list (IMP-10).
             <Link
               key={event.id}
-              href={`/admin/events/${event.id}`}
+              href={`/admin/${orgSlug}/events/${event.id}`}
               className="card block cursor-pointer transition-shadow hover:shadow-md"
             >
               <div className="mb-3 flex items-start justify-between">

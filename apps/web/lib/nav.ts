@@ -29,31 +29,40 @@ export interface NavMembership {
   org?: { name?: string; slug?: string } | null;
 }
 
-/** Managing the co-op. Its own dashboard is hoisted out, see `sidebarSections`. */
-const adminNav: NavItem[] = [
-  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/admin/members', label: 'Members', icon: Users },
-  { href: '/admin/tiers', label: 'Tiers & Dues', icon: CreditCard },
-  { href: '/admin/events', label: 'Events', icon: Calendar },
-  { href: '/admin/rooms', label: 'Rooms & Booking', icon: DoorOpen },
-  { href: '/admin/commons', label: 'Commons', icon: MessageSquare },
+/**
+ * Managing the co-op. Its own dashboard is hoisted out, see `sidebarSections`.
+ *
+ * Every address names its co-op. `/admin` used to mean whichever org was in
+ * localStorage, so one address meant different things to different people, two
+ * tabs could not sit on two co-ops, and a stale selection made every screen
+ * answer 403 with no way out (AUTH-05). It also gives SCL-01's subdomains
+ * something to rewrite *to*, the way the portal already works — which is why
+ * `/admin` had to be excluded from tenant routing until now.
+ */
+const adminNav = (slug: string): NavItem[] => [
+  { href: `/admin/${slug}`, label: 'Dashboard', icon: LayoutDashboard },
+  { href: `/admin/${slug}/members`, label: 'Members', icon: Users },
+  { href: `/admin/${slug}/tiers`, label: 'Tiers & Dues', icon: CreditCard },
+  { href: `/admin/${slug}/events`, label: 'Events', icon: Calendar },
+  { href: `/admin/${slug}/rooms`, label: 'Rooms & Booking', icon: DoorOpen },
+  { href: `/admin/${slug}/commons`, label: 'Commons', icon: MessageSquare },
   // Spending, not Impact: the admin Impact page was removed pending the
   // ImpactOS rebuild (D-021), and the Signals view that replaces it does not
   // exist yet. This is the one piece of it that stands alone (IMP-16) — an
   // API nobody can reach is how the last one ended up unused for months.
-  { href: '/admin/expenses', label: 'Spending', icon: Receipt },
-  { href: '/admin/settings', label: 'Settings', icon: Settings },
+  { href: `/admin/${slug}/expenses`, label: 'Spending', icon: Receipt },
+  { href: `/admin/${slug}/settings`, label: 'Settings', icon: Settings },
 ];
 
-/** A member's own things (IMP-11). */
-const memberNav: NavItem[] = [
-  { href: '/member', label: 'Dashboard', icon: LayoutDashboard },
+/** A member's own things (IMP-11), in the co-op they are looking at. */
+const memberNav = (slug: string): NavItem[] => [
+  { href: `/member/${slug}`, label: 'Dashboard', icon: LayoutDashboard },
   // No 'My RSVPs': it lives inside My Events now, because hosting something
   // and going to something are the same question asked twice.
-  { href: '/member/events', label: 'My Events', icon: CalendarPlus },
-  { href: '/member/bookings', label: 'My Bookings', icon: DoorOpen },
-  { href: '/member/billing', label: 'Billing', icon: CreditCard },
-  { href: '/member/profile', label: 'Profile', icon: UserCircle },
+  { href: `/member/${slug}/events`, label: 'My Events', icon: CalendarPlus },
+  { href: `/member/${slug}/bookings`, label: 'My Bookings', icon: DoorOpen },
+  { href: `/member/${slug}/billing`, label: 'Billing', icon: CreditCard },
+  { href: `/member/${slug}/profile`, label: 'Profile', icon: UserCircle },
 ];
 
 /** The co-op itself, under its own portal. */
@@ -105,9 +114,15 @@ export function sidebarSections({
 
   const sections: NavSection[] = [];
 
-  if (signedIn) {
+  // Without a slug there is no address to build: the personal and organising
+  // sections all name their co-op now. The community section below is the one
+  // thing that can still render, and it has its own slug from the portal.
+  const admin = slug ? adminNav(slug) : [];
+  const member = slug ? memberNav(slug) : [];
+
+  if (signedIn && slug) {
     // One dashboard, whichever this person's is.
-    sections.push({ items: [isOrganiser ? adminNav[0] : memberNav[0]] });
+    sections.push({ items: [isOrganiser ? admin[0] : member[0]] });
   }
 
   // Omitted rather than guessed when there is no slug: `/portal/undefined/...`
@@ -116,12 +131,12 @@ export function sidebarSections({
     sections.push({ label: name, items: coopNav(slug) });
   }
 
-  if (signedIn && isOrganiser) {
-    sections.push({ label: 'Organising', items: adminNav.slice(1) });
+  if (signedIn && isOrganiser && slug) {
+    sections.push({ label: 'Organising', items: admin.slice(1) });
   }
 
-  if (signedIn) {
-    sections.push({ label: 'My membership', items: memberNav.slice(1) });
+  if (signedIn && slug) {
+    sections.push({ label: 'My membership', items: member.slice(1) });
   }
 
   return sections;

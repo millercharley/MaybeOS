@@ -14,8 +14,8 @@ import { DoorList } from '@/components/events/door-list';
  * organisers.
  */
 export default function MemberEventDoorListPage(props: {
-  params: Promise<{ eventId: string }>;
+  params: Promise<{ eventId: string; orgSlug: string }>;
 }) {
-  const { eventId } = use(props.params);
-  return <DoorList eventId={eventId} backHref="/member/events" />;
+  const { eventId, orgSlug } = use(props.params);
+  return <DoorList eventId={eventId} backHref={`/member/${orgSlug}/events`} />;
 }

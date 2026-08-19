@@ -46,9 +46,14 @@ export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: stri
   function switchTo(orgId: string, slug?: string) {
     setCurrentOrg(orgId);
     setSwitching(false);
-    // Go somewhere that belongs to the co-op just chosen. Staying put would
-    // leave an admin looking at another co-op's page with this one's nav.
-    router.push(slug ? `/portal/${slug}` : '/member');
+    // Stay in the same part of the product, in the co-op just chosen — an
+    // organiser switching co-ops wants the other co-op's admin, not to be
+    // dropped into a public portal. Staying put is not an option either: the
+    // address names a co-op, so it would be the previous one's page under the
+    // new one's nav.
+    if (!slug) return router.push('/member');
+    const area = pathname?.startsWith('/admin') ? 'admin' : pathname?.startsWith('/member') ? 'member' : 'portal';
+    router.push(`/${area}/${slug}`);
   }
 
   return (
@@ -141,7 +146,7 @@ export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: stri
             </div>
             {/* The name was a bare span for a long time: the most obvious thing
                 to click did nothing. */}
-            <Link href="/member/profile" className="min-w-0 flex-1 group">
+            <Link href={membership?.org?.slug ? `/member/${membership.org.slug}/profile` : '/member'} className="min-w-0 flex-1 group">
               <p className="truncate text-sm font-medium text-paper group-hover:text-brand-500">
                 {user?.name || 'User'}
               </p>
