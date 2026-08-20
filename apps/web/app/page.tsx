@@ -29,7 +29,7 @@ const tools = [
   {
     name: 'Event Management Tools',
     description:
-      'Post an event, take RSVPs, run a waitlist. Public pages and calendar feeds, and a flat few cents per transaction to keep MaybeOS running — never a percentage of your door.',
+      'Post an event, take RSVPs, run a waitlist. Public pages and calendar feeds, and a flat fee per ticket to keep MaybeOS running — the same whether your door is $5 or $500, never a percentage of it.',
     Icon: Calendar,
   },
   {
@@ -47,7 +47,7 @@ const tools = [
   {
     name: 'Impact Tracking Tools',
     description:
-      'Measure belonging, not engagement. Surveys and dashboards that answer to your members and your funders, and export when you need them to.',
+      'Measure belonging, not engagement. One short question at a time, never more than one a month per member, and the year ends in an impact report you edit and publish at a link you can send a funder. Nobody sees an individual’s answers — not even you.',
     Icon: BarChart3,
   },
 ];
