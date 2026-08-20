@@ -64,6 +64,10 @@ const memberNav = (slug: string): NavItem[] => [
   { href: `/member/${slug}/events`, label: 'My Events', icon: CalendarPlus },
   { href: `/member/${slug}/bookings`, label: 'My Bookings', icon: DoorOpen },
   { href: `/member/${slug}/billing`, label: 'Billing', icon: CreditCard },
+  // What they told the co-op and what it added up to (IMP-20). A member who
+  // answers a question a month and is told nothing stops answering, and
+  // response rate is the constraint the whole of ImpactOS rests on.
+  { href: `/member/${slug}/impact`, label: 'What we’re learning', icon: Activity },
   { href: `/member/${slug}/profile`, label: 'Profile', icon: UserCircle },
 ];
 

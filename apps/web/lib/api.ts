@@ -892,6 +892,14 @@ class ApiClient {
      * answer and the caller renders nothing: the fatigue budget allows one
      * question per member per 30 days across every touchpoint (D-021).
      */
+    /** What the co-op learned, small cells suppressed (IMP-20). */
+    signals: (orgId: string, token: string) =>
+      this.request<Signals>(`/orgs/${orgId}/impact/signals`, { token }),
+
+    /** A member's own answers, and the co-op's totals (IMP-20). */
+    myImpact: (orgId: string, token: string) =>
+      this.request<MyImpact>(`/orgs/${orgId}/me/impact`, { token }),
+
     /** What this co-op asks, and whether it is asking it (IMP-18). */
     measurement: (orgId: string, token: string) =>
       this.request<MeasurementStatus>(`/orgs/${orgId}/impact/measurement`, { token }),
@@ -1691,6 +1699,45 @@ export interface InviteInfo {
 }
 
 /** A micro-question attached to a moment (IMP-15, PRD §6.2). */
+export interface SignalCategory {
+  category: string;
+  /** Null when too few people answered to report without exposing one. */
+  average: number | null;
+  answerCount: number;
+  respondents: number;
+  reportable: boolean;
+  /** False where a high score is bad news — loneliness, not belonging. */
+  higherIsBetter: boolean;
+}
+
+export interface Signals {
+  suppressionThreshold: number;
+  members: number;
+  categories: SignalCategory[];
+  windows: Array<{
+    windowId: string;
+    label: string;
+    opensAt: string;
+    closesAt: string | null;
+    responses: number;
+    responseRate: number;
+  }>;
+}
+
+export interface MyImpact {
+  answers: Array<{
+    question: string;
+    type: string;
+    anchorLow: string | null;
+    anchorHigh: string | null;
+    category: string | null;
+    value: number | string | null;
+    window: string;
+    answeredAt: string;
+  }>;
+  community: Signals;
+}
+
 export interface StarterQuestion {
   key: string;
   text: string;
