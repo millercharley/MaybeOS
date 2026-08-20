@@ -10,7 +10,7 @@ import {
   Param,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
@@ -206,6 +206,42 @@ export class ImpactController {
    * Scoped to the caller's own membership — a member can only ever pull their
    * own question, and asking on somebody else's behalf is not a thing.
    */
+  // ─── Measurement (IMP-18) ───────────────────────────────────
+
+  /**
+   * What this co-op is asking, and whether it is asking it.
+   *
+   * Readable before anything is installed, because the decision an organiser
+   * is making is "shall we put these questions to our members" and they
+   * cannot make it without seeing the questions.
+   */
+  @Get('impact/measurement')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'The starter instrument and whether it is collecting' })
+  measurementStatus(@Param('orgId') orgId: string) {
+    return this.impactService.measurementStatus(orgId);
+  }
+
+  @Post('impact/measurement/start')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Install the starter instrument and open a collection window' })
+  startMeasuring(@Param('orgId') orgId: string) {
+    return this.impactService.startMeasuring(orgId);
+  }
+
+  @Post('impact/measurement/stop')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Stop asking, keeping every answer already given' })
+  stopMeasuring(@Param('orgId') orgId: string) {
+    return this.impactService.stopMeasuring(orgId);
+  }
+
   @Get('impact/ask')
   async nextAsk(
     @Param('orgId') orgId: string,

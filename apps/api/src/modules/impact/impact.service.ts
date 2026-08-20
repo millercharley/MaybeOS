@@ -6,6 +6,12 @@ import {
 } from '@nestjs/common';
 import { Prisma, SurveyQuestion, SurveyQuestionType } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
+import {
+  STARTER_QUESTIONS,
+  STARTER_INSTRUMENT_VERSION,
+  STARTER_SURVEY_TITLE,
+  windowLabelFor,
+} from './starter-instrument';
 import { CreateSurveyDto, SurveyQuestionDto } from './dto/create-survey.dto';
 import {
   DEMOGRAPHIC_FIELDS,
@@ -682,5 +688,199 @@ export class ImpactService {
         responses: w._count.responses,
       })),
     };
+  }
+
+  // ─── The starter instrument (IMP-18) ────────────────────────
+
+  /**
+   * Whether this co-op is collecting anything, and what it is asking.
+   *
+   * The question list is returned in full and deliberately: an admin who
+   * switches this on is about to have MaybeOS put questions to their members,
+   * and they should read them first. Nobody should have to discover what
+   * their co-op is asking by being asked it.
+   */
+  async measurementStatus(orgId: string) {
+    const survey = await this.prisma.survey.findFirst({
+      where: { orgId, type: 'BASELINE' },
+      include: {
+        questions: {
+          where: { retiredAt: null },
+          orderBy: [{ touchpoint: 'asc' }, { sortOrder: 'asc' }],
+        },
+        windows: { orderBy: { opensAt: 'desc' }, take: 1 },
+        _count: { select: { responses: true } },
+      },
+    });
+
+    if (!survey) {
+      // Not installed. The catalogue is still returned, because the decision
+      // an admin is being asked to make is "shall we ask these questions".
+      return {
+        installed: false,
+        collecting: false,
+        version: STARTER_INSTRUMENT_VERSION,
+        questions: STARTER_QUESTIONS.map((q) => ({
+          key: q.key,
+          text: q.text,
+          type: q.type,
+          category: q.category,
+          touchpoint: q.touchpoint,
+          anchorLow: q.anchorLow,
+          anchorHigh: q.anchorHigh,
+        })),
+        window: null,
+        responseCount: 0,
+        answerCount: 0,
+      };
+    }
+
+    const answerCount = await this.prisma.surveyAnswer.count({
+      where: { response: { surveyId: survey.id } },
+    });
+
+    return {
+      installed: true,
+      collecting: survey.isActive && survey.publishedAt !== null,
+      version: STARTER_INSTRUMENT_VERSION,
+      questions: survey.questions.map((q) => ({
+        key: q.key,
+        text: q.text,
+        type: q.type,
+        category: q.category,
+        touchpoint: q.touchpoint,
+        anchorLow: q.anchorLow,
+        anchorHigh: q.anchorHigh,
+      })),
+      window: survey.windows[0]
+        ? {
+            id: survey.windows[0].id,
+            label: survey.windows[0].label,
+            opensAt: survey.windows[0].opensAt,
+            closesAt: survey.windows[0].closesAt,
+          }
+        : null,
+      responseCount: survey._count.responses,
+      answerCount,
+    };
+  }
+
+  /**
+   * Install the starter instrument and open a collection window.
+   *
+   * Idempotent, and safe to call on a co-op that is already collecting — it
+   * will not create a second survey, duplicate a question or open a second
+   * window. That matters because the alternative to idempotence here is a
+   * co-op with two overlapping baselines, which quietly breaks G5: an answer
+   * could then belong to either window and no figure would trace cleanly.
+   *
+   * **This is never automatic.** A co-op is not opted into questioning its own
+   * members by signing up; an organiser turns it on having read what will be
+   * asked.
+   */
+  async startMeasuring(orgId: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { id: true },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    // findFirst-then-create rather than upsert: there is no unique key on
+    // (orgId, type) to upsert against, and adding one would forbid a co-op
+    // ever having two CUSTOM surveys. The database still refuses a second
+    // BASELINE through a partial unique index, so the bad state cannot exist
+    // even if two organisers click at the same moment.
+    const existing = await this.prisma.survey.findFirst({
+      where: { orgId, type: 'BASELINE' },
+      select: { id: true },
+    });
+
+    const survey = existing
+      ? await this.prisma.survey.update({
+          where: { id: existing.id },
+          data: { isActive: true, publishedAt: new Date() },
+          select: { id: true },
+        })
+      : await this.prisma.survey.create({
+          data: {
+            orgId,
+            type: 'BASELINE',
+            title: STARTER_SURVEY_TITLE,
+            description:
+              'A short set of questions MaybeOS asks a few times a year, one at a time.',
+            isActive: true,
+            publishedAt: new Date(),
+          },
+          select: { id: true },
+        });
+
+    // Questions are versioned and never edited in place, so this creates only
+    // what is missing — reinstalling after a wording change adds the new
+    // version beside the retired one rather than rewriting history.
+    for (const [index, question] of STARTER_QUESTIONS.entries()) {
+      await this.prisma.surveyQuestion.upsert({
+        where: {
+          surveyId_key_version: {
+            surveyId: survey.id,
+            key: question.key,
+            version: STARTER_INSTRUMENT_VERSION,
+          },
+        },
+        create: {
+          surveyId: survey.id,
+          key: question.key,
+          version: STARTER_INSTRUMENT_VERSION,
+          text: question.text,
+          type: question.type,
+          options: question.options ?? [],
+          anchorLow: question.anchorLow,
+          anchorHigh: question.anchorHigh,
+          higherIsBetter: question.higherIsBetter ?? true,
+          category: question.category,
+          touchpoint: question.touchpoint,
+          sortOrder: index,
+        },
+        update: {},
+      });
+    }
+
+    // One open window at a time. `closesAt: null` is what "open" means, and
+    // the touchpoint service picks the most recent open one — so a second
+    // would silently split a year's answers in two.
+    const open = await this.prisma.collectionWindow.findFirst({
+      where: { surveyId: survey.id, closesAt: null },
+      select: { id: true, label: true },
+    });
+
+    const window =
+      open ??
+      (await this.prisma.collectionWindow.create({
+        data: { surveyId: survey.id, label: windowLabelFor(new Date()) },
+        select: { id: true, label: true },
+      }));
+
+    return { surveyId: survey.id, windowId: window.id, window: window.label };
+  }
+
+  /**
+   * Stop asking, without throwing anything away.
+   *
+   * Deactivates the survey rather than deleting it, and leaves the window
+   * open: answers already given still belong to it and still count. A co-op
+   * pausing for a month should not lose the months before.
+   */
+  async stopMeasuring(orgId: string) {
+    const survey = await this.prisma.survey.findFirst({
+      where: { orgId, type: 'BASELINE' },
+      select: { id: true },
+    });
+    if (!survey) throw new NotFoundException('This co-op is not measuring anything');
+
+    await this.prisma.survey.update({
+      where: { id: survey.id },
+      data: { isActive: false },
+    });
+
+    return { collecting: false };
   }
 }

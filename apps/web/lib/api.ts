@@ -892,6 +892,22 @@ class ApiClient {
      * answer and the caller renders nothing: the fatigue budget allows one
      * question per member per 30 days across every touchpoint (D-021).
      */
+    /** What this co-op asks, and whether it is asking it (IMP-18). */
+    measurement: (orgId: string, token: string) =>
+      this.request<MeasurementStatus>(`/orgs/${orgId}/impact/measurement`, { token }),
+
+    startMeasuring: (orgId: string, token: string) =>
+      this.request<{ surveyId: string; windowId: string; window: string }>(
+        `/orgs/${orgId}/impact/measurement/start`,
+        { method: 'POST', token },
+      ),
+
+    stopMeasuring: (orgId: string, token: string) =>
+      this.request<{ collecting: boolean }>(`/orgs/${orgId}/impact/measurement/stop`, {
+        method: 'POST',
+        token,
+      }),
+
     nextAsk: (orgId: string, touchpoint: string, token: string) =>
       this.request<{ question: TouchpointAsk | null }>(
         `/orgs/${orgId}/impact/ask?touchpoint=${encodeURIComponent(touchpoint)}`,
@@ -1675,12 +1691,35 @@ export interface InviteInfo {
 }
 
 /** A micro-question attached to a moment (IMP-15, PRD §6.2). */
+export interface StarterQuestion {
+  key: string;
+  text: string;
+  type: string;
+  category: string | null;
+  touchpoint: string | null;
+  anchorLow: string | null;
+  anchorHigh: string | null;
+}
+
+export interface MeasurementStatus {
+  installed: boolean;
+  collecting: boolean;
+  version: number;
+  questions: StarterQuestion[];
+  window: { id: string; label: string; opensAt: string; closesAt: string | null } | null;
+  responseCount: number;
+  answerCount: number;
+}
+
 export interface TouchpointAsk {
   id: string;
   surveyId: string;
   text: string;
   type: 'SCALE' | 'CHOICE' | 'TEXT' | 'NUMBER';
   options: string[];
+  /** The two ends of a scale, in the member's language (IMP-18). */
+  anchorLow?: string | null;
+  anchorHigh?: string | null;
   category?: string | null;
 }
 

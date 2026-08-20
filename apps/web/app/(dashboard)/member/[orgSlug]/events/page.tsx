@@ -9,6 +9,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { api, HostedEvent, Org } from '@/lib/api';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
 import { MyRsvps } from '@/components/events/my-rsvps';
+import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 
 /**
  * A member's own events (EVT-05).
@@ -177,6 +178,14 @@ export default function MyEventsPage() {
             onPublish={publish}
             busy={busy}
           />
+          {/* Only for somebody who has actually been to something. The PRD's
+              post-event question is a follow-up, and asking it of a member
+              with no past events is asking about an event that never
+              happened. The visit is the moment rather than a scheduled
+              nudge — a timed follow-up needs a notification MaybeOS does not
+              send yet (IMP-19). */}
+          {past.length > 0 && org && <TouchpointAsk orgId={org.id} touchpoint="POST_EVENT" />}
+
           {past.length > 0 && (
             <Section title="Past" events={past} onCancel={cancelEvent} onPublish={publish} busy={busy} muted />
           )}

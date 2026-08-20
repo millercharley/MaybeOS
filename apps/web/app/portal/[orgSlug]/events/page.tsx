@@ -8,6 +8,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { usePublicApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
 import { ticketCost, describeFees, money } from '@/lib/fees';
+import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 
 export default function PortalEventsPage() {
   const { org } = usePortal();
@@ -138,6 +139,15 @@ export default function PortalEventsPage() {
             went through either way.
           </p>
         </div>
+      )}
+
+      {/* The moment the PRD asks for, restored. This rendered on the public
+          event page deleted in OPS-22; the confirmation was rebuilt here and
+          the question was not brought with it, so IMP-15 shipped and then
+          asked nobody. Gated on having just paid rather than on visiting the
+          page, because "after buying a ticket" is the moment. */}
+      {returned === 'purchased' && org && (
+        <TouchpointAsk orgId={org.id} touchpoint="TICKET_PURCHASE" />
       )}
 
       {returned === 'cancelled' && (

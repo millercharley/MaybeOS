@@ -831,21 +831,30 @@ enum Touchpoint {
 }
 
 model SurveyQuestion {
-  id         String             @id @default(uuid())
-  surveyId   String
-  key        String // stable identity across versions, e.g. "belonging_frequency"
-  version    Int                @default(1)
-  text       String
-  type       SurveyQuestionType
-  options    String[]           @default([]) // CHOICE only
-  category   String? // the indicator this feeds, e.g. "belonging"
+  id             String             @id @default(uuid())
+  surveyId       String
+  key            String // stable identity across versions, e.g. "belonging_frequency"
+  version        Int                @default(1)
+  text           String
+  type           SurveyQuestionType
+  options        String[]           @default([]) // CHOICE only
+  /// The two ends of a SCALE, in the member's language ("never" … "always").
+  /// A 1–5 with no anchors is five buttons rather than a question, and the
+  /// answers only mean anything if everybody read the ends the same way.
+  anchorLow      String?
+  anchorHigh     String?
+  /// Which direction is good news. Belonging and loneliness are both 1–5 and
+  /// point opposite ways, so a report averaging a category without this would
+  /// print "loneliness 4.2" beside "belonging 4.2" and read them alike.
+  higherIsBetter Boolean            @default(true)
+  category       String? // the indicator this feeds, e.g. "belonging"
   /// The moment this question is attached to (IMP-15). Null means it belongs
   /// to a survey answered in one sitting rather than to a touchpoint.
-  touchpoint Touchpoint?
-  required   Boolean            @default(false)
-  sortOrder  Int                @default(0)
-  retiredAt  DateTime? // set when a newer version supersedes this one
-  createdAt  DateTime           @default(now())
+  touchpoint     Touchpoint?
+  required       Boolean            @default(false)
+  sortOrder      Int                @default(0)
+  retiredAt      DateTime? // set when a newer version supersedes this one
+  createdAt      DateTime           @default(now())
 
   survey  Survey         @relation(fields: [surveyId], references: [id], onDelete: Cascade)
   answers SurveyAnswer[]
