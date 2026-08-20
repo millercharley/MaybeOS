@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { TicketPayouts } from '@/components/settings/ticket-payouts';
 import { MaybeOsPlan } from '@/components/settings/maybeos-plan';
 import { Locations } from '@/components/settings/locations';
+import { Support } from '@/components/settings/support';
 import { WebsiteEmbed } from '@/components/settings/website-embed';
 
 type SettingsTab = 'general' | 'branding' | 'integrations' | 'billing';
@@ -290,6 +291,7 @@ export default function SettingsPage() {
       {activeTab === 'general' && org && <TicketPayouts org={org} onSaved={refetch} />}
       {activeTab === 'general' && org && <Locations orgId={org.id} />}
       {activeTab === 'general' && org && <MaybeOsPlan org={org} />}
+      {activeTab === 'general' && org && <Support orgName={org.name} />}
       {activeTab === 'general' && org && <WebsiteEmbed org={org} />}
 
       {activeTab === 'general' && (
