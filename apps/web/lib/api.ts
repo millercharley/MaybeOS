@@ -892,6 +892,47 @@ class ApiClient {
      * answer and the caller renders nothing: the fatigue budget allows one
      * question per member per 30 days across every touchpoint (D-021).
      */
+    /* ─── The year-end report (IMP-22) ────────────────────── */
+
+    listReports: (orgId: string, token: string) =>
+      this.request<ReportSummary[]>(`/orgs/${orgId}/impact/reports`, { token }),
+
+    getReport: (orgId: string, reportId: string, token: string) =>
+      this.request<ImpactReport>(`/orgs/${orgId}/impact/reports/${reportId}`, { token }),
+
+    generateReport: (
+      orgId: string,
+      data: { title?: string; periodStart?: string; periodEnd?: string },
+      token: string,
+    ) =>
+      this.request<ImpactReport>(`/orgs/${orgId}/impact/reports`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    updateReportBlock: (orgId: string, reportId: string, blockId: string, body: string, token: string) =>
+      this.request<ReportBlock>(
+        `/orgs/${orgId}/impact/reports/${reportId}/blocks/${blockId}`,
+        { method: 'PATCH', body: JSON.stringify({ body }), token },
+      ),
+
+    publishReport: (orgId: string, reportId: string, token: string) =>
+      this.request<{ slug: string; status: string; publishedAt: string | null }>(
+        `/orgs/${orgId}/impact/reports/${reportId}/publish`,
+        { method: 'POST', token },
+      ),
+
+    unpublishReport: (orgId: string, reportId: string, token: string) =>
+      this.request<{ status: string }>(
+        `/orgs/${orgId}/impact/reports/${reportId}/unpublish`,
+        { method: 'POST', token },
+      ),
+
+    /** A published report, to anybody. The one unauthenticated impact call. */
+    publicReport: (orgSlug: string, reportSlug: string) =>
+      this.request<PublicReport>(`/public/reports/${orgSlug}/${reportSlug}`),
+
     /** Mission, goals, indicators, and whether the plan is agreed (IMP-21). */
     plan: (orgId: string, token: string) =>
       this.request<MeasurementPlan>(`/orgs/${orgId}/impact/plan`, { token }),
@@ -1750,6 +1791,47 @@ export interface InviteInfo {
 }
 
 /** A micro-question attached to a moment (IMP-15, PRD §6.2). */
+export interface ReportBlock {
+  id: string;
+  kind: string;
+  heading: string | null;
+  body: string | null;
+  generatedBody?: string | null;
+  isEdited?: boolean;
+  data?: Record<string, unknown> | null;
+}
+
+export interface ReportSummary {
+  id: string;
+  title: string;
+  slug: string;
+  status: 'DRAFT' | 'PUBLISHED';
+  periodStart: string;
+  periodEnd: string;
+  publishedAt: string | null;
+  generatedAt: string;
+  _count?: { blocks: number };
+}
+
+export interface ImpactReport extends ReportSummary {
+  blocks: ReportBlock[];
+  /** The PRD's G4: how much of it a human rewrote. */
+  editedShare: number;
+}
+
+export interface PublicReport {
+  org: { name: string; slug: string; logoUrl: string | null; mission: string | null };
+  report: {
+    title: string;
+    slug: string;
+    periodStart: string;
+    periodEnd: string;
+    publishedAt: string | null;
+    generatedAt: string;
+    blocks: ReportBlock[];
+  };
+}
+
 export interface Indicator {
   id: string;
   goalId: string;

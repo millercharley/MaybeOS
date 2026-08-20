@@ -91,6 +91,7 @@ model Organization {
   attachments     Attachment[]
   goals           Goal[]
   measurementPlan MeasurementPlan?
+  impactReports   ImpactReport[]
 
   @@map("organizations")
 }
@@ -167,6 +168,7 @@ model User {
 
   expensesCreated Expense[]         @relation("ExpenseCreator")
   plansApproved   MeasurementPlan[] @relation("PlanApprover")
+  reportsCreated  ImpactReport[]    @relation("ReportAuthor")
   attachments     Attachment[]
 
   @@map("users")
@@ -1009,6 +1011,77 @@ model MeasurementPlan {
   approvedBy User?        @relation("PlanApprover", fields: [approvedById], references: [id], onDelete: SetNull)
 
   @@map("measurement_plans")
+}
+
+enum ReportStatus {
+  DRAFT
+  PUBLISHED
+}
+
+/// The year-end report — what ImpactOS exists to produce (IMP-22, PRD §7).
+///
+/// The only part of the module a co-op ever shows anyone: a grant panel, a
+/// board, a members' meeting. Everything else is machinery for making this
+/// truthful.
+///
+/// **Frozen at generation, never recomputed.** A report published in January
+/// that quietly reads differently in March is the worst thing this feature
+/// could do — the number a funder was sent has to stay the number they see.
+/// So the figures are written into the blocks when the report is made, and
+/// regenerating produces a *new* reading rather than editing history.
+model ImpactReport {
+  id          String       @id @default(uuid())
+  orgId       String
+  title       String
+  slug        String
+  /// The period the figures describe, not the period they were written in.
+  periodStart DateTime
+  periodEnd   DateTime
+  status      ReportStatus @default(DRAFT)
+  publishedAt DateTime?
+  generatedAt DateTime
+  createdById String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  org       Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdBy User?         @relation("ReportAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  blocks    ReportBlock[]
+
+  @@unique([orgId, slug])
+  @@index([orgId])
+  @@map("impact_reports")
+}
+
+/// One part of a report.
+///
+/// Blocks rather than one body of prose, so an admin edits the paragraph they
+/// disagree with instead of rewriting the whole thing — and so "how much of
+/// this did a human change" is a number the product can see rather than a
+/// claim it makes.
+model ReportBlock {
+  id            String   @id @default(uuid())
+  reportId      String
+  sortOrder     Int      @default(0)
+  kind          String
+  heading       String?
+  /// What is shown. Starts equal to `generatedBody`.
+  body          String?
+  /// What MaybeOS wrote, kept beside the edited version so a co-op can see
+  /// what it changed.
+  generatedBody String?
+  isEdited      Boolean  @default(false)
+  /// The figures this block rests on, frozen: category, average, respondents,
+  /// window label and dates. G5 — every figure traces to a response count and
+  /// a collection window — is kept true by carrying them, not by promising.
+  data          Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  report ImpactReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, sortOrder])
+  @@map("report_blocks")
 }
 
 model Expense {

@@ -19,6 +19,8 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { ImpactService } from './impact.service';
 import { GoalsService } from './goals.service';
+import { ReportService } from './report.service';
+import { GenerateReportDto, UpdateReportBlockDto } from './dto/report.dto';
 import {
   SetMissionDto,
   CreateGoalDto,
@@ -45,6 +47,7 @@ export class ImpactController {
     private readonly touchpoints: TouchpointService,
     private readonly expenses: ExpenseService,
     private readonly goals: GoalsService,
+    private readonly reports: ReportService,
   ) {}
 
   // ─── Surveys CRUD ───────────────────────────────────────────
@@ -215,6 +218,75 @@ export class ImpactController {
    * Scoped to the caller's own membership — a member can only ever pull their
    * own question, and asking on somebody else's behalf is not a thing.
    */
+  // ─── The year-end report (IMP-22) ───────────────────────────
+
+  @Get('impact/reports')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @ApiBearerAuth()
+  listReports(@Param('orgId') orgId: string) {
+    return this.reports.list(orgId);
+  }
+
+  @Get('impact/reports/:reportId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @ApiBearerAuth()
+  getReport(
+    @Param('orgId') orgId: string,
+    @Param('reportId', ParseUUIDPipe) reportId: string,
+  ) {
+    return this.reports.get(orgId, reportId);
+  }
+
+  @Post('impact/reports')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Write a report from what the co-op collected' })
+  generateReport(
+    @Param('orgId') orgId: string,
+    @Body() dto: GenerateReportDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.reports.generate(orgId, user.userId, dto);
+  }
+
+  @Patch('impact/reports/:reportId/blocks/:blockId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  updateReportBlock(
+    @Param('orgId') orgId: string,
+    @Param('reportId', ParseUUIDPipe) reportId: string,
+    @Param('blockId', ParseUUIDPipe) blockId: string,
+    @Body() dto: UpdateReportBlockDto,
+  ) {
+    return this.reports.updateBlock(orgId, reportId, blockId, dto.body);
+  }
+
+  @Post('impact/reports/:reportId/publish')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  publishReport(
+    @Param('orgId') orgId: string,
+    @Param('reportId', ParseUUIDPipe) reportId: string,
+  ) {
+    return this.reports.publish(orgId, reportId);
+  }
+
+  @Post('impact/reports/:reportId/unpublish')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  unpublishReport(
+    @Param('orgId') orgId: string,
+    @Param('reportId', ParseUUIDPipe) reportId: string,
+  ) {
+    return this.reports.unpublish(orgId, reportId);
+  }
+
   // ─── Goals and the measurement plan (IMP-21) ────────────────
 
   @Get('impact/plan')

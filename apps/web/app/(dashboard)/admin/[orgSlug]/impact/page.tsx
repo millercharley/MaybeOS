@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Activity, Check, Loader2, Pause, Target } from 'lucide-react';
+import { Activity, Check, FileText, Loader2, Pause, Target } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import Link from 'next/link';
 import { api, MeasurementStatus, SignalsByGoal } from '@/lib/api';
@@ -159,9 +159,17 @@ export default function AdminImpactPage() {
                 : 'No goals yet, so nothing collected can be connected to what your co-op is for.'}
             </p>
           </div>
+          <div className="flex shrink-0 gap-2">
+          {/* The report is the thing all of this exists to produce, so it is
+              reachable from the page where a co-op watches its figures. */}
+          <Link href="impact/reports" className="btn-secondary text-sm">
+            <FileText className="mr-1.5 inline h-4 w-4" />
+            Reports
+          </Link>
           <Link href="impact/plan" className="btn-secondary text-sm">
             {signals && signals.goals.length > 0 ? 'Edit the plan' : 'Write your plan'}
           </Link>
+          </div>
         </div>
 
         {signals && signals.goals.length > 0 && (
