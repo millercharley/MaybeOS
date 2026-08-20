@@ -1,7 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { EventsService } from '../events.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { ConnectService } from '../../stripe/connect.service';
+import { EmailService } from '../../email/email.service';
 
 /**
  * Cancelling an event returns everyone's money — by every route.
@@ -40,6 +42,8 @@ describe('EventsService — cancelling refunds tickets', () => {
         EventsService,
         { provide: PrismaService, useValue: prisma },
         { provide: ConnectService, useValue: connect },
+        { provide: EmailService, useValue: { sendWaitlistPromoted: jest.fn() } },
+        { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },
       ],
     }).compile();
 

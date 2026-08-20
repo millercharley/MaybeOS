@@ -283,6 +283,30 @@ class ApiClient {
 
   // ── Orgs ─────────────────────────────────────────
   orgs = {
+    /** Where the co-op is (ORG-01). */
+    locations: (orgId: string, token: string) =>
+      this.request<Location[]>(`/orgs/${orgId}/locations`, { token }),
+
+    addLocation: (orgId: string, data: Partial<Location> & { name: string }, token: string) =>
+      this.request<Location>(`/orgs/${orgId}/locations`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    updateLocation: (orgId: string, locationId: string, data: Partial<Location>, token: string) =>
+      this.request<Location>(`/orgs/${orgId}/locations/${locationId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    /** Refused while a room or event still names it. */
+    removeLocation: (orgId: string, locationId: string, token: string) =>
+      this.request<{ removed: boolean }>(`/orgs/${orgId}/locations/${locationId}`, {
+        method: 'DELETE',
+        token,
+      }),
     create: (data: CreateOrgData, token: string) =>
       this.request<Org>('/orgs', { method: 'POST', body: JSON.stringify(data), token }),
 
@@ -355,6 +379,19 @@ class ApiClient {
 
     get: (orgId: string, userId: string, token: string) =>
       this.request<Member>(`/orgs/${orgId}/members/${userId}`, { token }),
+
+    /**
+     * Change what somebody may do in their co-op (ORG-02).
+     *
+     * The API refuses to demote the last organiser — a co-op with none cannot
+     * reach its own settings, billing or member list.
+     */
+    updateRole: (orgId: string, userId: string, role: string, token: string) =>
+      this.request<Member>(`/orgs/${orgId}/members/${userId}/role`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role }),
+        token,
+      }),
 
     invite: (
       orgId: string,
@@ -1290,9 +1327,17 @@ export interface CreateOrgData {
 export interface Location {
   id: string;
   name: string;
-  address?: string;
-  city?: string;
-  state?: string;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  country?: string | null;
+  /** A location's own timezone, which is the point of having more than one. */
+  timezone?: string;
+  isDefault?: boolean;
+  /** What still names it — deleting is refused while either is above zero. */
+  roomCount?: number;
+  eventCount?: number;
 }
 
 export interface TierInput {

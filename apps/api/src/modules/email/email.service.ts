@@ -21,6 +21,7 @@ export interface EmailJobData {
     | 'renewal-reminder'
     | 'dunning'
     | 'invite'
+    | 'waitlist-promoted'
     | 'booking-received'
     | 'booking-confirmed'
     | 'booking-rejected'
@@ -124,6 +125,22 @@ export class EmailService {
 
   async sendBookingRescheduled(to: string, d: BookingEmailData & { needsApproval: boolean }) {
     await this.send({ type: 'booking-rescheduled', to, data: d });
+  }
+
+  /**
+   * A place opened up and this member has it (EVT-16).
+   *
+   * The promotion itself has worked since EVT-02 — cancel a confirmed RSVP and
+   * the first waitlisted member is moved up, in order — and **nothing told
+   * them**. A waitlist nobody is told about is a waitlist that does not work,
+   * and it fails as an empty seat rather than as an error: a no-show to the
+   * organiser, a waitlist that never moved to the member.
+   */
+  async sendWaitlistPromoted(
+    to: string,
+    d: { memberName: string; orgName: string; eventTitle: string; when: string; eventUrl: string },
+  ) {
+    await this.send({ type: 'waitlist-promoted', to, data: d });
   }
 
   async sendInvite(to: string, orgName: string, inviteUrl: string, inviterName?: string) {
@@ -239,6 +256,19 @@ export class EmailService {
             <p>Click the button below to accept the invitation and join the community.</p>
             <p><a href="${data.inviteUrl}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;">Accept Invitation</a></p>
             <p style="color:#666;font-size:14px;">This invitation expires in 7 days. If you didn't expect this invitation, you can safely ignore this email.</p>
+          `,
+        };
+
+      case 'waitlist-promoted':
+        return {
+          subject: `You're in — ${data.eventTitle}`,
+          htmlBody: `
+            <h1>A place opened up</h1>
+            <p>Hi ${data.memberName}, somebody cancelled and <strong>you're off the waitlist</strong> for ${data.orgName}'s event.</p>
+            <p><strong>${data.eventTitle}</strong><br>${data.when}</p>
+            <p>Your place is confirmed — nothing else to do.</p>
+            <p><a href="${data.eventUrl}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;">See the event</a></p>
+            <p style="color:#666;font-size:14px;">Can't make it after all? Cancel from the event page so the next person on the list gets it.</p>
           `,
         };
 

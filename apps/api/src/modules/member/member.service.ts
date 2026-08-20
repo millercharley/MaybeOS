@@ -7,6 +7,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { OrgRole } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { EmailService } from '../email/email.service';
 import { StripeService } from '../stripe/stripe.service';
@@ -238,9 +239,23 @@ export class MemberService {
     });
   }
 
-  async updateMemberRole(orgId: string, userId: string, role: string) {
+  /**
+   * Change what somebody may do in their co-op (ORG-02).
+   *
+   * **A co-op must never be left with no organiser.** This route has existed
+   * since the foundation with nothing calling it, so the danger was
+   * theoretical; giving it a button in the members list makes it reachable,
+   * and the first thing an admin can now do is demote the last admin — their
+   * own co-op, locked out of its own settings, billing and member list, with
+   * no way back that does not involve someone with database access.
+   *
+   * So the last ADMIN cannot be demoted, and the check counts ADMINs rather
+   * than trusting the caller not to be the only one.
+   */
+  async updateMemberRole(orgId: string, userId: string, role: OrgRole) {
     const member = await this.prisma.userOrg.findUnique({
       where: { userId_orgId: { userId, orgId } },
+      select: { role: true },
     });
 
     if (!member) {
@@ -249,9 +264,21 @@ export class MemberService {
       );
     }
 
+    if (member.role === 'ADMIN' && role !== 'ADMIN') {
+      const admins = await this.prisma.userOrg.count({
+        where: { orgId, role: 'ADMIN' },
+      });
+
+      if (admins <= 1) {
+        throw new BadRequestException(
+          'This is the co-op’s only organiser. Make somebody else an organiser first — otherwise nobody can reach settings, billing or the member list.',
+        );
+      }
+    }
+
     return this.prisma.userOrg.update({
       where: { userId_orgId: { userId, orgId } },
-      data: { role: role as any },
+      data: { role },
     });
   }
 

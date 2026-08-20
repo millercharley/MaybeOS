@@ -32,10 +32,12 @@ export default function MembersPage() {
   const [inviting, setInviting] = useState(false);
   const [inviteResult, setInviteResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
+  const [savingRole, setSavingRole] = useState<string | null>(null);
+  const [roleError, setRoleError] = useState('');
   const token = useAuthStore((s) => s.token);
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
 
-  const { data, loading, error } = useApi(
+  const { data, loading, error, refetch } = useApi(
     (token, orgId) => api.members.list(orgId, token, 1, 50),
     [],
   );
@@ -129,8 +131,28 @@ export default function MembersPage() {
       (m.user.email ?? '').toLowerCase().includes(search.toLowerCase()),
   );
 
+  async function changeRole(userId: string, role: string) {
+    if (!token || !currentOrgId) return;
+    setSavingRole(userId);
+    setRoleError('');
+    try {
+      await api.members.updateRole(currentOrgId, userId, role, token);
+      refetch();
+    } catch (err) {
+      // Shown, not swallowed: the refusal an admin will actually hit is
+      // "this is the co-op's only organiser", and that sentence is the
+      // whole point of the guard.
+      setRoleError(err instanceof Error ? err.message : 'Could not change that role');
+    } finally {
+      setSavingRole(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
+      {roleError && (
+        <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{roleError}</p>
+      )}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Members</h1>
         <div className="flex items-center gap-2">
@@ -329,9 +351,23 @@ export default function MembersPage() {
                   {member.user.email}
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">
-                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${roleBadge[member.role] ?? 'badge-info'}`}>
-                    {member.role}
-                  </span>
+                  {/* Changeable at last (ORG-02). The route has existed since
+                      the foundation with nothing calling it, so the only way
+                      to make somebody an organiser was to invite them as one
+                      — and a co-op whose organiser stepped down could not
+                      hand over. The API refuses to demote the last one. */}
+                  <select
+                    value={member.role}
+                    onChange={(e) => changeRole(member.user.id, e.target.value)}
+                    disabled={savingRole === member.user.id}
+                    aria-label={`Role for ${member.user.name ?? member.user.email ?? 'member'}`}
+                    className={`rounded-full border-0 px-2.5 py-0.5 text-xs font-medium focus:ring-2 focus:ring-brand-500 ${roleBadge[member.role] ?? 'badge-info'}`}
+                  >
+                    <option value="ADMIN">ADMIN</option>
+                    <option value="STAFF">STAFF</option>
+                    <option value="MEMBER">MEMBER</option>
+                    <option value="GUEST">GUEST</option>
+                  </select>
                 </td>
                 <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
                   {member.tier?.name ?? '-'}
