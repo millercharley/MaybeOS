@@ -1,0 +1,265 @@
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { ArrowLeft, Check, ExternalLink, FileText, Loader2, Pencil } from 'lucide-react';
+import { useAuthStore } from '@/lib/auth-store';
+import { api, ImpactReport, ReportSummary } from '@/lib/api';
+import { ReportBody } from '@/components/impact/report-body';
+
+/**
+ * Writing, editing and publishing the year-end report (IMP-22).
+ *
+ * The one artefact a co-op sends to somebody with money, so the page is built
+ * around two facts an organiser has to be able to see: **what MaybeOS wrote
+ * versus what they changed**, and **that publishing is a decision** — after
+ * which the report stops being editable, because people have been sent it.
+ */
+export default function ReportsPage() {
+  const token = useAuthStore((s) => s.token);
+  const orgId = useAuthStore((s) => s.currentOrgId);
+  const orgSlug = useParams<{ orgSlug: string }>().orgSlug;
+
+  const [reports, setReports] = useState<ReportSummary[]>([]);
+  const [open, setOpen] = useState<ImpactReport | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+
+  const load = useCallback(async () => {
+    if (!token || !orgId) return;
+    try {
+      setReports(await api.impact.listReports(orgId, token));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load reports');
+    } finally {
+      setLoading(false);
+    }
+  }, [token, orgId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const run = async (fn: () => Promise<unknown>) => {
+    if (!token || !orgId) return;
+    setBusy(true);
+    setError('');
+    try {
+      await fn();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'That did not work');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  async function generate() {
+    await run(async () => {
+      const report = await api.impact.generateReport(orgId!, {}, token!);
+      setOpen(report);
+      await load();
+    });
+  }
+
+  async function openReport(id: string) {
+    await run(async () => setOpen(await api.impact.getReport(orgId!, id, token!)));
+  }
+
+  async function saveBlock(blockId: string) {
+    if (!open) return;
+    await run(async () => {
+      await api.impact.updateReportBlock(orgId!, open.id, blockId, draft, token!);
+      setOpen(await api.impact.getReport(orgId!, open.id, token!));
+      setEditing(null);
+    });
+  }
+
+  async function togglePublish() {
+    if (!open) return;
+    await run(async () => {
+      if (open.status === 'PUBLISHED') await api.impact.unpublishReport(orgId!, open.id, token!);
+      else await api.impact.publishReport(orgId!, open.id, token!);
+      setOpen(await api.impact.getReport(orgId!, open.id, token!));
+      await load();
+    });
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="h-6 w-6 animate-spin text-brand-600" />
+      </div>
+    );
+  }
+
+  if (open) {
+    const published = open.status === 'PUBLISHED';
+    return (
+      <div className="max-w-3xl space-y-6">
+        <button
+          onClick={() => { setOpen(null); setEditing(null); }}
+          className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          All reports
+        </button>
+
+        {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
+
+        <div className={`rounded-xl border p-4 ${published ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-white'}`}>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h1 className="text-lg font-semibold text-gray-900">{open.title}</h1>
+              <p className="mt-0.5 text-sm text-gray-500">
+                {published ? 'Published — anyone with the link can read it.' : 'Draft — only organisers can see it.'}
+                {/* G4, computed rather than claimed. */}
+                {open.editedShare > 0 &&
+                  ` You rewrote ${Math.round(open.editedShare * 100)}% of it.`}
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              {published && orgSlug && (
+                <a
+                  href={`/portal/${orgSlug}/reports/${open.slug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-secondary text-sm"
+                >
+                  <ExternalLink className="mr-1.5 inline h-4 w-4" />
+                  View
+                </a>
+              )}
+              <button onClick={togglePublish} disabled={busy} className={published ? 'btn-secondary text-sm' : 'btn-primary text-sm'}>
+                {published ? 'Unpublish' : 'Publish'}
+              </button>
+            </div>
+          </div>
+          {published && (
+            <p className="mt-3 border-t border-green-200 pt-3 text-xs text-green-800">
+              {/* Said out loud, because silently editing something people have
+                  been sent is the failure this rule exists to prevent. */}
+              Editing is off while it is published — people may already be reading this. Unpublish
+              to change it.
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-gray-200 bg-white p-6">
+          {/* Editable blocks over the same renderer the public page uses, so
+              what is approved here is exactly what a funder opens. */}
+          <div className="space-y-8">
+            {open.blocks.map((block) => (
+              <div key={block.id} className="group relative">
+                {editing === block.id ? (
+                  <div>
+                    {block.heading && <h2 className="text-lg font-semibold text-gray-900">{block.heading}</h2>}
+                    <textarea
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      rows={6}
+                      maxLength={5000}
+                      className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    />
+                    <div className="mt-2 flex items-center gap-2">
+                      <button onClick={() => saveBlock(block.id)} disabled={busy} className="btn-primary text-sm">
+                        <Check className="mr-1.5 inline h-4 w-4" />
+                        Save
+                      </button>
+                      <button onClick={() => setEditing(null)} className="btn-secondary text-sm">Cancel</button>
+                      {block.isEdited && block.generatedBody && (
+                        <button
+                          onClick={() => setDraft(block.generatedBody ?? '')}
+                          className="text-xs text-gray-500 hover:text-gray-900"
+                        >
+                          Restore what MaybeOS wrote
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <ReportBody blocks={[block]} />
+                    <div className="mt-1 flex items-center gap-3">
+                      {!published && (
+                        <button
+                          onClick={() => { setEditing(block.id); setDraft(block.body ?? ''); }}
+                          className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-brand-600"
+                        >
+                          <Pencil className="h-3 w-3" />
+                          Edit
+                        </button>
+                      )}
+                      {block.isEdited && <span className="text-xs text-gray-400">edited by you</span>}
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl space-y-6">
+      <Link href="../impact" className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900">
+        <ArrowLeft className="h-4 w-4" />
+        Measuring
+      </Link>
+
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Impact reports</h1>
+          <p className="mt-1 text-sm text-gray-500">
+            What your members told you, written up — to send to a funder, a board, or your
+            membership.
+          </p>
+        </div>
+        <button onClick={generate} disabled={busy} className="btn-primary text-sm">
+          {busy ? <Loader2 className="mr-1.5 inline h-4 w-4 animate-spin" /> : <FileText className="mr-1.5 inline h-4 w-4" />}
+          Write a report
+        </button>
+      </div>
+
+      {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
+
+      {reports.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-gray-300 px-4 py-10 text-center text-sm text-gray-500">
+          No reports yet. One can be written as soon as enough members have answered.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {reports.map((r) => (
+            <li key={r.id}>
+              <button
+                onClick={() => openReport(r.id)}
+                className="flex w-full items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4 text-left hover:border-brand-400"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium text-gray-900">{r.title}</p>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    {new Date(r.periodStart).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })} –{' '}
+                    {new Date(r.periodEnd).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}
+                    {' · '}written {new Date(r.generatedAt).toLocaleDateString()}
+                  </p>
+                </div>
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                    r.status === 'PUBLISHED' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {r.status === 'PUBLISHED' ? 'Published' : 'Draft'}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
