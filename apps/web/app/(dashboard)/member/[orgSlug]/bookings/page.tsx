@@ -8,6 +8,7 @@ import { Loader2, AlertCircle, CheckCircle2, DoorOpen, CalendarClock, Megaphone,
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Booking, ApiError } from '@/lib/api';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
+import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 
 /**
  * Times are shown in the reader's own timezone, unlike the booking emails,
@@ -179,6 +180,8 @@ export default function MemberBookingsPage() {
       <p className="mt-1 text-sm text-[var(--text-secondary)]">
         Rooms you&apos;ve booked, and anything still waiting on an organiser.
       </p>
+
+      {orgId && <TouchpointAsk orgId={orgId} touchpoint="BOOKING" />}
 
       {notice && (
         <div className="card mt-6 flex gap-3 border-[var(--success)]">

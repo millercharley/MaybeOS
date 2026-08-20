@@ -78,6 +78,11 @@ export class TouchpointService {
       text: question.text,
       type: question.type,
       options: question.options,
+      // The two ends of the scale in the member's own language. Without them
+      // a 1–5 is five unlabelled buttons, and the answers only mean the same
+      // thing across members if everybody read the ends the same way.
+      anchorLow: question.anchorLow,
+      anchorHigh: question.anchorHigh,
       category: question.category,
     };
   }

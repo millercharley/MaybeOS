@@ -80,10 +80,21 @@ export function TouchpointAsk({
   }
 
   const choices: (string | number)[] =
-    ask.type === 'SCALE' ? [1, 2, 3, 4, 5] : ask.options.length ? ask.options : [];
+    ask.type === 'SCALE'
+      ? [1, 2, 3, 4, 5]
+      : // "How many people did you talk to?" is a count, and 5+ is an honest
+        // ceiling for a one-tap answer — the difference between six and nine
+        // new faces is not what any of this is measuring.
+        ask.type === 'NUMBER'
+        ? [0, 1, 2, 3, 4, 5]
+        : ask.options.length
+          ? ask.options
+          : [];
 
   // A question with nothing to tap would be a dead end.
   if (choices.length === 0) return null;
+
+  const scaled = ask.type === 'SCALE' || ask.type === 'NUMBER';
 
   return (
     <section className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
@@ -99,7 +110,13 @@ export function TouchpointAsk({
         </button>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      {/* Both ends named. A 1–5 with no labels is five buttons, and the
+          answers only mean the same thing across members if everybody read
+          the ends the same way. */}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {scaled && ask.anchorLow && (
+          <span className="text-xs text-gray-500">{ask.anchorLow}</span>
+        )}
         {choices.map((c) => (
           <button
             key={String(c)}
@@ -107,9 +124,12 @@ export function TouchpointAsk({
             disabled={busy}
             className="rounded-full border border-gray-300 bg-white px-3.5 py-1.5 text-sm text-gray-700 hover:border-brand-500 hover:text-brand-700 disabled:opacity-50"
           >
-            {c}
+            {ask.type === 'NUMBER' && c === 5 ? '5+' : c}
           </button>
         ))}
+        {scaled && ask.anchorHigh && (
+          <span className="text-xs text-gray-500">{ask.anchorHigh}</span>
+        )}
       </div>
 
       <p className="mt-2.5 text-xs text-gray-400">

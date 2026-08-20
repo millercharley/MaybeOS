@@ -12,6 +12,7 @@ import { renderBodyHtml, isBlankBody } from '@/lib/rich-text';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
 import { uploadAttachments } from '@/lib/attachments';
 import { AttachmentList } from '@/components/composer/attachment-list';
+import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 
 type Tab = 'channels' | 'library' | 'proposals';
 
@@ -166,6 +167,7 @@ function ChannelsSection() {
   return (
     <div className="space-y-4">
       {error && <ErrorNote message={error} />}
+      {org && <TouchpointAsk orgId={org.id} touchpoint="COMMONS" />}
       <div className="flex gap-6">
       <div className="w-48 shrink-0 space-y-1">
         {/*

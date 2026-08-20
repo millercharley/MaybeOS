@@ -10,6 +10,7 @@ import {
   UserCircle,
   Receipt,
   type LucideIcon,
+  Activity,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -46,10 +47,11 @@ const adminNav = (slug: string): NavItem[] => [
   { href: `/admin/${slug}/events`, label: 'Events', icon: Calendar },
   { href: `/admin/${slug}/rooms`, label: 'Rooms & Booking', icon: DoorOpen },
   { href: `/admin/${slug}/commons`, label: 'Commons', icon: MessageSquare },
-  // Spending, not Impact: the admin Impact page was removed pending the
-  // ImpactOS rebuild (D-021), and the Signals view that replaces it does not
-  // exist yet. This is the one piece of it that stands alone (IMP-16) — an
-  // API nobody can reach is how the last one ended up unused for months.
+  // Two entries rather than one "Impact", because they are two jobs. This is
+  // the switch and the question list (IMP-18) — what the co-op asks and
+  // whether it is asking. The Signals view that reports what came back is
+  // IMP-20 and joins it here when it exists.
+  { href: `/admin/${slug}/impact`, label: 'Measuring', icon: Activity },
   { href: `/admin/${slug}/expenses`, label: 'Spending', icon: Receipt },
   { href: `/admin/${slug}/settings`, label: 'Settings', icon: Settings },
 ];
