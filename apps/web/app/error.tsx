@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import * as Sentry from '@sentry/nextjs';
 import Link from 'next/link';
+import { SUPPORT_EMAIL, supportMailto } from '@/lib/support';
 import { RotateCw } from 'lucide-react';
 
 /**
@@ -51,11 +52,22 @@ export default function Error({
           </Link>
         </div>
 
-        {error.digest && (
-          <p className="mt-6 border-t border-[var(--border)] pt-4 text-xs text-[var(--text-tertiary)]">
-            Reference <span className="data">{error.digest}</span> — quote this if you report it.
-          </p>
-        )}
+        {/* The address, on the screen where somebody actually needs it
+            (PLT-04). "Quote this if you report it" told a co-op to report it
+            and not where — and MaybeOS cannot look inside their account to
+            find out for them, so the screenshot is the whole mechanism. */}
+        <p className="mt-6 border-t border-[var(--border)] pt-4 text-xs text-[var(--text-tertiary)]">
+          Still stuck? Send us a screenshot of this page at{' '}
+          <a href={supportMailto(undefined, 'This page didn’t load')} className="underline">
+            {SUPPORT_EMAIL}
+          </a>
+          .
+          {error.digest && (
+            <>
+              {' '}Include reference <span className="data">{error.digest}</span>.
+            </>
+          )}
+        </p>
       </div>
     </div>
   );
