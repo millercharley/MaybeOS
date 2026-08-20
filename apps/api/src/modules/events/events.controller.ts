@@ -17,8 +17,11 @@ import { Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { EventsService } from './events.service';
+import { HostPayoutService } from './host-payout.service';
+import { MarkPayoutPaidDto, SetShareDto } from './dto/host-payout.dto';
 import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
 import { ListEventsQueryDto } from './dto/list-events.dto';
@@ -40,7 +43,10 @@ function isStaff(user: RequestUser, orgId: string): boolean {
 @ApiTags('events')
 @Controller()
 export class EventsController {
-  constructor(private readonly eventsService: EventsService) {}
+  constructor(
+    private readonly eventsService: EventsService,
+    private readonly payouts: HostPayoutService,
+  ) {}
 
   /* ─── Create Event ──────────────────────────────────────────── */
 
@@ -129,6 +135,87 @@ export class EventsController {
       },
       true,
     );
+  }
+
+  /* ─── Paying a member who hosted (EVT-15) ───────────────────── */
+
+  /**
+   * What every host is owed, for an organiser working through them.
+   *
+   * Organisers only. What one member earned hosting is not another member's
+   * business, and a co-op's takings are not a members' list.
+   */
+  @Get('orgs/:orgId/host-payouts')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'What each event owes its host' })
+  hostPayouts(@Param('orgId', ParseUUIDPipe) orgId: string) {
+    return this.payouts.listForOrg(orgId);
+  }
+
+  /**
+   * What *this* member is owed for the events they hosted.
+   *
+   * Scoped to the caller — there is no userId in the path, so it cannot be
+   * pointed at somebody else's earnings however it is called.
+   */
+  @Get('orgs/:orgId/me/host-payouts')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'What I am owed for events I hosted' })
+  myHostPayouts(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.payouts.listForHost(orgId, user.userId);
+  }
+
+  @Post('orgs/:orgId/events/:eventId/payout/paid')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Record that the host has been paid' })
+  markPayoutPaid(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Body() dto: MarkPayoutPaidDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.payouts.markPaid(orgId, eventId, user.userId, dto.note);
+  }
+
+  @Post('orgs/:orgId/events/:eventId/payout/cancel')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Undo a payout marked in error' })
+  cancelPayout(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+  ) {
+    return this.payouts.cancel(orgId, eventId);
+  }
+
+  @Patch('orgs/:orgId/host-share')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'The co-op’s default share for member-hosted events' })
+  setOrgShare(@Param('orgId', ParseUUIDPipe) orgId: string, @Body() dto: SetShareDto) {
+    return this.payouts.setOrgShare(orgId, dto.shareBps);
+  }
+
+  @Patch('orgs/:orgId/events/:eventId/host-share')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  setEventShare(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Body() dto: SetShareDto,
+  ) {
+    return this.payouts.setEventShare(orgId, eventId, dto.shareBps);
   }
 
   /* ─── Event discussion ──────────────────────────────────────── */
