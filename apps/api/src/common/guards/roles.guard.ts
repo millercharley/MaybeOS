@@ -31,10 +31,20 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('Missing authentication or org context');
     }
 
-    // Platform admins can do anything
-    if (user.globalRole === 'PLATFORM_ADMIN') {
-      return true;
-    }
+    // **No platform-admin bypass** (PLT-01). It used to read "platform admins
+    // can do anything", which meant whoever runs MaybeOS could read, edit and
+    // delete inside any co-op on it — every member list, every DM, every
+    // financial record — silently and with nothing recorded.
+    //
+    // Charley's rule is that member PII stays private, and a bypass on the
+    // guard that keeps one co-op's roster from another is the opposite of
+    // that. A platform admin reaches a co-op's data the way anybody does: by
+    // being invited into it. What they get instead is a console of their own
+    // (`/platform`), which answers about co-ops rather than about members.
+    //
+    // Safe to remove because **production has never had a platform admin** —
+    // this is a power being defined before it is handed out, not one being
+    // taken away from somebody using it.
 
     const userRole = user.orgRoles[orgId];
     if (!userRole || !requiredRoles.includes(userRole)) {

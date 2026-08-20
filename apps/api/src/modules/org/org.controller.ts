@@ -17,6 +17,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { OrgService } from './org.service';
 import { CreateLocationDto, UpdateLocationDto } from './dto/location.dto';
+import { AuditService } from '../platform/audit.service';
 import { CreateOrgDto } from './dto/create-org.dto';
 import { UpdateOrgDto } from './dto/update-org.dto';
 import { UploadLogoDto } from './dto/upload-logo.dto';
@@ -24,7 +25,10 @@ import { UploadLogoDto } from './dto/upload-logo.dto';
 @ApiTags('orgs')
 @Controller('orgs')
 export class OrgController {
-  constructor(private readonly orgService: OrgService) {}
+  constructor(
+    private readonly orgService: OrgService,
+    private readonly audit: AuditService,
+  ) {}
 
   @Post()
   @UseGuards(JwtAuthGuard)
@@ -92,6 +96,26 @@ export class OrgController {
     @Body() settings: Record<string, unknown>,
   ) {
     return this.orgService.updateSettings(orgId, settings);
+  }
+
+  /**
+   * What has been done to this co-op, and by whom (PLT-01).
+   *
+   * **Including what MaybeOS itself did.** A co-op that cannot tell whether
+   * the platform suspended it, changed its plan or waived its bill is being
+   * asked to take that on trust, and `audit_logs` had never had a row written
+   * to it — so there was nothing to take on trust either way.
+   *
+   * Read by the co-op's own organisers, which is the point: this is their
+   * record, not the platform's.
+   */
+  @Get(':orgId/audit-log')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'What has been done to this co-op' })
+  auditLog(@Param('orgId') orgId: string) {
+    return this.audit.listForOrg(orgId);
   }
 
   /* ─── Locations (ORG-01) ────────────────────────────────────── */

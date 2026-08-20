@@ -19,7 +19,11 @@ export function canSeeContactDetails(
   orgId: string,
 ): boolean {
   if (!user) return false;
-  if (user.globalRole === 'PLATFORM_ADMIN') return true;
+  // Deliberately no platform-admin case (PLT-01). This function decides who
+  // sees a member's email address, and whoever runs MaybeOS is not one of
+  // them: a co-op's roster is the co-op's, and "the platform can read it" is
+  // exactly the thing a co-op would want to be told before it moved its
+  // membership here.
 
   const role = user.orgRoles?.[orgId];
   return role === 'ADMIN' || role === 'STAFF';

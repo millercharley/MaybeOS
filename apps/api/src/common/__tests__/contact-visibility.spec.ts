@@ -43,8 +43,18 @@ describe('contact visibility', () => {
     expect(canSeeContactDetails(adminElsewhere, 'some-other-org')).toBe(true);
   });
 
-  it('lets platform admins through, so support can unstick a co-op', () => {
-    expect(canSeeContactDetails(user(undefined, 'PLATFORM_ADMIN'), ORG)).toBe(true);
+  it('does not let a platform admin read a co-op’s contact details (PLT-01)', () => {
+    // Reversed on 2026-08-20. The old name was "so support can unstick a
+    // co-op", which is a real need and the wrong solution: it bought support
+    // convenience with every member's email address in every co-op on the
+    // platform. Support gets a console that answers about co-ops, and a
+    // co-op's roster stays the co-op's.
+    expect(canSeeContactDetails(user(undefined, 'PLATFORM_ADMIN'), ORG)).toBe(false);
+  });
+
+  it('gives a platform admin exactly what their org role gives them', () => {
+    expect(canSeeContactDetails(user('ADMIN', 'PLATFORM_ADMIN'), ORG)).toBe(true);
+    expect(canSeeContactDetails(user('MEMBER', 'PLATFORM_ADMIN'), ORG)).toBe(false);
   });
 
   it('refuses an absent caller rather than defaulting open', () => {
