@@ -6,6 +6,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
 import { TicketPayouts } from '@/components/settings/ticket-payouts';
+import { MaybeOsPlan } from '@/components/settings/maybeos-plan';
 import { WebsiteEmbed } from '@/components/settings/website-embed';
 
 type SettingsTab = 'general' | 'branding' | 'integrations' | 'billing';
@@ -286,6 +287,7 @@ export default function SettingsPage() {
         believing the doors were open when they were not.
       */}
       {activeTab === 'general' && org && <TicketPayouts org={org} onSaved={refetch} />}
+      {activeTab === 'general' && org && <MaybeOsPlan org={org} />}
       {activeTab === 'general' && org && <WebsiteEmbed org={org} />}
 
       {activeTab === 'general' && (

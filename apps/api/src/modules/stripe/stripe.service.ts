@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
+import { planForSubscriptionItems } from './maybeos-plans';
 import { ConnectService } from './connect.service';
 
 /**
@@ -599,6 +600,9 @@ export class StripeService {
           event.data.object as Stripe.Subscription,
           tx,
         );
+        // Same event, two meanings: a member's dues above, a co-op's own
+        // MaybeOS plan here. Each ignores what it does not recognise.
+        await this.syncPlanFromSubscription(event.data.object as Stripe.Subscription, tx);
         break;
 
       case 'customer.subscription.deleted':
@@ -606,6 +610,7 @@ export class StripeService {
           event.data.object as Stripe.Subscription,
           tx,
         );
+        await this.syncPlanFromSubscription(event.data.object as Stripe.Subscription, tx);
         break;
 
       case 'invoice.payment_failed':
@@ -635,6 +640,11 @@ export class StripeService {
         // timed out every ticket webhook until 2026-08-18.
         await this.connectService.recordTicketFromSession(session, tx);
         await this.connectService.confirmBookingFromSession(session, tx);
+        // A co-op subscribing to MaybeOS itself (PLT-02). Lands here on
+        // MaybeOS's own account rather than a connected one, and carries
+        // `client_reference_id` instead of metadata — a hosted pricing table
+        // gives us nowhere to put any.
+        await this.applyPlanFromCheckout(session, tx);
         break;
       }
 
@@ -875,5 +885,106 @@ export class StripeService {
     );
 
     return price.id;
+  }
+
+  /* ─── The co-op's own MaybeOS plan (PLT-02) ─────────────────── */
+
+  /**
+   * A co-op has paid for a MaybeOS plan.
+   *
+   * Everything about this is decided by two fields on the session:
+   * `client_reference_id`, which the pricing table is given the org id for and
+   * is the only thing saying *which* co-op paid, and the subscription's price
+   * ids, which say which plan.
+   *
+   * A no-op for anything else that lands here, so a ticket sale on a connected
+   * account never trips it.
+   */
+  private async applyPlanFromCheckout(
+    session: Stripe.Checkout.Session,
+    tx: PrismaTx,
+  ): Promise<void> {
+    const orgId = session.client_reference_id;
+    if (!orgId || session.mode !== 'subscription' || !session.subscription) return;
+
+    const subscriptionId =
+      typeof session.subscription === 'string' ? session.subscription : session.subscription.id;
+
+    let priceIds: string[];
+    try {
+      const subscription = await this.stripe.subscriptions.retrieve(subscriptionId);
+      priceIds = subscription.items.data.map((item) => item.price.id);
+    } catch (err) {
+      this.logger.error(
+        `Could not read subscription ${subscriptionId} for org ${orgId}: ${(err as Error).message}`,
+      );
+      return;
+    }
+
+    const plan = planForSubscriptionItems(priceIds);
+    if (!plan) {
+      // Logged, never guessed. Guessing upward would hand out UNLIMITED for a
+      // price nobody recognises; guessing downward would charge a paying co-op
+      // Free's transaction fee.
+      this.logger.error(
+        `Subscription ${subscriptionId} for org ${orgId} carries no known MaybeOS price (${priceIds.join(', ')})`,
+      );
+      return;
+    }
+
+    await tx.organization.update({
+      where: { id: orgId },
+      data: {
+        plan,
+        planStatus: 'active',
+        stripePlanSubscriptionId: subscriptionId,
+        stripePlanCustomerId:
+          typeof session.customer === 'string' ? session.customer : (session.customer?.id ?? null),
+      },
+    });
+
+    this.logger.log(`Org ${orgId} is now on MaybeOS ${plan} (${subscriptionId})`);
+  }
+
+  /**
+   * A co-op's MaybeOS subscription changed or ended.
+   *
+   * Matched by the stored subscription id, since there is no metadata of ours
+   * to match on. A subscription we have never seen is somebody's membership
+   * dues and is left entirely alone.
+   *
+   * **Cancelling returns a co-op to FREE, and that raises what its buyers pay
+   * per ticket.** Correct — the lower fee is what the plan bought — but it is
+   * the kind of change that should be visible, so `planStatus` keeps Stripe's
+   * own word for what happened rather than being flattened into a boolean.
+   */
+  private async syncPlanFromSubscription(
+    subscription: Stripe.Subscription,
+    tx: PrismaTx,
+  ): Promise<void> {
+    const org = await tx.organization.findFirst({
+      where: { stripePlanSubscriptionId: subscription.id },
+      select: { id: true },
+    });
+    if (!org) return;
+
+    const ended = subscription.status === 'canceled' || subscription.status === 'incomplete_expired';
+    const plan = ended
+      ? 'FREE'
+      : (planForSubscriptionItems(subscription.items.data.map((i) => i.price.id)) ?? undefined);
+
+    await tx.organization.update({
+      where: { id: org.id },
+      data: {
+        planStatus: subscription.status,
+        ...(plan && { plan }),
+        // A past-due co-op keeps its plan. Downgrading on the first failed
+        // charge would raise every ticket price it sells while it sorts out a
+        // card, which is a punishment its members would pay.
+        ...(ended && { stripePlanSubscriptionId: null }),
+      },
+    });
+
+    this.logger.log(`Org ${org.id} MaybeOS subscription ${subscription.id} is ${subscription.status}`);
   }
 }

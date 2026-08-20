@@ -30,7 +30,7 @@ describe('ConnectService — recording a ticket inside a transaction', () => {
       kind: 'event_ticket',
       eventId: 'event-1',
       userId: 'user-1',
-      platformFeeCents: '55',
+      platformFeeCents: '100',
       orgFeeCents: '145',
     },
   } as never;

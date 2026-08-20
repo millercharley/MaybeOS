@@ -57,6 +57,13 @@ describe('StripeService', () => {
               findUnique: jest.fn(),
               create: jest.fn(),
             },
+            // A co-op's own MaybeOS plan (PLT-02) rides the same subscription
+            // events as a member's dues, and each ignores what it does not
+            // recognise — so the org lookup has to exist even here.
+            organization: {
+              findFirst: jest.fn().mockResolvedValue(null),
+              update: jest.fn(),
+            },
             userOrg: {
               findUnique: jest.fn(),
               findFirst: jest.fn(),

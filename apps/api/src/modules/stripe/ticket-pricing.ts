@@ -4,12 +4,20 @@ import { MaybeOsPlan } from '@prisma/client';
  * What a ticket costs and how the money splits (D-013).
  *
  * MaybeOS takes a **flat fee per transaction**, set by the co-op's plan. Not a
- * percentage — D-013 records the numbers verbatim, and a percentage would
- * quietly change what every co-op pays:
+ * percentage — the numbers are set deliberately, and a percentage would
+ * quietly change what every co-op pays as ticket prices move.
  *
- *   FREE       $0/month        + $0.55 per transaction
- *   PLUS       $100 + per-user + $0.30 per transaction
- *   UNLIMITED  $299–349/month  + $0.10 per transaction
+ * Repriced by Charley on 2026-08-21, from the live pricing table:
+ *
+ *   FREE       $0                              + $1.00 per transaction
+ *   PLUS       $0.50/member/mo · $3.65/member/yr + $0.30 per transaction
+ *   UNLIMITED  $349/mo · $299/mo billed yearly   + $0.10 per transaction
+ *
+ * The subscription half and the per-transaction half work in opposite
+ * directions on purpose: a co-op that pays nothing up front pays most per
+ * ticket, which is what lets "upfront cost should never block a community"
+ * be true without MaybeOS earning nothing from the co-ops that use it most.
+ * **The $100 initiation fee is gone** (Charley, 2026-08-21).
  *
  * The co-op may add a fee of its own on top (Charley, 2026-08-12). Both are
  * added to the ticket price rather than taken out of it, so a co-op pricing a
@@ -21,7 +29,7 @@ import { MaybeOsPlan } from '@prisma/client';
 
 /** MaybeOS's cut per transaction, in cents, by plan (D-013). */
 export const PLATFORM_FEE_CENTS: Record<MaybeOsPlan, number> = {
-  FREE: 55,
+  FREE: 100,
   PLUS: 30,
   UNLIMITED: 10,
 };

@@ -26,14 +26,14 @@ describe('priceBooking', () => {
 
     // The co-op published $45/hour and must receive $135 for three of them.
     expect(p.hireCents).toBe(13500);
-    expect(p.platformFeeCents).toBe(55);
-    expect(p.totalCents).toBe(13555);
+    expect(p.platformFeeCents).toBe(100);
+    expect(p.totalCents).toBe(13600);
   });
 
   it('charges the flat D-013 fee for the plan, not a percentage', () => {
     // A percentage would make a full-day booking worth many times a ticket
     // to MaybeOS for exactly the same work.
-    expect(priceBooking({ ...base, plan: 'FREE' }).platformFeeCents).toBe(55);
+    expect(priceBooking({ ...base, plan: 'FREE' }).platformFeeCents).toBe(100);
     expect(priceBooking({ ...base, plan: 'PLUS' }).platformFeeCents).toBe(30);
     expect(priceBooking({ ...base, plan: 'UNLIMITED' }).platformFeeCents).toBe(10);
   });
