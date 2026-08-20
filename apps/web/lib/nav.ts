@@ -11,6 +11,7 @@ import {
   Receipt,
   type LucideIcon,
   Activity,
+  HandCoins,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -53,6 +54,9 @@ const adminNav = (slug: string): NavItem[] => [
   // IMP-20 and joins it here when it exists.
   { href: `/admin/${slug}/impact`, label: 'Measuring', icon: Activity },
   { href: `/admin/${slug}/expenses`, label: 'Spending', icon: Receipt },
+  // Money owed *out* to members who hosted, which is a different job from
+  // spending and a different one from ticket sales (EVT-15).
+  { href: `/admin/${slug}/payouts`, label: 'Host payouts', icon: HandCoins },
   { href: `/admin/${slug}/settings`, label: 'Settings', icon: Settings },
 ];
 

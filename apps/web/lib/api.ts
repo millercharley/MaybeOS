@@ -592,6 +592,40 @@ class ApiClient {
         token,
       }),
 
+    /* ─── Paying a member who hosted (EVT-15) ─────────────── */
+
+    hostPayouts: (orgId: string, token: string) =>
+      this.request<HostPayoutPreview[]>(`/orgs/${orgId}/host-payouts`, { token }),
+
+    myHostPayouts: (orgId: string, token: string) =>
+      this.request<HostPayoutPreview[]>(`/orgs/${orgId}/me/host-payouts`, { token }),
+
+    markPayoutPaid: (orgId: string, eventId: string, note: string, token: string) =>
+      this.request<HostPayout>(`/orgs/${orgId}/events/${eventId}/payout/paid`, {
+        method: 'POST',
+        body: JSON.stringify({ note }),
+        token,
+      }),
+
+    cancelPayout: (orgId: string, eventId: string, token: string) =>
+      this.request<HostPayout>(`/orgs/${orgId}/events/${eventId}/payout/cancel`, {
+        method: 'POST',
+        token,
+      }),
+
+    setHostShare: (orgId: string, shareBps: number, token: string) =>
+      this.request<{ hostRevenueShareBps: number }>(`/orgs/${orgId}/host-share`, {
+        method: 'PATCH',
+        body: JSON.stringify({ shareBps }),
+        token,
+      }),
+
+    setEventHostShare: (orgId: string, eventId: string, shareBps: number, token: string) =>
+      this.request<{ hostRevenueShareBps: number | null }>(
+        `/orgs/${orgId}/events/${eventId}/host-share`,
+        { method: 'PATCH', body: JSON.stringify({ shareBps }), token },
+      ),
+
     /** Start Stripe checkout for a ticket. No token needed — public events. */
     buyTicket: (
       orgId: string,
@@ -1325,6 +1359,32 @@ export interface AvatarImportResult {
   remaining: number;
   lastId: string | null;
   done: boolean;
+}
+
+export interface HostPayout {
+  id: string;
+  status: 'PENDING' | 'PAID' | 'CANCELLED';
+  amountCents: number;
+  grossCents: number;
+  shareBps: number;
+  paidAt: string | null;
+  note: string | null;
+}
+
+/** What one event owes its host, recomputed until it is marked paid. */
+export interface HostPayoutPreview {
+  eventId: string;
+  title: string;
+  endTime: string;
+  host: { id: string; name?: string } | null;
+  hasEnded: boolean;
+  /** Ticket face value — the fees were added on top and were never the host's. */
+  grossCents: number;
+  shareBps: number;
+  amountCents: number;
+  ticketCount: number;
+  refundedCount: number;
+  payout: HostPayout | null;
 }
 
 export interface Member {

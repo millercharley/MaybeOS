@@ -83,6 +83,15 @@ model Organization {
   /// cents per ticket. Charley's requirement: org admins set their own fee in
   /// addition. Zero by default — a co-op that has not chosen one charges none.
   ticketFeeCents           Int               @default(0)
+  /// What share of ticket money a member who hosts an event keeps, in basis
+  /// points (EVT-15). 10000 is all of it, which is the default — MaybeOS's fee
+  /// and the co-op's own fee were both added *on top* of the ticket price and
+  /// were never the host's money.
+  ///
+  /// Basis points rather than a percentage so integer arithmetic does the whole
+  /// calculation: a float share lands a fraction of a cent short, and a ledger
+  /// that is a cent out is a ledger nobody trusts.
+  hostRevenueShareBps      Int               @default(10000)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -105,6 +114,7 @@ model Organization {
   goals           Goal[]
   measurementPlan MeasurementPlan?
   impactReports   ImpactReport[]
+  hostPayouts     HostPayout[]
 
   @@map("organizations")
 }
@@ -182,6 +192,8 @@ model User {
   expensesCreated Expense[]         @relation("ExpenseCreator")
   plansApproved   MeasurementPlan[] @relation("PlanApprover")
   reportsCreated  ImpactReport[]    @relation("ReportAuthor")
+  hostPayouts     HostPayout[]      @relation("HostPayoutRecipient")
+  payoutsMarked   HostPayout[]      @relation("HostPayoutPayer")
   attachments     Attachment[]
 
   @@map("users")
@@ -320,55 +332,59 @@ enum RecurrenceRule {
 }
 
 model Event {
-  id              String          @id @default(uuid())
-  orgId           String
-  locationId      String?
-  roomId          String?
-  title           String
-  slug            String
-  description     String?
-  richDescription String? // HTML content
-  imageUrl        String?
-  startTime       DateTime
-  endTime         DateTime
-  timezone        String          @default("America/New_York")
-  visibility      EventVisibility @default(PUBLIC)
-  recurrence      RecurrenceRule  @default(NONE)
-  recurrenceEnd   DateTime?
-  parentEventId   String? // for recurring event instances
-  capacity        Int?
+  id                  String          @id @default(uuid())
+  orgId               String
+  locationId          String?
+  roomId              String?
+  title               String
+  slug                String
+  description         String?
+  richDescription     String? // HTML content
+  imageUrl            String?
+  startTime           DateTime
+  endTime             DateTime
+  timezone            String          @default("America/New_York")
+  visibility          EventVisibility @default(PUBLIC)
+  recurrence          RecurrenceRule  @default(NONE)
+  recurrenceEnd       DateTime?
+  parentEventId       String? // for recurring event instances
+  capacity            Int?
   /// What a ticket costs, in cents. Null means free — the overwhelming
   /// majority of co-op events — and free is not the same as zero-priced: a
   /// free event never touches Stripe at all.
-  priceCents      Int?
+  priceCents          Int?
   /// ISO 4217, lowercase, as Stripe expects it.
-  currency        String          @default("usd")
+  currency            String          @default("usd")
   /// Who is running this event (EVT-04). Set to whoever created it and
   /// changeable afterwards, because an organiser often creates an event on
   /// somebody else's behalf. Nullable: events made before this column existed
   /// have no known host, and guessing one would invent a fact the product
   /// would then act on — the PRD emails this person after their event.
-  hostId          String?
+  hostId              String?
   /// The booking this event was published from (EVT-05), when a member turned
   /// their room booking into something the co-op can see. One event per
   /// booking. The link is what keeps them in step: cancelling or moving the
   /// booking has to reach the event, or the co-op keeps advertising a room
   /// that is no longer held.
-  bookingId       String?         @unique
+  bookingId           String?         @unique
   /// The post that carries this event's discussion (EVT-11). Created the first
   /// time somebody needs it rather than for every event, and unique because
   /// two events sharing a thread would mix two conversations. Chosen over
   /// teaching Comment about events: one comment model, one moderation surface.
-  postId          String?         @unique
-  waitlistEnabled Boolean         @default(false)
-  requiresRsvp    Boolean         @default(true)
-  category        String?
-  tags            String[]        @default([])
-  isPublished     Boolean         @default(false)
-  publishedAt     DateTime?
-  canceledAt      DateTime?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  postId              String?         @unique
+  /// Overrides the co-op's default host share for this one event (EVT-15).
+  /// Null means "whatever the co-op's default is" rather than a copy of it —
+  /// copying today's number onto every event would freeze it into next year's.
+  hostRevenueShareBps Int?
+  waitlistEnabled     Boolean         @default(false)
+  requiresRsvp        Boolean         @default(true)
+  category            String?
+  tags                String[]        @default([])
+  isPublished         Boolean         @default(false)
+  publishedAt         DateTime?
+  canceledAt          DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 
   org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   // SetNull, not Cascade: a host leaving the co-op must not delete the events
@@ -377,6 +393,7 @@ model Event {
   /// SetNull, not Cascade: an event whose discussion was moderated away should
   /// still exist.
   post        Post?        @relation("EventThread", fields: [postId], references: [id], onDelete: SetNull)
+  payout      HostPayout?
   // SetNull rather than Cascade: if a booking row is ever hard-deleted the
   // event it produced should survive as an event, not vanish along with its
   // RSVPs. Cancellation is handled in the service, not by the database.
@@ -1095,6 +1112,61 @@ model ReportBlock {
 
   @@index([reportId, sortOrder])
   @@map("report_blocks")
+}
+
+enum HostPayoutStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+/// What a member who hosted an event is owed, and whether they got it
+/// (EVT-15).
+///
+/// Ticket money lands in the **co-op's** Stripe account — D-013 uses direct
+/// charges precisely so MaybeOS never holds anybody's takings — so a member
+/// host is owed money their co-op is holding. MaybeOS works out what that is
+/// from the tickets actually sold and records that it was paid; the co-op
+/// sends it the way it already pays people.
+///
+/// Charley's call, 2026-08-21: **track now, Stripe later.** Automating the
+/// transfer would make MaybeOS an orchestrator of money between two parties
+/// whose funds it does not hold, and would put every host through Stripe
+/// identity verification before they could be paid for a $60 workshop. So
+/// `stripeTransferId` sits here empty and ready rather than unbuilt: when that
+/// decision is taken, a transfer attaches to a row that already exists.
+model HostPayout {
+  id               String           @id @default(uuid())
+  orgId            String
+  eventId          String           @unique
+  hostUserId       String?
+  /// Ticket face value only — the fees were added on top of the ticket price
+  /// and belong to MaybeOS and the co-op, not the host.
+  grossCents       Int
+  shareBps         Int
+  amountCents      Int
+  ticketCount      Int              @default(0)
+  refundedCount    Int              @default(0)
+  status           HostPayoutStatus @default(PENDING)
+  paidAt           DateTime?
+  paidById         String?
+  /// How it was actually sent, in the organiser's words. MaybeOS did not move
+  /// this money and should not pretend to know how it moved.
+  note             String?
+  stripeTransferId String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  event  Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  /// SetNull on both: somebody leaving the co-op must not erase the record
+  /// that money was owed and paid.
+  host   User?        @relation("HostPayoutRecipient", fields: [hostUserId], references: [id], onDelete: SetNull)
+  paidBy User?        @relation("HostPayoutPayer", fields: [paidById], references: [id], onDelete: SetNull)
+
+  @@index([orgId, status])
+  @@index([hostUserId])
+  @@map("host_payouts")
 }
 
 model Expense {

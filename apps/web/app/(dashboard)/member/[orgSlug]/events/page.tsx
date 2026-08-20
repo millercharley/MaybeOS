@@ -10,6 +10,7 @@ import { api, HostedEvent, Org } from '@/lib/api';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
 import { MyRsvps } from '@/components/events/my-rsvps';
 import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
+import { HostEarnings } from '@/components/events/host-earnings';
 
 /**
  * A member's own events (EVT-05).
@@ -184,6 +185,8 @@ export default function MyEventsPage() {
               happened. The visit is the moment rather than a scheduled
               nudge — a timed follow-up needs a notification MaybeOS does not
               send yet (IMP-19). */}
+          {org && token && <HostEarnings orgId={org.id} token={token} />}
+
           {past.length > 0 && org && <TouchpointAsk orgId={org.id} touchpoint="POST_EVENT" />}
 
           {past.length > 0 && (
