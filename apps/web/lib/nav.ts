@@ -12,6 +12,7 @@ import {
   type LucideIcon,
   Activity,
   HandCoins,
+  Landmark,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -58,6 +59,16 @@ const adminNav = (slug: string): NavItem[] => [
   // spending and a different one from ticket sales (EVT-15).
   { href: `/admin/${slug}/payouts`, label: 'Host payouts', icon: HandCoins },
   { href: `/admin/${slug}/settings`, label: 'Settings', icon: Settings },
+];
+
+/**
+ * MaybeOS's own console (PLT-01), shown only to a platform admin.
+ *
+ * Deliberately its own section rather than an entry among a co-op's tools:
+ * it is not one of them, and a co-op's organiser must never see it at all.
+ */
+const platformNav: NavItem[] = [
+  { href: '/platform', label: 'Co-ops on MaybeOS', icon: Landmark },
 ];
 
 /** A member's own things (IMP-11), in the co-op they are looking at. */
@@ -109,12 +120,15 @@ export function sidebarSections({
   orgSlug,
   orgName,
   signedIn,
+  isPlatformAdmin = false,
 }: {
   membership?: NavMembership | null;
   /** The co-op whose page is on screen. Wins over the selected membership. */
   orgSlug?: string;
   orgName?: string;
   signedIn: boolean;
+  /** MaybeOS's own operators. Nobody else ever sees this section. */
+  isPlatformAdmin?: boolean;
 }): NavSection[] {
   const role = membership?.role;
   const isOrganiser = role === 'ADMIN' || role === 'STAFF';
@@ -147,6 +161,13 @@ export function sidebarSections({
 
   if (signedIn && slug) {
     sections.push({ label: 'My membership', items: member.slice(1) });
+  }
+
+  // Last, and labelled as MaybeOS rather than as part of the co-op — because
+  // it is not part of the co-op, and a console sitting among a co-op's own
+  // tools would read as one of them (PLT-01).
+  if (signedIn && isPlatformAdmin) {
+    sections.push({ label: 'MaybeOS', items: platformNav });
   }
 
   return sections;

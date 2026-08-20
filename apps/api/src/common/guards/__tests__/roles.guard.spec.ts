@@ -48,10 +48,32 @@ describe('RolesGuard', () => {
     expect(guard.canActivate(ctx)).toBe(true);
   });
 
-  it('should allow PLATFORM_ADMIN regardless of org role', () => {
+  it('refuses a PLATFORM_ADMIN who is not in the org (PLT-01)', () => {
+    // This test asserted the opposite until 2026-08-20, when the bypass was
+    // removed: "platform admins can do anything" meant whoever runs MaybeOS
+    // could read, edit and delete inside any co-op on it — every member list,
+    // every DM — silently. Charley's rule is that member PII stays private,
+    // and a bypass on the guard that keeps one co-op's roster from another is
+    // the opposite of that.
+    //
+    // A platform admin reaches a co-op's data by being invited into it, like
+    // anybody else. What they have instead is a console that answers about
+    // co-ops rather than about members.
     reflector.getAllAndOverride.mockReturnValue(['ADMIN']);
     const ctx = createMockContext({
       user: { userId: '1', globalRole: 'PLATFORM_ADMIN', orgRoles: {} },
+      params: { orgId: 'org-1' },
+    });
+
+    expect(() => guard.canActivate(ctx)).toThrow(ForbiddenException);
+  });
+
+  it('lets a PLATFORM_ADMIN through where they actually are a member', () => {
+    // The global role neither grants nor removes anything; their org role does
+    // all the work, exactly as it would for anybody else.
+    reflector.getAllAndOverride.mockReturnValue(['ADMIN']);
+    const ctx = createMockContext({
+      user: { userId: '1', globalRole: 'PLATFORM_ADMIN', orgRoles: { 'org-1': 'ADMIN' } },
       params: { orgId: 'org-1' },
     });
 

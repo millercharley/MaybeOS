@@ -282,7 +282,43 @@ class ApiClient {
   };
 
   // ── Orgs ─────────────────────────────────────────
+  /**
+   * The super-admin console (PLT-01).
+   *
+   * Outside the org tree on purpose: everything under `/orgs/:orgId` is
+   * guarded by membership, and platform administration is not membership.
+   */
+  platform = {
+    summary: (token: string) => this.request<PlatformSummary>('/platform/summary', { token }),
+
+    orgs: (token: string) => this.request<PlatformOrg[]>('/platform/orgs', { token }),
+
+    suspend: (orgId: string, reason: string, token: string) =>
+      this.request<unknown>(`/platform/orgs/${orgId}/suspend`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+        token,
+      }),
+
+    restore: (orgId: string, token: string) =>
+      this.request<unknown>(`/platform/orgs/${orgId}/restore`, { method: 'POST', token }),
+
+    setPlan: (
+      orgId: string,
+      data: { plan?: string; billingWaived?: boolean; reason?: string },
+      token: string,
+    ) =>
+      this.request<unknown>(`/platform/orgs/${orgId}/plan`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+  };
+
   orgs = {
+    /** What has been done to this co-op, including by MaybeOS (PLT-01). */
+    auditLog: (orgId: string, token: string) =>
+      this.request<AuditEntry[]>(`/orgs/${orgId}/audit-log`, { token }),
     /** Where the co-op is (ORG-01). */
     locations: (orgId: string, token: string) =>
       this.request<Location[]>(`/orgs/${orgId}/locations`, { token }),
@@ -1322,6 +1358,49 @@ export interface CreateOrgData {
   description?: string;
   mission?: string;
   timezone?: string;
+}
+
+export interface PlatformOrg {
+  id: string;
+  name: string;
+  slug: string;
+  url: string;
+  customDomain: string | null;
+  plan: string;
+  planStatus: string | null;
+  billingWaived: boolean;
+  billingWaivedReason: string | null;
+  suspendedAt: string | null;
+  suspendedReason: string | null;
+  createdAt: string;
+  memberCount: number;
+  eventCount: number;
+  roomCount: number;
+  transactionFeeCents: number;
+  /** One organiser to write to — never the member list. */
+  contact: { name: string | null; email: string } | null;
+  hasNoAdmin: boolean;
+  /** Started Stripe onboarding and never finished it. */
+  stripeHalfConnected: boolean;
+}
+
+export interface PlatformSummary {
+  orgs: number;
+  suspended: number;
+  billingWaived: number;
+  canTakePayments: number;
+  memberships: number;
+  byPlan: Record<string, number>;
+}
+
+export interface AuditEntry {
+  id: string;
+  action: string;
+  entityType: string | null;
+  entityId: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+  actor: { id: string; name: string | null; email: string } | null;
 }
 
 export interface Location {

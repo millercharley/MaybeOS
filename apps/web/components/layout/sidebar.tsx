@@ -37,7 +37,13 @@ export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: stri
   const membership = orgs.find((o) => o.orgId === currentOrgId);
   const signedIn = Boolean(token && user);
 
-  const sections = sidebarSections({ membership, orgSlug, orgName, signedIn });
+  const sections = sidebarSections({
+    membership,
+    orgSlug,
+    orgName,
+    signedIn,
+    isPlatformAdmin: user?.globalRole === 'PLATFORM_ADMIN',
+  });
 
   // Only worth a control when there is somewhere to switch to.
   const canSwitch = signedIn && orgs.length > 1;

@@ -92,6 +92,21 @@ model Organization {
   /// calculation: a float share lands a fraction of a cent short, and a ledger
   /// that is a cent out is a ledger nobody trusts.
   hostRevenueShareBps      Int               @default(10000)
+  /// Suspended by MaybeOS itself (PLT-01). Access stops; nothing is deleted.
+  /// What happens to a suspended co-op's *data* is a decision not yet taken,
+  /// and this deliberately does not take it — whichever way it goes, nothing
+  /// here has to be undone.
+  suspendedAt              DateTime?
+  suspendedReason          String?
+  /// "MaybeOS for free, except ticket sales" (Charley, 2026-08-19).
+  ///
+  /// Its own flag rather than a plan, because `plan` does double duty: it sets
+  /// what a co-op is billed *and* MaybeOS's cut per ticket. Comping a co-op by
+  /// moving it to FREE would triple its members' ticket fees — the opposite of
+  /// a gift. A comped co-op is set to the plan it should *have*, pays nothing
+  /// for it, and its ticket fee follows that plan as normal.
+  billingWaived            Boolean           @default(false)
+  billingWaivedReason      String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
