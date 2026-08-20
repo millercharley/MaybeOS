@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { CheckCircle2, CreditCard, ExternalLink, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, ConnectStatus, Org } from '@/lib/api';
+import { PLATFORM_FEE_CENTS } from '@/lib/fees';
 
 /**
  * Getting paid for tickets (D-013).
@@ -21,7 +22,6 @@ import { api, ConnectStatus, Org } from '@/lib/api';
  *     and a cancelled sold-out event is money out of the co-op's pocket.
  */
 
-const PLATFORM_FEE_CENTS: Record<string, number> = { FREE: 55, PLUS: 30, UNLIMITED: 10 };
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export function TicketPayouts({ org, onSaved }: { org: Org; onSaved?: () => void }) {
@@ -111,7 +111,7 @@ export function TicketPayouts({ org, onSaved }: { org: Org; onSaved?: () => void
     }
   }
 
-  const platformFee = PLATFORM_FEE_CENTS[org.plan ?? 'FREE'] ?? 55;
+  const platformFee = PLATFORM_FEE_CENTS[org.plan ?? 'FREE'] ?? PLATFORM_FEE_CENTS.FREE;
   const ready = status?.chargesEnabled;
 
   return (

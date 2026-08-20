@@ -3,6 +3,7 @@
 import { FormEvent, useState } from 'react';
 import { Globe, Lock, Users } from 'lucide-react';
 import { CreateEventData } from '@/lib/api';
+import { PLATFORM_FEE_CENTS } from '@/lib/fees';
 
 /**
  * The event form (EVT-05).
@@ -27,7 +28,6 @@ export interface EventFormValues extends CreateEventData {
 }
 
 /** MaybeOS's per-transaction fee by plan, in cents (D-013). */
-const PLATFORM_FEE_CENTS: Record<string, number> = { FREE: 55, PLUS: 30, UNLIMITED: 10 };
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -430,11 +430,11 @@ export function EventForm({
                   <strong>
                     {money(
                       Math.round(Number(price) * 100) +
-                        (PLATFORM_FEE_CENTS[plan] ?? 55) +
+                        (PLATFORM_FEE_CENTS[plan] ?? PLATFORM_FEE_CENTS.FREE) +
                         orgFeeCents,
                     )}
                   </strong>{' '}
-                  — {money(PLATFORM_FEE_CENTS[plan] ?? 55)} MaybeOS fee
+                  — {money(PLATFORM_FEE_CENTS[plan] ?? PLATFORM_FEE_CENTS.FREE)} MaybeOS fee
                   {orgFeeCents > 0 ? `, ${money(orgFeeCents)} your co-op's fee` : ''}.
                 </>
               ) : (

@@ -46,18 +46,18 @@ model Organization {
 
   // Off by default: a housing co-op or members' club must not be joinable by
   // anyone with a card. Each org opts in. See D-020.
-  allowPublicJoin      Boolean           @default(false)
+  allowPublicJoin          Boolean           @default(false)
   /// The co-op's MaybeOS plan (D-013). Everyone starts on FREE.
-  plan                 MaybeOsPlan       @default(FREE)
+  plan                     MaybeOsPlan       @default(FREE)
   /// The co-op's own Stripe account, from Connect onboarding. Ticket money is
   /// paid here directly and MaybeOS's cut is taken as an application fee —
   /// routing other co-ops' takings through MaybeOS's own account would be
   /// money transmission, not billing (D-013). Null until onboarding completes.
-  stripeAccountId      String?
+  stripeAccountId          String?
   /// Whether Stripe says the account can actually accept charges. Onboarding
   /// can be started and abandoned halfway, and an account that exists is not
   /// the same as one that can be paid.
-  stripeChargesEnabled Boolean           @default(false)
+  stripeChargesEnabled     Boolean           @default(false)
   /// Which generation of Stripe's Accounts API this account belongs to.
   /// Creating an account uses Accounts v2; linking one the co-op already has
   /// uses Connect OAuth, which always hands back a v1 Standard account because
@@ -65,11 +65,24 @@ model Organization {
   /// "v1 Accounts cannot be used in v2 Account APIs", and nothing in the id
   /// says which generation it is — so it is recorded when the account is
   /// connected rather than guessed at read time. Null only when none is.
-  stripeAccountApi     StripeAccountApi?
+  stripeAccountApi         StripeAccountApi?
+  /// The co-op's own subscription to MaybeOS (PLT-02) — not to be confused
+  /// with `UserOrg.stripeSubscriptionId`, which is a *member's* dues to their
+  /// co-op. Different money, different direction, different Stripe account.
+  ///
+  /// Matched on when a later subscription event arrives, because a co-op
+  /// subscribes through Stripe's hosted pricing table and there is no way to
+  /// put our own metadata on what that creates.
+  stripePlanCustomerId     String?
+  stripePlanSubscriptionId String?           @unique
+  /// Stripe's own word for the subscription — `active`, `past_due`,
+  /// `canceled`. Kept verbatim rather than mapped, so a state Stripe adds
+  /// later shows up as itself instead of being flattened into a guess.
+  planStatus               String?
   /// A fee the co-op adds to its own ticket sales, on top of MaybeOS's, in
   /// cents per ticket. Charley's requirement: org admins set their own fee in
   /// addition. Zero by default — a co-op that has not chosen one charges none.
-  ticketFeeCents       Int               @default(0)
+  ticketFeeCents           Int               @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

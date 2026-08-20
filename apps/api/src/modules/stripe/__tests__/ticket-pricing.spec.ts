@@ -16,11 +16,13 @@ import {
 describe('ticket pricing', () => {
   describe('what MaybeOS takes', () => {
     it('is a flat fee per transaction, by plan', () => {
-      expect(PLATFORM_FEE_CENTS).toEqual({ FREE: 55, PLUS: 30, UNLIMITED: 10 });
+      // Charley's live pricing table, 2026-08-21. FREE went 55 → 100 and the
+      // $100 initiation fee was removed.
+      expect(PLATFORM_FEE_CENTS).toEqual({ FREE: 100, PLUS: 30, UNLIMITED: 10 });
     });
 
     it.each([
-      ['FREE', 55],
+      ['FREE', 100],
       ['PLUS', 30],
       ['UNLIMITED', 10],
     ] as const)('charges %s plan %d cents whatever the ticket costs', (plan, fee) => {
@@ -37,7 +39,7 @@ describe('ticket pricing', () => {
       const b = priceTicket({ ticketCents: 1000, plan: 'FREE' });
 
       expect(b.ticketCents).toBe(1000);
-      expect(b.totalCents).toBe(1055);
+      expect(b.totalCents).toBe(1100);
     });
 
     it('adds the co-op\'s own fee as well', () => {
@@ -52,7 +54,7 @@ describe('ticket pricing', () => {
       // fee is not MaybeOS's money; sweeping it up here would take it.
       const b = priceTicket({ ticketCents: 1000, plan: 'FREE', orgFeeCents: 200 });
 
-      expect(b.applicationFeeCents).toBe(55);
+      expect(b.applicationFeeCents).toBe(100);
       expect(b.applicationFeeCents).not.toBe(b.platformFeeCents + b.orgFeeCents);
     });
 
@@ -97,7 +99,7 @@ describe('ticket pricing', () => {
     it('names both fees', () => {
       const b = priceTicket({ ticketCents: 1000, plan: 'FREE', orgFeeCents: 200 });
 
-      expect(describeFees(b)).toBe('+ $2.55 in fees ($0.55 MaybeOS, $2.00 venue)');
+      expect(describeFees(b)).toBe('+ $3.00 in fees ($1.00 MaybeOS, $2.00 venue)');
     });
 
     it('omits the co-op fee when there is none', () => {
