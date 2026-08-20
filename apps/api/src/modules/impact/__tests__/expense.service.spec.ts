@@ -24,6 +24,9 @@ describe('ExpenseService', () => {
 
   beforeEach(async () => {
     prisma = {
+      // Titles for the spending summary (IMP-21) — a uuid tells an organiser
+      // nothing about which goal their money served.
+      goal: { findMany: jest.fn().mockResolvedValue([]) },
       expense: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue({ id: 'e-1', orgId: 'org-1' }),
@@ -64,7 +67,7 @@ describe('ExpenseService', () => {
             { key: 'belonging', total: 5000, count: 1 },
             { key: null, total: 2500, count: 1 },
           ],
-          'goalKey',
+          'goalId',
         ),
         7500,
         2,
@@ -91,7 +94,7 @@ describe('ExpenseService', () => {
     it('is 1 when every expense names a goal', async () => {
       withSpend(
         grouped([{ key: 'Programs', total: 4000, count: 1 }], 'category'),
-        grouped([{ key: 'belonging', total: 4000, count: 1 }], 'goalKey'),
+        grouped([{ key: 'belonging', total: 4000, count: 1 }], 'goalId'),
         4000,
         1,
       );
@@ -102,7 +105,7 @@ describe('ExpenseService', () => {
     it('is 0 when none does', async () => {
       withSpend(
         grouped([{ key: 'Admin', total: 4000, count: 1 }], 'category'),
-        grouped([{ key: null, total: 4000, count: 1 }], 'goalKey'),
+        grouped([{ key: null, total: 4000, count: 1 }], 'goalId'),
         4000,
         1,
       );
@@ -113,7 +116,7 @@ describe('ExpenseService', () => {
     it('reports the row count the figures rest on (G5)', async () => {
       withSpend(
         grouped([{ key: 'Programs', total: 100, count: 3 }], 'category'),
-        grouped([{ key: null, total: 100, count: 3 }], 'goalKey'),
+        grouped([{ key: null, total: 100, count: 3 }], 'goalId'),
         100,
         3,
       );
@@ -150,16 +153,17 @@ describe('ExpenseService', () => {
 
   describe('recording', () => {
     it('keeps an empty goal as null rather than an empty string', async () => {
-      // An empty string would group as its own goal and quietly split the
-      // unattributed bucket in two.
+      // An empty goal would group as its own bucket and quietly split the
+      // unattributed spend in two. Now a real foreign key (IMP-21), so the
+      // absent case is an omitted id rather than a blank string.
       const created = await service.create('org-1', 'user-1', {
         amountCents: 2500,
         incurredOn: '2026-08-01',
         category: '  Programs  ',
-        goalKey: '   ',
+        goalId: undefined,
       });
 
-      expect(created.goalKey).toBeNull();
+      expect(created.goalId).toBeNull();
       expect(created.category).toBe('Programs');
     });
 

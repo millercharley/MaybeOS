@@ -1056,4 +1056,62 @@ export class ImpactService {
       community: signals,
     };
   }
+
+  /**
+   * The same figures, arranged under what the co-op said it was trying to do
+   * (IMP-21).
+   *
+   * This is what the spine is *for*. `getSignals` can report that belonging
+   * averages 3.8; only a goal can say that the co-op set out to make people
+   * feel they belong here, and that this is how that is going. A figure with
+   * no stated intention behind it is a statistic; the same figure under a
+   * goal is a finding.
+   *
+   * Categories not claimed by any goal are still returned, separately. They
+   * are being collected, so hiding them would mean a co-op could not see data
+   * it holds — and an unclaimed category is often a goal somebody forgot to
+   * write down rather than noise.
+   */
+  async getSignalsByGoal(orgId: string) {
+    const signals = await this.getSignals(orgId);
+
+    const goals = await this.prisma.goal.findMany({
+      where: { orgId, archivedAt: null },
+      orderBy: { sortOrder: 'asc' },
+      include: { indicators: { orderBy: { createdAt: 'asc' } } },
+    });
+
+    const byCategory = new Map(signals.categories.map((c) => [c.category, c]));
+    const claimed = new Set<string>();
+
+    const withGoals = goals.map((goal) => {
+      const measures = goal.indicators.map((indicator) => {
+        claimed.add(indicator.category);
+        return {
+          indicatorId: indicator.id,
+          label: indicator.label,
+          category: indicator.category,
+          // Null when nothing has been answered in this category yet, which
+          // is different from a suppressed figure and reads differently: one
+          // is "not asked yet", the other is "too few to show".
+          signal: byCategory.get(indicator.category) ?? null,
+        };
+      });
+
+      return {
+        goalId: goal.id,
+        title: goal.title,
+        description: goal.description,
+        measures,
+        /** A goal nothing measures, said plainly rather than shown as zero. */
+        unmeasured: measures.length === 0,
+      };
+    });
+
+    return {
+      ...signals,
+      goals: withGoals,
+      unclaimed: signals.categories.filter((c) => !claimed.has(c.category)),
+    };
+  }
 }

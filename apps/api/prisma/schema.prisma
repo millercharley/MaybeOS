@@ -87,8 +87,10 @@ model Organization {
   auditLogs      AuditLog[]
   emailTemplates EmailTemplate[]
 
-  expenses    Expense[]
-  attachments Attachment[]
+  expenses        Expense[]
+  attachments     Attachment[]
+  goals           Goal[]
+  measurementPlan MeasurementPlan?
 
   @@map("organizations")
 }
@@ -163,7 +165,8 @@ model User {
   hostedEvents     Event[]          @relation("HostedEvents")
   tickets          Ticket[]
 
-  expensesCreated Expense[]    @relation("ExpenseCreator")
+  expensesCreated Expense[]         @relation("ExpenseCreator")
+  plansApproved   MeasurementPlan[] @relation("PlanApprover")
   attachments     Attachment[]
 
   @@map("users")
@@ -928,6 +931,86 @@ model SurveyResponse {
 /// If a field here ever needs a second table to make sense, that is the signal
 /// this has outgrown its decision and should be reconsidered rather than
 /// extended.
+/// A thing the co-op is trying to do, in its own words (IMP-21, PRD §5).
+///
+/// Three to five, written plainly. The mission they serve lives on
+/// `Organization.mission`; this is what the co-op said it would do about it.
+///
+/// Everything MaybeOS collected before this existed had nothing to attach to:
+/// it could report a belonging score and never say why that co-op cared about
+/// belonging. A goal is what turns a figure into a finding.
+model Goal {
+  id          String    @id @default(uuid())
+  orgId       String
+  title       String
+  description String?
+  sortOrder   Int       @default(0)
+  /// Archived rather than deleted: a goal a co-op pursued for a year is part
+  /// of what its report says, and removing it would rewrite the past.
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  indicators Indicator[]
+  expenses   Expense[]
+
+  @@index([orgId])
+  @@map("goals")
+}
+
+/// What measures a goal.
+///
+/// `category` is the same string the questions and the aggregation already
+/// use, which is the point: a goal inherits figures that are already being
+/// collected rather than needing a parallel collection of its own. This is
+/// what the survey-builder non-goal (D-021) buys — measurement is chosen from
+/// what exists, not invented per co-op.
+model Indicator {
+  id        String   @id @default(uuid())
+  goalId    String
+  category  String
+  label     String
+  createdAt DateTime @default(now())
+
+  goal Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  /// The same category measuring one goal twice would double-count it in
+  /// every figure drawn from that goal.
+  @@unique([goalId, category])
+  @@map("indicators")
+}
+
+enum MeasurementPlanStatus {
+  DRAFT
+  APPROVED
+}
+
+/// Whether the goals and indicators as they now stand have been agreed to.
+///
+/// Separate from the goals themselves because approval is a fact about a
+/// moment, not about a row: editing a goal after approval returns the plan to
+/// draft, since **a plan that changes after it was approved is not an
+/// approved plan**. The PRD has an admin approve a measurement plan before
+/// anything is asked against it, and an approval that silently survives its
+/// own contents changing would be a signature on a blank page.
+model MeasurementPlan {
+  id           String                @id @default(uuid())
+  orgId        String                @unique
+  status       MeasurementPlanStatus @default(DRAFT)
+  approvedAt   DateTime?
+  /// Nulled rather than cascaded: an organiser leaving must not erase the
+  /// record of who approved what the co-op measures.
+  approvedById String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  approvedBy User?        @relation("PlanApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@map("measurement_plans")
+}
+
 model Expense {
   id          String   @id @default(uuid())
   orgId       String
@@ -940,12 +1023,11 @@ model Expense {
   /// Free text rather than an enum: a co-op naming its own categories is the
   /// point, and an enum would need a migration every time one is added.
   category    String
-  /// Which goal this spend served, if any. A plain key rather than a relation
-  /// because goals are not modelled yet (D-021 is not built); when they are,
-  /// this becomes the foreign key. Null is normal and honest — not all spend
-  /// serves a stated goal, and pretending otherwise is what makes an
-  /// alignment figure meaningless.
-  goalKey     String?
+  /// Which goal this spend served, if any — now the foreign key its own
+  /// comment promised it would become once goals were modelled (IMP-21).
+  /// Null stays normal and honest: not all spend serves a stated goal, and
+  /// pretending otherwise is what makes an alignment figure meaningless.
+  goalId      String?
   description String?
   /// Who recorded it. Kept for the audit trail, nulled rather than cascading
   /// so an admin leaving does not delete the co-op's financial history.
@@ -955,9 +1037,11 @@ model Expense {
 
   org     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   creator User?        @relation("ExpenseCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  /// SetNull: deleting a goal must not delete the record of money spent.
+  goal    Goal?        @relation(fields: [goalId], references: [id], onDelete: SetNull)
 
   @@index([orgId, incurredOn])
-  @@index([orgId, goalKey])
+  @@index([orgId, goalId])
   @@map("expenses")
 }
 

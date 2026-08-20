@@ -1,11 +1,4 @@
-import {
-  IsInt,
-  IsOptional,
-  IsPositive,
-  IsString,
-  IsDateString,
-  MaxLength,
-} from 'class-validator';
+import { IsInt, IsOptional, IsPositive, IsString, IsDateString, MaxLength, IsUUID } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
@@ -32,9 +25,8 @@ export class CreateExpenseDto {
       'The goal this spend served, if any. Null is normal and honest — not all spend serves a stated goal.',
   })
   @IsOptional()
-  @IsString()
-  @MaxLength(60)
-  goalKey?: string;
+  @IsUUID()
+  goalId?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -63,9 +55,8 @@ export class UpdateExpenseDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsString()
-  @MaxLength(60)
-  goalKey?: string | null;
+  @IsUUID()
+  goalId?: string | null;
 
   @ApiPropertyOptional()
   @IsOptional()

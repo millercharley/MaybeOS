@@ -7,7 +7,7 @@ export interface ExpenseSummary {
   /** Spend by the co-op's own category names. */
   byCategory: { category: string; totalCents: number; count: number }[];
   /** Spend attributed to a goal, and the part attributed to none. */
-  byGoal: { goalKey: string | null; totalCents: number; count: number }[];
+  byGoal: { goalId: string | null; goalTitle: string | null; totalCents: number; count: number }[];
   /**
    * The share of spend that serves a stated goal, 0–1, or null when nothing
    * was spent. This is the PRD's mission-alignment-of-spend, and it is only
@@ -52,7 +52,7 @@ export class ExpenseService {
       amountCents: number;
       incurredOn: string;
       category: string;
-      goalKey?: string;
+      goalId?: string;
       description?: string;
     },
   ) {
@@ -63,7 +63,7 @@ export class ExpenseService {
         amountCents: data.amountCents,
         incurredOn: new Date(data.incurredOn),
         category: data.category.trim(),
-        goalKey: data.goalKey?.trim() || null,
+        goalId: data.goalId || null,
         description: data.description?.trim() || null,
       },
     });
@@ -76,7 +76,7 @@ export class ExpenseService {
       amountCents: number;
       incurredOn: string;
       category: string;
-      goalKey: string | null;
+      goalId?: string | null;
       description: string | null;
     }>,
   ) {
@@ -92,7 +92,7 @@ export class ExpenseService {
         ...(data.amountCents !== undefined && { amountCents: data.amountCents }),
         ...(data.incurredOn !== undefined && { incurredOn: new Date(data.incurredOn) }),
         ...(data.category !== undefined && { category: data.category.trim() }),
-        ...(data.goalKey !== undefined && { goalKey: data.goalKey?.trim() || null }),
+        ...(data.goalId !== undefined && { goalId: data.goalId || null }),
         ...(data.description !== undefined && {
           description: data.description?.trim() || null,
         }),
@@ -128,7 +128,7 @@ export class ExpenseService {
         _count: { _all: true },
       }),
       this.prisma.expense.groupBy({
-        by: ['goalKey'],
+        by: ['goalId'],
         where,
         _sum: { amountCents: true },
         _count: { _all: true },
@@ -140,9 +140,17 @@ export class ExpenseService {
       }),
     ]);
 
+    // Titles, because a uuid in a spending summary tells an organiser
+    // nothing about which goal their money served.
+    const goals = await this.prisma.goal.findMany({
+      where: { orgId },
+      select: { id: true, title: true },
+    });
+    const goalTitle = new Map(goals.map((g) => [g.id, g.title]));
+
     const totalCents = totals._sum.amountCents ?? 0;
     const attributedCents = byGoal
-      .filter((g) => g.goalKey !== null)
+      .filter((g) => g.goalId !== null)
       .reduce((n, g) => n + (g._sum.amountCents ?? 0), 0);
 
     return {
@@ -156,7 +164,8 @@ export class ExpenseService {
         .sort((a, b) => b.totalCents - a.totalCents),
       byGoal: byGoal
         .map((g) => ({
-          goalKey: g.goalKey,
+          goalId: g.goalId,
+          goalTitle: g.goalId ? (goalTitle.get(g.goalId) ?? null) : null,
           totalCents: g._sum.amountCents ?? 0,
           count: g._count._all,
         }))

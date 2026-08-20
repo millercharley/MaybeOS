@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Activity, Check, Loader2, Pause } from 'lucide-react';
+import { Activity, Check, Loader2, Pause, Target } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
-import { api, MeasurementStatus, Signals } from '@/lib/api';
-import { SignalsView } from '@/components/impact/signals';
+import Link from 'next/link';
+import { api, MeasurementStatus, SignalsByGoal } from '@/lib/api';
+import { SignalsView, CATEGORY_LABEL } from '@/components/impact/signals';
 
 const TOUCHPOINT_LABEL: Record<string, string> = {
   TICKET_PURCHASE: 'After buying a ticket',
@@ -32,7 +33,7 @@ export default function AdminImpactPage() {
   const orgId = useAuthStore((s) => s.currentOrgId);
 
   const [status, setStatus] = useState<MeasurementStatus | null>(null);
-  const [signals, setSignals] = useState<Signals | null>(null);
+  const [signals, setSignals] = useState<SignalsByGoal | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -42,7 +43,7 @@ export default function AdminImpactPage() {
     try {
       const [measurement, learned] = await Promise.all([
         api.impact.measurement(orgId, token),
-        api.impact.signals(orgId, token),
+        api.impact.signalsByGoal(orgId, token),
       ]);
       setStatus(measurement);
       setSignals(learned);
@@ -140,6 +141,74 @@ export default function AdminImpactPage() {
             Read these first — they are what your members will be shown. Nothing is asked until
             you start, and pausing keeps everything already collected.
           </p>
+        )}
+      </section>
+
+      {/* The plan first, because a figure with no stated intention behind it
+          is a statistic — the same figure under a goal is a finding. */}
+      <section className="rounded-xl border border-gray-200 bg-white p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+              <Target className="h-4 w-4 text-gray-400" />
+              What you&apos;re trying to do
+            </h2>
+            <p className="mt-1 text-sm text-gray-500">
+              {signals && signals.goals.length > 0
+                ? `${signals.goals.length} ${signals.goals.length === 1 ? 'goal' : 'goals'}, and what measures each.`
+                : 'No goals yet, so nothing collected can be connected to what your co-op is for.'}
+            </p>
+          </div>
+          <Link href="impact/plan" className="btn-secondary text-sm">
+            {signals && signals.goals.length > 0 ? 'Edit the plan' : 'Write your plan'}
+          </Link>
+        </div>
+
+        {signals && signals.goals.length > 0 && (
+          <div className="mt-4 space-y-4 border-t border-gray-100 pt-4">
+            {signals.goals.map((goal) => (
+              <div key={goal.goalId}>
+                <h3 className="text-sm font-medium text-gray-900">{goal.title}</h3>
+                {goal.unmeasured ? (
+                  <p className="mt-0.5 text-sm text-amber-700">
+                    Nothing measures this yet, so it will never produce a figure.
+                  </p>
+                ) : (
+                  <ul className="mt-1 space-y-1">
+                    {goal.measures.map((m) => (
+                      <li key={m.indicatorId} className="flex items-baseline justify-between gap-3 text-sm">
+                        <span className="text-gray-600">{m.label}</span>
+                        <span className="tabular-nums text-gray-900">
+                          {m.signal?.average != null ? (
+                            <>
+                              {m.signal.average.toFixed(1)}
+                              <span className="text-gray-400"> / 5</span>
+                            </>
+                          ) : m.signal ? (
+                            // Too few people, which is not the same as nobody
+                            // having been asked — and reads differently.
+                            <span className="text-gray-400">
+                              {m.signal.respondents} of {signals.suppressionThreshold} answered
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">not asked yet</span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+
+            {signals.unclaimed.length > 0 && (
+              <p className="border-t border-gray-100 pt-3 text-xs text-gray-500">
+                {/* Often a goal somebody forgot to write down rather than noise. */}
+                Also being collected, under no goal:{' '}
+                {signals.unclaimed.map((c) => CATEGORY_LABEL[c.category] ?? c.category).join(', ')}.
+              </p>
+            )}
+          </div>
         )}
       </section>
 
