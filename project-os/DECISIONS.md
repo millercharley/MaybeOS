@@ -24,6 +24,18 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-030 — MaybeOS's per-transaction fee, repriced; the initiation fee removed
+
+- **Date:** 2026-08-20
+- **Status:** Active
+- **Area:** Pricing / Payments
+- **Decision:** MaybeOS's flat per-transaction fee becomes **FREE $1.00, PLUS $0.30, UNLIMITED $0.10** (was $0.55/$0.30/$0.10). The **$100 Plus initiation fee is removed**. Subscription pricing moves to Stripe's hosted pricing table as the single published source: Free $0; Plus $0.50/member/month or $3.65/member/year; Unlimited $349/month or $299/month billed yearly. Fees remain **flat and added on top** of the co-op's price, never a percentage and never deducted. The fee table lives in exactly two places — `ticket-pricing.ts` (authority) and `lib/fees.ts` (pre-checkout quote) — with a test asserting they agree.
+- **Alternatives rejected:** **A percentage of the door**, which the landing page explicitly promises against — a co-op selling $40 tickets would pay eight times what one selling $5 tickets pays for identical work. **Leaving FREE at $0.55** — rejected because the two halves of the pricing must work in opposite directions for "upfront cost should never block a community" to be true without MaybeOS earning nothing from the co-ops that use it most. **Keeping the initiation fee** — it is the one charge that lands before a co-op has seen the product work, which is the worst possible moment to ask.
+- **Rationale:** The free plan has to be genuinely free to start and has to pay for itself in use; a higher per-transaction fee is the only lever that does both, and it is the one a co-op can see and predict. Flat rather than percentage is the promise on the landing page and the reason a co-op can price its own door without MaybeOS taking a view. The accepted cost is that a co-op selling many cheap tickets pays proportionally more on Free — which is exactly the case where moving to Plus saves them money, and the pricing table makes that arithmetic visible.
+- **Supersedes:** none. **Amends D-013**, whose recorded numbers (`FREE $0.55`, `PLUS $100 + per-user`) no longer describe the product. Every other part of D-013 stands: direct charges on the co-op's connected account, MaybeOS's cut as an `application_fee_amount`, and the co-op's own fee remaining the co-op's money.
+
+---
+
 ### D-029 — Member avatars are copied into MaybeOS, and served privately
 
 - **Date:** 2026-08-20
