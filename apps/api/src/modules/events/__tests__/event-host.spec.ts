@@ -1,7 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { EventsService } from '../events.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { ConnectService } from '../../stripe/connect.service';
+import { EmailService } from '../../email/email.service';
 
 /**
  * An event records who runs it (EVT-04).
@@ -57,6 +59,9 @@ describe('EventsService — event host', () => {
               .mockResolvedValue({ attempted: 0, refunded: 0, failed: [] }),
           },
         },
+        // Waitlist promotion emails (EVT-16); these suites send none.
+        { provide: EmailService, useValue: { sendWaitlistPromoted: jest.fn() } },
+        { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },
       ],
     }).compile();
 

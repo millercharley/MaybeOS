@@ -6,7 +6,9 @@ import {
   ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../config/prisma.service';
+import { EmailService } from '../email/email.service';
 import { ContactViewer } from '../../common/access/contact-visibility';
 import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
@@ -62,6 +64,9 @@ export class EventsService {
     private readonly prisma: PrismaService,
     // Cancelling an event has to return anyone's money (D-013 ticketing).
     private readonly connectService: ConnectService,
+    // Somebody moved up off the waitlist has to be told (EVT-16).
+    private readonly emailService: EmailService,
+    private readonly configService: ConfigService,
   ) {}
 
   /* ─── Create ────────────────────────────────────────────────── */
@@ -908,6 +913,12 @@ export class EventsService {
           where: { id: firstWaitlisted.id },
           data: { status: 'CONFIRMED' },
         });
+
+        // Told, not just promoted (EVT-16). Until this existed the row simply
+        // changed and the member found out if they happened to open the page
+        // again — so a co-op freed a seat, gave it to somebody, and had them
+        // not turn up.
+        await this.notifyPromoted(orgId, firstWaitlisted.id);
       }
     }
 
@@ -1173,5 +1184,56 @@ export class EventsService {
     }
 
     return calendar.toString();
+  }
+
+  /**
+   * Tell the member who just moved up off the waitlist.
+   *
+   * Failures are swallowed on purpose, the same way booking emails do it: the
+   * promotion already happened and is correct, and throwing here would fail
+   * the *cancellation* that caused it — leaving the person who cancelled still
+   * holding a place they gave up.
+   */
+  private async notifyPromoted(orgId: string, rsvpId: string): Promise<void> {
+    try {
+      // Resolved through its org, not by bare id (SEC-04) — even here, where
+      // the id came from a query already scoped to the event.
+      const rsvp = await this.prisma.rsvp.findFirst({
+        where: { id: rsvpId, event: { orgId } },
+        select: {
+          user: { select: { email: true, name: true } },
+          event: {
+            select: {
+              title: true,
+              slug: true,
+              startTime: true,
+              timezone: true,
+              org: { select: { name: true, slug: true } },
+            },
+          },
+        },
+      });
+
+      // A guest RSVP has no account and no address on the row.
+      if (!rsvp?.user?.email) return;
+
+      const appUrl = this.configService.get<string>('APP_URL') ?? 'https://maybeos.org';
+
+      await this.emailService.sendWaitlistPromoted(rsvp.user.email, {
+        memberName: rsvp.user.name ?? 'there',
+        orgName: rsvp.event.org.name,
+        eventTitle: rsvp.event.title,
+        // In the event's timezone, not the server's — SPC-08 was this same
+        // bug in booking emails, where a 10am booking arrived as 3pm.
+        when: rsvp.event.startTime.toLocaleString('en-US', {
+          timeZone: rsvp.event.timezone,
+          dateStyle: 'full',
+          timeStyle: 'short',
+        }),
+        eventUrl: `${appUrl}/portal/${rsvp.event.org.slug}/events/${rsvp.event.slug}`,
+      });
+    } catch (err) {
+      this.logger.warn(`Could not send waitlist promotion for ${rsvpId}: ${String(err)}`);
+    }
   }
 }

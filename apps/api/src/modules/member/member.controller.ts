@@ -22,6 +22,7 @@ import { UpdateMyMembershipDto } from './dto/update-my-membership.dto';
 import { MemberService } from './member.service';
 import { CreateTierDto } from './dto/create-tier.dto';
 import { ImportMembersDto, ImportAvatarsDto } from './dto/import-members.dto';
+import { UpdateMemberRoleDto } from './dto/update-role.dto';
 import { UpdateTierDto } from './dto/update-tier.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 
@@ -93,9 +94,9 @@ export class MemberController {
   updateMemberRole(
     @Param('orgId') orgId: string,
     @Param('userId') userId: string,
-    @Body('role') role: string,
+    @Body() dto: UpdateMemberRoleDto,
   ) {
-    return this.memberService.updateMemberRole(orgId, userId, role);
+    return this.memberService.updateMemberRole(orgId, userId, dto.role);
   }
 
   @Delete('members/:userId')

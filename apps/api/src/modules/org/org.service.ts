@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
+import { CreateLocationDto, UpdateLocationDto } from './dto/location.dto';
 import { StorageService } from '../storage/storage.service';
 import { CreateOrgDto } from './dto/create-org.dto';
 import { RESERVED_ORG_SLUGS } from './reserved-slugs';
@@ -197,27 +198,112 @@ export class OrgService {
     };
   }
 
+  /* ─── Locations (ORG-01) ────────────────────────────────────── */
+
   /**
-   * Add a physical location to an organization.
+   * Where the co-op is.
+   *
+   * The model has existed since the foundation with exactly one endpoint
+   * behind it — create — and no caller anywhere in the product, so no co-op
+   * has ever had a location. Rooms and events both carry a nullable
+   * `locationId` that has therefore always been null.
    */
-  async addLocation(
-    orgId: string,
-    dto: { name: string; address?: string; city?: string; state?: string; zip?: string; country?: string; timezone?: string },
-  ) {
+  async listLocations(orgId: string) {
+    const locations = await this.prisma.location.findMany({
+      where: { orgId },
+      orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
+      include: { _count: { select: { rooms: true, events: true } } },
+    });
+
+    return locations.map(({ _count, ...location }) => ({
+      ...location,
+      roomCount: _count.rooms,
+      eventCount: _count.events,
+    }));
+  }
+
+  /** Add a place the co-op actually is. */
+  async addLocation(orgId: string, dto: CreateLocationDto) {
     await this.findById(orgId); // ensure org exists
+
+    // The first one is the default, so a co-op with a single address never
+    // has to think about the concept at all.
+    const existing = await this.prisma.location.count({ where: { orgId } });
 
     return this.prisma.location.create({
       data: {
         orgId,
-        name: dto.name,
-        address: dto.address,
-        city: dto.city,
-        state: dto.state,
-        zip: dto.zip,
-        country: dto.country ?? 'US',
-        timezone: dto.timezone ?? 'America/New_York',
+        name: dto.name.trim(),
+        address: dto.address?.trim() || null,
+        city: dto.city?.trim() || null,
+        state: dto.state?.trim() || null,
+        zip: dto.zip?.trim() || null,
+        country: dto.country?.trim() || 'US',
+        timezone: dto.timezone?.trim() || 'America/New_York',
+        isDefault: existing === 0,
       },
     });
+  }
+
+  async updateLocation(orgId: string, locationId: string, dto: UpdateLocationDto) {
+    const location = await this.findLocation(orgId, locationId);
+
+    return this.prisma.location.update({
+      where: { id: location.id },
+      data: {
+        ...(dto.name !== undefined && { name: dto.name.trim() }),
+        ...(dto.address !== undefined && { address: dto.address.trim() || null }),
+        ...(dto.city !== undefined && { city: dto.city.trim() || null }),
+        ...(dto.state !== undefined && { state: dto.state.trim() || null }),
+        ...(dto.zip !== undefined && { zip: dto.zip.trim() || null }),
+        ...(dto.country !== undefined && { country: dto.country.trim() || 'US' }),
+        ...(dto.timezone !== undefined && { timezone: dto.timezone.trim() || 'America/New_York' }),
+      },
+    });
+  }
+
+  /**
+   * Remove a location, but not one anything still points at.
+   *
+   * The foreign keys are `SET NULL`, so deleting a location in use would
+   * succeed *silently* and blank the venue on every event and room that named
+   * it — including past events, whose record of where they happened would be
+   * quietly rewritten. Refused with a count instead, so an organiser moves
+   * them deliberately.
+   */
+  async removeLocation(orgId: string, locationId: string) {
+    const location = await this.findLocation(orgId, locationId);
+
+    const [rooms, events] = await Promise.all([
+      this.prisma.room.count({ where: { locationId: location.id } }),
+      this.prisma.event.count({ where: { locationId: location.id } }),
+    ]);
+
+    if (rooms > 0 || events > 0) {
+      const parts = [
+        rooms > 0 ? `${rooms} ${rooms === 1 ? 'room' : 'rooms'}` : null,
+        events > 0 ? `${events} ${events === 1 ? 'event' : 'events'}` : null,
+      ].filter(Boolean);
+
+      const one = rooms + events === 1;
+      throw new ConflictException(
+        `${parts.join(' and ')} still ${one ? 'names' : 'name'} this location. ` +
+          `Move ${one ? 'it' : 'them'} first — deleting it would blank where ${one ? 'it' : 'they'} happened.`,
+      );
+    }
+
+    await this.prisma.location.delete({ where: { id: location.id } });
+    return { removed: true };
+  }
+
+  /** Resolve a location through its org — never by bare id (SEC-04). */
+  private async findLocation(orgId: string, locationId: string) {
+    const location = await this.prisma.location.findFirst({
+      where: { id: locationId, orgId },
+      select: { id: true },
+    });
+    if (!location) throw new NotFoundException('Location not found');
+    return location;
   }
 
   /**
