@@ -99,6 +99,33 @@ export default function PlatformPage() {
 
       {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</p>}
 
+      {/* Loudest thing on the page when it is wrong, because everywhere else
+          it is silent by design: attachments stop appearing, avatars never
+          resolve, and the first report comes from a member (OPS-29). */}
+      {summary?.storage && !summary.storage.reachable && (
+        <div className="rounded-xl border border-red-300 bg-red-50 p-4">
+          <p className="flex items-center gap-2 font-medium text-red-900">
+            <AlertTriangle className="h-4 w-4" />
+            File storage is rejecting MaybeOS
+          </p>
+          <p className="mt-1 text-sm text-red-800">
+            {summary.storage.configured
+              ? `Supabase Storage answered ${summary.storage.httpStatus ?? 'an error'}. No logo, attachment or avatar can be stored on any co-op — and every one of those paths fails silently, so nobody will report it.`
+              : 'No storage credentials are configured on this deployment.'}
+          </p>
+          <p className="mt-1 text-xs text-red-700">
+            Fix: set <code>SUPABASE_SERVICE_ROLE_KEY</code> in Netlify to a key issued by this
+            deployment&apos;s own Supabase project, then redeploy. This banner clears itself.
+          </p>
+        </div>
+      )}
+
+      {summary?.storage?.reachable && (
+        <p className="text-xs text-gray-400">
+          Storage reachable · {(summary.storage.buckets ?? []).join(', ')}
+        </p>
+      )}
+
       {summary && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           {[

@@ -396,7 +396,14 @@ export class StorageService {
       );
       // The bucket enforces its own limits too, so a rejection here is a real
       // failure rather than something to paper over with a partial success.
-      throw new ServiceUnavailableException('Could not store the logo. Try again.');
+      // Not "try again": a rejected key fails identically every time, and
+      // telling a co-op to retry sends them round a loop that cannot end
+      // (OPS-29). The status separates the two cases for whoever reads it.
+      throw new ServiceUnavailableException(
+        response.status === 400 || response.status === 401 || response.status === 403
+          ? 'File storage is not accepting uploads right now. This is a MaybeOS problem, not yours — we have been notified.'
+          : 'Could not store the logo. Try again.',
+      );
     }
 
     return `${this.url}/storage/v1/object/public/${LOGO_BUCKET}/${path}`;
