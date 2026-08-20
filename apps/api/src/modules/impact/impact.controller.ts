@@ -206,6 +206,37 @@ export class ImpactController {
    * Scoped to the caller's own membership — a member can only ever pull their
    * own question, and asking on somebody else's behalf is not a thing.
    */
+  // ─── Signals (IMP-20) ───────────────────────────────────────
+
+  /**
+   * What the co-op learned. Organisers only, and suppressed either way.
+   */
+  @Get('impact/signals')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Category scores and collection windows, small cells suppressed' })
+  signals(@Param('orgId') orgId: string) {
+    return this.impactService.getSignals(orgId);
+  }
+
+  /**
+   * What this member gave, and what their co-op learned from everyone.
+   *
+   * Scoped to the caller — there is no userId in the path, so this route
+   * cannot be pointed at somebody else's answers however it is called. That
+   * is the same shape the demographics routes use and for the same reason:
+   * §10 says individual responses are never exposed, and an admin reading one
+   * member's answers through a member-facing route would be exactly that.
+   */
+  @Get('me/impact')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'A member’s own answers, and the co-op’s totals' })
+  myImpact(@Param('orgId') orgId: string, @CurrentUser() user: RequestUser) {
+    return this.impactService.myImpact(orgId, user.userId);
+  }
+
   // ─── Measurement (IMP-18) ───────────────────────────────────
 
   /**

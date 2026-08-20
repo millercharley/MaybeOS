@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Activity, Check, Loader2, Pause } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
-import { api, MeasurementStatus } from '@/lib/api';
+import { api, MeasurementStatus, Signals } from '@/lib/api';
+import { SignalsView } from '@/components/impact/signals';
 
 const TOUCHPOINT_LABEL: Record<string, string> = {
   TICKET_PURCHASE: 'After buying a ticket',
@@ -31,6 +32,7 @@ export default function AdminImpactPage() {
   const orgId = useAuthStore((s) => s.currentOrgId);
 
   const [status, setStatus] = useState<MeasurementStatus | null>(null);
+  const [signals, setSignals] = useState<Signals | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -38,7 +40,12 @@ export default function AdminImpactPage() {
   const load = useCallback(async () => {
     if (!token || !orgId) return;
     try {
-      setStatus(await api.impact.measurement(orgId, token));
+      const [measurement, learned] = await Promise.all([
+        api.impact.measurement(orgId, token),
+        api.impact.signals(orgId, token),
+      ]);
+      setStatus(measurement);
+      setSignals(learned);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not read the measurement plan');
     } finally {
@@ -136,7 +143,24 @@ export default function AdminImpactPage() {
         )}
       </section>
 
+      {/* What came back, above what is being asked: an organiser opening this
+          page once collection is running wants the answers, not the
+          questionnaire. Before there is anything, the questions are the
+          page. */}
+      {signals && signals.categories.length > 0 && (
+        <section className="rounded-xl border border-gray-200 bg-white p-5">
+          <h2 className="mb-4 text-sm font-semibold text-gray-900">What your members told you</h2>
+          <SignalsView signals={signals} />
+          <p className="mt-4 border-t border-gray-100 pt-4 text-xs text-gray-500">
+            Totals only. Individual answers are never shown to organisers, including yours.
+          </p>
+        </section>
+      )}
+
       <section className="space-y-4">
+        <h2 className="text-sm font-semibold text-gray-900">
+          {signals && signals.categories.length > 0 ? 'What is being asked' : 'The questions'}
+        </h2>
         {byTouchpoint.map(({ touchpoint, questions }) => (
           <div key={touchpoint} className="rounded-xl border border-gray-200 bg-white p-5">
             <h2 className="text-sm font-semibold text-gray-900">{TOUCHPOINT_LABEL[touchpoint]}</h2>

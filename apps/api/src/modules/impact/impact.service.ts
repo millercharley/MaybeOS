@@ -883,4 +883,177 @@ export class ImpactService {
 
     return { collecting: false };
   }
+
+  // ─── Signals (IMP-20) ───────────────────────────────────────
+
+  /**
+   * What a co-op learned, per category and per collection window.
+   *
+   * Three things this does that `getDashboard` does not, each of which is the
+   * difference between a number and a number worth showing:
+   *
+   * **It suppresses small cells.** `getDashboard` averages a category however
+   * few answers it has, so a category answered by one person reports that
+   * person's answer as the co-op's score. §10 says individual responses are
+   * never exposed to admins, and an average of one *is* an individual
+   * response — a rule the demographics endpoint already obeys and this one
+   * did not.
+   *
+   * **It groups by window.** An average across every window is a line drawn
+   * through whatever happened to be collected that month; the same figure per
+   * window is a trend. G5 requires every figure to trace to a response count
+   * and a window, and one that spans all of them traces to neither.
+   *
+   * **It carries direction.** Belonging and loneliness are both 1–5 and point
+   * opposite ways (IMP-18), so a reader shown "4.2" needs to be told whether
+   * that is good news.
+   */
+  async getSignals(orgId: string) {
+    const windows = await this.prisma.collectionWindow.findMany({
+      where: { survey: { orgId } },
+      orderBy: { opensAt: 'asc' },
+      select: {
+        id: true,
+        label: true,
+        opensAt: true,
+        closesAt: true,
+        _count: { select: { responses: true } },
+      },
+    });
+
+    const members = await this.prisma.userOrg.count({ where: { orgId } });
+
+    // Direction lives on the question, so it has to come from the questions
+    // rather than from the answers. Categories are consistent within the
+    // instrument, so the first question in a category settles it.
+    const questions = await this.prisma.surveyQuestion.findMany({
+      where: { survey: { orgId }, category: { not: null } },
+      select: { category: true, higherIsBetter: true },
+    });
+    const direction = new Map<string, boolean>();
+    for (const q of questions) {
+      if (q.category && !direction.has(q.category)) direction.set(q.category, q.higherIsBetter);
+    }
+
+    const grouped = await this.prisma.surveyAnswer.groupBy({
+      by: ['category'],
+      where: {
+        category: { not: null },
+        numericValue: { not: null },
+        response: { survey: { orgId } },
+      },
+      _avg: { numericValue: true },
+      // Distinct respondents is the number that decides suppression, and a
+      // plain answer count is not it: one member answering the same category
+      // at four touchpoints is one person, not four.
+      _count: { numericValue: true },
+    });
+
+    const respondents = await this.prisma.surveyAnswer.findMany({
+      where: {
+        category: { not: null },
+        numericValue: { not: null },
+        response: { survey: { orgId } },
+      },
+      select: { category: true, response: { select: { userId: true } } },
+    });
+
+    const peoplePerCategory = new Map<string, Set<string>>();
+    for (const answer of respondents) {
+      if (!answer.category) continue;
+      const set = peoplePerCategory.get(answer.category) ?? new Set<string>();
+      // Anonymous answers count as distinct people — there is no identity to
+      // collapse them by, which is the same reasoning the response unique
+      // index uses.
+      set.add(answer.response.userId ?? `anon:${set.size}`);
+      peoplePerCategory.set(answer.category, set);
+    }
+
+    const categories = grouped
+      .map((g) => {
+        const category = g.category as string;
+        const people = peoplePerCategory.get(category)?.size ?? 0;
+        const reportable = people >= SUPPRESSION_THRESHOLD;
+
+        return {
+          category,
+          /** Null when too few people answered to report without exposing one. */
+          average:
+            reportable && g._avg.numericValue !== null
+              ? Math.round(g._avg.numericValue * 100) / 100
+              : null,
+          answerCount: g._count.numericValue,
+          respondents: people,
+          reportable,
+          higherIsBetter: direction.get(category) ?? true,
+        };
+      })
+      .sort((a, b) => {
+        const ai = HEADLINE_CATEGORIES.indexOf(a.category);
+        const bi = HEADLINE_CATEGORIES.indexOf(b.category);
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      });
+
+    return {
+      suppressionThreshold: SUPPRESSION_THRESHOLD,
+      members,
+      categories,
+      windows: windows.map((w) => ({
+        windowId: w.id,
+        label: w.label,
+        opensAt: w.opensAt,
+        closesAt: w.closesAt,
+        responses: w._count.responses,
+        /** Of the co-op, so a rate means something without a second lookup. */
+        responseRate: members > 0 ? Math.round((w._count.responses / members) * 100) : 0,
+      })),
+    };
+  }
+
+  /**
+   * What one member gave, and what their co-op learned from everyone.
+   *
+   * The half of ImpactOS that did not exist. A member answers a question a
+   * month for a year and is told nothing back, which is how response rate
+   * dies — and D-021 calls response rate the binding constraint on the whole
+   * product, so this is load-bearing rather than courteous.
+   *
+   * Their own answers are theirs to see in full; the co-op's figures obey the
+   * same suppression an organiser sees, because a member is not entitled to
+   * read a small cell either.
+   */
+  async myImpact(orgId: string, userId: string) {
+    const answers = await this.prisma.surveyAnswer.findMany({
+      where: { response: { userId, survey: { orgId } } },
+      orderBy: { response: { createdAt: 'desc' } },
+      select: {
+        numericValue: true,
+        textValue: true,
+        choiceValue: true,
+        category: true,
+        question: {
+          select: { text: true, type: true, anchorLow: true, anchorHigh: true },
+        },
+        response: { select: { createdAt: true, window: { select: { label: true } } } },
+      },
+    });
+
+    const signals = await this.getSignals(orgId);
+
+    return {
+      answers: answers.map((a) => ({
+        question: a.question.text,
+        type: a.question.type,
+        anchorLow: a.question.anchorLow,
+        anchorHigh: a.question.anchorHigh,
+        category: a.category,
+        value: a.numericValue ?? a.choiceValue ?? a.textValue,
+        window: a.response.window.label,
+        answeredAt: a.response.createdAt,
+      })),
+      // Exactly what an organiser sees, suppression included. There is no
+      // second, looser view for members.
+      community: signals,
+    };
+  }
 }
