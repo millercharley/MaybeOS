@@ -3,6 +3,7 @@ import { MaybeOsPlan } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { AuditService, PLATFORM_ACTIONS } from './audit.service';
 import { PLATFORM_FEE_CENTS } from '../stripe/ticket-pricing';
+import { StorageHealthIndicator } from '../health/storage.health';
 
 /**
  * The co-ops running on MaybeOS, for whoever runs MaybeOS (PLT-01).
@@ -23,6 +24,7 @@ export class PlatformService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly storage: StorageHealthIndicator,
   ) {}
 
   /**
@@ -232,10 +234,22 @@ export class PlatformService {
       _count: { _all: true },
     });
 
+    // Storage on the console, because a rejected key is MaybeOS's problem and
+    // not any co-op's — and because it fails *silently* everywhere else by
+    // design (OPS-29): attachments stop appearing, avatars never resolve, and
+    // the first report would come from a member.
+    const storage = await this.storage.isHealthy('storage');
+
     return {
       orgs,
       suspended,
       billingWaived: waived,
+      storage: storage.storage as unknown as {
+        configured: boolean;
+        reachable: boolean;
+        httpStatus?: number;
+        buckets?: string[];
+      },
       /** Co-ops that can actually take money — the rest cannot sell a ticket. */
       canTakePayments: chargeable,
       memberships: members,

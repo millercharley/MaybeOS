@@ -1385,6 +1385,13 @@ export interface PlatformOrg {
 }
 
 export interface PlatformSummary {
+  /** A rejected storage key is MaybeOS's problem and silent everywhere else. */
+  storage?: {
+    configured: boolean;
+    reachable: boolean;
+    httpStatus?: number;
+    buckets?: string[];
+  };
   orgs: number;
   suspended: number;
   billingWaived: number;

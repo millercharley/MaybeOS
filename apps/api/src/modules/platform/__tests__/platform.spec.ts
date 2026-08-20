@@ -4,6 +4,7 @@ import { PlatformService } from '../platform.service';
 import { AuditService, PLATFORM_ACTIONS } from '../audit.service';
 import { PlatformAdminGuard } from '../../../common/guards/platform-admin.guard';
 import { PrismaService } from '../../../config/prisma.service';
+import { StorageHealthIndicator } from '../../health/storage.health';
 
 const ctx = (user: unknown) =>
   ({ switchToHttp: () => ({ getRequest: () => ({ user }) }) }) as any;
@@ -34,6 +35,7 @@ describe('PlatformService', () => {
   let service: PlatformService;
   let prisma: any;
   let audit: any;
+  let storageHealth: any;
 
   const org = (over: Record<string, unknown> = {}) => ({
     id: 'org-1',
@@ -69,12 +71,20 @@ describe('PlatformService', () => {
       },
     };
     audit = { record: jest.fn() };
+    // The console reports storage because a rejected key is MaybeOS's problem
+    // and fails silently everywhere else (OPS-29).
+    storageHealth = {
+      isHealthy: jest.fn().mockResolvedValue({
+        storage: { status: 'up', configured: true, reachable: true, buckets: ['attachments'] },
+      }),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PlatformService,
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: audit },
+        { provide: StorageHealthIndicator, useValue: storageHealth },
       ],
     }).compile();
 
