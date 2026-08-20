@@ -5,6 +5,7 @@ import {
   Patch,
   Put,
   Delete,
+  ParseUUIDPipe,
   Body,
   Query,
   Param,
@@ -17,6 +18,13 @@ import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { ImpactService } from './impact.service';
+import { GoalsService } from './goals.service';
+import {
+  SetMissionDto,
+  CreateGoalDto,
+  UpdateGoalDto,
+  AddIndicatorDto,
+} from './dto/goal.dto';
 import { TouchpointService } from './touchpoint.service';
 import { TouchpointAnswerDto } from './dto/touchpoint-answer.dto';
 import { ExpenseService } from './expense.service';
@@ -36,6 +44,7 @@ export class ImpactController {
     private readonly impactService: ImpactService,
     private readonly touchpoints: TouchpointService,
     private readonly expenses: ExpenseService,
+    private readonly goals: GoalsService,
   ) {}
 
   // ─── Surveys CRUD ───────────────────────────────────────────
@@ -206,6 +215,101 @@ export class ImpactController {
    * Scoped to the caller's own membership — a member can only ever pull their
    * own question, and asking on somebody else's behalf is not a thing.
    */
+  // ─── Goals and the measurement plan (IMP-21) ────────────────
+
+  @Get('impact/plan')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Mission, goals, indicators, and whether the plan is agreed' })
+  getPlan(@Param('orgId') orgId: string) {
+    return this.goals.getPlan(orgId);
+  }
+
+  @Patch('impact/plan/mission')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Write the co-op’s mission' })
+  setMission(@Param('orgId') orgId: string, @Body() dto: SetMissionDto) {
+    return this.goals.setMission(orgId, dto.mission);
+  }
+
+  @Post('impact/goals')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add a goal, with suggested ways to measure it' })
+  createGoal(@Param('orgId') orgId: string, @Body() dto: CreateGoalDto) {
+    return this.goals.createGoal(orgId, dto);
+  }
+
+  @Patch('impact/goals/:goalId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  updateGoal(
+    @Param('orgId') orgId: string,
+    @Param('goalId', ParseUUIDPipe) goalId: string,
+    @Body() dto: UpdateGoalDto,
+  ) {
+    return this.goals.updateGoal(orgId, goalId, dto);
+  }
+
+  /** Archived, never deleted — a goal a co-op pursued is part of its record. */
+  @Delete('impact/goals/:goalId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  archiveGoal(
+    @Param('orgId') orgId: string,
+    @Param('goalId', ParseUUIDPipe) goalId: string,
+  ) {
+    return this.goals.archiveGoal(orgId, goalId);
+  }
+
+  @Post('impact/goals/:goalId/indicators')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  addIndicator(
+    @Param('orgId') orgId: string,
+    @Param('goalId', ParseUUIDPipe) goalId: string,
+    @Body() dto: AddIndicatorDto,
+  ) {
+    return this.goals.addIndicator(orgId, goalId, dto);
+  }
+
+  @Delete('impact/goals/:goalId/indicators/:indicatorId')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  removeIndicator(
+    @Param('orgId') orgId: string,
+    @Param('goalId', ParseUUIDPipe) goalId: string,
+    @Param('indicatorId', ParseUUIDPipe) indicatorId: string,
+  ) {
+    return this.goals.removeIndicator(orgId, goalId, indicatorId);
+  }
+
+  @Post('impact/plan/approve')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Agree to the plan as it now stands' })
+  approvePlan(@Param('orgId') orgId: string, @CurrentUser() user: RequestUser) {
+    return this.goals.approve(orgId, user.userId);
+  }
+
+  /** The figures, arranged under the goals they were collected for. */
+  @Get('impact/signals/by-goal')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @ApiBearerAuth()
+  signalsByGoal(@Param('orgId') orgId: string) {
+    return this.impactService.getSignalsByGoal(orgId);
+  }
+
   // ─── Signals (IMP-20) ───────────────────────────────────────
 
   /**

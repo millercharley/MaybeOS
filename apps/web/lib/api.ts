@@ -892,6 +892,57 @@ class ApiClient {
      * answer and the caller renders nothing: the fatigue budget allows one
      * question per member per 30 days across every touchpoint (D-021).
      */
+    /** Mission, goals, indicators, and whether the plan is agreed (IMP-21). */
+    plan: (orgId: string, token: string) =>
+      this.request<MeasurementPlan>(`/orgs/${orgId}/impact/plan`, { token }),
+
+    setMission: (orgId: string, mission: string, token: string) =>
+      this.request<{ mission: string | null }>(`/orgs/${orgId}/impact/plan/mission`, {
+        method: 'PATCH',
+        body: JSON.stringify({ mission }),
+        token,
+      }),
+
+    createGoal: (orgId: string, data: { title: string; description?: string }, token: string) =>
+      this.request<{ goal: Goal; suggested: DraftedIndicator[] }>(`/orgs/${orgId}/impact/goals`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    archiveGoal: (orgId: string, goalId: string, token: string) =>
+      this.request<{ archived: boolean }>(`/orgs/${orgId}/impact/goals/${goalId}`, {
+        method: 'DELETE',
+        token,
+      }),
+
+    addIndicator: (
+      orgId: string,
+      goalId: string,
+      data: { category: string; label: string },
+      token: string,
+    ) =>
+      this.request<Indicator>(`/orgs/${orgId}/impact/goals/${goalId}/indicators`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    removeIndicator: (orgId: string, goalId: string, indicatorId: string, token: string) =>
+      this.request<{ removed: boolean }>(
+        `/orgs/${orgId}/impact/goals/${goalId}/indicators/${indicatorId}`,
+        { method: 'DELETE', token },
+      ),
+
+    approvePlan: (orgId: string, token: string) =>
+      this.request<{ status: string; approvedAt: string | null }>(
+        `/orgs/${orgId}/impact/plan/approve`,
+        { method: 'POST', token },
+      ),
+
+    signalsByGoal: (orgId: string, token: string) =>
+      this.request<SignalsByGoal>(`/orgs/${orgId}/impact/signals/by-goal`, { token }),
+
     /** What the co-op learned, small cells suppressed (IMP-20). */
     signals: (orgId: string, token: string) =>
       this.request<Signals>(`/orgs/${orgId}/impact/signals`, { token }),
@@ -1699,6 +1750,55 @@ export interface InviteInfo {
 }
 
 /** A micro-question attached to a moment (IMP-15, PRD §6.2). */
+export interface Indicator {
+  id: string;
+  goalId: string;
+  category: string;
+  label: string;
+}
+
+export interface Goal {
+  id: string;
+  title: string;
+  description: string | null;
+  sortOrder: number;
+  indicators: Indicator[];
+}
+
+/** A way of measuring a goal, proposed rather than applied (IMP-21). */
+export interface DraftedIndicator {
+  category: string;
+  label: string;
+  /** The actual question wording, so an admin judges what will be asked. */
+  questions: string[];
+  because: string;
+}
+
+export interface MeasurementPlan {
+  mission: string | null;
+  status: 'DRAFT' | 'APPROVED';
+  approvedAt: string | null;
+  goals: Goal[];
+  maxGoals: number;
+  available: DraftedIndicator[];
+}
+
+export interface SignalsByGoal extends Signals {
+  goals: Array<{
+    goalId: string;
+    title: string;
+    description: string | null;
+    unmeasured: boolean;
+    measures: Array<{
+      indicatorId: string;
+      label: string;
+      category: string;
+      signal: SignalCategory | null;
+    }>;
+  }>;
+  unclaimed: SignalCategory[];
+}
+
 export interface SignalCategory {
   category: string;
   /** Null when too few people answered to report without exposing one. */
