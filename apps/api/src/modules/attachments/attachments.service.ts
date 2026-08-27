@@ -154,4 +154,68 @@ export class AttachmentsService {
     });
     if (!event) throw new NotFoundException('Event not found');
   }
+
+  /**
+   * The files on a public event, to anybody (EVT-14).
+   *
+   * Every other route here is membership-guarded, and should be: a co-op's
+   * attachments are its own and the bucket behind them is private. But a
+   * public event is the one thing a co-op deliberately publishes, and until
+   * now its poster was **invisible to the people it was published for** — the
+   * page rendered for a stranger arriving from a shared link and the images
+   * attached to it did not.
+   *
+   * So an attachment follows *its owner's* visibility rather than the
+   * bucket's. Two consequences, both deliberate:
+   *
+   * **Only files hung on the event itself.** A comment underneath a public
+   * event is still members-only — the event is public, the co-op's
+   * conversation about it is not (EVT-11) — so `commentId` and `postId`
+   * attachments are unreachable here by construction rather than by filter.
+   *
+   * **The event must be PUBLIC *and* published**, checked here rather than
+   * inherited from whoever called. Not found, not forbidden: an unpublished
+   * event should not be confirmable from the outside.
+   */
+  async listForPublicEvent(orgSlug: string, eventSlug: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { slug: orgSlug },
+      select: { id: true },
+    });
+    if (!org) throw new NotFoundException('Event not found');
+
+    const event = await this.prisma.event.findFirst({
+      where: {
+        orgId: org.id,
+        slug: eventSlug,
+        visibility: 'PUBLIC',
+        isPublished: true,
+        canceledAt: null,
+      },
+      select: { id: true },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+
+    const attachments = await this.prisma.attachment.findMany({
+      // `eventId` only. A comment's file is not an event's file, however
+      // public the event is.
+      where: { orgId: org.id, eventId: event.id },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return Promise.all(
+      attachments.map(async (a) => ({
+        id: a.id,
+        fileName: a.fileName,
+        mimeType: a.mimeType,
+        sizeBytes: a.sizeBytes,
+        createdAt: a.createdAt,
+        // Still five minutes, even though this is public. The URL's secrecy
+        // was never the protection here — but visibility can change, and a
+        // short life means un-publishing an event actually takes effect
+        // within minutes rather than an hour.
+        url: await this.storage.signedAttachmentUrl(a.path, 300),
+      })),
+    );
+  }
 }
