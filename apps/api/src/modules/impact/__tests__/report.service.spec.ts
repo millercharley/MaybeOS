@@ -3,6 +3,7 @@ import { BadRequestException } from '@nestjs/common';
 import { ReportService, editedShare } from '../report.service';
 import { ImpactService } from '../impact.service';
 import { ExpenseService } from '../expense.service';
+import { ReportPurchaseService } from '../report-purchase.service';
 import { PrismaService } from '../../../config/prisma.service';
 
 /**
@@ -55,6 +56,8 @@ describe('ReportService', () => {
         findFirst: jest.fn().mockResolvedValue({ id: 'b1', generatedBody: 'as written' }),
         update: jest.fn().mockImplementation(({ data }: any) => ({ id: 'b1', ...data })),
       },
+      // No purchases by default: the free report must not need one (IMP-23).
+      impactReportPurchase: { findMany: jest.fn().mockResolvedValue([]) },
     };
     impact = { getSignalsByGoal: jest.fn().mockResolvedValue(signalsWith([{ indicatorId: 'i1', label: 'Belonging', category: 'belonging', signal: signal() }])) };
     expenses = { summary: jest.fn().mockResolvedValue({ totalCents: 0, byCategory: [], byGoal: [], attributedShare: null, expenseCount: 0 }) };
@@ -65,6 +68,9 @@ describe('ReportService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: ImpactService, useValue: impact },
         { provide: ExpenseService, useValue: expenses },
+        // The real one, against the mock client: whether a written report is
+        // paid for is the thing being tested, not a thing being stubbed.
+        ReportPurchaseService,
       ],
     }).compile();
 

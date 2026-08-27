@@ -4,6 +4,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
@@ -15,6 +16,12 @@ import {
   PER_MEMBER_PRICE_IDS,
 } from './maybeos-plans';
 import { ConnectService } from './connect.service';
+import {
+  WRITTEN_REPORT_PRICE_CENTS,
+  WRITTEN_REPORT_PRODUCT_NAME,
+  WRITTEN_REPORT_CHECKOUT_KIND,
+  purchaseCoversPeriod,
+} from '../impact/report-pricing';
 
 /**
  * The client handed to webhook handlers. Always the transaction-scoped client,
@@ -656,6 +663,11 @@ export class StripeService {
         // `client_reference_id` instead of metadata — a hosted pricing table
         // gives us nowhere to put any.
         await this.applyPlanFromCheckout(session, tx);
+        // A co-op buying the written impact report (IMP-23). Also MaybeOS's
+        // own account, and the only one of the four that carries its own
+        // `kind` in metadata — so it recognises its sessions and ignores
+        // everyone else's.
+        await this.recordImpactReportPurchase(session, tx);
         break;
       }
 
@@ -959,6 +971,172 @@ export class StripeService {
     // The pricing table creates the subscription at quantity 1, so a
     // 300-member co-op would be billed for one member until this ran.
     await this.syncPlanQuantity(orgId, subscriptionId, priceIds, tx, 'subscribed');
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // The written impact report (IMP-23)
+  // ──────────────────────────────────────────────────────────────
+
+  /**
+   * Sell a co-op the written year-end report for one reporting period.
+   *
+   * A one-time charge on MaybeOS's own account — not a Connect direct charge.
+   * No co-op is the seller here; MaybeOS is, and the money is MaybeOS's rather
+   * than a share of somebody else's ticket revenue.
+   *
+   * The price is inline `price_data` rather than a stored Price so that
+   * repricing is a code change reviewed beside the copy that quotes it, and
+   * nothing depends on a Price object existing in the Stripe dashboard before
+   * the first co-op can buy.
+   */
+  async createImpactReportCheckout(
+    orgId: string,
+    userId: string,
+    reportId: string,
+    successUrl: string,
+    cancelUrl: string,
+  ): Promise<{ url: string; purchaseId: string }> {
+    const report = await this.prisma.impactReport.findFirst({
+      where: { id: reportId, orgId },
+      select: { id: true, tier: true, title: true, periodStart: true, periodEnd: true },
+    });
+    if (!report) throw new NotFoundException('Report not found');
+
+    if (report.tier !== 'WRITTEN') {
+      // The basic report is free and always will be. Charging for one would
+      // be taking money for something the co-op already has.
+      throw new BadRequestException(
+        'The basic report is free — there is nothing to buy for it.',
+      );
+    }
+
+    // Already covered? Then this is a co-op about to pay twice for the same
+    // period, usually by opening checkout in a second tab. Refuse rather than
+    // charge and refund.
+    const paid = await this.prisma.impactReportPurchase.findMany({
+      where: { orgId, status: 'PAID' },
+    });
+    if (paid.some((p) => purchaseCoversPeriod(p, report))) {
+      throw new ConflictException(
+        'This reporting period is already paid for. You can publish and export this report, and any revision of it, without paying again.',
+      );
+    }
+
+    // The row exists before the Stripe session so the webhook has something to
+    // settle that it did not have to invent, and so a session created but
+    // never completed leaves a visible PENDING rather than no trace at all.
+    const purchase = await this.prisma.impactReportPurchase.create({
+      data: {
+        orgId,
+        periodStart: report.periodStart,
+        periodEnd: report.periodEnd,
+        amountCents: WRITTEN_REPORT_PRICE_CENTS,
+        purchasedById: userId,
+      },
+      select: { id: true },
+    });
+
+    const session = await this.stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: 'usd',
+            unit_amount: WRITTEN_REPORT_PRICE_CENTS,
+            product_data: {
+              name: WRITTEN_REPORT_PRODUCT_NAME,
+              description: report.title,
+            },
+          },
+        },
+      ],
+      // `kind` is what makes the shared webhook branch safe: four kinds of
+      // Checkout session land on the same endpoint and each ignores the
+      // others rather than mis-recording them.
+      metadata: {
+        kind: WRITTEN_REPORT_CHECKOUT_KIND,
+        purchaseId: purchase.id,
+        orgId,
+        reportId: report.id,
+      },
+      payment_intent_data: {
+        metadata: {
+          kind: WRITTEN_REPORT_CHECKOUT_KIND,
+          purchaseId: purchase.id,
+          orgId,
+        },
+      },
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+    });
+
+    await this.prisma.impactReportPurchase.update({
+      where: { id: purchase.id },
+      data: { stripeCheckoutSessionId: session.id },
+    });
+
+    if (!session.url) {
+      throw new InternalServerErrorException('Stripe did not return a checkout URL');
+    }
+
+    return { url: session.url, purchaseId: purchase.id };
+  }
+
+  /**
+   * Settle a written-report purchase from the webhook.
+   *
+   * Idempotent by the `PENDING` filter rather than by checking first and then
+   * writing: Stripe redelivers, and a redelivery must settle the row it
+   * already settled instead of stamping a second `paidAt` over the real one.
+   */
+  private async recordImpactReportPurchase(
+    session: Stripe.Checkout.Session,
+    tx: PrismaTx,
+  ): Promise<void> {
+    if (session.metadata?.kind !== WRITTEN_REPORT_CHECKOUT_KIND) return;
+
+    const purchaseId = session.metadata.purchaseId;
+    if (!purchaseId) {
+      this.logger.error(
+        `Impact report session ${session.id} carries no purchaseId; nothing to settle`,
+      );
+      return;
+    }
+
+    // `completed` fires for asynchronous payment methods before the money has
+    // arrived. Entitling on that would hand out the report on a payment that
+    // can still fail.
+    if (session.payment_status !== 'paid') {
+      this.logger.log(
+        `Impact report purchase ${purchaseId} is ${session.payment_status}; leaving it pending`,
+      );
+      return;
+    }
+
+    // `tx`, not `this.prisma`: this runs inside the transaction that claimed
+    // the event, and with `connection_limit=1` that transaction holds the only
+    // connection there is (OPS-24).
+    const settled = await tx.impactReportPurchase.updateMany({
+      where: { id: purchaseId, status: 'PENDING' },
+      data: {
+        status: 'PAID',
+        paidAt: new Date(),
+        stripePaymentIntentId:
+          typeof session.payment_intent === 'string'
+            ? session.payment_intent
+            : (session.payment_intent?.id ?? null),
+      },
+    });
+
+    if (settled.count === 0) {
+      this.logger.log(`Impact report purchase ${purchaseId} was already settled`);
+      return;
+    }
+
+    this.logger.log(
+      `Org ${session.metadata.orgId} bought the written impact report (${purchaseId})`,
+    );
   }
 
   /**

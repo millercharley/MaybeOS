@@ -1,4 +1,4 @@
-import { IsISO8601, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsISO8601, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
 import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
 
 export class GenerateReportDto {
@@ -18,6 +18,16 @@ export class GenerateReportDto {
   @IsOptional()
   @IsISO8601()
   periodEnd?: string;
+
+  /**
+   * Which report to write (IMP-23). BASIC is the free deterministic reading
+   * and is what an admin gets by asking for nothing. WRITTEN is the composed
+   * one — free to generate and read, paid for at publish or export.
+   */
+  @ApiPropertyOptional({ enum: ['BASIC', 'WRITTEN'], default: 'BASIC' })
+  @IsOptional()
+  @IsIn(['BASIC', 'WRITTEN'])
+  tier?: 'BASIC' | 'WRITTEN';
 }
 
 export class UpdateReportBlockDto {
@@ -30,4 +40,15 @@ export class UpdateReportBlockDto {
   @IsString()
   @MaxLength(5000)
   body!: string;
+}
+
+export class BuyReportDto {
+  /** Where Stripe returns the admin once the report is paid for. */
+  @ApiProperty()
+  @IsUrl({ require_tld: false })
+  successUrl!: string;
+
+  @ApiProperty()
+  @IsUrl({ require_tld: false })
+  cancelUrl!: string;
 }

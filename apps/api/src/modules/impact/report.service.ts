@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { ImpactService } from './impact.service';
 import { ExpenseService } from './expense.service';
+import { ReportPurchaseService } from './report-purchase.service';
 import { CATEGORY_PHRASE } from './report-language';
 
 /**
@@ -37,6 +38,7 @@ export class ReportService {
     private readonly prisma: PrismaService,
     private readonly impact: ImpactService,
     private readonly expenses: ExpenseService,
+    private readonly purchases: ReportPurchaseService,
   ) {}
 
   async list(orgId: string) {
@@ -48,6 +50,7 @@ export class ReportService {
         title: true,
         slug: true,
         status: true,
+        tier: true,
         periodStart: true,
         periodEnd: true,
         publishedAt: true,
@@ -76,7 +79,12 @@ export class ReportService {
   async generate(
     orgId: string,
     userId: string,
-    input: { title?: string; periodStart?: string; periodEnd?: string },
+    input: {
+      title?: string;
+      periodStart?: string;
+      periodEnd?: string;
+      tier?: 'BASIC' | 'WRITTEN';
+    },
   ) {
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
@@ -120,6 +128,10 @@ export class ReportService {
         slug,
         periodStart,
         periodEnd,
+        // Free to generate either kind. A co-op that cannot read the written
+        // report before deciding has no way to judge whether it is worth $50,
+        // and the composition costs pennies (IMP-23).
+        tier: input.tier ?? 'BASIC',
         generatedAt: new Date(),
         createdById: userId,
         blocks: {
@@ -177,13 +189,25 @@ export class ReportService {
     });
   }
 
-  /** Make it readable by anyone with the link — which is the point of it. */
+  /**
+   * Make it readable by anyone with the link — which is the point of it.
+   *
+   * For a **written** report this is also the moment it is paid for (IMP-23).
+   * Publishing is the act with the value in it: a draft nobody can open has
+   * not been used for anything. Charging at generation instead would make a
+   * co-op buy a report it has not read, and charging per revision would make
+   * it publish the first draft rather than the true one.
+   */
   async publish(orgId: string, reportId: string) {
     const report = await this.prisma.impactReport.findFirst({
       where: { id: reportId, orgId },
-      select: { id: true },
+      select: { id: true, tier: true, periodStart: true, periodEnd: true },
     });
     if (!report) throw new NotFoundException('Report not found');
+
+    if (report.tier === 'WRITTEN') {
+      await this.purchases.requireEntitlement(orgId, report, 'publish');
+    }
 
     return this.prisma.impactReport.update({
       where: { id: report.id },

@@ -30,6 +30,18 @@ export const PLAN_PRICING = {
   UNLIMITED: { monthlyCents: 34900, yearlyMonthlyCents: 29900, label: 'MaybeOS Unlimited' },
 } as const;
 
+/**
+ * The written year-end impact report (IMP-23, D-031).
+ *
+ * The basic report is free and stays free — the promise is that a co-op says
+ * what change it is trying to make and gets a report back. This is the price
+ * of the *written* one, and it buys a reporting period rather than a single
+ * document: every revision and republication of that period's report is
+ * covered. Mirrors `apps/api/src/modules/impact/report-pricing.ts`, which is
+ * the authority, and a test asserts the two agree.
+ */
+export const WRITTEN_REPORT_PRICE_CENTS = 5000;
+
 export const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export interface TicketCost {
