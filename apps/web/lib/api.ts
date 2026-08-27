@@ -164,6 +164,17 @@ class ApiClient {
   // ── Attachments ──────────────────────────────────
   attachments = {
     /**
+     * Files on a **public** event, to anybody (EVT-14).
+     *
+     * The one attachment call with no token. Every other one is
+     * membership-guarded, and the API keeps this narrow: only files hung on
+     * the event itself, and only while it is published and public — a comment
+     * underneath it is still members-only.
+     */
+    publicEventFiles: (orgSlug: string, eventSlug: string) =>
+      this.request<Attachment[]>(`/public/events/${orgSlug}/${eventSlug}/attachments`),
+
+    /**
      * Ask for somewhere to upload to. The server picks the path — a caller
      * naming its own would be able to write into another co-op's folder.
      */

@@ -20,19 +20,31 @@ export function AttachmentList({
   postId,
   commentId,
   eventId,
+  publicEvent,
 }: {
   orgId: string;
   token: string;
   postId?: string;
   commentId?: string;
   eventId?: string;
+  /**
+   * Read the files without a token, for a public event (EVT-14).
+   *
+   * A stranger arriving from a link shared on social has no membership and no
+   * token, and until this existed the co-op's poster simply did not render
+   * for them — the page came up and the images it was advertising with did
+   * not. Only ever the event's own files; a comment underneath it stays
+   * members-only, which the API enforces rather than this trusting it.
+   */
+  publicEvent?: { orgSlug: string; eventSlug: string };
 }) {
   const [attachments, setAttachments] = useState<Attachment[]>([]);
 
   useEffect(() => {
     let cancelled = false;
-    api.attachments
-      .list(orgId, { postId, commentId, eventId }, token)
+    (publicEvent
+      ? api.attachments.publicEventFiles(publicEvent.orgSlug, publicEvent.eventSlug)
+      : api.attachments.list(orgId, { postId, commentId, eventId }, token))
       .then((found) => {
         if (!cancelled) setAttachments(found);
       })
@@ -42,7 +54,7 @@ export function AttachmentList({
     return () => {
       cancelled = true;
     };
-  }, [orgId, token, postId, commentId, eventId]);
+  }, [orgId, token, postId, commentId, eventId, publicEvent?.orgSlug, publicEvent?.eventSlug]);
 
   if (attachments.length === 0) return null;
 

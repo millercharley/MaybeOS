@@ -167,7 +167,23 @@ export default function PortalEventPage(props: {
             />
           )}
 
-          {org && token && isMember && <AttachmentList orgId={org.id} token={token} eventId={event.id} />}
+          {/* The poster, to whoever is looking (EVT-14). A member reads it
+              through the co-op; anybody else reads it through the public
+              route, which only serves a published PUBLIC event's own files.
+              Before this the page rendered for a stranger and the images the
+              co-op was advertising with did not. */}
+          {org && token && isMember ? (
+            <AttachmentList orgId={org.id} token={token} eventId={event.id} />
+          ) : (
+            org &&
+            event.visibility === 'PUBLIC' && (
+              <AttachmentList
+                orgId={org.id}
+                token=""
+                publicEvent={{ orgSlug, eventSlug }}
+              />
+            )
+          )}
 
           {/* Members only, deliberately: an event page is public, the co-op's
               conversation about it is not. */}
