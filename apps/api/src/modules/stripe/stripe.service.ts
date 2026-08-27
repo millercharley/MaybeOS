@@ -958,7 +958,7 @@ export class StripeService {
 
     // The pricing table creates the subscription at quantity 1, so a
     // 300-member co-op would be billed for one member until this ran.
-    await this.syncPlanQuantity(orgId, subscriptionId, priceIds);
+    await this.syncPlanQuantity(orgId, subscriptionId, priceIds, 'subscribed');
   }
 
   /**
@@ -1062,6 +1062,7 @@ export class StripeService {
     orgId: string,
     subscriptionId: string,
     priceIds: string[],
+    when: 'subscribed' | 'renewal' = 'renewal',
   ): Promise<void> {
     if (!billsPerMember(priceIds)) return;
 
@@ -1087,10 +1088,18 @@ export class StripeService {
 
       await this.stripe.subscriptionItems.update(item.id, {
         quantity,
-        // No invoice now: the point of a snapshot is that the co-op sees this
-        // on its next bill rather than as a proration the moment somebody
-        // joins.
-        proration_behavior: 'none',
+        // Two different moments, two different answers.
+        //
+        // **At renewal**, nothing: the point of a snapshot is that the co-op
+        // sees the new count on its next bill rather than as a proration the
+        // moment somebody joins.
+        //
+        // **At signup**, invoice the difference. Stripe charges at checkout
+        // before this can run, and the pricing table creates the subscription
+        // at quantity 1 — so without this a 300-member co-op pays for one
+        // member for its whole first period. On the yearly price that is a
+        // year of being billed $3.65 instead of $1,095.
+        proration_behavior: when === 'subscribed' ? 'always_invoice' : 'none',
       });
 
       this.logger.log(
