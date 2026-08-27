@@ -958,7 +958,7 @@ export class StripeService {
 
     // The pricing table creates the subscription at quantity 1, so a
     // 300-member co-op would be billed for one member until this ran.
-    await this.syncPlanQuantity(orgId, subscriptionId, priceIds, 'subscribed');
+    await this.syncPlanQuantity(orgId, subscriptionId, priceIds, tx, 'subscribed');
   }
 
   /**
@@ -1040,6 +1040,7 @@ export class StripeService {
         org.id,
         subscriptionId,
         subscription.items.data.map((i) => i.price.id),
+        tx,
       );
     } catch (err) {
       this.logger.error(
@@ -1062,11 +1063,22 @@ export class StripeService {
     orgId: string,
     subscriptionId: string,
     priceIds: string[],
+    tx: PrismaTx,
     when: 'subscribed' | 'renewal' = 'renewal',
   ): Promise<void> {
     if (!billsPerMember(priceIds)) return;
 
-    const quantity = await this.prisma.userOrg.count({
+    // `tx`, not the ambient client. This runs inside the interactive
+    // transaction that claimed the event, and `connection_limit=1` means that
+    // transaction holds the only connection there is — so asking the pool for
+    // a second one waits for a connection that cannot arrive, until the
+    // transaction times out and the webhook answers 500.
+    //
+    // That is OPS-24 exactly, and it was reintroduced here on 2026-08-20
+    // despite the warning sitting in a comment directly above this method's
+    // own call site. Stripe reported the 500 on a resent
+    // checkout.session.completed; nothing else surfaced it.
+    const quantity = await tx.userOrg.count({
       where: { orgId, role: { in: ['ADMIN', 'STAFF', 'MEMBER'] } },
     });
 
