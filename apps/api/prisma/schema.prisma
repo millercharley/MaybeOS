@@ -124,12 +124,13 @@ model Organization {
   auditLogs      AuditLog[]
   emailTemplates EmailTemplate[]
 
-  expenses        Expense[]
-  attachments     Attachment[]
-  goals           Goal[]
-  measurementPlan MeasurementPlan?
-  impactReports   ImpactReport[]
-  hostPayouts     HostPayout[]
+  expenses              Expense[]
+  attachments           Attachment[]
+  goals                 Goal[]
+  measurementPlan       MeasurementPlan?
+  impactReports         ImpactReport[]
+  impactReportPurchases ImpactReportPurchase[]
+  hostPayouts           HostPayout[]
 
   @@map("organizations")
 }
@@ -204,12 +205,13 @@ model User {
   hostedEvents     Event[]          @relation("HostedEvents")
   tickets          Ticket[]
 
-  expensesCreated Expense[]         @relation("ExpenseCreator")
-  plansApproved   MeasurementPlan[] @relation("PlanApprover")
-  reportsCreated  ImpactReport[]    @relation("ReportAuthor")
-  hostPayouts     HostPayout[]      @relation("HostPayoutRecipient")
-  payoutsMarked   HostPayout[]      @relation("HostPayoutPayer")
-  attachments     Attachment[]
+  expensesCreated       Expense[]              @relation("ExpenseCreator")
+  plansApproved         MeasurementPlan[]      @relation("PlanApprover")
+  reportsCreated        ImpactReport[]         @relation("ReportAuthor")
+  impactReportPurchases ImpactReportPurchase[] @relation("ImpactReportPurchaser")
+  hostPayouts           HostPayout[]           @relation("HostPayoutRecipient")
+  payoutsMarked         HostPayout[]           @relation("HostPayoutPayer")
+  attachments           Attachment[]
 
   @@map("users")
 }
@@ -1058,6 +1060,19 @@ model MeasurementPlan {
   @@map("measurement_plans")
 }
 
+/// Which of the two reports this is.
+///
+/// The PRD's promise is that a co-op states a goal and gets a report back, so
+/// BASIC — the deterministic reading assembled from frozen figures — stays
+/// free forever. WRITTEN is the same figures with prose composed around them,
+/// and is what the $50 buys (D-031). Splitting them here rather than with a
+/// boolean leaves room for a third kind without a migration that rewrites
+/// every row's meaning.
+enum ReportTier {
+  BASIC
+  WRITTEN
+}
+
 enum ReportStatus {
   DRAFT
   PUBLISHED
@@ -1083,6 +1098,7 @@ model ImpactReport {
   periodStart DateTime
   periodEnd   DateTime
   status      ReportStatus @default(DRAFT)
+  tier        ReportTier   @default(BASIC)
   publishedAt DateTime?
   generatedAt DateTime
   createdById String?
@@ -1127,6 +1143,53 @@ model ReportBlock {
 
   @@index([reportId, sortOrder])
   @@map("report_blocks")
+}
+
+enum ImpactReportPurchaseStatus {
+  PENDING
+  PAID
+  REFUNDED
+}
+
+/// A co-op's $50 purchase of the written year-end report (IMP-23, D-031).
+///
+/// **The purchase is of a reporting period, not of a document.** A co-op that
+/// pays for 2026 can regenerate, revise and republish its 2026 written report
+/// as often as it likes; charging per generation would make a co-op ration the
+/// revisions that make the report honest. Coverage is containment, not an
+/// exact date match — an admin who nudges the end date by a day has not bought
+/// a new period, and being generous here costs less than a support ticket.
+///
+/// Recorded from the webhook, never the success redirect: a co-op that closes
+/// the tab has still paid.
+model ImpactReportPurchase {
+  id          String                     @id @default(uuid())
+  orgId       String
+  /// The period the purchase entitles, copied from the report the admin was
+  /// looking at when they bought. Frozen — moving it would silently re-scope
+  /// what was paid for.
+  periodStart DateTime
+  periodEnd   DateTime
+  amountCents Int
+  status      ImpactReportPurchaseStatus @default(PENDING)
+
+  stripeCheckoutSessionId String? @unique
+  stripePaymentIntentId   String?
+
+  /// Who bought it. Nullable so removing an admin never deletes the co-op's
+  /// entitlement along with them.
+  purchasedById String?
+
+  createdAt DateTime  @default(now())
+  paidAt    DateTime?
+  updatedAt DateTime  @updatedAt
+
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  purchasedBy User?        @relation("ImpactReportPurchaser", fields: [purchasedById], references: [id], onDelete: SetNull)
+
+  @@index([orgId, status])
+  @@index([orgId, periodStart, periodEnd])
+  @@map("impact_report_purchases")
 }
 
 enum HostPayoutStatus {

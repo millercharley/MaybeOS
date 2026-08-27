@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Check, ExternalLink, FileText, Loader2, Pencil } from 'lucide-react';
+import { ArrowLeft, Check, ExternalLink, FileText, Loader2, Lock, Pencil, Sparkles } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
-import { api, ImpactReport, ReportSummary } from '@/lib/api';
+import { api, ApiError, ImpactReport, ReportPurchaseStatus, ReportSummary } from '@/lib/api';
+import { WRITTEN_REPORT_PRICE_CENTS, money } from '@/lib/fees';
 import { ReportBody } from '@/components/impact/report-body';
 
 /**
@@ -28,6 +29,8 @@ export default function ReportsPage() {
   const [error, setError] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
+  /** Null until a report is open; only ever set for the written one. */
+  const [purchase, setPurchase] = useState<ReportPurchaseStatus | null>(null);
 
   const load = useCallback(async () => {
     if (!token || !orgId) return;
@@ -44,6 +47,24 @@ export default function ReportsPage() {
     load();
   }, [load]);
 
+  /**
+   * Come back from Stripe onto the report that was paid for.
+   *
+   * Read from `window.location` rather than `useSearchParams` so this page
+   * needs no Suspense boundary for one query string. The `paid=1` flag is not
+   * trusted for anything — the entitlement comes from the webhook, and this
+   * only decides which report to open.
+   */
+  useEffect(() => {
+    if (!token || !orgId) return;
+    const reportId = new URLSearchParams(window.location.search).get('report');
+    if (!reportId) return;
+    window.history.replaceState({}, '', window.location.pathname);
+    openReport(reportId);
+    // Once, on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, orgId]);
+
   const run = async (fn: () => Promise<unknown>) => {
     if (!token || !orgId) return;
     setBusy(true);
@@ -57,16 +78,43 @@ export default function ReportsPage() {
     }
   };
 
-  async function generate() {
+  async function generate(tier: 'BASIC' | 'WRITTEN') {
     await run(async () => {
-      const report = await api.impact.generateReport(orgId!, {}, token!);
+      const report = await api.impact.generateReport(orgId!, { tier }, token!);
       setOpen(report);
+      // The written one is free to make and free to read. What it costs is
+      // putting it in front of somebody (IMP-23), so the price is not
+      // mentioned until there is something to look at.
+      setPurchase(await api.impact.reportPurchaseStatus(orgId!, report.id, token!));
       await load();
     });
   }
 
   async function openReport(id: string) {
-    await run(async () => setOpen(await api.impact.getReport(orgId!, id, token!)));
+    await run(async () => {
+      setOpen(await api.impact.getReport(orgId!, id, token!));
+      setPurchase(await api.impact.reportPurchaseStatus(orgId!, id, token!));
+    });
+  }
+
+  /**
+   * Send the admin to Stripe.
+   *
+   * Returning to this exact report rather than the list, because coming back
+   * to "which one was I buying?" after paying $50 is its own small insult.
+   */
+  async function buy() {
+    if (!open) return;
+    await run(async () => {
+      const here = `${window.location.origin}${window.location.pathname}`;
+      const { url } = await api.impact.buyReport(
+        orgId!,
+        open.id,
+        { successUrl: `${here}?report=${open.id}&paid=1`, cancelUrl: `${here}?report=${open.id}` },
+        token!,
+      );
+      window.location.href = url;
+    });
   }
 
   async function saveBlock(blockId: string) {
@@ -80,12 +128,27 @@ export default function ReportsPage() {
 
   async function togglePublish() {
     if (!open) return;
-    await run(async () => {
-      if (open.status === 'PUBLISHED') await api.impact.unpublishReport(orgId!, open.id, token!);
-      else await api.impact.publishReport(orgId!, open.id, token!);
-      setOpen(await api.impact.getReport(orgId!, open.id, token!));
+    if (!token || !orgId) return;
+    setBusy(true);
+    setError('');
+    try {
+      if (open.status === 'PUBLISHED') await api.impact.unpublishReport(orgId, open.id, token);
+      else await api.impact.publishReport(orgId, open.id, token);
+      setOpen(await api.impact.getReport(orgId, open.id, token));
       await load();
-    });
+    } catch (err) {
+      // 402 is not a failure, it is the price. Rendering it as a red error
+      // would tell an admin something broke when what happened is that they
+      // have not bought it yet — so the panel below offers the purchase and
+      // this stays quiet.
+      if (err instanceof ApiError && err.status === 402) {
+        setPurchase(await api.impact.reportPurchaseStatus(orgId, open.id, token));
+      } else {
+        setError(err instanceof Error ? err.message : 'That did not work');
+      }
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (loading) {
@@ -147,6 +210,41 @@ export default function ReportsPage() {
             </p>
           )}
         </div>
+
+        {/* What the $50 is, said where the decision is made. Only ever shown
+            on the written report: the basic one is free and offering to sell
+            it would be taking money for something they already have. */}
+        {purchase?.required && !purchase.paid && !published && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="max-w-md">
+                <p className="flex items-center gap-1.5 font-medium text-amber-900">
+                  <Lock className="h-4 w-4" />
+                  Publishing this one costs {money(purchase.priceCents)}
+                </p>
+                <p className="mt-1 text-sm text-amber-800">
+                  Read it, rewrite anything you disagree with, and pay when you are ready to send
+                  it. The {money(purchase.priceCents)} covers this reporting period —{' '}
+                  {new Date(purchase.periodStart).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}
+                  {' to '}
+                  {new Date(purchase.periodEnd).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })}
+                  {' '}— including every version of it you publish afterwards.
+                </p>
+              </div>
+              <button onClick={buy} disabled={busy} className="btn-primary shrink-0 text-sm">
+                {busy && <Loader2 className="mr-1.5 inline h-4 w-4 animate-spin" />}
+                Pay {money(purchase.priceCents)}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {purchase?.required && purchase.paid && !published && (
+          <p className="flex items-center gap-1.5 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+            <Check className="h-4 w-4 shrink-0" />
+            Paid for. Publish and republish this period&rsquo;s report as often as you like.
+          </p>
+        )}
 
         <div className="rounded-xl border border-gray-200 bg-white p-6">
           {/* Editable blocks over the same renderer the public page uses, so
@@ -219,11 +317,25 @@ export default function ReportsPage() {
             What your members told you, written up — to send to a funder, a board, or your
             membership.
           </p>
+          <p className="mt-1 text-sm text-gray-500">
+            The basic report is free, always. The full one is the same figures with the writing
+            done for you; it is {money(WRITTEN_REPORT_PRICE_CENTS)} to publish, once per reporting
+            period.
+          </p>
         </div>
-        <button onClick={generate} disabled={busy} className="btn-primary text-sm">
-          {busy ? <Loader2 className="mr-1.5 inline h-4 w-4 animate-spin" /> : <FileText className="mr-1.5 inline h-4 w-4" />}
-          Write a report
-        </button>
+        {/* Both are free to make and free to read. The choice here is which
+            report to look at, not what to buy — the price is named later, on
+            the report itself, where the decision to send it is made. */}
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <button onClick={() => generate('BASIC')} disabled={busy} className="btn-secondary text-sm">
+            {busy ? <Loader2 className="mr-1.5 inline h-4 w-4 animate-spin" /> : <FileText className="mr-1.5 inline h-4 w-4" />}
+            Write the basic report
+          </button>
+          <button onClick={() => generate('WRITTEN')} disabled={busy} className="btn-primary text-sm">
+            {busy ? <Loader2 className="mr-1.5 inline h-4 w-4 animate-spin" /> : <Sparkles className="mr-1.5 inline h-4 w-4" />}
+            Write the full report
+          </button>
+        </div>
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
@@ -248,12 +360,19 @@ export default function ReportsPage() {
                     {' · '}written {new Date(r.generatedAt).toLocaleDateString()}
                   </p>
                 </div>
-                <span
-                  className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                    r.status === 'PUBLISHED' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'
-                  }`}
-                >
-                  {r.status === 'PUBLISHED' ? 'Published' : 'Draft'}
+                <span className="flex shrink-0 items-center gap-1.5">
+                  {r.tier === 'WRITTEN' && (
+                    <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700">
+                      Full
+                    </span>
+                  )}
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                      r.status === 'PUBLISHED' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    {r.status === 'PUBLISHED' ? 'Published' : 'Draft'}
+                  </span>
                 </span>
               </button>
             </li>

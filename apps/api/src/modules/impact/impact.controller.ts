@@ -20,7 +20,9 @@ import { CurrentUser, RequestUser } from '../../common/decorators/current-user.d
 import { ImpactService } from './impact.service';
 import { GoalsService } from './goals.service';
 import { ReportService } from './report.service';
-import { GenerateReportDto, UpdateReportBlockDto } from './dto/report.dto';
+import { ReportPurchaseService } from './report-purchase.service';
+import { StripeService } from '../stripe/stripe.service';
+import { GenerateReportDto, UpdateReportBlockDto, BuyReportDto } from './dto/report.dto';
 import {
   SetMissionDto,
   CreateGoalDto,
@@ -48,6 +50,8 @@ export class ImpactController {
     private readonly expenses: ExpenseService,
     private readonly goals: GoalsService,
     private readonly reports: ReportService,
+    private readonly reportPurchases: ReportPurchaseService,
+    private readonly stripe: StripeService,
   ) {}
 
   // ─── Surveys CRUD ───────────────────────────────────────────
@@ -274,6 +278,40 @@ export class ImpactController {
     @Param('reportId', ParseUUIDPipe) reportId: string,
   ) {
     return this.reports.publish(orgId, reportId);
+  }
+
+  // ─── Paying for the written report (IMP-23) ─────────────────
+
+  @Get('impact/reports/:reportId/purchase')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Whether this reporting period is paid for, and what it costs' })
+  reportPurchaseStatus(
+    @Param('orgId') orgId: string,
+    @Param('reportId', ParseUUIDPipe) reportId: string,
+  ) {
+    return this.reportPurchases.statusFor(orgId, reportId);
+  }
+
+  @Post('impact/reports/:reportId/purchase')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Buy the written report for this reporting period' })
+  buyReport(
+    @Param('orgId') orgId: string,
+    @Param('reportId', ParseUUIDPipe) reportId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: BuyReportDto,
+  ) {
+    return this.stripe.createImpactReportCheckout(
+      orgId,
+      user.userId,
+      reportId,
+      dto.successUrl,
+      dto.cancelUrl,
+    );
   }
 
   @Post('impact/reports/:reportId/unpublish')

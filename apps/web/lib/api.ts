@@ -1020,7 +1020,12 @@ class ApiClient {
 
     generateReport: (
       orgId: string,
-      data: { title?: string; periodStart?: string; periodEnd?: string },
+      data: {
+        title?: string;
+        periodStart?: string;
+        periodEnd?: string;
+        tier?: 'BASIC' | 'WRITTEN';
+      },
       token: string,
     ) =>
       this.request<ImpactReport>(`/orgs/${orgId}/impact/reports`, {
@@ -1045,6 +1050,25 @@ class ApiClient {
       this.request<{ status: string }>(
         `/orgs/${orgId}/impact/reports/${reportId}/unpublish`,
         { method: 'POST', token },
+      ),
+
+    /* ─── Paying for the written report (IMP-23) ───────────── */
+
+    reportPurchaseStatus: (orgId: string, reportId: string, token: string) =>
+      this.request<ReportPurchaseStatus>(
+        `/orgs/${orgId}/impact/reports/${reportId}/purchase`,
+        { token },
+      ),
+
+    buyReport: (
+      orgId: string,
+      reportId: string,
+      urls: { successUrl: string; cancelUrl: string },
+      token: string,
+    ) =>
+      this.request<{ url: string; purchaseId: string }>(
+        `/orgs/${orgId}/impact/reports/${reportId}/purchase`,
+        { method: 'POST', body: JSON.stringify(urls), token },
       ),
 
     /** A published report, to anybody. The one unauthenticated impact call. */
@@ -2012,6 +2036,8 @@ export interface ReportSummary {
   periodEnd: string;
   publishedAt: string | null;
   generatedAt: string;
+  /** BASIC is the free deterministic reading; WRITTEN is the $50 one. */
+  tier: 'BASIC' | 'WRITTEN';
   _count?: { blocks: number };
 }
 
@@ -2019,6 +2045,28 @@ export interface ImpactReport extends ReportSummary {
   blocks: ReportBlock[];
   /** The PRD's G4: how much of it a human rewrote. */
   editedShare: number;
+}
+
+/**
+ * Whether the written report for this period is paid for (IMP-23).
+ *
+ * `required: false` is the free report, which is never gated — the page must
+ * not offer to sell anything on it.
+ */
+export interface ReportPurchaseStatus {
+  reportId: string;
+  tier: 'BASIC' | 'WRITTEN';
+  priceCents: number;
+  required: boolean;
+  paid: boolean;
+  periodStart: string;
+  periodEnd: string;
+  coveredBy: {
+    id: string;
+    paidAt: string | null;
+    periodStart: string;
+    periodEnd: string;
+  } | null;
 }
 
 export interface PublicReport {
