@@ -19,7 +19,14 @@ import { PLATFORM_FEE_CENTS, money } from '@/lib/fees';
  * The publishable key is publishable by design — it identifies the Stripe
  * account to a browser and cannot move money.
  */
-export function MaybeOsPlan({ org }: { org: { id: string; name: string; plan?: string } }) {
+export function MaybeOsPlan({
+  org,
+  memberCount,
+}: {
+  org: { id: string; name: string; plan?: string; billingWaived?: boolean };
+  /** Billable memberships — organisers, staff and members; guests excluded. */
+  memberCount?: number;
+}) {
   const plan = org.plan ?? 'FREE';
   const perTransaction = PLATFORM_FEE_CENTS[plan] ?? PLATFORM_FEE_CENTS.FREE;
 
@@ -46,6 +53,30 @@ export function MaybeOsPlan({ org }: { org: { id: string; name: string; plan?: s
           {money(PLATFORM_FEE_CENTS.UNLIMITED)} on Unlimited.
         </p>
       </div>
+
+      {/* What a per-member plan is counting, said out loud (PLT-03). "Why is
+          this $150?" should be answerable on this page rather than by writing
+          to support — and the count is a snapshot taken at renewal, so a co-op
+          that grows mid-period should not be surprised either way. */}
+      {plan === 'PLUS' && memberCount !== undefined && (
+        <div className="rounded-lg border border-gray-200 p-4 text-sm">
+          <p className="text-gray-900">
+            Billed for <b>{memberCount}</b> {memberCount === 1 ? 'member' : 'members'}.
+          </p>
+          <p className="mt-1 text-gray-500">
+            Organisers, staff and members — <b>guests aren&apos;t counted</b>. The number is taken
+            when your plan renews, so joiners and leavers in between don&apos;t change the bill
+            you&apos;re looking at.
+          </p>
+        </div>
+      )}
+
+      {org.billingWaived && (
+        <p className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-800">
+          MaybeOS is free for {org.name} — you won&apos;t be charged for your plan. The
+          per-transaction fee above still applies to ticket sales.
+        </p>
+      )}
 
       <Script src="https://js.stripe.com/v3/pricing-table.js" strategy="lazyOnload" />
       <stripe-pricing-table
