@@ -49,3 +49,31 @@ export function planForSubscriptionItems(priceIds: string[]): MaybeOsPlan | null
 
   return plans.reduce((best, plan) => (rank[plan] > rank[best] ? plan : best));
 }
+
+/**
+ * The prices billed **per member**, where `quantity` is the member count
+ * (PLT-03).
+ *
+ * A deliberate allowlist rather than "anything on the Plus product", because
+ * getting this wrong is not a rounding error. **Unlimited is $349 flat.**
+ * Setting a quantity of 300 on it would invoice a co-op $104,700, and Stripe
+ * would be right to do it — the mistake would be entirely ours. So quantity is
+ * only ever set on a price named here, and every other plan is left at 1.
+ *
+ * Charley's call, 2026-08-20: **snapshot at renewal**, so a co-op gets one
+ * predictable bill rather than a stream of proration lines, and **GUEST
+ * memberships are excluded** — a guest is not a member.
+ */
+export const PER_MEMBER_PRICE_IDS = new Set<string>([
+  'price_1U6M1VD14bhghVE2lprg1qo0', // MaybeOS Plus — $0.50 per member / month
+  // The yearly Plus price is being reissued as a *licensed* price: the
+  // original was metered, which is the wrong model for membership — members
+  // are a level, not an event stream, and a metered price with nothing
+  // reported bills zero, which is what it has been doing. Its id goes here
+  // once it exists.
+]);
+
+/** Whether a subscription bills by member count, and so needs a quantity. */
+export function billsPerMember(priceIds: string[]): boolean {
+  return priceIds.some((id) => PER_MEMBER_PRICE_IDS.has(id));
+}

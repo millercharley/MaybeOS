@@ -25,6 +25,13 @@ export default function SettingsPage() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
 
+  // Billable memberships for a per-member plan (PLT-03): organisers, staff
+  // and members. Guests are not members and are not counted.
+  const { data: members } = useApi((token, orgId) => api.members.list(orgId, token, 1, 200), []);
+  const billableMembers = members?.data
+    ? members.data.filter((m) => m.role !== 'GUEST').length
+    : undefined;
+
   const { data: org, loading, refetch } = useApi(
     (tkn, orgId) => api.orgs.get(orgId, tkn),
     [],
@@ -290,7 +297,9 @@ export default function SettingsPage() {
       */}
       {activeTab === 'general' && org && <TicketPayouts org={org} onSaved={refetch} />}
       {activeTab === 'general' && org && <Locations orgId={org.id} />}
-      {activeTab === 'general' && org && <MaybeOsPlan org={org} />}
+      {activeTab === 'general' && org && (
+        <MaybeOsPlan org={org} memberCount={billableMembers} />
+      )}
       {activeTab === 'general' && org && <Support orgName={org.name} />}
       {activeTab === 'general' && org && <WebsiteEmbed org={org} />}
 

@@ -9,7 +9,11 @@ import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
-import { planForSubscriptionItems } from './maybeos-plans';
+import {
+  planForSubscriptionItems,
+  billsPerMember,
+  PER_MEMBER_PRICE_IDS,
+} from './maybeos-plans';
 import { ConnectService } from './connect.service';
 
 /**
@@ -613,6 +617,13 @@ export class StripeService {
         await this.syncPlanFromSubscription(event.data.object as Stripe.Subscription, tx);
         break;
 
+      case 'invoice.upcoming':
+        // The renewal snapshot (PLT-03). Fires before the invoice is
+        // finalised, which is the only moment a quantity change still lands
+        // on it.
+        await this.handleUpcomingInvoice(event.data.object as Stripe.Invoice, tx);
+        break;
+
       case 'invoice.payment_failed':
         await this.handleInvoicePaymentFailed(
           event.data.object as Stripe.Invoice,
@@ -944,6 +955,10 @@ export class StripeService {
     });
 
     this.logger.log(`Org ${orgId} is now on MaybeOS ${plan} (${subscriptionId})`);
+
+    // The pricing table creates the subscription at quantity 1, so a
+    // 300-member co-op would be billed for one member until this ran.
+    await this.syncPlanQuantity(orgId, subscriptionId, priceIds);
   }
 
   /**
@@ -986,5 +1001,105 @@ export class StripeService {
     });
 
     this.logger.log(`Org ${org.id} MaybeOS subscription ${subscription.id} is ${subscription.status}`);
+  }
+
+  /**
+   * Take the member count for the coming period (PLT-03).
+   *
+   * `invoice.upcoming` fires *before* the renewal invoice is finalised, which
+   * is the only moment a quantity change still lands on that invoice —
+   * `invoice.created` is already too late, since the line items exist by then.
+   *
+   * Snapshot rather than continuous, on Charley's call: a co-op gets one
+   * predictable bill instead of a stream of proration lines every time
+   * somebody joins. The cost, stated rather than hidden: a co-op that grows
+   * between renewals is billed for the count it had at renewal.
+   */
+  private async handleUpcomingInvoice(invoice: Stripe.Invoice, tx: PrismaTx): Promise<void> {
+    // Read defensively: the Stripe types moved `subscription` off Invoice in
+    // recent API versions, and it still arrives on the wire.
+    const raw = (invoice as unknown as { subscription?: unknown }).subscription;
+    const subscriptionId =
+      typeof raw === 'string'
+        ? raw
+        : raw && typeof raw === 'object' && 'id' in raw
+          ? String((raw as { id: unknown }).id)
+          : null;
+    if (!subscriptionId) return;
+
+    const org = await tx.organization.findFirst({
+      where: { stripePlanSubscriptionId: subscriptionId },
+      select: { id: true },
+    });
+    // Not ours — a member's dues to their co-op renew through here too.
+    if (!org) return;
+
+    try {
+      const subscription = await this.stripe.subscriptions.retrieve(subscriptionId);
+      await this.syncPlanQuantity(
+        org.id,
+        subscriptionId,
+        subscription.items.data.map((i) => i.price.id),
+      );
+    } catch (err) {
+      this.logger.error(
+        `Could not take the renewal snapshot for org ${org.id}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Set a per-member subscription's quantity to the co-op's member count.
+   *
+   * **Only ever on a price that actually bills per member.** Unlimited is $349
+   * flat; a quantity of 300 on it would invoice a co-op $104,700, and Stripe
+   * would be right to do it. The allowlist in `maybeos-plans.ts` is what stops
+   * that, and this refuses rather than guesses when the price is not on it.
+   *
+   * GUEST memberships are excluded — a guest is not a member.
+   */
+  private async syncPlanQuantity(
+    orgId: string,
+    subscriptionId: string,
+    priceIds: string[],
+  ): Promise<void> {
+    if (!billsPerMember(priceIds)) return;
+
+    const quantity = await this.prisma.userOrg.count({
+      where: { orgId, role: { in: ['ADMIN', 'STAFF', 'MEMBER'] } },
+    });
+
+    if (quantity < 1) {
+      // A co-op with no members is a co-op something is wrong with, and
+      // billing it for zero would either fail at Stripe or quietly bill
+      // nothing. Left alone and logged, so somebody looks.
+      this.logger.error(
+        `Org ${orgId} bills per member and has none. Leaving subscription ${subscriptionId} unchanged.`,
+      );
+      return;
+    }
+
+    try {
+      const subscription = await this.stripe.subscriptions.retrieve(subscriptionId);
+      const item = subscription.items.data.find((i) => PER_MEMBER_PRICE_IDS.has(i.price.id));
+      if (!item) return;
+      if (item.quantity === quantity) return;
+
+      await this.stripe.subscriptionItems.update(item.id, {
+        quantity,
+        // No invoice now: the point of a snapshot is that the co-op sees this
+        // on its next bill rather than as a proration the moment somebody
+        // joins.
+        proration_behavior: 'none',
+      });
+
+      this.logger.log(
+        `Org ${orgId} billed for ${quantity} members (was ${item.quantity ?? 'unset'})`,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Could not set the member quantity for org ${orgId}: ${(err as Error).message}`,
+      );
+    }
   }
 }
