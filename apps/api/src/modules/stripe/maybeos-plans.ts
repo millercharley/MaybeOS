@@ -23,7 +23,8 @@ export const PLAN_BY_PRICE_ID: Record<string, MaybeOsPlan> = {
 
   // MaybeOS Plus — prod_V6SI9a0RfuTulm
   price_1U6M1VD14bhghVE2lprg1qo0: 'PLUS', // $0.50 per member / month
-  price_1U6FNXD14bhghVE2xTrj9hFm: 'PLUS', // $3.65 per member / year, metered
+  price_1U6FNXD14bhghVE2xTrj9hFm: 'PLUS', // $3.65/member/year — metered, retired
+  price_1U95auD14bhghVE2T71z3ryJ: 'PLUS', // $3.65/member/year — licensed
 
   // MaybeOS Unlimited — prod_V6YZST1JiLzsFB
   price_1U6LvpD14bhghVE2Grl0L9DI: 'UNLIMITED', // $349 / month
@@ -66,12 +67,23 @@ export function planForSubscriptionItems(priceIds: string[]): MaybeOsPlan | null
  */
 export const PER_MEMBER_PRICE_IDS = new Set<string>([
   'price_1U6M1VD14bhghVE2lprg1qo0', // MaybeOS Plus — $0.50 per member / month
-  // The yearly Plus price is being reissued as a *licensed* price: the
-  // original was metered, which is the wrong model for membership — members
-  // are a level, not an event stream, and a metered price with nothing
-  // reported bills zero, which is what it has been doing. Its id goes here
-  // once it exists.
+  'price_1U95auD14bhghVE2T71z3ryJ', // MaybeOS Plus — $3.65 per member / year
 ]);
+
+/**
+ * The retired metered yearly price, kept mapped to PLUS above and kept *out*
+ * of the per-member set on purpose.
+ *
+ * It still grants PLUS because a co-op already subscribed to it should not be
+ * silently demoted when it is archived — archiving stops new subscriptions,
+ * not existing ones. But a metered price has no quantity to set: asking
+ * Stripe to set one errors, so it must never reach `syncPlanQuantity`.
+ *
+ * It was the wrong model for membership from the start. Members are a level,
+ * not an event stream, and a metered price with nothing ever reported bills
+ * zero — which is exactly what it did.
+ */
+export const RETIRED_METERED_YEARLY = 'price_1U6FNXD14bhghVE2xTrj9hFm';
 
 /** Whether a subscription bills by member count, and so needs a quantity. */
 export function billsPerMember(priceIds: string[]): boolean {
