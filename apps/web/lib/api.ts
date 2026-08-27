@@ -1046,6 +1046,13 @@ class ApiClient {
         { method: 'POST', token },
       ),
 
+    /** Queues the rewriting; it does not wait for it (IMP-23). */
+    composeReport: (orgId: string, reportId: string, token: string) =>
+      this.request<{ composeStatus: ComposeStatus }>(
+        `/orgs/${orgId}/impact/reports/${reportId}/compose`,
+        { method: 'POST', token },
+      ),
+
     unpublishReport: (orgId: string, reportId: string, token: string) =>
       this.request<{ status: string }>(
         `/orgs/${orgId}/impact/reports/${reportId}/unpublish`,
@@ -2027,6 +2034,8 @@ export interface ReportBlock {
   data?: Record<string, unknown> | null;
 }
 
+export type ComposeStatus = 'NOT_NEEDED' | 'PENDING' | 'COMPOSING' | 'READY' | 'FAILED';
+
 export interface ReportSummary {
   id: string;
   title: string;
@@ -2038,6 +2047,13 @@ export interface ReportSummary {
   generatedAt: string;
   /** BASIC is the free deterministic reading; WRITTEN is the $50 one. */
   tier: 'BASIC' | 'WRITTEN';
+  /**
+   * Whether the written report's prose has been written yet. It reads
+   * correctly either way — a written report is the free report until the
+   * composition lands over it — so this is a state, never a broken document.
+   */
+  composeStatus: ComposeStatus;
+  composeNote?: string | null;
   _count?: { blocks: number };
 }
 

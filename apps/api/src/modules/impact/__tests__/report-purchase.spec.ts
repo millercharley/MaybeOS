@@ -5,6 +5,7 @@ import { ImpactService } from '../impact.service';
 import { ExpenseService } from '../expense.service';
 import { ReportService } from '../report.service';
 import { ReportPurchaseService } from '../report-purchase.service';
+import { ComposerService } from '../composer.service';
 import {
   WRITTEN_REPORT_PRICE_CENTS,
   purchaseCoversPeriod,
@@ -42,6 +43,8 @@ describe('The written impact report paywall', () => {
       providers: [
         ReportService,
         ReportPurchaseService,
+        // Never reached by these tests: nothing here composes.
+        { provide: ComposerService, useValue: { available: false } },
         { provide: PrismaService, useValue: prisma },
         { provide: ImpactService, useValue: {} },
         { provide: ExpenseService, useValue: {} },

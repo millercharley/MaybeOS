@@ -1068,6 +1068,20 @@ model MeasurementPlan {
 /// and is what the $50 buys (D-031). Splitting them here rather than with a
 /// boolean leaves room for a third kind without a migration that rewrites
 /// every row's meaning.
+/// How the written report's prose is getting on (IMP-23).
+///
+/// The written report is the free report with better sentences over the same
+/// frozen figures, so it is readable from the moment it exists and this only
+/// says whether the rewriting has happened. FAILED is a real, survivable
+/// state: the co-op keeps the deterministic text, which is flat and true.
+enum ComposeStatus {
+  NOT_NEEDED
+  PENDING
+  COMPOSING
+  READY
+  FAILED
+}
+
 enum ReportTier {
   BASIC
   WRITTEN
@@ -1090,20 +1104,24 @@ enum ReportStatus {
 /// So the figures are written into the blocks when the report is made, and
 /// regenerating produces a *new* reading rather than editing history.
 model ImpactReport {
-  id          String       @id @default(uuid())
-  orgId       String
-  title       String
-  slug        String
+  id            String        @id @default(uuid())
+  orgId         String
+  title         String
+  slug          String
   /// The period the figures describe, not the period they were written in.
-  periodStart DateTime
-  periodEnd   DateTime
-  status      ReportStatus @default(DRAFT)
-  tier        ReportTier   @default(BASIC)
-  publishedAt DateTime?
-  generatedAt DateTime
-  createdById String?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  periodStart   DateTime
+  periodEnd     DateTime
+  status        ReportStatus  @default(DRAFT)
+  tier          ReportTier    @default(BASIC)
+  composeStatus ComposeStatus @default(NOT_NEEDED)
+  /// Why the last composition gave up, for the admin and for us.
+  composeNote   String?
+  composedAt    DateTime?
+  publishedAt   DateTime?
+  generatedAt   DateTime
+  createdById   String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   org       Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
   createdBy User?         @relation("ReportAuthor", fields: [createdById], references: [id], onDelete: SetNull)

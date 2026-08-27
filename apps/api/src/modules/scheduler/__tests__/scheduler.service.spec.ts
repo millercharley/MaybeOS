@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { SchedulerService } from '../scheduler.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { CommonsService } from '../../commons/commons.service';
+import { ReportService } from '../../impact/report.service';
 
 /**
  * The scheduler's correctness is mostly about what it *doesn't* touch: rows
@@ -27,11 +28,19 @@ describe('SchedulerService', () => {
             proposal: { findMany: jest.fn().mockResolvedValue([]) },
             survey: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
             booking: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+            impactReport: {
+              updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+              findMany: jest.fn().mockResolvedValue([]),
+            },
           },
         },
         {
           provide: CommonsService,
           useValue: { closeProposal: jest.fn().mockResolvedValue({}) },
+        },
+        {
+          provide: ReportService,
+          useValue: { compose: jest.fn().mockResolvedValue({ status: 'ready' }) },
         },
       ],
     }).compile();
@@ -131,5 +140,147 @@ describe('SchedulerService', () => {
 
     expect(result.tasks.every((t) => t.processed === 0 && t.failed === 0)).toBe(true);
     expect(commons.closeProposal).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Writing the prose for reports waiting on it (IMP-23 phase 2).
+ *
+ * The scheduler runs this because a composition takes minutes and a
+ * synchronous function has seconds. Its job is to be safe rather than fast:
+ * nothing may be composed twice, nothing may be stranded, and one report's
+ * failure must not stop the next one.
+ */
+describe('SchedulerService — compose-pending-reports', () => {
+  const NOW = new Date('2026-08-27T12:00:00Z');
+
+  const build = async (over: {
+    waiting?: Array<{ id: string; orgId: string }>;
+    compose?: jest.Mock;
+    reclaimed?: number;
+  }) => {
+    const prisma = {
+      proposal: { findMany: jest.fn().mockResolvedValue([]) },
+      survey: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      booking: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      impactReport: {
+        updateMany: jest.fn().mockResolvedValue({ count: over.reclaimed ?? 0 }),
+        findMany: jest.fn().mockResolvedValue(over.waiting ?? []),
+      },
+    };
+    const reports = { compose: over.compose ?? jest.fn().mockResolvedValue({ status: 'ready' }) };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        SchedulerService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CommonsService, useValue: { closeProposal: jest.fn() } },
+        { provide: ReportService, useValue: reports },
+      ],
+    }).compile();
+
+    return { service: module.get(SchedulerService), prisma, reports };
+  };
+
+  const task = (result: any) =>
+    result.tasks.find((t: any) => t.task === 'compose-pending-reports');
+
+  it('reclaims a report whose composer died before picking up new ones', async () => {
+    // The claim that stops two composers writing the same blocks is also what
+    // would strand a report forever if the runner never came back.
+    const { service, prisma } = await build({ reclaimed: 1 });
+
+    await service.runDueTasks(NOW);
+
+    expect(prisma.impactReport.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          composeStatus: 'COMPOSING',
+          updatedAt: { lt: new Date(NOW.getTime() - 10 * 60 * 1000) },
+        }),
+        data: { composeStatus: 'PENDING' },
+      }),
+    );
+  });
+
+  it('only picks up written reports that are waiting', async () => {
+    const { service, prisma } = await build({});
+
+    await service.runDueTasks(NOW);
+
+    expect(prisma.impactReport.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { tier: 'WRITTEN', composeStatus: 'PENDING' },
+      }),
+    );
+  });
+
+  it('composes what is waiting, oldest first', async () => {
+    const { service, reports } = await build({
+      waiting: [
+        { id: 'r1', orgId: 'org1' },
+        { id: 'r2', orgId: 'org2' },
+      ],
+    });
+
+    const result = await service.runDueTasks(NOW);
+
+    expect(reports.compose).toHaveBeenCalledWith('org1', 'r1');
+    expect(reports.compose).toHaveBeenCalledWith('org2', 'r2');
+    expect(task(result).processed).toBe(2);
+  });
+
+  it('caps a run so one invocation cannot spend the whole budget', async () => {
+    const waiting = Array.from({ length: 4 }, (_, i) => ({ id: `r${i}`, orgId: 'org1' }));
+    const { service, reports } = await build({ waiting });
+
+    await service.runDueTasks(NOW);
+
+    // Three, and the fourth is left for the next run rather than silently
+    // dropped — the query asks for one more than the cap so the overflow can
+    // be logged instead of guessed at.
+    expect(reports.compose).toHaveBeenCalledTimes(3);
+  });
+
+  it('counts a report that gave up, without stranding the next one', async () => {
+    const compose = jest
+      .fn()
+      .mockResolvedValueOnce({ status: 'failed', note: 'kept breaking the rules' })
+      .mockResolvedValueOnce({ status: 'ready' });
+
+    const { service } = await build({
+      waiting: [
+        { id: 'r1', orgId: 'org1' },
+        { id: 'r2', orgId: 'org2' },
+      ],
+      compose,
+    });
+
+    const result = await service.runDueTasks(NOW);
+
+    expect(task(result).failed).toBe(1);
+    expect(task(result).processed).toBe(1);
+    expect(task(result).errors[0]).toContain('kept breaking the rules');
+  });
+
+  it('keeps going when one report throws outright', async () => {
+    const compose = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('connection lost'))
+      .mockResolvedValueOnce({ status: 'ready' });
+
+    const { service } = await build({
+      waiting: [
+        { id: 'r1', orgId: 'org1' },
+        { id: 'r2', orgId: 'org2' },
+      ],
+      compose,
+    });
+
+    const result = await service.runDueTasks(NOW);
+
+    expect(compose).toHaveBeenCalledTimes(2);
+    expect(task(result).processed).toBe(1);
+    expect(task(result).failed).toBe(1);
   });
 });

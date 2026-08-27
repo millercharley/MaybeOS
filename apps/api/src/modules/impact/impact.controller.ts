@@ -280,6 +280,18 @@ export class ImpactController {
     return this.reports.publish(orgId, reportId);
   }
 
+  @Post('impact/reports/:reportId/compose')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Have the written report’s prose written again' })
+  composeReport(
+    @Param('orgId') orgId: string,
+    @Param('reportId', ParseUUIDPipe) reportId: string,
+  ) {
+    return this.reports.requestCompose(orgId, reportId);
+  }
+
   // ─── Paying for the written report (IMP-23) ─────────────────
 
   @Get('impact/reports/:reportId/purchase')

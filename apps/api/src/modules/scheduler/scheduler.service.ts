@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { CommonsService } from '../commons/commons.service';
+import { ReportService } from '../impact/report.service';
 
 export interface TaskResult {
   task: string;
@@ -40,6 +41,7 @@ export class SchedulerService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly commons: CommonsService,
+    private readonly reports: ReportService,
   ) {}
 
   async runDueTasks(now: Date = new Date()): Promise<RunResult> {
@@ -54,6 +56,7 @@ export class SchedulerService {
       { name: 'close-due-proposals', run: () => this.closeDueProposals(now) },
       { name: 'close-due-surveys', run: () => this.closeDueSurveys(now) },
       { name: 'release-expired-booking-holds', run: () => this.releaseExpiredHolds(now) },
+      { name: 'compose-pending-reports', run: () => this.composePendingReports(now) },
     ]) {
       try {
         tasks.push(await task.run());
@@ -79,6 +82,72 @@ export class SchedulerService {
     return result;
   }
 
+
+  /**
+   * Write the prose for reports waiting on it (IMP-23 phase 2).
+   *
+   * The safety net, and — until a background function is triggerable — the
+   * only runner. A composition takes far longer than a synchronous function
+   * may run, so it cannot happen in the request that asks for it; here there
+   * are fifteen minutes and nobody waiting on a socket.
+   *
+   * **Stuck reports are reclaimed first.** A `COMPOSING` row whose runner
+   * died would otherwise sit there forever, because the claim that protects
+   * against two composers writing the same blocks is also what stops a third
+   * from ever picking it up.
+   *
+   * Capped per run and the overflow is logged rather than silently dropped: a
+   * quiet cap reads as "everything was done" when it was not.
+   */
+  private async composePendingReports(now: Date): Promise<TaskResult> {
+    const result: TaskResult = { task: 'compose-pending-reports', processed: 0, failed: 0, errors: [] };
+
+    const STUCK_AFTER_MS = 10 * 60 * 1000;
+    const PER_RUN = 3;
+
+    const reclaimed = await this.prisma.impactReport.updateMany({
+      where: {
+        composeStatus: 'COMPOSING',
+        updatedAt: { lt: new Date(now.getTime() - STUCK_AFTER_MS) },
+      },
+      data: { composeStatus: 'PENDING' },
+    });
+    if (reclaimed.count > 0) {
+      this.logger.warn(`Reclaimed ${reclaimed.count} report(s) stuck mid-composition`);
+    }
+
+    const waiting = await this.prisma.impactReport.findMany({
+      where: { tier: 'WRITTEN', composeStatus: 'PENDING' },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, orgId: true },
+      take: PER_RUN + 1,
+    });
+
+    if (waiting.length > PER_RUN) {
+      this.logger.log(
+        `${waiting.length - PER_RUN}+ report(s) left for the next run — this run is capped at ${PER_RUN}`,
+      );
+    }
+
+    for (const report of waiting.slice(0, PER_RUN)) {
+      try {
+        const outcome = await this.reports.compose(report.orgId, report.id);
+        if (outcome.status === 'failed') {
+          // Recorded on the report and shown to the admin, so this is a
+          // count rather than an error: nothing is stuck and nothing is lost.
+          result.failed += 1;
+          result.errors.push(`${report.id}: ${outcome.note}`);
+        } else {
+          result.processed += 1;
+        }
+      } catch (error) {
+        result.failed += 1;
+        result.errors.push(`${report.id}: ${(error as Error).message}`);
+      }
+    }
+
+    return result;
+  }
 
   /**
    * Release room slots held for a payment that never arrived (SPC-06).

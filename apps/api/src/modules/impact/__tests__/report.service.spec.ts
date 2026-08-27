@@ -4,6 +4,7 @@ import { ReportService, editedShare } from '../report.service';
 import { ImpactService } from '../impact.service';
 import { ExpenseService } from '../expense.service';
 import { ReportPurchaseService } from '../report-purchase.service';
+import { ComposerService } from '../composer.service';
 import { PrismaService } from '../../../config/prisma.service';
 
 /**
@@ -71,6 +72,8 @@ describe('ReportService', () => {
         // The real one, against the mock client: whether a written report is
         // paid for is the thing being tested, not a thing being stubbed.
         ReportPurchaseService,
+        // Never reached by these tests: nothing here composes.
+        { provide: ComposerService, useValue: { available: false } },
       ],
     }).compile();
 

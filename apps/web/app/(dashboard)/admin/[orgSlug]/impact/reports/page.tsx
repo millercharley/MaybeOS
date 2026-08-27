@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Check, ExternalLink, FileText, Loader2, Lock, Pencil, Sparkles } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, ExternalLink, FileText, Loader2, Lock, Pencil, RefreshCw, Sparkles } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, ApiError, ImpactReport, ReportPurchaseStatus, ReportSummary } from '@/lib/api';
 import { WRITTEN_REPORT_PRICE_CENTS, money } from '@/lib/fees';
@@ -46,6 +46,29 @@ export default function ReportsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  /**
+   * Watch for the prose while it is being written (IMP-23).
+   *
+   * Composition takes minutes and a synchronous function has seconds, so the
+   * request that asks for it returns immediately and this waits instead. The
+   * report is readable throughout — it is the free report until the rewrite
+   * lands over it — so this is a page getting better, not a page loading.
+   */
+  useEffect(() => {
+    if (!open || !token || !orgId) return;
+    if (open.composeStatus !== 'PENDING' && open.composeStatus !== 'COMPOSING') return;
+
+    const timer = setInterval(async () => {
+      try {
+        const fresh = await api.impact.getReport(orgId, open.id, token);
+        setOpen(fresh);
+      } catch {
+        // A failed poll is not worth a red banner. The next one will do.
+      }
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [open, token, orgId]);
 
   /**
    * Come back from Stripe onto the report that was paid for.
@@ -94,6 +117,14 @@ export default function ReportsPage() {
     await run(async () => {
       setOpen(await api.impact.getReport(orgId!, id, token!));
       setPurchase(await api.impact.reportPurchaseStatus(orgId!, id, token!));
+    });
+  }
+
+  async function recompose() {
+    if (!open) return;
+    await run(async () => {
+      await api.impact.composeReport(orgId!, open.id, token!);
+      setOpen(await api.impact.getReport(orgId!, open.id, token!));
     });
   }
 
@@ -210,6 +241,52 @@ export default function ReportsPage() {
             </p>
           )}
         </div>
+
+        {/* The prose, and how it is getting on (IMP-23). Written in the
+            present tense about a report that already reads correctly — the
+            written report is the free report until the rewrite lands over it,
+            so none of these states is a broken document. */}
+        {(open.composeStatus === 'PENDING' || open.composeStatus === 'COMPOSING') && (
+          <p className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+            <span>
+              MaybeOS is writing this up. It usually takes a few minutes — what you can read below
+              is the plain version, and it will improve in place. Nothing is lost if you leave.
+            </span>
+          </p>
+        )}
+
+        {open.composeStatus === 'FAILED' && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <p className="flex max-w-md items-start gap-2 text-sm text-amber-900">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  <b>The writing did not come out right, so it was not used.</b>{' '}
+                  {open.composeNote}
+                  {' '}What you can read below is the plain version — every figure in it is correct.
+                </span>
+              </p>
+              <button onClick={recompose} disabled={busy} className="btn-secondary shrink-0 text-sm">
+                <RefreshCw className="mr-1.5 inline h-4 w-4" />
+                Try again
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* IMP-25: told, not asked. Everything that leaves has already passed
+            suppression and is already public in the free report, and a consent
+            gate would be the step between stating a goal and receiving a
+            report that the PRD says must justify itself. So it is said
+            plainly, where the writing happens, rather than buried in terms. */}
+        {open.tier === 'WRITTEN' && (
+          <p className="text-xs text-gray-500">
+            Writing this sends your goals and your figures — the same ones anyone reading the
+            published report can see — to Claude, the AI model MaybeOS uses. No member&rsquo;s
+            answers, names or details ever leave MaybeOS.
+          </p>
+        )}
 
         {/* What the $50 is, said where the decision is made. Only ever shown
             on the written report: the basic one is free and offering to sell

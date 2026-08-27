@@ -6,6 +6,7 @@ import { TouchpointService } from './touchpoint.service';
 import { GoalsService } from './goals.service';
 import { ReportService } from './report.service';
 import { ReportPurchaseService } from './report-purchase.service';
+import { ComposerService } from './composer.service';
 import { ExpenseService } from './expense.service';
 import { ImpactController } from './impact.controller';
 import { PublicReportController } from './public-report.controller';
@@ -15,7 +16,7 @@ import { PublicReportController } from './public-report.controller';
   // (IMP-23); the entitlement it grants is read here.
   imports: [StripeModule],
   controllers: [ImpactController, PublicReportController],
-  providers: [PrismaService, ImpactService, TouchpointService, ExpenseService, GoalsService, ReportService, ReportPurchaseService],
-  exports: [ImpactService, TouchpointService, ExpenseService, ReportPurchaseService],
+  providers: [PrismaService, ImpactService, TouchpointService, ExpenseService, GoalsService, ReportService, ReportPurchaseService, ComposerService],
+  exports: [ImpactService, TouchpointService, ExpenseService, ReportPurchaseService, ReportService],
 })
 export class ImpactModule {}
