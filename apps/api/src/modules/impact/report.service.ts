@@ -1,9 +1,16 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { ImpactService } from './impact.service';
 import { ExpenseService } from './expense.service';
 import { ReportPurchaseService } from './report-purchase.service';
+import { ComposerService } from './composer.service';
+import { COMPOSABLE_KINDS, buildFactSheet, periodYears } from './report-composer';
 import { CATEGORY_PHRASE } from './report-language';
 
 /**
@@ -39,6 +46,7 @@ export class ReportService {
     private readonly impact: ImpactService,
     private readonly expenses: ExpenseService,
     private readonly purchases: ReportPurchaseService,
+    private readonly composer: ComposerService,
   ) {}
 
   async list(orgId: string) {
@@ -51,6 +59,8 @@ export class ReportService {
         slug: true,
         status: true,
         tier: true,
+        composeStatus: true,
+        composeNote: true,
         periodStart: true,
         periodEnd: true,
         publishedAt: true,
@@ -119,7 +129,8 @@ export class ReportService {
     const title = input.title?.trim() || `${org.name}: ${periodEnd.getFullYear()} impact`;
     const slug = await this.uniqueSlug(orgId, title);
 
-    const blocks = this.composeBlocks({ org, signals, spend, periodStart, periodEnd });
+    const tier = input.tier ?? 'BASIC';
+    const blocks = this.composeBlocks({ org, signals, spend, periodStart, periodEnd, tier });
 
     const report = await this.prisma.impactReport.create({
       data: {
@@ -131,7 +142,11 @@ export class ReportService {
         // Free to generate either kind. A co-op that cannot read the written
         // report before deciding has no way to judge whether it is worth $50,
         // and the composition costs pennies (IMP-23).
-        tier: input.tier ?? 'BASIC',
+        tier,
+        // The written report exists and reads correctly the moment it is
+        // created — it is the free report, and the prose is rewritten over it
+        // afterwards. So this is a state, not a queue of nothing.
+        composeStatus: tier === 'WRITTEN' ? 'PENDING' : 'NOT_NEEDED',
         generatedAt: new Date(),
         createdById: userId,
         blocks: {
@@ -149,6 +164,139 @@ export class ReportService {
     });
 
     return { ...report, editedShare: 0 };
+  }
+
+  /**
+   * Ask for the prose again (IMP-23 phase 2).
+   *
+   * Queues rather than runs. Composition takes minutes and a synchronous
+   * function has seconds, so what an admin gets back is "it is being
+   * written", and the page watches for it. The alternative — waiting on the
+   * request — is a timeout dressed up as an error.
+   */
+  async requestCompose(orgId: string, reportId: string) {
+    const report = await this.prisma.impactReport.findFirst({
+      where: { id: reportId, orgId },
+      select: { id: true, tier: true, composeStatus: true, blocks: { select: { isEdited: true } } },
+    });
+    if (!report) throw new NotFoundException('Report not found');
+
+    if (report.tier !== 'WRITTEN') {
+      throw new BadRequestException('The basic report is written already — there is nothing to compose.');
+    }
+    if (report.composeStatus === 'COMPOSING') {
+      throw new ConflictException('It is being written now. Give it a minute.');
+    }
+    if (report.blocks.some((b) => b.isEdited)) {
+      // Said before the work starts rather than after it is discarded.
+      throw new ConflictException(
+        'You have edited this report, so it will not be overwritten. Generate a new one to have it written for you.',
+      );
+    }
+
+    await this.prisma.impactReport.update({
+      where: { id: report.id },
+      data: { composeStatus: 'PENDING', composeNote: null },
+    });
+
+    return { composeStatus: 'PENDING' as const };
+  }
+
+  /**
+   * Write the prose (IMP-23 phase 2).
+   *
+   * The report already exists and already reads correctly — the written
+   * report is the free report with better sentences over the same frozen
+   * figures — so this rewrites bodies in place and can fail without leaving
+   * anything broken. A co-op whose composition fails keeps a report that is
+   * flat and true, and has not been charged, because the charge happens at
+   * publish.
+   *
+   * Claimed with a conditional update rather than a read-then-write: the
+   * caller is a background function that Netlify may invoke more than once,
+   * and two composers writing the same blocks would interleave paragraphs
+   * from two drafts into one section.
+   */
+  async compose(orgId: string, reportId: string) {
+    const claimed = await this.prisma.impactReport.updateMany({
+      where: { id: reportId, orgId, tier: 'WRITTEN', composeStatus: { in: ['PENDING', 'FAILED'] } },
+      data: { composeStatus: 'COMPOSING' },
+    });
+    if (claimed.count === 0) {
+      // Either it is already being written, already written, or is the free
+      // report — none of which is an error worth raising at a background job.
+      return { status: 'skipped' as const };
+    }
+
+    const fail = async (note: string) => {
+      await this.prisma.impactReport.update({
+        where: { id: reportId },
+        data: { composeStatus: 'FAILED', composeNote: note },
+      });
+      return { status: 'failed' as const, note };
+    };
+
+    const report = await this.prisma.impactReport.findFirst({
+      where: { id: reportId, orgId },
+      include: { blocks: { orderBy: { sortOrder: 'asc' } }, org: { select: { name: true, mission: true } } },
+    });
+    if (!report) throw new NotFoundException('Report not found');
+
+    // An admin who has already rewritten a paragraph has said something about
+    // their own co-op. Overwriting that with a model's draft is the one
+    // outcome here that would actually cost them something.
+    if (report.blocks.some((b) => b.isEdited)) {
+      return fail('You have edited this report, so it was left alone. Generate a new one to have it written for you.');
+    }
+
+    const facts = buildFactSheet({
+      org: report.org,
+      periodStart: report.periodStart,
+      periodEnd: report.periodEnd,
+      blocks: report.blocks.map((b) => ({
+        id: b.id,
+        kind: b.kind,
+        heading: b.heading,
+        generatedBody: b.generatedBody,
+        data: b.data,
+      })),
+    });
+
+    if (facts.blocks.length === 0) {
+      return fail('There was nothing in this report for anyone to write about.');
+    }
+
+    // Numbers true of the whole report rather than of one section. Without
+    // these, a sentence naming the year it covers reads as an invented figure.
+    const globals = periodYears(report.periodStart, report.periodEnd);
+
+    const result = await this.composer.compose(facts, globals);
+
+    if (result.outcome === 'gave-up') {
+      return fail(result.reason);
+    }
+
+    const byId = new Map(result.blocks.map((b) => [b.id, b.body]));
+    await this.prisma.$transaction(
+      report.blocks
+        .filter((b) => COMPOSABLE_KINDS.has(b.kind) && byId.has(b.id))
+        .map((b) =>
+          this.prisma.reportBlock.update({
+            where: { id: b.id },
+            // Both, because after this the composed text *is* what MaybeOS
+            // wrote — and `editedShare` measures the co-op against what it was
+            // handed, not against a draft it never saw.
+            data: { body: byId.get(b.id)!.trim(), generatedBody: byId.get(b.id)!.trim() },
+          }),
+        ),
+    );
+
+    await this.prisma.impactReport.update({
+      where: { id: report.id },
+      data: { composeStatus: 'READY', composedAt: new Date(), composeNote: null },
+    });
+
+    return { status: 'ready' as const, attempts: result.attempts };
   }
 
   /**
@@ -275,8 +423,9 @@ export class ReportService {
     spend: Awaited<ReturnType<ExpenseService['summary']>>;
     periodStart: Date;
     periodEnd: Date;
+    tier: 'BASIC' | 'WRITTEN';
   }) {
-    const { org, signals, spend, periodStart, periodEnd } = input;
+    const { org, signals, spend, periodStart, periodEnd, tier } = input;
     const blocks: Array<{
       kind: string;
       heading?: string;
@@ -284,7 +433,13 @@ export class ReportService {
       data?: Prisma.InputJsonValue;
     }> = [];
 
-    const period = `${periodStart.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })} – ${periodEnd.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`;
+    // UTC, explicitly. A period is stored as a UTC midnight, and formatting it
+    // in the server's local zone prints “December 2025 – December 2026” for a
+    // 2026 report anywhere west of Greenwich — a wrong year on the cover of
+    // the one document a co-op sends to a funder.
+    const month = (d: Date) =>
+      d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    const period = `${month(periodStart)} – ${month(periodEnd)}`;
 
     blocks.push({
       kind: 'intro',
@@ -370,6 +525,84 @@ export class ReportService {
       });
     }
 
+    // Two sections only the written report carries (IMP-23). Both are created
+    // with an honest deterministic body first, so a composition that fails
+    // leaves a section that reads correctly rather than a heading over
+    // nothing — the written report degrades to the free one, never to a hole.
+    if (tier === 'WRITTEN') {
+      const reportableGoals = signals.goals.filter((g) =>
+        g.measures.some((m) => m.signal?.reportable && m.signal.average !== null),
+      );
+      const quietGoals = signals.goals.filter(
+        (g) => !g.measures.some((m) => m.signal?.reportable && m.signal.average !== null),
+      );
+      // A figure that only just cleared suppression is a figure worth naming
+      // as thin. Twice the threshold is a judgement, not a standard — but an
+      // arbitrary line that is stated beats a vague "some figures are small".
+      const thin = signals.goals.flatMap((g) =>
+        g.measures
+          .filter(
+            (m) =>
+              m.signal?.reportable &&
+              m.signal.average !== null &&
+              m.signal.respondents < signals.suppressionThreshold * 2,
+          )
+          .map((m) => ({ goal: g.title, label: m.label, respondents: m.signal!.respondents })),
+      );
+
+      blocks.push({
+        kind: 'synthesis',
+        heading: 'What we are taking from this',
+        body:
+          reportableGoals.length > 0
+            ? `${org.name} has figures for ${reportableGoals.length} of its ${signals.goals.length} ` +
+              `${goalWord(signals.goals.length)} this period. What they suggest the co-op might ` +
+              `look at next is a question for its members, not a conclusion from this data.`
+            : `There is not yet enough answered to say anything across goals.`,
+        data: {
+          goalCount: signals.goals.length,
+          reportableGoalCount: reportableGoals.length,
+          goals: reportableGoals.map((g) => ({
+            title: g.title,
+            figures: g.measures
+              .filter((m) => m.signal?.reportable && m.signal.average !== null)
+              .map((m) => ({
+                label: m.label,
+                average: m.signal!.average,
+                respondents: m.signal!.respondents,
+              })),
+          })),
+        },
+      });
+
+      blocks.push({
+        kind: 'limitations',
+        heading: 'What this report cannot tell you',
+        body: [
+          `These figures say what members reported. They do not say why, and nothing here ` +
+            `establishes that anything ${org.name} did caused anything members felt.`,
+          quietGoals.length > 0
+            ? `${quietGoals.length} ${goalWord(quietGoals.length)} have no figure at all: ` +
+              `${quietGoals.map((g) => g.title).join(', ')}. Too few members answered about them.`
+            : null,
+          thin.length > 0
+            ? `Some figures rest on small numbers — ` +
+              `${thin.map((t) => `${t.label} (${t.respondents} ${people(t.respondents)})`).join('; ')}.`
+            : null,
+          `Members who answer are not necessarily members who do not, and this report cannot ` +
+            `measure that difference.`,
+        ]
+          .filter(Boolean)
+          .join('\n\n'),
+        data: {
+          suppressionThreshold: signals.suppressionThreshold,
+          quietGoals: quietGoals.map((g) => ({ title: g.title })),
+          thinFigures: thin,
+          members: signals.members,
+        },
+      });
+    }
+
     // Last, and always present: this is what separates a report from a claim.
     blocks.push({
       kind: 'provenance',
@@ -422,5 +655,6 @@ export function editedShare(blocks: Array<{ isEdited: boolean }>): number {
 }
 
 const people = (n: number) => (n === 1 ? 'person' : 'people');
+const goalWord = (n: number) => (n === 1 ? 'goal' : 'goals');
 
 const money = (cents: number) => `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
