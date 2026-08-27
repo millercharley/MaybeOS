@@ -80,7 +80,7 @@ export function MaybeOsPlan({
 
       <Script src="https://js.stripe.com/v3/pricing-table.js" strategy="lazyOnload" />
       <stripe-pricing-table
-        pricing-table-id="prctbl_1U6MFpD14bhghVE27P2XYsez"
+        pricing-table-id="prctbl_1U95dxD14bhghVE2zVs4YqaT"
         publishable-key="pk_live_51U2yA7D14bhghVE2SzHjDWPYVbTcpSVPDXPXMRZP98SFRUl74un053QjFp5qu7hANSDHbbV0myCv3tVeMzjgwByy00WTPxtJq0"
         client-reference-id={org.id}
       />

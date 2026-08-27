@@ -1,4 +1,9 @@
-import { PER_MEMBER_PRICE_IDS, billsPerMember, PLAN_BY_PRICE_ID } from '../maybeos-plans';
+import {
+  PER_MEMBER_PRICE_IDS,
+  billsPerMember,
+  PLAN_BY_PRICE_ID,
+  RETIRED_METERED_YEARLY,
+} from '../maybeos-plans';
 
 /**
  * Billing MaybeOS Plus by member count (PLT-03).
@@ -48,12 +53,20 @@ describe('per-member prices', () => {
     }
   });
 
-  it('does not yet include the yearly Plus price', () => {
-    // Deliberate, and this test is the reminder. The original yearly price is
-    // metered — the wrong model for membership, and it bills zero because
-    // nothing is ever reported. Charley is reissuing it as licensed; its id
-    // goes in when it exists, and this expectation flips.
-    expect(PER_MEMBER_PRICE_IDS.has('price_1U6FNXD14bhghVE2xTrj9hFm')).toBe(false);
-    expect(PER_MEMBER_PRICE_IDS.size).toBe(1);
+  it('includes the reissued licensed yearly price', () => {
+    // Charley reissued it as licensed on 2026-08-20; this expectation used to
+    // assert its absence.
+    expect(billsPerMember(['price_1U95auD14bhghVE2T71z3ryJ'])).toBe(true);
+    expect(PER_MEMBER_PRICE_IDS.size).toBe(2);
+  });
+
+  it('keeps the retired metered price out of the per-member set', () => {
+    // It still grants PLUS — archiving stops new subscriptions, not existing
+    // ones, and a co-op already on it must not be silently demoted. But a
+    // metered price has no quantity to set: asking Stripe to set one errors,
+    // so it must never reach the quantity sync.
+    expect(PLAN_BY_PRICE_ID[RETIRED_METERED_YEARLY]).toBe('PLUS');
+    expect(PER_MEMBER_PRICE_IDS.has(RETIRED_METERED_YEARLY)).toBe(false);
+    expect(billsPerMember([RETIRED_METERED_YEARLY])).toBe(false);
   });
 });
