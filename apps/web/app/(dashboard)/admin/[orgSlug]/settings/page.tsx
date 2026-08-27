@@ -32,6 +32,14 @@ export default function SettingsPage() {
     ? members.data.filter((m) => m.role !== 'GUEST').length
     : undefined;
 
+  // Arrived back from Stripe (PLT-05). Acknowledged rather than left silent:
+  // somebody who has just paid should be told the money landed, on the page
+  // that now shows what they bought.
+  const [justSubscribed, setJustSubscribed] = useState(false);
+  useEffect(() => {
+    setJustSubscribed(new URLSearchParams(window.location.search).get('subscribed') === '1');
+  }, []);
+
   const { data: org, loading, refetch } = useApi(
     (tkn, orgId) => api.orgs.get(orgId, tkn),
     [],
@@ -189,6 +197,12 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
+      {justSubscribed && (
+        <p className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-800" role="status">
+          Thanks — your MaybeOS plan is active. What you&apos;re billed for is below.
+        </p>
+      )}
+
       <h1 className="text-2xl font-bold text-gray-900">Organization Settings</h1>
 
       <div className="flex gap-1 border-b border-gray-200">
