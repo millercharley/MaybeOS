@@ -1297,6 +1297,13 @@ class ApiClient {
     deleteSuggestion: (orgId: string, id: string, token: string) =>
       this.request<unknown>(`/orgs/${orgId}/belonging/buddy/suggestions/${id}`, { method: 'DELETE', token }),
 
+    /** Prompts for the buddy in one conversation. Empty for anybody else. */
+    threadSuggestions: (orgId: string, otherUserId: string, token: string) =>
+      this.request<{ pairingId: string | null; suggestions: Array<{ id: string; body: string }> }>(
+        `/orgs/${orgId}/belonging/buddy/thread/${otherUserId}/suggestions`,
+        { token },
+      ),
+
     dismissSuggestion: (orgId: string, id: string, token: string) =>
       this.request<unknown>(`/orgs/${orgId}/belonging/buddy/suggestions/${id}/dismiss`, {
         method: 'POST',

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Download, Loader2, Plus, Trash2, X } from 'lucide-react';
+import { Download, Loader2, Plus, Trash2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import {
   api,
