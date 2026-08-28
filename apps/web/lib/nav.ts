@@ -61,6 +61,7 @@ const adminNav = (slug: string): NavItem[] => [
   // Money owed *out* to members who hosted, which is a different job from
   // spending and a different one from ticket sales (EVT-15).
   { href: `/admin/${slug}/payouts`, label: 'Host payouts', icon: HandCoins },
+  { href: `/admin/${slug}/welcome`, label: 'Welcoming', icon: BookOpen },
   { href: `/admin/${slug}/belonging`, label: 'Belonging', icon: HeartHandshake },
   { href: `/admin/${slug}/settings`, label: 'Settings', icon: Settings },
 ];
