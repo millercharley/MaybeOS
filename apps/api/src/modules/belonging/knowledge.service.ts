@@ -71,7 +71,7 @@ export class KnowledgeService {
       where: { orgId, ...(isAdmin ? {} : { state: 'PUBLISHED' }) },
       orderBy: { position: 'asc' },
       include: {
-        author: { select: { id: true, user: { select: { name: true, avatarPath: true } } } },
+        author: { select: { id: true, headline: true, user: { select: { name: true, avatarPath: true } } } },
         _count: { select: { likes: true, comments: true } },
         comments: {
           orderBy: { createdAt: 'desc' },
@@ -91,11 +91,18 @@ export class KnowledgeService {
         slug: a.slug,
         state: a.state,
         position: a.position,
-        coverImagePath: a.coverImagePath,
+        coverImageUrl: a.coverImageUrl,
         requiresAcknowledgment: a.requiresAcknowledgment,
         version: a.version,
         author: a.author
-          ? { name: a.author.user.name, avatarPath: a.author.user.avatarPath }
+          ? {
+              name: a.author.user.name,
+              avatarPath: a.author.user.avatarPath,
+              // The small line under the name that makes a set of house rules
+              // read as written by a person rather than issued by an
+              // institution.
+              headline: a.author.headline,
+            }
           : null,
         likeCount: a._count.likes,
         commentCount: a._count.comments,
@@ -118,7 +125,7 @@ export class KnowledgeService {
         ...(isAdmin ? {} : { state: 'PUBLISHED' }),
       },
       include: {
-        author: { select: { user: { select: { name: true, avatarPath: true } } } },
+        author: { select: { headline: true, user: { select: { name: true, avatarPath: true } } } },
         _count: { select: { likes: true, comments: true } },
         comments: {
           orderBy: { createdAt: 'asc' },
@@ -132,6 +139,17 @@ export class KnowledgeService {
 
     return {
       ...article,
+      // Flattened the same way the index flattens it. Returning the raw
+      // relation here and a flattened one there meant the article page read
+      // `author.name` off an object that only had `author.user.name`, and
+      // silently showed every article as written by "A member".
+      author: article.author
+        ? {
+            name: article.author.user.name,
+            avatarPath: article.author.user.avatarPath,
+            headline: article.author.headline,
+          }
+        : null,
       likeCount: article._count.likes,
       commentCount: article._count.comments,
       likedByMe: article.likes.length > 0,
@@ -144,7 +162,7 @@ export class KnowledgeService {
   async create(
     orgId: string,
     authorId: string,
-    dto: { title: string; body: string; coverImagePath?: string; requiresAcknowledgment?: boolean },
+    dto: { title: string; body: string; coverImageUrl?: string; requiresAcknowledgment?: boolean },
   ) {
     const last = await this.prisma.knowledgeArticle.findFirst({
       where: { orgId },
@@ -159,7 +177,7 @@ export class KnowledgeService {
         title: dto.title.trim(),
         slug: await this.uniqueSlug(orgId, dto.title),
         body: dto.body,
-        coverImagePath: dto.coverImagePath ?? null,
+        coverImageUrl: dto.coverImageUrl ?? null,
         requiresAcknowledgment: dto.requiresAcknowledgment ?? false,
         position: (last?.position ?? -1) + 1,
       },
@@ -182,7 +200,7 @@ export class KnowledgeService {
     dto: {
       title?: string;
       body?: string;
-      coverImagePath?: string | null;
+      coverImageUrl?: string | null;
       requiresAcknowledgment?: boolean;
       material?: boolean;
     },
@@ -209,7 +227,7 @@ export class KnowledgeService {
       data: {
         ...(dto.title !== undefined && { title: dto.title.trim() }),
         ...(dto.body !== undefined && { body: dto.body }),
-        ...(dto.coverImagePath !== undefined && { coverImagePath: dto.coverImagePath }),
+        ...(dto.coverImageUrl !== undefined && { coverImageUrl: dto.coverImageUrl }),
         ...(dto.requiresAcknowledgment !== undefined && {
           requiresAcknowledgment: dto.requiresAcknowledgment,
         }),

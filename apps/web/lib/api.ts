@@ -1211,6 +1211,186 @@ class ApiClient {
       this.request(`/orgs/${orgId}/me/demographics`, { method: 'DELETE', token }),
   };
 
+  // ── Belonging Support: the Buddy System and the Knowledge Center (BEL) ──
+  belonging = {
+    settings: (orgId: string, token: string) =>
+      this.request<BelongingSettings>(`/orgs/${orgId}/belonging/settings`, { token }),
+
+    updateSettings: (orgId: string, data: Partial<BelongingSettings>, token: string) =>
+      this.request<BelongingSettings>(`/orgs/${orgId}/belonging/settings`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    emailTemplates: (orgId: string, token: string) =>
+      this.request<BelongingEmailTemplate[]>(`/orgs/${orgId}/belonging/emails`, { token }),
+
+    saveEmailTemplate: (orgId: string, kind: string, data: { subject: string; body: string }, token: string) =>
+      this.request<unknown>(`/orgs/${orgId}/belonging/emails/${kind}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    resetEmailTemplate: (orgId: string, kind: string, token: string) =>
+      this.request<unknown>(`/orgs/${orgId}/belonging/emails/${kind}`, { method: 'DELETE', token }),
+
+    /* ── Buddy ── */
+
+    pairings: (orgId: string, token: string) =>
+      this.request<BuddyPairingRow[]>(`/orgs/${orgId}/belonging/buddy/pairings`, { token }),
+
+    invitations: (orgId: string, token: string) =>
+      this.request<BuddyInvitationRow[]>(`/orgs/${orgId}/belonging/buddy/invitations`, { token }),
+
+    buddyMembers: (orgId: string, token: string) =>
+      this.request<BuddyMemberRow[]>(`/orgs/${orgId}/belonging/buddy/members`, { token }),
+
+    myBuddyState: (orgId: string, token: string) =>
+      this.request<MyBuddyState>(`/orgs/${orgId}/belonging/buddy/me`, { token }),
+
+    setBuddyOptOut: (orgId: string, optedOut: boolean, token: string) =>
+      this.request<unknown>(`/orgs/${orgId}/belonging/buddy/me/opt-out`, {
+        method: 'PATCH',
+        body: JSON.stringify({ optedOut }),
+        token,
+      }),
+
+    reassignPairing: (orgId: string, pairingId: string, buddyMemberId: string, token: string) =>
+      this.request<unknown>(`/orgs/${orgId}/belonging/buddy/pairings/${pairingId}/reassign`, {
+        method: 'POST',
+        body: JSON.stringify({ buddyMemberId }),
+        token,
+      }),
+
+    closePairing: (orgId: string, pairingId: string, reason: string | undefined, token: string) =>
+      this.request<unknown>(`/orgs/${orgId}/belonging/buddy/pairings/${pairingId}/close`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+        token,
+      }),
+
+    searchAgain: (orgId: string, pairingId: string, token: string) =>
+      this.request<unknown>(`/orgs/${orgId}/belonging/buddy/pairings/${pairingId}/search`, {
+        method: 'POST',
+        token,
+      }),
+
+    suggestions: (orgId: string, token: string) =>
+      this.request<BuddySuggestion[]>(`/orgs/${orgId}/belonging/buddy/suggestions`, { token }),
+
+    createSuggestion: (orgId: string, body: string, token: string) =>
+      this.request<BuddySuggestion>(`/orgs/${orgId}/belonging/buddy/suggestions`, {
+        method: 'POST',
+        body: JSON.stringify({ body }),
+        token,
+      }),
+
+    updateSuggestion: (orgId: string, id: string, data: Partial<BuddySuggestion>, token: string) =>
+      this.request<BuddySuggestion>(`/orgs/${orgId}/belonging/buddy/suggestions/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    deleteSuggestion: (orgId: string, id: string, token: string) =>
+      this.request<unknown>(`/orgs/${orgId}/belonging/buddy/suggestions/${id}`, { method: 'DELETE', token }),
+
+    dismissSuggestion: (orgId: string, id: string, token: string) =>
+      this.request<unknown>(`/orgs/${orgId}/belonging/buddy/suggestions/${id}/dismiss`, {
+        method: 'POST',
+        token,
+      }),
+
+    /* ── Knowledge Center ── */
+
+    articles: (orgId: string, token: string) =>
+      this.request<ArticleSummary[]>(`/orgs/${orgId}/welcome/articles`, { token }),
+
+    article: (orgId: string, idOrSlug: string, token: string) =>
+      this.request<Article>(`/orgs/${orgId}/welcome/articles/${idOrSlug}`, { token }),
+
+    outstandingReading: (orgId: string, token: string) =>
+      this.request<OutstandingReading>(`/orgs/${orgId}/welcome/outstanding`, { token }),
+
+    createArticle: (
+      orgId: string,
+      data: { title: string; body: string; coverImagePath?: string; requiresAcknowledgment?: boolean },
+      token: string,
+    ) =>
+      this.request<Article>(`/orgs/${orgId}/welcome/articles`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    updateArticle: (
+      orgId: string,
+      articleId: string,
+      data: {
+        title?: string;
+        body?: string;
+        coverImagePath?: string | null;
+        requiresAcknowledgment?: boolean;
+        material?: boolean;
+      },
+      token: string,
+    ) =>
+      this.request<Article>(`/orgs/${orgId}/welcome/articles/${articleId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    publishArticle: (orgId: string, articleId: string, token: string) =>
+      this.request<Article>(`/orgs/${orgId}/welcome/articles/${articleId}/publish`, { method: 'POST', token }),
+
+    unpublishArticle: (orgId: string, articleId: string, token: string) =>
+      this.request<Article>(`/orgs/${orgId}/welcome/articles/${articleId}/unpublish`, { method: 'POST', token }),
+
+    reorderArticles: (orgId: string, orderedIds: string[], token: string) =>
+      this.request<unknown>(`/orgs/${orgId}/welcome/articles/reorder`, {
+        method: 'POST',
+        body: JSON.stringify({ orderedIds }),
+        token,
+      }),
+
+    deleteArticle: (orgId: string, articleId: string, token: string) =>
+      this.request<unknown>(`/orgs/${orgId}/welcome/articles/${articleId}`, { method: 'DELETE', token }),
+
+    acknowledgeArticle: (orgId: string, articleId: string, token: string) =>
+      this.request<unknown>(`/orgs/${orgId}/welcome/articles/${articleId}/acknowledge`, {
+        method: 'POST',
+        token,
+      }),
+
+    likeArticle: (orgId: string, articleId: string, token: string) =>
+      this.request<{ liked: boolean }>(`/orgs/${orgId}/welcome/articles/${articleId}/like`, {
+        method: 'POST',
+        token,
+      }),
+
+    commentOnArticle: (orgId: string, articleId: string, body: string, token: string) =>
+      this.request<ArticleComment>(`/orgs/${orgId}/welcome/articles/${articleId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ body }),
+        token,
+      }),
+
+    deleteArticleComment: (orgId: string, commentId: string, token: string) =>
+      this.request<unknown>(`/orgs/${orgId}/welcome/comments/${commentId}`, { method: 'DELETE', token }),
+
+    compliance: (orgId: string, articleId: string, token: string) =>
+      this.request<ArticleCompliance>(`/orgs/${orgId}/welcome/articles/${articleId}/compliance`, { token }),
+
+    remind: (orgId: string, articleId: string, token: string) =>
+      this.request<{ reminded: number }>(`/orgs/${orgId}/welcome/articles/${articleId}/remind`, {
+        method: 'POST',
+        token,
+      }),
+  };
+
   // ── Stripe Connect: the co-op's own payouts (D-013) ──
   connect = {
     status: (orgId: string, token: string) =>
@@ -2032,6 +2212,134 @@ export interface ReportBlock {
   generatedBody?: string | null;
   isEdited?: boolean;
   data?: Record<string, unknown> | null;
+}
+
+
+// ── Belonging Support (BEL) ──
+
+export interface BelongingSettings {
+  buddySystemEnabled: boolean;
+  buddyInviteTimeoutHours: number;
+  buddyAskCooldownDays: number;
+  buddyServeCooldownDays: number;
+  buddyMaxActivePairings: number;
+  buddyFallbackAdminId: string | null;
+  knowledgeCenterEnabled: boolean;
+  requiredReadingGraceDays: number;
+}
+
+export interface BelongingEmailTemplate {
+  kind: string;
+  subject: string;
+  body: string;
+  /** Whether this is the co-op's own wording or the one MaybeOS ships. */
+  isCustom: boolean;
+  variables: string[];
+}
+
+export interface BuddyPairingRow {
+  id: string;
+  state: 'SEEKING' | 'ACTIVE' | 'NEEDS_ADMIN' | 'CLOSED';
+  newMember: { id: string; name: string | null };
+  buddy: { id: string; name: string | null } | null;
+  pairedAt: string | null;
+  createdAt: string;
+  timesAsked: number;
+  messageExchanged: boolean;
+  firstMessageAt: string | null;
+  /** Paired, but nobody has written anything — the failure worth acting on. */
+  silent: boolean;
+}
+
+export interface BuddyInvitationRow {
+  id: string;
+  pairingId: string;
+  candidate: { id: string; name: string | null };
+  newMember: string | null;
+  state: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'EXPIRED' | 'SUPERSEDED';
+  sentAt: string;
+  expiresAt: string;
+  respondedAt: string | null;
+  offTheHookSentAt: string | null;
+}
+
+export interface BuddyMemberRow {
+  memberId: string;
+  name: string | null;
+  timesAsked: number;
+  timesServed: number;
+  lastAskedAt: string | null;
+  lastServedAt: string | null;
+  optedOut: boolean;
+  activePairings: number;
+}
+
+export interface MyBuddyState {
+  optedOut: boolean;
+  timesServed: number;
+  /** The new member I said yes to, if any. */
+  buddyingFor: { pairingId: string; userId: string; name: string | null } | null;
+  /** The person welcoming me, if anyone. */
+  myBuddy: { pairingId: string; userId: string; name: string | null } | null;
+}
+
+export interface BuddySuggestion {
+  id: string;
+  body: string;
+  position: number;
+  active: boolean;
+}
+
+export interface ArticleAuthor {
+  name: string | null;
+  avatarUrl?: string | null;
+  headline?: string | null;
+}
+
+export interface ArticleSummary {
+  id: string;
+  title: string;
+  slug: string;
+  state: 'DRAFT' | 'PUBLISHED';
+  position: number;
+  coverImageUrl?: string | null;
+  requiresAcknowledgment: boolean;
+  version: number;
+  author: ArticleAuthor | null;
+  likeCount: number;
+  commentCount: number;
+  likedByMe: boolean;
+  acknowledgedByMe: boolean;
+  /** "Rasul replied 10 months ago" or "Charley posted 2 years ago". */
+  lastActivity: { kind: 'posted' | 'replied'; at: string; who: string | null };
+}
+
+export interface ArticleComment {
+  id: string;
+  body: string;
+  createdAt: string;
+  member: { id: string; user: { name: string | null; avatarUrl?: string | null } };
+}
+
+export interface Article extends Omit<ArticleSummary, 'lastActivity'> {
+  body: string;
+  publishedAt: string | null;
+  createdAt: string;
+  comments: ArticleComment[];
+}
+
+export interface OutstandingReading {
+  blocking: Array<{ id: string; title: string; slug: string }>;
+  inGrace: Array<{ article: { id: string; title: string; slug: string }; until: string }>;
+  graceEndsAt: string | null;
+}
+
+export interface ArticleCompliance {
+  article: { id: string; title: string; version: number; requiredSince: string | null };
+  total: number;
+  acknowledgedCount: number;
+  percentage: number;
+  outstanding: Array<{ memberId: string; name: string | null; email: string; memberSince: string }>;
 }
 
 export type ComposeStatus = 'NOT_NEEDED' | 'PENDING' | 'COMPOSING' | 'READY' | 'FAILED';

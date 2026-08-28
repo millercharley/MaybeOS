@@ -1627,7 +1627,10 @@ model KnowledgeArticle {
   orgId                  String
   title                  String
   slug                   String
-  coverImagePath         String?
+  /// A URL, like `Organization.logoUrl` — not a private storage path. Cover
+  /// art for a co-op's own house rules is org-level content, not member PII,
+  /// and routing it through per-request signing would buy nothing.
+  coverImageUrl          String?
   body                   String
   authorId               String?
   position               Int          @default(0)

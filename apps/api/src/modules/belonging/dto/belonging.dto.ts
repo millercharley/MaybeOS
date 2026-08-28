@@ -59,14 +59,14 @@ export class ClosePairingDto {
 export class CreateArticleDto {
   @ApiProperty() @IsString() @MaxLength(200) title!: string;
   @ApiProperty() @IsString() @MaxLength(50000) body!: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() coverImagePath?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() coverImageUrl?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() requiresAcknowledgment?: boolean;
 }
 
 export class UpdateArticleDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) title?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50000) body?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() coverImagePath?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsString() coverImageUrl?: string | null;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() requiresAcknowledgment?: boolean;
 
   /**

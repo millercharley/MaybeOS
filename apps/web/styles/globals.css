@@ -219,4 +219,53 @@
     font-family: var(--font-mono-next), 'IBM Plex Mono', ui-monospace, monospace;
     font-variant-numeric: tabular-nums;
   }
+
+  /**
+   * A body somebody wrote, rendered as HTML.
+   *
+   * Tailwind's preflight strips the margin off every `<p>`, `<ul>` and heading,
+   * and this project has no typography plugin — so a rich body rendered with
+   * `dangerouslySetInnerHTML` arrived as one undifferentiated block of text
+   * with the paragraph breaks invisible. Anywhere plain text is shown that is
+   * masked by `whitespace-pre-wrap`; on a Knowledge Center article, which is
+   * the longest thing a member ever reads here, it is the difference between
+   * a document and a wall.
+   */
+  .rich-body {
+    line-height: 1.65;
+  }
+  .rich-body > * + * {
+    margin-top: 1rem;
+  }
+  .rich-body strong,
+  .rich-body b {
+    font-weight: 600;
+  }
+  .rich-body em,
+  .rich-body i {
+    font-style: italic;
+  }
+  .rich-body ul,
+  .rich-body ol {
+    padding-left: 1.5rem;
+    list-style: revert;
+  }
+  .rich-body li + li {
+    margin-top: 0.25rem;
+  }
+  .rich-body a {
+    color: var(--brand-600, #6366f1);
+    text-decoration: underline;
+  }
+  .rich-body blockquote {
+    border-left: 3px solid rgb(229 231 235);
+    padding-left: 1rem;
+    color: rgb(75 85 99);
+  }
+  .rich-body h1,
+  .rich-body h2,
+  .rich-body h3 {
+    font-weight: 700;
+    margin-top: 1.5rem;
+  }
 }
