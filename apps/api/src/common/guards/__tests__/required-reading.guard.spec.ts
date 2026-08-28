@@ -180,8 +180,13 @@ describe('RequiredReadingGuard', () => {
     // This test makes adding one a deliberate act that fails CI until it is
     // written down here, with the reason a reviewer will read.
     const APPROVED = [
-      'src/modules/stripe/stripe.controller.ts',
+      // Agreeing is the way out of the gate; opting out of buddy emails and
+      // dismissing a composer chip are not community writes.
+      'src/modules/belonging/belonging.controller.ts',
+      // Joining, before you can owe anything.
       'src/modules/member/member.controller.ts',
+      // Paying, and reaching the portal to stop paying.
+      'src/modules/stripe/stripe.controller.ts',
     ];
 
     const controllersWithBypass = (): string[] => {
