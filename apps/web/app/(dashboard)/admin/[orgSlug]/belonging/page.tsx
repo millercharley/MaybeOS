@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Download, Loader2, Plus, Trash2 } from 'lucide-react';
+import { Download, Loader2, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import {
   api,
+  BelongingEmailTemplate,
   BelongingSettings,
   BuddyInvitationRow,
   BuddyMemberRow,
@@ -13,7 +14,7 @@ import {
 } from '@/lib/api';
 import { timeAgo } from '@/lib/relative-time';
 
-type Tab = 'settings' | 'pairs' | 'invitations' | 'members' | 'suggestions';
+type Tab = 'settings' | 'pairs' | 'invitations' | 'members' | 'suggestions' | 'emails';
 
 /**
  * Belonging Support, for an organiser (PRD §4, §5.4, §5.5).
@@ -33,6 +34,7 @@ export default function BelongingPage() {
   const [invitations, setInvitations] = useState<BuddyInvitationRow[]>([]);
   const [members, setMembers] = useState<BuddyMemberRow[]>([]);
   const [suggestions, setSuggestions] = useState<BuddySuggestion[]>([]);
+  const [templates, setTemplates] = useState<BelongingEmailTemplate[]>([]);
   const [newSuggestion, setNewSuggestion] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -41,18 +43,20 @@ export default function BelongingPage() {
   const load = useCallback(async () => {
     if (!token || !orgId) return;
     try {
-      const [s, p, i, m, sg] = await Promise.all([
+      const [s, p, i, m, sg, tp] = await Promise.all([
         api.belonging.settings(orgId, token),
         api.belonging.pairings(orgId, token),
         api.belonging.invitations(orgId, token),
         api.belonging.buddyMembers(orgId, token),
         api.belonging.suggestions(orgId, token),
+        api.belonging.emailTemplates(orgId, token),
       ]);
       setSettings(s);
       setPairs(p);
       setInvitations(i);
       setMembers(m);
       setSuggestions(sg);
+      setTemplates(tp);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load this');
     } finally {
@@ -92,6 +96,7 @@ export default function BelongingPage() {
     ['invitations', 'Invitations'],
     ['members', 'Who has been asked'],
     ['suggestions', 'Buddy suggestions'],
+    ['emails', 'Emails'],
   ];
 
   return (
@@ -241,6 +246,32 @@ export default function BelongingPage() {
         />
       )}
 
+      {tab === 'emails' && (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-500">
+            The five emails this sends, in your words if you want them. Leave one alone and it uses
+            MaybeOS&rsquo;s wording — which means you also get any improvements to it, rather than a
+            copy frozen on the day you joined.
+          </p>
+          {templates.map((t) => (
+            <EmailEditor
+              key={t.kind}
+              template={t}
+              onSave={async (subject, body) => {
+                if (!token || !orgId) return;
+                await api.belonging.saveEmailTemplate(orgId, t.kind, { subject, body }, token);
+                await load();
+              }}
+              onReset={async () => {
+                if (!token || !orgId) return;
+                await api.belonging.resetEmailTemplate(orgId, t.kind, token);
+                await load();
+              }}
+            />
+          ))}
+        </div>
+      )}
+
       {tab === 'suggestions' && (
         <div className="space-y-4">
           <p className="text-sm text-gray-500">
@@ -294,6 +325,139 @@ export default function BelongingPage() {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const EMAIL_LABELS: Record<string, string> = {
+  BUDDY_INVITATION: 'Asking somebody to be a buddy',
+  OFF_THE_HOOK: 'Telling a non-responder they owe nothing',
+  INTRO_TO_BUDDY: 'Introducing the new member to their buddy',
+  INTRO_TO_NEW_MEMBER: 'Introducing the buddy to the new member',
+  REQUIRED_READING: 'Announcing something everyone must read',
+};
+
+/**
+ * One email, editable.
+ *
+ * The variables are listed rather than documented elsewhere, because an admin
+ * writing this has one question — "what can I put in it?" — and answering it
+ * anywhere but on the same screen means they will not go and look.
+ *
+ * The server validates and returns every problem at once; they are shown as a
+ * list, unsaved, so nobody has to fix one thing per attempt.
+ */
+function EmailEditor({
+  template,
+  onSave,
+  onReset,
+}: {
+  template: BelongingEmailTemplate;
+  onSave: (subject: string, body: string) => Promise<void>;
+  onReset: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [subject, setSubject] = useState(template.subject);
+  const [body, setBody] = useState(template.body);
+  const [problems, setProblems] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+      >
+        <span>
+          <span className="font-medium text-gray-900">
+            {EMAIL_LABELS[template.kind] ?? template.kind}
+          </span>
+          <span className="mt-0.5 block truncate text-xs text-gray-500">{template.subject}</span>
+        </span>
+        <span className="shrink-0 text-xs text-gray-500">
+          {template.isCustom ? 'Yours' : 'MaybeOS’s'}
+        </span>
+      </button>
+
+      {open && (
+        <div className="space-y-3 border-t border-gray-100 p-4">
+          <label className="block">
+            <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Subject</span>
+            <input
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="block">
+            <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Message</span>
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={10}
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs leading-relaxed"
+            />
+          </label>
+
+          <p className="text-xs text-gray-500">
+            You can use{' '}
+            {template.variables.map((v, i) => (
+              <span key={v}>
+                {i > 0 && ', '}
+                <code className="rounded bg-gray-100 px-1 py-0.5">{`{{${v}}}`}</code>
+              </span>
+            ))}
+            . Anything ending in <code className="rounded bg-gray-100 px-1 py-0.5">_url</code>{' '}
+            becomes a button and needs a line to itself.
+          </p>
+
+          {problems.length > 0 && (
+            <ul className="space-y-1 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+              {problems.map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+            </ul>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              disabled={saving}
+              onClick={async () => {
+                setSaving(true);
+                setProblems([]);
+                try {
+                  await onSave(subject, body);
+                  setOpen(false);
+                } catch (err) {
+                  const message = err instanceof Error ? err.message : 'That did not save';
+                  // The API answers with every problem at once so nobody has
+                  // to fix one thing per attempt.
+                  setProblems(message.split('\n').filter(Boolean));
+                } finally {
+                  setSaving(false);
+                }
+              }}
+              className="btn-primary text-sm"
+            >
+              {saving && <Loader2 className="mr-1.5 inline h-4 w-4 animate-spin" />}
+              Save
+            </button>
+            {template.isCustom && (
+              <button
+                onClick={async () => {
+                  await onReset();
+                  setOpen(false);
+                }}
+                className="btn-secondary text-sm"
+              >
+                <RotateCcw className="mr-1.5 inline h-4 w-4" />
+                Use MaybeOS&rsquo;s wording
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

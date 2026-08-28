@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation';
 import { PortalProvider, usePortal } from '@/contexts/portal-context';
 import { PortalNav } from '@/components/portal/portal-nav';
 import { Sidebar } from '@/components/layout/sidebar';
+import { RequiredReadingBanner } from '@/components/belonging/required-reading-banner';
 
 function PortalShell({ children }: { children: React.ReactNode }) {
   const { org, orgSlug, loading, error } = usePortal();
@@ -51,6 +52,12 @@ function PortalShell({ children }: { children: React.ReactNode }) {
             appearing to use two different grids depending which page you were
             on. Consistency here beats the capped measure I reached for: the
             portal's own pages already constrain their long text. */}
+        {/* Above the content on every portal page (BEL, §6.2): a member
+            needs to know what they owe *before* they write a paragraph into a
+            composer and get refused, which is the version of this that makes
+            people feel tricked. */}
+        <RequiredReadingBanner />
+
         <main className="flex-1 overflow-auto">
           <div className="p-8">{children}</div>
         </main>

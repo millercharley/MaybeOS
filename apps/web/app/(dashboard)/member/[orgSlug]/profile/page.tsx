@@ -7,6 +7,8 @@ import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
 import { DemographicProfile } from '@/components/member/demographic-profile';
 import { ChangePassword } from '@/components/member/change-password';
+import { useParams } from 'next/navigation';
+import { BuddySettings } from '@/components/belonging/buddy-settings';
 
 /**
  * "My Profile" (MEM-01).
@@ -44,6 +46,7 @@ export default function MyProfilePage() {
   const [emailOptIn, setEmailOptIn] = useState<boolean | null>(null);
   const [linkError, setLinkError] = useState('');
   const orgId = useAuthStore((s) => s.currentOrgId);
+  const orgSlug = useParams<{ orgSlug: string }>().orgSlug;
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -340,6 +343,11 @@ export default function MyProfilePage() {
       <ChangePassword />
 
       <DemographicProfile />
+
+      {/* Renders nothing unless this co-op runs the Buddy System and this
+          member has some history with it (BEL). The Off the Hook email links
+          straight to `#buddy`. */}
+      {orgId && orgSlug && <BuddySettings orgId={orgId} orgSlug={orgSlug} />}
 
       {profile.orgs && profile.orgs.length > 0 && (
         <section className="card">
