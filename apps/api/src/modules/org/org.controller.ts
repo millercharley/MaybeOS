@@ -16,6 +16,7 @@ import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { OrgService } from './org.service';
+import { DashboardService } from './dashboard.service';
 import { CreateLocationDto, UpdateLocationDto } from './dto/location.dto';
 import { AuditService } from '../platform/audit.service';
 import { CreateOrgDto } from './dto/create-org.dto';
@@ -27,6 +28,7 @@ import { UploadLogoDto } from './dto/upload-logo.dto';
 export class OrgController {
   constructor(
     private readonly orgService: OrgService,
+    private readonly dashboard: DashboardService,
     private readonly audit: AuditService,
   ) {}
 
@@ -57,6 +59,30 @@ export class OrgController {
   @ApiOperation({ summary: 'Update organization' })
   update(@Param('orgId') orgId: string, @Body() dto: UpdateOrgDto) {
     return this.orgService.update(orgId, dto);
+  }
+
+  @Get(':orgId/member-stats')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Membership total, and how many joined this month' })
+  memberStats(@Param('orgId') orgId: string) {
+    return this.dashboard.memberStats(orgId);
+  }
+
+  @Get(':orgId/recent-joins')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'People who joined this week, for the welcome card' })
+  recentJoins(@Param('orgId') orgId: string, @CurrentUser() user: RequestUser) {
+    return this.dashboard.recentJoins(orgId, user.userId);
+  }
+
+  @Get(':orgId/happening-now')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Who is here, what rooms are in use, what starts soon' })
+  happeningNow(@Param('orgId') orgId: string) {
+    return this.dashboard.happeningNow(orgId);
   }
 
   @Post(':orgId/logo')

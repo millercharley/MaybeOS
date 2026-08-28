@@ -1,9 +1,11 @@
+import type { ReactNode } from 'react';
 import { type LucideIcon } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface StatCardProps {
   label: string;
-  value: string | number;
+  /** A node, so a caller can hand it an animated number (delight #1). */
+  value: ReactNode;
   change?: string;
   changeType?: 'positive' | 'negative' | 'neutral';
   icon: LucideIcon;

@@ -6,10 +6,14 @@ import { Calendar, MessageSquare, DoorOpen, Users } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { usePublicApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
+import { useAuthStore } from '@/lib/auth-store';
+import { HappeningNow } from '@/components/live/happening-now';
+import { WelcomeCard } from '@/components/live/welcome-card';
 
 export default function PortalHomePage() {
   const { orgSlug } = useParams();
   const { org } = usePortal();
+  const token = useAuthStore((s) => s.token);
   const basePath = `/portal/${orgSlug}`;
 
   const { data: events } = usePublicApi(
@@ -29,11 +33,22 @@ export default function PortalHomePage() {
   ];
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       {/* Left, like every other heading in the product. `max-w-2xl` stays on
           the prose — that is a readable line length, not a centred layout, and
           dropping it would run a co-op's mission the full width of a large
           monitor. */}
+      {/* Above the name and the mission, because somebody opening this on
+          their phone outside the building wants to know whether to come in,
+          not to be reminded what the co-op stands for. Both render nothing
+          when there is nothing to say. */}
+      {org && token && (
+        <div className="space-y-4">
+          <HappeningNow orgId={org.id} orgSlug={org.slug} />
+          <WelcomeCard orgId={org.id} orgSlug={org.slug} />
+        </div>
+      )}
+
       <div>
         <h1 className="text-3xl font-bold text-gray-900">{org?.name}</h1>
         {org?.mission && (

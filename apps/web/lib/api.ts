@@ -1215,6 +1215,22 @@ class ApiClient {
       this.request(`/orgs/${orgId}/me/demographics`, { method: 'DELETE', token }),
   };
 
+  // ── How an event went, for the person who hosted it (delight #5) ──
+  eventSummary = (orgId: string, eventId: string, token: string) =>
+    this.request<HostEventSummary>(`/orgs/${orgId}/events/${eventId}/summary`, { token });
+
+  // ── What a screen wants to know the moment it opens ──
+  dashboard = {
+    memberStats: (orgId: string, token: string) =>
+      this.request<MemberStats>(`/orgs/${orgId}/member-stats`, { token }),
+
+    happeningNow: (orgId: string, token: string) =>
+      this.request<HappeningNow>(`/orgs/${orgId}/happening-now`, { token }),
+
+    recentJoins: (orgId: string, token: string) =>
+      this.request<RecentJoins>(`/orgs/${orgId}/recent-joins`, { token }),
+  };
+
   // ── Belonging Support: the Buddy System and the Knowledge Center (BEL) ──
   belonging = {
     settings: (orgId: string, token: string) =>
@@ -1866,6 +1882,12 @@ export interface Event {
   org?: { id: string; name: string; slug: string; logoUrl?: string | null };
   location?: Location;
   room?: Room;
+  /**
+   * A few members going, for the card (delight #3). Member-facing lists only
+   * — the public list never carries these, because an event link may be
+   * public while the guest list is not.
+   */
+  rsvpFaces?: Array<{ id: string; name: string | null; avatarUrl?: string | null }>;
 }
 
 export interface CreateEventData {
@@ -2369,6 +2391,71 @@ export interface ArticleCompliance {
   acknowledgedCount: number;
   percentage: number;
   outstanding: Array<{ memberId: string; name: string | null; email: string; memberSince: string }>;
+}
+
+
+export type HostEventSummary =
+  | { ended: false; event: { id: string; title: string } }
+  | {
+      ended: true;
+      event: { id: string; title: string; slug: string; startTime: string; endTime: string };
+      attendance: {
+        expected: number;
+        checkedIn: number;
+        /** Which number `counted` is, said rather than implied. */
+        basis: 'check-ins' | 'rsvps';
+        counted: number;
+      };
+      money: {
+        ticketCount: number;
+        refundedCount: number;
+        grossCents: number;
+        coopShareCents: number;
+        netCents: number;
+        status: string;
+        paidAt: string | null;
+      } | null;
+    };
+
+export interface MemberStats {
+  total: number;
+  /** Joins, not net growth — MaybeOS keeps no record of departures. */
+  joinedThisMonth: number;
+  since: string;
+}
+
+export interface HappeningNow {
+  checkedIn: Array<{
+    eventId: string;
+    eventTitle: string;
+    checkedInAt: string | null;
+    user: { id: string; name: string | null; avatarUrl?: string | null };
+  }>;
+  /** Separate from the list, which is capped — forty must not read as twelve. */
+  checkedInCount: number;
+  rooms: Array<{ id: string; roomName: string; title: string; until: string; who: string | null }>;
+  startingSoon: Array<{
+    id: string;
+    title: string;
+    slug: string;
+    startTime: string;
+    where: string | null;
+    rsvpCount: number;
+  }>;
+  /** So a client can say "a moment ago" rather than implying live. */
+  asOf: string;
+}
+
+export interface RecentJoins {
+  members: Array<{
+    membershipId: string;
+    userId: string;
+    name: string | null;
+    avatarUrl?: string | null;
+    headline: string | null;
+    joinedAt: string;
+  }>;
+  more: number;
 }
 
 export type ComposeStatus = 'NOT_NEEDED' | 'PENDING' | 'COMPOSING' | 'READY' | 'FAILED';

@@ -8,6 +8,9 @@ import { StatCard } from '@/components/ui/stat-card';
 import { useAuthStore } from '@/lib/auth-store';
 import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
+import { CountUp } from '@/components/ui/count-up';
+import { deltaLabel } from '@/lib/count-up';
+import { HappeningNow } from '@/components/live/happening-now';
 
 // "New Survey" used to sit here pointing at /admin/impact. It never created a
 // survey — the page it led to had no authoring UI, and authoring is a non-goal
@@ -20,8 +23,12 @@ const quickActionsFor = (orgSlug: string) => [
 
 export default function AdminDashboardPage() {
   const orgSlug = useParams()?.orgSlug as string;
+  const orgId = useAuthStore((s) => s.currentOrgId);
   const user = useAuthStore((s) => s.user);
 
+  const { data: memberStats } = useApi(
+    (token, orgId) => api.dashboard.memberStats(orgId, token),
+  );
   const { data: membersData, loading: membersLoading } = useApi(
     (token, orgId) => api.members.list(orgId, token, 1, 1),
     [],
@@ -52,7 +59,9 @@ export default function AdminDashboardPage() {
     );
   }
 
-  const totalMembers = membersData?.meta?.total ?? 0;
+  // The stats endpoint is the authority; the paged list is the fallback
+  // while it loads, so the number does not flash zero on the way in.
+  const totalMembers = memberStats?.total ?? membersData?.meta?.total ?? 0;
   const upcomingEvents = eventsData?.data?.filter(
     (e) => e.isPublished && new Date(e.startTime) > new Date(),
   ).length ?? 0;
@@ -71,11 +80,18 @@ export default function AdminDashboardPage() {
         </p>
       </div>
 
+      {/* Above the counters, because "is anyone here right now" is a
+          different kind of question from "how many members are there" — and
+          it is the one somebody has while still standing up. Renders nothing
+          when nothing is happening. */}
+      {orgId && orgSlug && <HappeningNow orgId={orgId} orgSlug={orgSlug} />}
+
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Total Members"
-          value={totalMembers}
-          changeType="neutral"
+          value={<CountUp value={totalMembers} />}
+          change={deltaLabel(memberStats?.joinedThisMonth ?? 0) ?? undefined}
+          changeType="positive"
           icon={Users}
         />
         <StatCard

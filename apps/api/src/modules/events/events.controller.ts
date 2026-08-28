@@ -315,6 +315,18 @@ export class EventsController {
     return this.eventsService.listHostedEvents(orgId, user.userId);
   }
 
+  @Get('orgs/:orgId/events/:eventId/summary')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'How the event went, for the person who hosted it' })
+  hostSummary(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.eventsService.hostSummary(orgId, eventId, user.userId, false);
+  }
+
   @Get('orgs/:orgId/events/:eventId')
   @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
   @ApiBearerAuth()
