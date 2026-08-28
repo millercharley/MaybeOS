@@ -111,6 +111,18 @@ export class MemberService {
 
     const where: any = { orgId };
 
+    // `isPublic` finally means something (FRM-01). It has been on `UserOrg`
+    // since the beginning and nothing has ever read it, so a member who had
+    // hidden themselves was listed anyway — a setting that lies is worse than
+    // no setting.
+    //
+    // Organisers still see everyone, because running a co-op means knowing
+    // who is in it; a member hiding from the directory is hiding from other
+    // members, not from the people who admit and remove them.
+    if (!viewer.privileged) {
+      where.isPublic = true;
+    }
+
     if (search) {
       // Matching on email would answer "is this address a member here?" even
       // with the address itself redacted from the response — a membership
@@ -216,6 +228,7 @@ export class MemberService {
       headline?: string;
       location?: string;
       emailOptIn?: boolean;
+      isPublic?: boolean;
     },
   ) {
     const membership = await this.prisma.userOrg.findUnique({
@@ -231,6 +244,10 @@ export class MemberService {
         ...(dto.tags !== undefined && { tags: dto.tags.map((t) => t.trim()).filter(Boolean) }),
         ...(dto.links !== undefined && { links: safeLinks(dto.links) }),
         ...(dto.headline !== undefined && { headline: dto.headline.trim() || null }),
+        // Whether other members can find them (FRM-01). Explicitly allowed
+        // through rather than spread from the DTO, so adding a field to that
+        // DTO never silently becomes a writable column.
+        ...(dto.isPublic !== undefined && { isPublic: dto.isPublic }),
         ...(dto.location !== undefined && { location: dto.location.trim() || null }),
         ...(dto.emailOptIn !== undefined && { emailOptIn: dto.emailOptIn }),
       },

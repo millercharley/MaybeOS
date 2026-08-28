@@ -1219,6 +1219,13 @@ class ApiClient {
   eventSummary = (orgId: string, eventId: string, token: string) =>
     this.request<HostEventSummary>(`/orgs/${orgId}/events/${eventId}/summary`, { token });
 
+  // ── MaybeOS's own forum (FRM-01) ──
+  forum = {
+    status: (token: string) => this.request<ForumStatus>('/orgs/forum/me', { token }),
+    join: (token: string) => this.request<unknown>('/orgs/forum/join', { method: 'POST', token }),
+    leave: (token: string) => this.request<unknown>('/orgs/forum/leave', { method: 'POST', token }),
+  };
+
   // ── What a screen wants to know the moment it opens ──
   dashboard = {
     memberStats: (orgId: string, token: string) =>
@@ -2415,6 +2422,17 @@ export type HostEventSummary =
         status: string;
         paidAt: string | null;
       } | null;
+    };
+
+export type ForumStatus =
+  | { available: false }
+  | {
+      available: true;
+      forum: { id: string; name: string; slug: string };
+      member: boolean;
+      /** Being *listed* is opt-in; being a member is not the same thing. */
+      listedInDirectory: boolean;
+      optedOut: boolean;
     };
 
 export interface MemberStats {

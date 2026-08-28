@@ -76,4 +76,16 @@ export class UpdateMyMembershipDto {
   @IsUrl({ protocols: ['http', 'https'], require_protocol: true }, { each: true })
   @MaxLength(500, { each: true })
   links?: string[];
+
+  /**
+   * Whether other members can find you in the directory.
+   *
+   * The column has existed since the beginning and nothing read it until
+   * FRM-01 — so a member who thought they had hidden was listed anyway. Now
+   * that it works, it needs a way to be set.
+   */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  isPublic?: boolean;
 }

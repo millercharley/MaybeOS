@@ -5,12 +5,14 @@ import { StorageService } from '../storage/storage.service';
 import { CreateOrgDto } from './dto/create-org.dto';
 import { RESERVED_ORG_SLUGS } from './reserved-slugs';
 import { UpdateOrgDto } from './dto/update-org.dto';
+import { ForumService } from './forum.service';
 
 @Injectable()
 export class OrgService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly forum: ForumService,
   ) {}
 
   /**
@@ -104,6 +106,12 @@ export class OrgService {
           role: 'ADMIN',
         },
       });
+
+      // Into MaybeOS's own forum, so a new organiser has somebody to ask
+      // (FRM-01). Inside the transaction so a co-op and its founder's forum
+      // membership arrive together — and silent about every reason to
+      // decline, because nothing here may stop somebody founding a co-op.
+      await this.forum.autoJoin(userId, org.id, tx);
 
       // Seed a default "General" channel
       await tx.channel.create({

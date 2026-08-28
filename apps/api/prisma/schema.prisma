@@ -108,6 +108,18 @@ model Organization {
   billingWaived            Boolean           @default(false)
   billingWaivedReason      String?
 
+  /// MaybeOS's own forum, where every co-op's organisers meet each other
+  /// (FRM-01). Exactly one row carries this.
+  ///
+  /// A real organization rather than a bespoke feature, so it inherits
+  /// channels, posts, proposals and moderation for free — a second forum
+  /// implementation would be a second thing to secure and a second thing to
+  /// forget when the first one changes. What the flag buys is the handful of
+  /// places the forum must *not* behave like a co-op: it is never billed,
+  /// never listed as a customer in the platform console, and never triggers
+  /// its own auto-join.
+  isPlatformForum Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -198,6 +210,13 @@ model User {
   magicLinkToken  String?
   magicLinkExpiry DateTime?
   lastLoginAt     DateTime?
+  /// Set when somebody leaves MaybeOS's forum (FRM-01).
+  ///
+  /// Leaving deletes the membership row, which leaves no trace — so without
+  /// this, founding a second co-op would drag somebody straight back into a
+  /// forum they had already left. "We asked once and they said no" has to
+  /// outlive the row it was recorded on.
+  forumOptOutAt   DateTime?
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
