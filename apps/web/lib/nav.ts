@@ -13,6 +13,8 @@ import {
   Activity,
   HandCoins,
   Landmark,
+  BookOpen,
+  HeartHandshake,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -58,6 +60,7 @@ const adminNav = (slug: string): NavItem[] => [
   // Money owed *out* to members who hosted, which is a different job from
   // spending and a different one from ticket sales (EVT-15).
   { href: `/admin/${slug}/payouts`, label: 'Host payouts', icon: HandCoins },
+  { href: `/admin/${slug}/belonging`, label: 'Belonging', icon: HeartHandshake },
   { href: `/admin/${slug}/settings`, label: 'Settings', icon: Settings },
 ];
 
@@ -88,6 +91,10 @@ const memberNav = (slug: string): NavItem[] => [
 
 /** The co-op itself, under its own portal. */
 const coopNav = (slug: string): NavItem[] => [
+  // First, deliberately. It is what a co-op wants a new member to read before
+  // they read anything else, and burying it under the things regulars use
+  // would mean only regulars ever found it.
+  { href: `/portal/${slug}/welcome`, label: 'Welcome', icon: BookOpen },
   { href: `/portal/${slug}/commons`, label: 'Commons', icon: MessageSquare },
   { href: `/portal/${slug}/directory`, label: 'Directory', icon: Users },
   { href: `/portal/${slug}/events`, label: 'Events', icon: Calendar },

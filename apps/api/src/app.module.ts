@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
-import { RequiredReadingGuard } from './common/guards/required-reading.guard';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { RequiredReadingInterceptor } from './common/interceptors/required-reading.interceptor';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import * as Joi from 'joi';
@@ -126,8 +126,12 @@ import { HealthModule } from './modules/health/health.module';
       // opt-in is silent and permanent: somebody adds an endpoint next year,
       // forgets the decorator, and a co-op's house rules quietly stop
       // applying to whatever it does.
-      provide: APP_GUARD,
-      useClass: RequiredReadingGuard,
+      //
+      // An INTERCEPTOR, not a guard: Nest runs global guards before
+      // controller-scoped ones, so as a guard this ran before JwtAuthGuard
+      // had authenticated anybody, saw no user, and let every write through.
+      provide: APP_INTERCEPTOR,
+      useClass: RequiredReadingInterceptor,
     },
   ],
 })
