@@ -3,6 +3,10 @@ import { PrismaService } from '../../config/prisma.service';
 import { EmailModule } from '../email/email.module';
 import { BelongingSettingsService } from './belonging-settings.service';
 import { BuddyService } from './buddy.service';
+import { BuddyLogService } from './buddy-log.service';
+import { KnowledgeService } from './knowledge.service';
+import { BelongingController } from './belonging.controller';
+import { BuddyPublicController } from './buddy-public.controller';
 
 /**
  * Belonging Support (PRD, BEL-01…).
@@ -12,7 +16,14 @@ import { BuddyService } from './buddy.service';
  */
 @Module({
   imports: [EmailModule],
-  providers: [PrismaService, BelongingSettingsService, BuddyService],
-  exports: [BelongingSettingsService, BuddyService],
+  controllers: [BelongingController, BuddyPublicController],
+  providers: [
+    PrismaService,
+    BelongingSettingsService,
+    BuddyService,
+    BuddyLogService,
+    KnowledgeService,
+  ],
+  exports: [BelongingSettingsService, BuddyService, KnowledgeService],
 })
 export class BelongingModule {}
