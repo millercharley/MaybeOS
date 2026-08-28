@@ -1627,10 +1627,15 @@ model KnowledgeArticle {
   orgId                  String
   title                  String
   slug                   String
-  /// A URL, like `Organization.logoUrl` — not a private storage path. Cover
-  /// art for a co-op's own house rules is org-level content, not member PII,
-  /// and routing it through per-request signing would buy nothing.
-  coverImageUrl          String?
+  /// A path in the **private** attachments bucket, signed on read.
+  ///
+  /// It was briefly a public URL, on the reasoning that cover art is org-level
+  /// content rather than member PII. The reference screenshots settled it the
+  /// other way: an article cover is typically a photograph of that co-op's
+  /// members in their own space, and a Knowledge Center article is
+  /// members-only — so a permanent public URL would be a photo of a co-op's
+  /// members reachable by anyone who ever got the link.
+  coverImagePath         String?
   body                   String
   authorId               String?
   position               Int          @default(0)

@@ -43,6 +43,7 @@ import {
   UpdateArticleDto,
   UpdateBelongingSettingsDto,
   UpdateSuggestionDto,
+  UploadCoverDto,
   UpsertEmailTemplateDto,
 } from './dto/belonging.dto';
 import { BadRequestException } from '@nestjs/common';
@@ -359,6 +360,26 @@ export class BelongingController {
   @Roles('ADMIN')
   deleteArticle(@Param('orgId') orgId: string, @Param('articleId', ParseUUIDPipe) articleId: string) {
     return this.knowledge.remove(orgId, articleId);
+  }
+
+  @Post('welcome/articles/:articleId/cover')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Put a cover image on an article' })
+  uploadCover(
+    @Param('orgId') orgId: string,
+    @Param('articleId', ParseUUIDPipe) articleId: string,
+    @Body() dto: UploadCoverDto,
+  ) {
+    return this.knowledge.replaceCover(orgId, articleId, dto.data, dto.mimeType);
+  }
+
+  @Delete('welcome/articles/:articleId/cover')
+  @Roles('ADMIN')
+  removeCover(
+    @Param('orgId') orgId: string,
+    @Param('articleId', ParseUUIDPipe) articleId: string,
+  ) {
+    return this.knowledge.removeCover(orgId, articleId);
   }
 
   @Get('welcome/articles/:articleId/compliance')

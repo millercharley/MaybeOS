@@ -1366,6 +1366,24 @@ class ApiClient {
     deleteArticle: (orgId: string, articleId: string, token: string) =>
       this.request<unknown>(`/orgs/${orgId}/welcome/articles/${articleId}`, { method: 'DELETE', token }),
 
+    uploadArticleCover: (
+      orgId: string,
+      articleId: string,
+      data: { data: string; mimeType: string },
+      token: string,
+    ) =>
+      this.request<Article>(`/orgs/${orgId}/welcome/articles/${articleId}/cover`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    removeArticleCover: (orgId: string, articleId: string, token: string) =>
+      this.request<unknown>(`/orgs/${orgId}/welcome/articles/${articleId}/cover`, {
+        method: 'DELETE',
+        token,
+      }),
+
     acknowledgeArticle: (orgId: string, articleId: string, token: string) =>
       this.request<unknown>(`/orgs/${orgId}/welcome/articles/${articleId}/acknowledge`, {
         method: 'POST',

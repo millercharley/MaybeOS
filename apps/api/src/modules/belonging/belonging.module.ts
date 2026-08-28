@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { EmailModule } from '../email/email.module';
+import { StorageModule } from '../storage/storage.module';
 import { BelongingSettingsService } from './belonging-settings.service';
 import { BuddyService } from './buddy.service';
 import { BuddyLogService } from './buddy-log.service';
@@ -15,7 +16,7 @@ import { BuddyPublicController } from './buddy-public.controller';
  * their own who to talk to or what this place expects of them.
  */
 @Module({
-  imports: [EmailModule],
+  imports: [EmailModule, StorageModule],
   controllers: [BelongingController, BuddyPublicController],
   providers: [
     PrismaService,
