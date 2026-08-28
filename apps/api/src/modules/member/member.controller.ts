@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { BypassRequiredReading } from '../../common/decorators/bypass-required-reading.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -191,6 +192,10 @@ export class MemberController {
   }
 
   @Post('join')
+  @BypassRequiredReading(
+    'You cannot owe a co-op required reading before you have joined it. Onboarding ' +
+      'routes a new member through the articles immediately afterwards.',
+  )
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
