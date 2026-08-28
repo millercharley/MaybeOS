@@ -90,6 +90,12 @@ function paragraphs(body: string | null): string {
 
 export function renderReportDocument(org: ExportableOrg, report: ExportableReport): string {
   const period = `${monthYear(report.periodStart)} – ${monthYear(report.periodEnd)}`;
+  // A draft must not print a publication date it does not have. Exporting
+  // before publishing is a legitimate thing to do — that is half of "charge
+  // to publish or export" — and the file has to say which it is, because a
+  // funder reading "Published" is reading a claim about the co-op having
+  // stood behind this.
+  const published = report.publishedAt !== null;
   const dated = (report.publishedAt ?? report.generatedAt).toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'long',
@@ -174,7 +180,7 @@ export function renderReportDocument(org: ExportableOrg, report: ExportableRepor
   </header>
 ${sections}
   <footer>
-    <p>Published ${escapeHtml(dated)}. Prepared with MaybeOS.</p>
+    <p>${published ? 'Published' : 'Prepared'} ${escapeHtml(dated)}. Made with MaybeOS.</p>
   </footer>
 </main>
 </body>
