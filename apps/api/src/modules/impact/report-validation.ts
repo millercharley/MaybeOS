@@ -89,6 +89,43 @@ export function groundedNumbers(facts: unknown, extra: number[] = []): Set<strin
  * than single words so "the results led us to ask" is not caught — that is a
  * co-op describing its own reasoning, which is fine and useful.
  */
+/**
+ * Words that turn a causal phrase into its own denial.
+ *
+ * **The report's most important sentence is a denial of cause**, and without
+ * this the check rejected it. Found by running the composer for real: the
+ * deterministic limitations block says "nothing here establishes that
+ * anything the co-op did caused anything members felt", and that sentence —
+ * the one a funder is most entitled to — was unwritable. So were "this report
+ * cannot say what caused what" and most other plain ways to say it. The model
+ * navigated around the rule by reaching for "shows a connection between",
+ * which was luck, not design.
+ *
+ * The trade this makes: a negation early in a clause exempts the whole clause,
+ * so a sentence that denies one cause and asserts another ("nothing we did
+ * caused this, but the new space drove attendance") slips through. That is a
+ * contrived construction, and it is much cheaper than a report that cannot
+ * state its own limits.
+ */
+const NEGATION =
+  /\b(no|not|nothing|never|cannot|can't|don't|doesn't|didn't|without|unable|neither|nor)\b/i;
+
+/** Clauses, so a denial in one does not excuse a claim in the next. */
+function clauses(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+|;\s*|\s+but\s+|\s+however\s+|\s+although\s+/i)
+    .filter((c) => c.trim().length > 0);
+}
+
+/** Is this causal phrase being denied rather than asserted? */
+function isDenied(clause: string, match: RegExpMatchArray): boolean {
+  const negation = clause.match(NEGATION);
+  if (!negation || negation.index === undefined || match.index === undefined) return false;
+  // Only a negation that comes *first* denies the claim. "Suppers led to
+  // belonging, not the other way round" still asserts a cause.
+  return negation.index < match.index;
+}
+
 const CAUSAL_PATTERNS: Array<[RegExp, string]> = [
   [/\b(caused|causing)\b/i, 'caused'],
   [/\bled to\b/i, 'led to'],
@@ -182,9 +219,12 @@ export function validateComposition(
       }
     }
 
-    for (const [pattern, name] of CAUSAL_PATTERNS) {
-      if (pattern.test(body)) {
-        violations.push({ blockId: block.id, rule: 'causal-claim', detail: name });
+    for (const clause of clauses(body)) {
+      for (const [pattern, name] of CAUSAL_PATTERNS) {
+        const match = clause.match(pattern);
+        if (match && !isDenied(clause, match)) {
+          violations.push({ blockId: block.id, rule: 'causal-claim', detail: name });
+        }
       }
     }
 
