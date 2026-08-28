@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, FormEvent } from 'react';
 import {
   MessageSquare, Pin, BookOpen, ChevronLeft,
 } from 'lucide-react';
+import { WelcomeCard } from '@/components/live/welcome-card';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Channel, Post, Proposal, Collection, CollectionPage, Comment } from '@/lib/api';
@@ -202,6 +203,12 @@ function ChannelsSection() {
           files={postFiles}
           onFilesChange={setPostFiles}
         />
+
+        {/* In the feed, above the posts, because the point is that somebody
+            reading the Commons is the person most likely to say hello. It
+            renders nothing when nobody has joined this week, so a quiet month
+            is not a monthly reminder that nobody is joining. */}
+        {org && <WelcomeCard orgId={org.id} orgSlug={org.slug} />}
 
         {posts.length === 0 ? (
           <p className="py-8 text-center text-sm text-gray-400">No posts in this channel yet. Be the first!</p>

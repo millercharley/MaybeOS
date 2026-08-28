@@ -47,6 +47,37 @@ const CONFIRMED_RSVP_COUNT = {
   _count: { select: { rsvps: { where: { status: 'CONFIRMED' as const } } } },
 };
 
+/**
+ * A few faces from the guest list (delight #3).
+ *
+ * People decide whether to go based on who else is going, and a row of
+ * avatars answers that faster than a number ever will.
+ *
+ * **Members only, and only on member-facing lists.** Guest RSVPs have no
+ * account and no face; and this is deliberately *not* added to the public
+ * event list, because a public page showing who is attending would tell a
+ * stranger who belongs to this co-op. Charley's rule is that an event link
+ * may be public so people can RSVP — not that the guest list is.
+ */
+const RSVP_FACES = {
+  rsvps: {
+    where: { status: 'CONFIRMED' as const, userId: { not: null } },
+    select: { user: { select: { id: true, name: true, avatarPath: true } } },
+    orderBy: { createdAt: 'asc' as const },
+    take: 5,
+  },
+};
+
+function withRsvpFaces<T extends { rsvps?: Array<{ user: unknown }> }>(
+  event: T,
+): Omit<T, 'rsvps'> & { rsvpFaces: unknown[] } {
+  const { rsvps, ...rest } = event;
+  // Tolerant of an absent relation on purpose. This is a mapper, not a
+  // validator, and the failure it would otherwise cause is a whole event
+  // list answering 500 because one optional field was not selected.
+  return { ...rest, rsvpFaces: (rsvps ?? []).map((r) => r.user).filter(Boolean) };
+}
+
 function withRsvpCount<T extends { _count: { rsvps: number } }>(
   event: T,
 ): Omit<T, '_count'> & { rsvpCount: number } {
@@ -491,13 +522,14 @@ export class EventsService {
           room: true,
           host: { select: { id: true, name: true, avatarUrl: true, avatarPath: true } },
           ...CONFIRMED_RSVP_COUNT,
+          ...RSVP_FACES,
         },
       }),
       this.prisma.event.count({ where }),
     ]);
 
     return {
-      data: data.map(withRsvpCount),
+      data: data.map((event) => withRsvpFaces(withRsvpCount(event))),
       meta: {
         total,
         page,
@@ -678,13 +710,19 @@ export class EventsService {
           location: true,
           room: true,
           ...CONFIRMED_RSVP_COUNT,
+          // Faces for members, never for the public list. The rule is the
+          // same one that widens visibility above: an event link may be
+          // public so strangers can RSVP, but who is attending is not — a
+          // guest list on a public page tells anyone with the URL who belongs
+          // to this co-op.
+          ...(viewerIsMember ? RSVP_FACES : {}),
         },
       }),
       this.prisma.event.count({ where }),
     ]);
 
     return {
-      data: data.map(withRsvpCount),
+      data: data.map((event) => withRsvpFaces(withRsvpCount(event))),
       meta: {
         total,
         page,
@@ -940,6 +978,83 @@ export class EventsService {
    * expected, and showing them invites checking in the wrong person. Sorted
    * by name so the list reads the way a person scans it, not by RSVP time.
    */
+  /**
+   * How it went, for the person who hosted it (delight #5).
+   *
+   * Only after the event has ended: a "summary" of something that has not
+   * happened is a forecast, and hosts read the two very differently.
+   *
+   * The money is reported in three lines rather than one, because a host who
+   * sees only what they are owed cannot tell whether a low number means few
+   * tickets or a large share to the co-op. Gross, the co-op's share, and what
+   * is left — and where a payout row exists those figures come from it rather
+   * than being recomputed, so what a host reads here is what the co-op will
+   * actually pay (EVT-15).
+   *
+   * Attendance is check-ins where anybody checked in, and confirmed RSVPs
+   * where nobody did — with which of the two it is, said plainly. A door
+   * nobody scanned is not an event nobody came to.
+   */
+  async hostSummary(orgId: string, eventId: string, userId: string, isStaff: boolean) {
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, orgId },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        startTime: true,
+        endTime: true,
+        hostId: true,
+        rsvps: { select: { status: true, checkedIn: true, plusOnes: true } },
+        payout: true,
+      },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+    if (!isStaff && event.hostId !== userId) {
+      // Not 403: whether somebody else's event exists is not this member's
+      // business either.
+      throw new NotFoundException('Event not found');
+    }
+
+    const ended = event.endTime !== null && event.endTime <= new Date();
+    if (!ended) return { event, ended: false as const };
+
+    const confirmed = event.rsvps.filter((r) => r.status === 'CONFIRMED');
+    const checkedIn = confirmed.filter((r) => r.checkedIn);
+    const expected = confirmed.reduce((n, r) => n + 1 + r.plusOnes, 0);
+
+    return {
+      event: {
+        id: event.id,
+        title: event.title,
+        slug: event.slug,
+        startTime: event.startTime,
+        endTime: event.endTime,
+      },
+      ended: true as const,
+      attendance: {
+        expected,
+        checkedIn: checkedIn.length,
+        // Which number this is, said rather than implied. A door nobody
+        // scanned is not an event nobody came to.
+        basis: checkedIn.length > 0 ? ('check-ins' as const) : ('rsvps' as const),
+        counted: checkedIn.length > 0 ? checkedIn.length : expected,
+      },
+      money: event.payout
+        ? {
+            ticketCount: event.payout.ticketCount,
+            refundedCount: event.payout.refundedCount,
+            grossCents: event.payout.grossCents,
+            // Stated as a figure rather than left for the host to subtract.
+            coopShareCents: event.payout.grossCents - event.payout.amountCents,
+            netCents: event.payout.amountCents,
+            status: event.payout.status,
+            paidAt: event.payout.paidAt,
+          }
+        : null,
+    };
+  }
+
   async listAttendees(orgId: string, eventId: string, actor: { userId: string; isStaff: boolean }) {
     await this.loadEventForActor(orgId, eventId, actor.userId, actor.isStaff);
 

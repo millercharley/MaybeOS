@@ -1,6 +1,8 @@
 'use client';
 
 import { useParams } from 'next/navigation';
+import { RsvpFaces } from '@/components/events/rsvp-faces';
+import { EventSummary } from '@/components/events/event-summary';
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -255,12 +257,16 @@ function EventRow({
   // Its own, rather than threaded through props: the row is rendered in two
   // places and the URL already knows which co-op this is.
   const orgSlug = useParams()?.orgSlug as string;
+  const orgId = useAuthStore((st) => st.currentOrgId);
   const [confirming, setConfirming] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
   const start = new Date(event.startTime);
   const canceled = Boolean((event as { canceledAt?: string | null }).canceledAt);
+  const ended = Boolean(event.endTime && new Date(event.endTime) <= new Date());
 
   return (
-    <div className="card flex flex-wrap items-start justify-between gap-4">
+    <div className="card space-y-4">
+    <div className="flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0">
         <p className="font-medium text-gray-900">{event.title}</p>
         <p className="mt-1 text-sm text-gray-500">
@@ -282,10 +288,14 @@ function EventRow({
           ) : (
             <Badge tone="grey">Draft — nobody can see it</Badge>
           )}
-          <span className="text-gray-500">
-            {event.rsvpCount ?? 0} going
-            {event.capacity ? ` of ${event.capacity}` : ''}
-          </span>
+          {(event.rsvpFaces?.length ?? 0) > 0 ? (
+            <RsvpFaces faces={event.rsvpFaces!} total={event.rsvpCount ?? 0} />
+          ) : (
+            <span className="text-gray-500">
+              {event.rsvpCount ?? 0} going
+              {event.capacity ? ` of ${event.capacity}` : ''}
+            </span>
+          )}
         </div>
       </div>
 
@@ -340,6 +350,24 @@ function EventRow({
           )}
         </div>
       )}
+    </div>
+
+    {/* Only after it has happened, and only on request — a host opening this
+        list to publish next month's event does not need last month's takings
+        expanded at them. */}
+    {ended && !canceled && (
+      showSummary && orgId ? (
+        <EventSummary orgId={orgId} eventId={event.id} />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowSummary(true)}
+          className="text-sm font-medium text-brand-600 hover:underline"
+        >
+          How did it go?
+        </button>
+      )
+    )}
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { Calendar, Users } from 'lucide-react';
+import { RsvpFaces } from '@/components/events/rsvp-faces';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { usePublicApi } from '@/hooks/use-api';
@@ -210,6 +211,12 @@ export default function PortalEventsPage() {
                         <Users className="h-3.5 w-3.5" />
                         {event.rsvpCount ?? 0} / {event.capacity}
                       </span>
+                    )}
+                    {/* Who else is going. Absent on the public list by
+                        design, so a signed-out visitor sees the count and
+                        not the community. */}
+                    {(event.rsvpFaces?.length ?? 0) > 0 && (
+                      <RsvpFaces faces={event.rsvpFaces!} total={event.rsvpCount ?? 0} />
                     )}
                     {event.category && (
                       <span className="inline-flex items-center rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700">
