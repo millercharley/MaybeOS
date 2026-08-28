@@ -14,6 +14,7 @@ import {
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Article, ArticleCompliance, ArticleSummary } from '@/lib/api';
 import { RichComposer } from '@/components/composer/rich-composer';
+import { CoverUploader } from '@/components/belonging/cover-uploader';
 import { timeAgo } from '@/lib/relative-time';
 
 /**
@@ -202,6 +203,23 @@ export default function AdminWelcomePage() {
         </button>
 
         {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
+
+        <CoverUploader
+          coverImageUrl={editing.coverImageUrl}
+          onUpload={async (data, mimeType) => {
+            if (!token || !orgId) return;
+            setEditing(
+              await api.belonging.uploadArticleCover(orgId, editing.id, { data, mimeType }, token),
+            );
+            await load();
+          }}
+          onRemove={async () => {
+            if (!token || !orgId) return;
+            await api.belonging.removeArticleCover(orgId, editing.id, token);
+            setEditing({ ...editing, coverImageUrl: null });
+            await load();
+          }}
+        />
 
         <input
           value={editing.title}

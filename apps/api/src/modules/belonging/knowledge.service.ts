@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../config/prisma.service';
 import { EmailService } from '../email/email.service';
+import { StorageService } from '../storage/storage.service';
 import { BelongingSettingsService } from './belonging-settings.service';
 import { DEFAULT_TEMPLATES, renderTemplate } from './belonging-emails';
 import { outstandingReading, graceEndsAt } from './required-reading';
@@ -34,6 +35,7 @@ export class KnowledgeService {
     private readonly settings: BelongingSettingsService,
     private readonly email: EmailService,
     private readonly config: ConfigService,
+    private readonly storage: StorageService,
   ) {}
 
   private webUrl(): string {
@@ -83,6 +85,11 @@ export class KnowledgeService {
       },
     });
 
+    // One signing call for the whole index rather than one per row (BEL-10).
+    const coverUrls = await this.storage.signedAttachmentUrls(
+      articles.map((a) => a.coverImagePath).filter((p): p is string => Boolean(p)),
+    );
+
     return articles.map((a) => {
       const latestComment = a.comments[0];
       return {
@@ -91,7 +98,7 @@ export class KnowledgeService {
         slug: a.slug,
         state: a.state,
         position: a.position,
-        coverImageUrl: a.coverImageUrl,
+        coverImageUrl: a.coverImagePath ? (coverUrls.get(a.coverImagePath) ?? null) : null,
         requiresAcknowledgment: a.requiresAcknowledgment,
         version: a.version,
         author: a.author
@@ -137,8 +144,17 @@ export class KnowledgeService {
     });
     if (!article) throw new NotFoundException('Article not found');
 
+    const coverUrls = article.coverImagePath
+      ? await this.storage.signedAttachmentUrls([article.coverImagePath])
+      : null;
+
     return {
       ...article,
+      // Signed per read, never a permanent link: the cover is usually a
+      // photograph of this co-op's members, and the article is members-only.
+      coverImageUrl: article.coverImagePath
+        ? (coverUrls?.get(article.coverImagePath) ?? null)
+        : null,
       // Flattened the same way the index flattens it. Returning the raw
       // relation here and a flattened one there meant the article page read
       // `author.name` off an object that only had `author.user.name`, and
@@ -162,7 +178,7 @@ export class KnowledgeService {
   async create(
     orgId: string,
     authorId: string,
-    dto: { title: string; body: string; coverImageUrl?: string; requiresAcknowledgment?: boolean },
+    dto: { title: string; body: string; coverImagePath?: string; requiresAcknowledgment?: boolean },
   ) {
     const last = await this.prisma.knowledgeArticle.findFirst({
       where: { orgId },
@@ -177,7 +193,7 @@ export class KnowledgeService {
         title: dto.title.trim(),
         slug: await this.uniqueSlug(orgId, dto.title),
         body: dto.body,
-        coverImageUrl: dto.coverImageUrl ?? null,
+        coverImagePath: dto.coverImagePath ?? null,
         requiresAcknowledgment: dto.requiresAcknowledgment ?? false,
         position: (last?.position ?? -1) + 1,
       },
@@ -200,7 +216,7 @@ export class KnowledgeService {
     dto: {
       title?: string;
       body?: string;
-      coverImageUrl?: string | null;
+      coverImagePath?: string | null;
       requiresAcknowledgment?: boolean;
       material?: boolean;
     },
@@ -227,7 +243,7 @@ export class KnowledgeService {
       data: {
         ...(dto.title !== undefined && { title: dto.title.trim() }),
         ...(dto.body !== undefined && { body: dto.body }),
-        ...(dto.coverImageUrl !== undefined && { coverImageUrl: dto.coverImageUrl }),
+        ...(dto.coverImagePath !== undefined && { coverImagePath: dto.coverImagePath }),
         ...(dto.requiresAcknowledgment !== undefined && {
           requiresAcknowledgment: dto.requiresAcknowledgment,
         }),
@@ -321,6 +337,57 @@ export class KnowledgeService {
     if (!article) throw new NotFoundException('Article not found');
     await this.prisma.knowledgeArticle.delete({ where: { id: article.id } });
     return { deleted: true };
+  }
+
+  /**
+   * Put a cover on an article (BEL-10).
+   *
+   * Same order as the org logo, for the same reason: store the new file
+   * first, point the article at it only once it is really there, and delete
+   * the old one last. A failure at any step leaves the article with the cover
+   * it had rather than a broken image.
+   */
+  async replaceCover(orgId: string, articleId: string, data: string, mimeType: string) {
+    const article = await this.prisma.knowledgeArticle.findFirst({
+      where: { id: articleId, orgId },
+      select: { id: true, coverImagePath: true },
+    });
+    if (!article) throw new NotFoundException('Article not found');
+
+    // Browsers hand back a full data: URL from FileReader; accept either.
+    const base64 = data.includes(',') ? data.slice(data.indexOf(',') + 1) : data;
+    const bytes = Buffer.from(base64.replace(/\s/g, ''), 'base64');
+
+    const coverImagePath = await this.storage.uploadArticleCover(orgId, bytes, mimeType);
+
+    const updated = await this.prisma.knowledgeArticle.update({
+      where: { id: article.id },
+      data: { coverImagePath },
+    });
+
+    // Only now is the previous file unreferenced.
+    if (article.coverImagePath) {
+      await this.storage.deleteAttachment(orgId, article.coverImagePath).catch(() => {});
+    }
+
+    return this.get(orgId, updated.id, '', true);
+  }
+
+  async removeCover(orgId: string, articleId: string) {
+    const article = await this.prisma.knowledgeArticle.findFirst({
+      where: { id: articleId, orgId },
+      select: { id: true, coverImagePath: true },
+    });
+    if (!article) throw new NotFoundException('Article not found');
+
+    await this.prisma.knowledgeArticle.update({
+      where: { id: article.id },
+      data: { coverImagePath: null },
+    });
+    if (article.coverImagePath) {
+      await this.storage.deleteAttachment(orgId, article.coverImagePath).catch(() => {});
+    }
+    return { removed: true };
   }
 
   // ─── Agreement ──────────────────────────────────────────────

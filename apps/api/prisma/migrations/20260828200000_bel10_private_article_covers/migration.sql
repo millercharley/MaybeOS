@@ -1,0 +1,14 @@
+-- BEL-10: article covers are private, and signed on read.
+--
+-- BEL-05 renamed this to `coverImageUrl` on the reasoning that cover art is
+-- org-level content rather than member PII, so a public URL like the org
+-- logo's would do. The reference screenshots settled it the other way: an
+-- article cover is typically a photograph of that co-op's members in their
+-- own space, and a Knowledge Center article is members-only. A permanent
+-- public URL for that is a photo of a co-op's members reachable by anyone who
+-- ever got the link — which is exactly what "material inside MaybeOS needs
+-- auth to reach" exists to prevent.
+--
+-- Covers now live in the private attachments bucket and are signed per read,
+-- the same as avatars. Safe as a rename: no article has a cover yet.
+ALTER TABLE "knowledge_articles" RENAME COLUMN "coverImageUrl" TO "coverImagePath";

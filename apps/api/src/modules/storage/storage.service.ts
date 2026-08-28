@@ -35,6 +35,12 @@ export const AVATAR_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'imag
 
 /** What the private `attachments` bucket itself enforces. Kept in step with it. */
 export const ATTACHMENT_BUCKET = 'attachments';
+/**
+ * A cover photograph is a bigger file than a logo and a smaller one than a
+ * document. Below the bucket's own 25 MB so the failure is a sentence a
+ * co-op can read rather than a storage rejection.
+ */
+export const COVER_MAX_BYTES = 8 * 1024 * 1024; // 8 MB
 export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 export const ATTACHMENT_MIME_TYPES = [
   'image/png',
@@ -330,6 +336,112 @@ export class StorageService {
       }
     } catch (err) {
       this.logger.warn(`Avatar signing failed: ${String(err)}`);
+    }
+
+    return signed;
+  }
+
+  /**
+   * Store a Knowledge Center article's cover image, and return its path.
+   *
+   * **Private, and signed on read** — not public like an org logo, which is
+   * what this originally was until the reference screenshots settled it. A
+   * co-op's logo is its public identity. An article cover is typically a
+   * photograph of that co-op's members in their own space, and a Knowledge
+   * Center article is members-only, so a permanent public URL would be a
+   * photo of a co-op's members reachable by anyone who ever got the link.
+   * Charley's standing rule — material inside MaybeOS needs auth to reach,
+   * except a public event page — covers this exactly.
+   *
+   * Uses the attachments bucket, which is already private, already signed on
+   * read, and already accepts images. A fourth bucket would be a fourth thing
+   * to configure and get the policies right on.
+   *
+   * A fresh key every time, so a failed replacement leaves the article with
+   * the cover it had rather than a broken image.
+   */
+  async uploadArticleCover(orgId: string, body: Buffer, mimeType: string): Promise<string> {
+    if (!this.isConfigured) {
+      throw new ServiceUnavailableException(
+        'Image uploads are not configured on this server (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).',
+      );
+    }
+
+    // The header is a claim; the bytes are evidence. A file renamed to .png
+    // must not become a stored image on the strength of its extension.
+    const sniffed = this.sniffImageMime(body);
+    if (!sniffed || !ATTACHMENT_MIME_TYPES.includes(sniffed as never)) {
+      throw new BadRequestException('That file is not an image MaybeOS can store.');
+    }
+    if (body.length > COVER_MAX_BYTES) {
+      throw new BadRequestException(
+        `Cover images have to be under ${Math.round(COVER_MAX_BYTES / 1024 / 1024)} MB.`,
+      );
+    }
+
+    const path = `${orgId}/article-covers/${randomUUID()}.${EXTENSION[sniffed]}`;
+    const response = await fetch(`${this.url}/storage/v1/object/${ATTACHMENT_BUCKET}/${path}`, {
+      method: 'POST',
+      headers: { ...this.headers, 'Content-Type': sniffed },
+      body: new Uint8Array(body),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      this.logger.error(
+        `Cover upload failed for org ${orgId}: ${response.status} ${detail.slice(0, 200)}`,
+      );
+      throw new ServiceUnavailableException(
+        response.status === 400 || response.status === 401 || response.status === 403
+          ? 'File storage is not accepting uploads right now. This is a MaybeOS problem, not yours.'
+          : 'Could not store the image. Try again.',
+      );
+    }
+
+    return path;
+  }
+
+  /**
+   * Sign many attachment paths at once.
+   *
+   * One request rather than one per row: an index of a dozen articles would
+   * otherwise make a dozen round trips to Storage to render one screen, the
+   * same problem `signedAvatarUrls` exists to avoid.
+   */
+  async signedAttachmentUrls(
+    paths: string[],
+    expiresInSeconds = 3600,
+  ): Promise<Map<string, string>> {
+    const signed = new Map<string, string>();
+    const wanted = [...new Set(paths.filter(Boolean))];
+    if (!this.isConfigured || wanted.length === 0) return signed;
+
+    try {
+      const response = await fetch(`${this.url}/storage/v1/object/sign/${ATTACHMENT_BUCKET}`, {
+        method: 'POST',
+        headers: { ...this.headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expiresIn: expiresInSeconds, paths: wanted }),
+      });
+      if (!response.ok) {
+        this.logger.warn(`Attachment signing failed: ${await response.text()}`);
+        return signed;
+      }
+
+      const results = (await response.json()) as Array<{
+        path?: string | null;
+        signedURL?: string | null;
+        error?: string | null;
+      }>;
+
+      for (const result of results) {
+        // Per path, so one deleted file returns an error beside the rest
+        // rather than failing the whole batch.
+        if (result.path && result.signedURL && !result.error) {
+          signed.set(result.path, `${this.url}/storage/v1${result.signedURL}`);
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`Attachment signing failed: ${String(err)}`);
     }
 
     return signed;
