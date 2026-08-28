@@ -9,9 +9,12 @@ import {
   Body,
   Query,
   Param,
+  Header,
   UseGuards,
+  Res,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
@@ -267,6 +270,25 @@ export class ImpactController {
     @Body() dto: UpdateReportBlockDto,
   ) {
     return this.reports.updateBlock(orgId, reportId, blockId, dto.body);
+  }
+
+  @Get('impact/reports/:reportId/export')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'The report as a file to attach or upload' })
+  async exportReport(
+    @Param('orgId') orgId: string,
+    @Param('reportId', ParseUUIDPipe) reportId: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { filename, html } = await this.reports.exportDocument(orgId, reportId);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    // The filename is set here rather than by the browser, so a co-op ends up
+    // with "sunrise-2026-impact-report.html" in its downloads folder rather
+    // than a uuid it will never identify again.
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return html;
   }
 
   @Post('impact/reports/:reportId/publish')

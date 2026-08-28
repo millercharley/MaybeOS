@@ -1053,6 +1053,10 @@ class ApiClient {
         { method: 'POST', token },
       ),
 
+    /** The URL of the report file. Fetched with `downloadAuthenticated`. */
+    reportExportUrl: (orgId: string, reportId: string) =>
+      apiUrl(`/orgs/${orgId}/impact/reports/${reportId}/export`),
+
     unpublishReport: (orgId: string, reportId: string, token: string) =>
       this.request<{ status: string }>(
         `/orgs/${orgId}/impact/reports/${reportId}/unpublish`,
