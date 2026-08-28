@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { RequiredReadingGuard } from './common/guards/required-reading.guard';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import * as Joi from 'joi';
@@ -118,6 +119,15 @@ import { HealthModule } from './modules/health/health.module';
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      // One server-side check covering every write endpoint (BEL-03,
+      // PRD §6.2). Global rather than opt-in, because the failure mode of
+      // opt-in is silent and permanent: somebody adds an endpoint next year,
+      // forgets the decorator, and a co-op's house rules quietly stop
+      // applying to whatever it does.
+      provide: APP_GUARD,
+      useClass: RequiredReadingGuard,
     },
   ],
 })

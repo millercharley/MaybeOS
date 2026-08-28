@@ -21,6 +21,7 @@ import { StripeService } from './stripe.service';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
 import { CreateBillingPortalDto } from './dto/create-billing-portal.dto';
 import { PrismaService } from '../../config/prisma.service';
+import { BypassRequiredReading } from '../../common/decorators/bypass-required-reading.decorator';
 
 /**
  * NOTE: The POST /stripe/webhooks endpoint requires raw body parsing.
@@ -46,6 +47,11 @@ export class StripeController {
   // ──────────────────────────────────────────────────────────────
 
   @Post('orgs/:orgId/checkout')
+  @BypassRequiredReading(
+    'Paying dues is not a community write action, and a member who cannot pay ' +
+      'because they have not read an article is a member the co-op stops earning from ' +
+      'for a reason neither of them intended.',
+  )
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a Stripe Checkout session for a membership tier' })
@@ -71,6 +77,10 @@ export class StripeController {
   // ──────────────────────────────────────────────────────────────
 
   @Post('orgs/:orgId/billing-portal')
+  @BypassRequiredReading(
+    'The portal is where a member cancels. Being unable to stop paying because you ' +
+      'have not agreed to something is a trap, not a gate.',
+  )
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a Stripe Billing Portal session' })
