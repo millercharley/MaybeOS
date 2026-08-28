@@ -85,6 +85,45 @@ describe('report composition guardrails', () => {
       expect(rules(sentence)).toContain('causal-claim');
     });
 
+    describe('denying cause, which is the whole point of the section', () => {
+      // Found by running the composer for real. The report's single most
+      // important sentence is a denial of cause, and the check rejected it —
+      // including the exact wording the deterministic limitations block
+      // writes. The model got past the rule by reaching for "shows a
+      // connection between", which was luck rather than design.
+      it.each([
+        'They do not say why, and nothing here establishes that anything Sunrise did caused anything members felt.',
+        'This report cannot say what caused what.',
+        'Nothing here shows that the co-op caused any of these changes.',
+        'These figures do not establish that anything led to anything else.',
+        'No causal claim can be made from this data.',
+        'This data cannot show the impact of any programme.',
+      ])('accepts: %s', (sentence) => {
+        expect(rules(sentence)).toEqual([]);
+      });
+
+      it('still catches a claim asserted after a denial elsewhere in the text', () => {
+        // A negation only excuses its own clause. Otherwise one "not" at the
+        // top of a section would switch the check off for everything under it.
+        expect(
+          rules('Nothing here establishes cause. Our monthly suppers led to a higher sense of belonging.'),
+        ).toContain('causal-claim');
+      });
+
+      it('still catches a claim after "but"', () => {
+        expect(
+          rules('These figures cannot show why, but the new space drove attendance.'),
+        ).toContain('causal-claim');
+      });
+
+      it('still catches a claim where the negation comes after it', () => {
+        // "Suppers led to belonging, not the other way round" is an assertion.
+        expect(
+          rules('Our suppers led to belonging, not the other way round.'),
+        ).toContain('causal-claim');
+      });
+    });
+
     it('lets a co-op describe its own reasoning', () => {
       // "These figures led us to ask" is the co-op talking about itself, not
       // a claim about cause in the data. Catching it would make the synthesis
