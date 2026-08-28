@@ -9,6 +9,7 @@ import { DemographicProfile } from '@/components/member/demographic-profile';
 import { ChangePassword } from '@/components/member/change-password';
 import { useParams } from 'next/navigation';
 import { BuddySettings } from '@/components/belonging/buddy-settings';
+import { ForumMembership } from '@/components/member/forum-membership';
 
 /**
  * "My Profile" (MEM-01).
@@ -348,6 +349,9 @@ export default function MyProfilePage() {
           member has some history with it (BEL). The Off the Hook email links
           straight to `#buddy`. */}
       {orgId && orgSlug && <BuddySettings orgId={orgId} orgSlug={orgSlug} />}
+
+      {/* Renders nothing on a deployment with no forum (FRM-01). */}
+      <ForumMembership />
 
       {profile.orgs && profile.orgs.length > 0 && (
         <section className="card">

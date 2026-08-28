@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { OrgService } from '../org.service';
+import { ForumService } from '../forum.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 
@@ -34,6 +35,7 @@ describe('OrgService — locations', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         OrgService,
+        { provide: ForumService, useValue: { autoJoin: jest.fn() } },
         { provide: PrismaService, useValue: prisma },
         // OrgService also uploads logos; locations touch none of that.
         { provide: StorageService, useValue: {} },

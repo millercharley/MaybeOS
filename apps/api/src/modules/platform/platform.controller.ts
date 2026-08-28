@@ -5,6 +5,7 @@ import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { PlatformService } from './platform.service';
 import { SuspendOrgDto, SetPlanDto } from './dto/platform.dto';
+import { ForumService } from '../org/forum.service';
 
 /**
  * The super-admin console (PLT-01).
@@ -25,7 +26,14 @@ import { SuspendOrgDto, SetPlanDto } from './dto/platform.dto';
 @UseGuards(JwtAuthGuard, PlatformAdminGuard)
 @ApiBearerAuth()
 export class PlatformController {
-  constructor(private readonly platform: PlatformService) {}
+  constructor(    private readonly forum: ForumService,
+private readonly platform: PlatformService) {}
+
+  @Post('forum')
+  @ApiOperation({ summary: 'Create MaybeOS’s own forum, once, and fill it' })
+  ensureForum(@CurrentUser() user: RequestUser) {
+    return this.forum.ensure(user.userId);
+  }
 
   @Get('summary')
   @ApiOperation({ summary: 'The platform in one number each' })

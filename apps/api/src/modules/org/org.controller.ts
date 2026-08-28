@@ -17,6 +17,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { OrgService } from './org.service';
 import { DashboardService } from './dashboard.service';
+import { ForumService } from './forum.service';
 import { CreateLocationDto, UpdateLocationDto } from './dto/location.dto';
 import { AuditService } from '../platform/audit.service';
 import { CreateOrgDto } from './dto/create-org.dto';
@@ -29,6 +30,7 @@ export class OrgController {
   constructor(
     private readonly orgService: OrgService,
     private readonly dashboard: DashboardService,
+    private readonly forum: ForumService,
     private readonly audit: AuditService,
   ) {}
 
@@ -44,6 +46,32 @@ export class OrgController {
   @ApiOperation({ summary: 'Get organization by slug (public)' })
   findBySlug(@Param('slug') slug: string) {
     return this.orgService.findBySlug(slug);
+  }
+
+  /* ─── MaybeOS's own forum (FRM-01) ────────────────────────── */
+
+  @Get('forum/me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Whether I am in the MaybeOS community, and how' })
+  forumStatus(@CurrentUser() user: RequestUser) {
+    return this.forum.statusFor(user.userId);
+  }
+
+  @Post('forum/leave')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Leave the MaybeOS community, and stay left' })
+  leaveForum(@CurrentUser() user: RequestUser) {
+    return this.forum.leave(user.userId);
+  }
+
+  @Post('forum/join')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Join the MaybeOS community, or come back to it' })
+  joinForum(@CurrentUser() user: RequestUser) {
+    return this.forum.rejoin(user.userId);
   }
 
   @Get(':orgId')

@@ -37,6 +37,10 @@ export class PlatformService {
    */
   async listOrgs() {
     const orgs = await this.prisma.organization.findMany({
+      // MaybeOS's own forum is not a co-op paying for MaybeOS (FRM-01).
+      // Counting it would make every figure on this screen one out, and put
+      // a row here that nobody can suspend or invoice.
+      where: { isPlatformForum: false },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
