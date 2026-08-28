@@ -15,6 +15,7 @@ import {
   Landmark,
   BookOpen,
   HeartHandshake,
+  Mail,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -96,6 +97,7 @@ const coopNav = (slug: string): NavItem[] => [
   // would mean only regulars ever found it.
   { href: `/portal/${slug}/welcome`, label: 'Welcome', icon: BookOpen },
   { href: `/portal/${slug}/commons`, label: 'Commons', icon: MessageSquare },
+  { href: `/portal/${slug}/messages`, label: 'Messages', icon: Mail },
   { href: `/portal/${slug}/directory`, label: 'Directory', icon: Users },
   { href: `/portal/${slug}/events`, label: 'Events', icon: Calendar },
   { href: `/portal/${slug}/rooms`, label: 'Rooms', icon: DoorOpen },

@@ -184,6 +184,46 @@ export class BuddyLogService {
     };
   }
 
+  /**
+   * The prompts a buddy sees above the composer, in one conversation
+   * (PRD §5.4).
+   *
+   * **Whether the viewer is that person's buddy is decided here, not in the
+   * UI.** "The new member never sees these" is a promise about what a co-op's
+   * coaching looks like from the inside — somebody discovering that their
+   * welcome was scripted would learn something the co-op did not choose to
+   * tell them — and a promise kept only by a component that hides a list is
+   * one browser devtools panel from being broken.
+   *
+   * Empty for everybody else, including admins looking at their own threads.
+   */
+  async suggestionsForThread(orgId: string, viewerId: string, otherUserId: string) {
+    const pairing = await this.prisma.buddyPairing.findFirst({
+      where: {
+        orgId,
+        state: 'ACTIVE',
+        buddyMemberId: viewerId,
+        newMember: { userId: otherUserId },
+      },
+      select: { id: true },
+    });
+    if (!pairing) return { pairingId: null, suggestions: [] };
+
+    const suggestions = await this.prisma.buddySuggestion.findMany({
+      where: {
+        orgId,
+        active: true,
+        // Dismissals are per member per suggestion, so one buddy tidying
+        // their own composer does not take the prompt away from anybody else.
+        dismissals: { none: { memberId: viewerId } },
+      },
+      orderBy: { position: 'asc' },
+      select: { id: true, body: true },
+    });
+
+    return { pairingId: pairing.id, suggestions };
+  }
+
   // ─── Admin actions ──────────────────────────────────────────
 
   async reassign(orgId: string, pairingId: string, buddyMemberId: string) {

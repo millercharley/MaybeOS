@@ -257,6 +257,17 @@ export class BelongingController {
     });
   }
 
+  @Get('belonging/buddy/thread/:otherUserId/suggestions')
+  @ApiOperation({ summary: 'Prompts for the buddy in this conversation, if I am one' })
+  async threadSuggestions(
+    @Param('orgId') orgId: string,
+    @Param('otherUserId', ParseUUIDPipe) otherUserId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    const me = await this.membership(orgId, user.userId);
+    return this.log.suggestionsForThread(orgId, me.id, otherUserId);
+  }
+
   @Post('belonging/buddy/suggestions/:id/dismiss')
   @BypassRequiredReading(
     'Hiding a prompt in your own message composer is a display preference, not a ' +
