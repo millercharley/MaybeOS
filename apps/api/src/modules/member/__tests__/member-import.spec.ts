@@ -5,6 +5,7 @@ import { PrismaService } from '../../../config/prisma.service';
 import { EmailService } from '../../email/email.service';
 import { StripeService } from '../../stripe/stripe.service';
 import { StorageService } from '../../storage/storage.service';
+import { BuddyService } from '../../belonging/buddy.service';
 
 /**
  * Importing an existing community (MEM-06).
@@ -45,6 +46,8 @@ describe('MemberService — importing a community', () => {
         { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },
         { provide: StripeService, useValue: {} },
         { provide: StorageService, useValue: storage },
+        // Never reached here: the buddy search is fire-and-forget and off by default.
+        { provide: BuddyService, useValue: { onMemberJoined: jest.fn().mockResolvedValue(null) } },
       ],
     }).compile();
 

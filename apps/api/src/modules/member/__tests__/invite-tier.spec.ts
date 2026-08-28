@@ -5,6 +5,7 @@ import { PrismaService } from '../../../config/prisma.service';
 import { EmailService } from '../../email/email.service';
 import { StripeService } from '../../stripe/stripe.service';
 import { StorageService } from '../../storage/storage.service';
+import { BuddyService } from '../../belonging/buddy.service';
 
 /**
  * An invitation carries the tier it is inviting somebody onto (MEM-04).
@@ -57,6 +58,8 @@ describe('MemberService — invitations with a tier', () => {
         { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },
         { provide: StripeService, useValue: {} },
         { provide: StorageService, useValue: {} },
+        // Never reached here: the buddy search is fire-and-forget and off by default.
+        { provide: BuddyService, useValue: { onMemberJoined: jest.fn().mockResolvedValue(null) } },
       ],
     }).compile();
 

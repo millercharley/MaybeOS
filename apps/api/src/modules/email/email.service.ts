@@ -153,6 +153,34 @@ export class EmailService {
 
   // ─── Delivery ────────────────────────────────────────────────
 
+  /**
+   * Send an email whose subject and body have already been composed.
+   *
+   * Every other method here builds its content from a hardcoded template,
+   * which is right for mail MaybeOS writes. Belonging Support's mail is
+   * written by the co-op (PRD §5.3), so it arrives rendered and validated
+   * from `belonging-emails.ts` — this exists so that admin-authored content
+   * does not need a case added to a switch statement it can never be part of.
+   *
+   * Same fire-and-forget posture as everything else: a failure is logged,
+   * never thrown. A Postmark outage must not roll back the buddy invitation
+   * the email was announcing.
+   */
+  async sendRaw(to: string, subject: string, htmlBody: string): Promise<void> {
+    if (!this.client) {
+      this.logger.log(`[DEV] Would send email to=${to} subject="${subject}"\n${htmlBody}`);
+      return;
+    }
+
+    try {
+      await this.client.sendEmail({ From: this.emailFrom, To: to, Subject: subject, HtmlBody: htmlBody });
+      this.logger.log(`Email sent successfully to ${to} (raw)`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Failed to send email to ${to}: ${message}`);
+    }
+  }
+
   private async send({ type, to, data }: EmailJobData): Promise<void> {
     const { subject, htmlBody } = this.buildEmail(type, data);
 

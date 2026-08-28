@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { CommonsService } from '../commons/commons.service';
 import { ReportService } from '../impact/report.service';
+import { BuddyService } from '../belonging/buddy.service';
 
 export interface TaskResult {
   task: string;
@@ -42,6 +43,7 @@ export class SchedulerService {
     private readonly prisma: PrismaService,
     private readonly commons: CommonsService,
     private readonly reports: ReportService,
+    private readonly buddies: BuddyService,
   ) {}
 
   async runDueTasks(now: Date = new Date()): Promise<RunResult> {
@@ -57,6 +59,7 @@ export class SchedulerService {
       { name: 'close-due-surveys', run: () => this.closeDueSurveys(now) },
       { name: 'release-expired-booking-holds', run: () => this.releaseExpiredHolds(now) },
       { name: 'compose-pending-reports', run: () => this.composePendingReports(now) },
+      { name: 'advance-buddy-pairings', run: () => this.advanceBuddyPairings(now) },
     ]) {
       try {
         tasks.push(await task.run());
@@ -82,6 +85,32 @@ export class SchedulerService {
     return result;
   }
 
+
+  /**
+   * Move buddy pairings along (BEL-01, PRD §7).
+   *
+   * The PRD asks for at least hourly; this runs every fifteen minutes, which
+   * mostly matters at the edges of the 48-hour timeout — a member who is
+   * released from an ask an hour late has spent an extra hour thinking they
+   * still owe somebody something.
+   *
+   * The work itself is idempotent, so this task's only job is to call it and
+   * to not let its failure strand the tasks after it.
+   */
+  private async advanceBuddyPairings(now: Date): Promise<TaskResult> {
+    const result: TaskResult = { task: 'advance-buddy-pairings', processed: 0, failed: 0, errors: [] };
+
+    const { expired, offTheHookSent, advanced } = await this.buddies.runDueWork(now);
+    result.processed = expired + offTheHookSent + advanced;
+
+    if (result.processed > 0) {
+      this.logger.log(
+        `Buddy sweep: ${expired} expired, ${offTheHookSent} released, ${advanced} moved on`,
+      );
+    }
+
+    return result;
+  }
 
   /**
    * Write the prose for reports waiting on it (IMP-23 phase 2).
