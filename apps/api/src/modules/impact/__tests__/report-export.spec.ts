@@ -82,6 +82,21 @@ describe('the exported report', () => {
     });
   });
 
+  describe('it does not claim a date it does not have', () => {
+    it('says Published, with the publication date, once published', () => {
+      expect(html()).toContain('Published 15 January 2027');
+    });
+
+    it('says Prepared for a draft, because exporting before publishing is allowed', () => {
+      // Half of "charge to publish or export" is exporting *instead* of
+      // publishing. A funder reading "Published" is reading a claim about the
+      // co-op having stood behind this, and a draft has not.
+      const doc = renderReportDocument(org, { ...report, publishedAt: null });
+      expect(doc).toContain('Prepared 10 January 2027');
+      expect(doc).not.toContain('Published');
+    });
+  });
+
   describe('it does not execute what a co-op or a model wrote', () => {
     it('escapes a script tag in a block body', () => {
       // The composer is a language model and the bodies are editable. Neither
