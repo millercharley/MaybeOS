@@ -582,8 +582,10 @@ export class ReportService {
           `These figures say what members reported. They do not say why, and nothing here ` +
             `establishes that anything ${org.name} did caused anything members felt.`,
           quietGoals.length > 0
-            ? `${quietGoals.length} ${goalWord(quietGoals.length)} have no figure at all: ` +
-              `${quietGoals.map((g) => g.title).join(', ')}. Too few members answered about them.`
+            ? `${quietGoals.length} ${goalWord(quietGoals.length)} ` +
+              `${quietGoals.length === 1 ? 'has' : 'have'} no figure at all: ` +
+              `${quietGoals.map((g) => g.title).join(', ')}. ` +
+              `Too few members answered about ${quietGoals.length === 1 ? 'it' : 'them'}.`
             : null,
           thin.length > 0
             ? `Some figures rest on small numbers — ` +

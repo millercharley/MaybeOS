@@ -158,3 +158,94 @@ describe('ReportService.compose', () => {
     expect(composer.compose).toHaveBeenCalledWith(expect.anything(), [2026]);
   });
 });
+
+import { ReportService as RS } from '../report.service';
+
+/**
+ * The two sections only the written report carries (IMP-23, PRD §6.6).
+ *
+ * Both are composed deterministically first so a failed generation leaves a
+ * section that reads correctly rather than a heading over nothing — which
+ * means the deterministic text is shipped prose, not a placeholder, and has
+ * to be written like it.
+ */
+describe('the written report’s own sections', () => {
+  const compose = (goals: any[], threshold = 5) =>
+    (RS.prototype as any).composeBlocks.call(
+      {},
+      {
+        org: { name: 'Sunrise', mission: null },
+        signals: { goals, members: 8, suppressionThreshold: threshold, windows: [] },
+        spend: { totalCents: 0, byCategory: [], byGoal: [], attributedShare: null, expenseCount: 0 },
+        periodStart: new Date('2026-01-01'),
+        periodEnd: new Date('2026-12-31'),
+        tier: 'WRITTEN',
+      },
+    );
+
+  const measured = (title: string, respondents = 12) => ({
+    title,
+    description: null,
+    measures: [
+      {
+        label: 'Belonging',
+        signal: { category: 'belonging', average: 3.7, respondents, answerCount: respondents, reportable: true, higherIsBetter: true },
+      },
+    ],
+  });
+  const quiet = (title: string) => ({ title, description: null, measures: [] });
+
+  const limitationsOf = (goals: any[]) =>
+    compose(goals).find((b: any) => b.kind === 'limitations').body as string;
+
+  it('agrees with itself about one goal', () => {
+    // Found by running it: "1 goal have no figure at all … answered about
+    // them." The deterministic text is what a co-op reads when the model
+    // fails, so a grammar bug here is a grammar bug in a funder's copy.
+    const body = limitationsOf([measured('Belonging'), quiet('The building pays for itself')]);
+
+    expect(body).toContain('1 goal has no figure at all');
+    expect(body).toContain('answered about it.');
+    expect(body).not.toContain('goal have');
+  });
+
+  it('and about several', () => {
+    const body = limitationsOf([measured('Belonging'), quiet('One'), quiet('Two')]);
+
+    expect(body).toContain('2 goals have no figure at all');
+    expect(body).toContain('answered about them.');
+  });
+
+  it('names a figure that only just cleared suppression as thin', () => {
+    const body = limitationsOf([measured('Belonging', 6)]);
+    expect(body).toContain('rest on small numbers');
+    expect(body).toContain('6 people');
+  });
+
+  it('does not call a well-answered figure thin', () => {
+    const body = limitationsOf([measured('Belonging', 40)]);
+    expect(body).not.toContain('rest on small numbers');
+  });
+
+  it('always says the data cannot show cause', () => {
+    // The single most important sentence in the report, and the one a funder
+    // is entitled to. It is unconditional.
+    expect(limitationsOf([measured('Belonging')])).toContain('do not say why');
+  });
+
+  it('gives the free report neither section', () => {
+    const blocks = (RS.prototype as any).composeBlocks.call(
+      {},
+      {
+        org: { name: 'Sunrise', mission: null },
+        signals: { goals: [measured('Belonging')], members: 8, suppressionThreshold: 5, windows: [] },
+        spend: { totalCents: 0, byCategory: [], byGoal: [], attributedShare: null, expenseCount: 0 },
+        periodStart: new Date('2026-01-01'),
+        periodEnd: new Date('2026-12-31'),
+        tier: 'BASIC',
+      },
+    );
+    expect(blocks.map((b: any) => b.kind)).not.toContain('limitations');
+    expect(blocks.map((b: any) => b.kind)).not.toContain('synthesis');
+  });
+});
