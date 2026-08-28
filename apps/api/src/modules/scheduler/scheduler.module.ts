@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { CommonsModule } from '../commons/commons.module';
 import { ImpactModule } from '../impact/impact.module';
+import { BelongingModule } from '../belonging/belonging.module';
 import { SchedulerService } from './scheduler.service';
 
 /**
@@ -11,7 +12,7 @@ import { SchedulerService } from './scheduler.service';
  * to close every open proposal in the system.
  */
 @Module({
-  imports: [CommonsModule, ImpactModule],
+  imports: [CommonsModule, ImpactModule, BelongingModule],
   providers: [PrismaService, SchedulerService],
   exports: [SchedulerService],
 })

@@ -3,6 +3,7 @@ import { SchedulerService } from '../scheduler.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { CommonsService } from '../../commons/commons.service';
 import { ReportService } from '../../impact/report.service';
+import { BuddyService } from '../../belonging/buddy.service';
 
 /**
  * The scheduler's correctness is mostly about what it *doesn't* touch: rows
@@ -41,6 +42,12 @@ describe('SchedulerService', () => {
         {
           provide: ReportService,
           useValue: { compose: jest.fn().mockResolvedValue({ status: 'ready' }) },
+        },
+        {
+          provide: BuddyService,
+          useValue: {
+            runDueWork: jest.fn().mockResolvedValue({ expired: 0, offTheHookSent: 0, advanced: 0 }),
+          },
         },
       ],
     }).compile();
@@ -176,6 +183,12 @@ describe('SchedulerService — compose-pending-reports', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: CommonsService, useValue: { closeProposal: jest.fn() } },
         { provide: ReportService, useValue: reports },
+        {
+          provide: BuddyService,
+          useValue: {
+            runDueWork: jest.fn().mockResolvedValue({ expired: 0, offTheHookSent: 0, advanced: 0 }),
+          },
+        },
       ],
     }).compile();
 

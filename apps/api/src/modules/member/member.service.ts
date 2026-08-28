@@ -12,6 +12,7 @@ import { PrismaService } from '../../config/prisma.service';
 import { EmailService } from '../email/email.service';
 import { StripeService } from '../stripe/stripe.service';
 import { StorageService } from '../storage/storage.service';
+import { BuddyService } from '../belonging/buddy.service';
 import { ImportMemberRowDto, ImportAvatarsDto } from './dto/import-members.dto';
 import { CreateTierDto } from './dto/create-tier.dto';
 import { ContactViewer } from '../../common/access/contact-visibility';
@@ -90,6 +91,7 @@ export class MemberService {
     private readonly configService: ConfigService,
     private readonly stripeService: StripeService,
     private readonly storage: StorageService,
+    private readonly buddies: BuddyService,
   ) {}
 
   // ─── Members ────────────────────────────────────────────────
@@ -396,6 +398,11 @@ export class MemberService {
     });
 
     this.logger.log(`User ${userId} joined org ${orgId} (tier ${tierId ?? 'none'})`);
+
+    // Start looking for a buddy (BEL-01). A no-op unless the co-op has turned
+    // the tool on, and deliberately not awaited into the join's success: a
+    // Postmark outage must not stop somebody becoming a member.
+    this.startBuddySearch(orgId, membership.id);
 
     return { membership, alreadyMember: false };
   }
@@ -749,6 +756,12 @@ export class MemberService {
       }),
     ]);
 
+    const membership = await this.prisma.userOrg.findUnique({
+      where: { userId_orgId: { userId, orgId: invitation.orgId } },
+      select: { id: true },
+    });
+    if (membership) this.startBuddySearch(invitation.orgId, membership.id);
+
     // The tier travels back so the web app knows whether to hand off to
     // checkout. Returning only the org is what made the invitation path stop
     // short of payment.
@@ -757,6 +770,30 @@ export class MemberService {
       orgId: invitation.orgId,
       tierId: invitation.tierId,
     };
+  }
+
+  /**
+   * Kick off a buddy search for somebody who has just joined (BEL-01).
+   *
+   * **Deliberately not awaited, and deliberately not on the bulk importer.**
+   *
+   * Not awaited, because a Postmark outage or a slow candidate query must not
+   * be able to fail somebody's join. Being made a member is the thing that
+   * matters; being introduced is a courtesy that can arrive a moment later,
+   * and the scheduler picks up any pairing left seeking.
+   *
+   * Not on the importer, because MEM-06 brought 314 members across from
+   * Circle in one call. Wiring this there would have asked 314 people to
+   * welcome each other on the same afternoon — every one of them a real email
+   * to a real person, and every one of them wrong. An import is a co-op
+   * moving house, not 314 arrivals.
+   */
+  private startBuddySearch(orgId: string, membershipId: string): void {
+    void this.buddies.onMemberJoined(orgId, membershipId).catch((err) => {
+      this.logger.error(
+        `Could not start a buddy search for ${membershipId}: ${(err as Error).message}`,
+      );
+    });
   }
 
   async listInvitations(orgId: string) {
