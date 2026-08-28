@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Article, ArticleCompliance, ArticleSummary } from '@/lib/api';
-import { RichComposer, composerValue } from '@/components/composer/rich-composer';
+import { RichComposer } from '@/components/composer/rich-composer';
 import { timeAgo } from '@/lib/relative-time';
 
 /**
