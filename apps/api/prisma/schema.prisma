@@ -124,14 +124,24 @@ model Organization {
   auditLogs      AuditLog[]
   emailTemplates EmailTemplate[]
 
-  expenses              Expense[]
-  attachments           Attachment[]
-  goals                 Goal[]
-  measurementPlan       MeasurementPlan?
-  impactReports         ImpactReport[]
-  impactReportPurchases ImpactReportPurchase[]
-  hostPayouts           HostPayout[]
+  expenses                Expense[]
+  attachments             Attachment[]
+  goals                   Goal[]
+  measurementPlan         MeasurementPlan?
+  impactReports           ImpactReport[]
+  impactReportPurchases   ImpactReportPurchase[]
+  belongingSettings       BelongingSettings?
+  buddyPairings           BuddyPairing[]
+  buddySuggestions        BuddySuggestion[]
+  knowledgeArticles       KnowledgeArticle[]
+  belongingEmailTemplates BelongingEmailTemplate[]
+  hostPayouts             HostPayout[]
 
+  /// Backs the platform console's org list, which orders by signup date
+  /// (PLT-01). Created by that migration but never declared here, so every
+  /// subsequent `prisma migrate diff` proposed dropping it — declared now so
+  /// the schema and the database agree.
+  @@index([createdAt])
   @@map("organizations")
 }
 
@@ -269,6 +279,19 @@ model UserOrg {
   user User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   org  Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
   tier MembershipTier? @relation(fields: [tierId], references: [id])
+
+  // Belonging Support. A membership, not a person: someone in two co-ops has
+  // two buddy histories and two sets of acknowledgments.
+  buddyStats             MemberBuddyStats?
+  buddyPairingsAsNew     BuddyPairing[]             @relation("BuddyPairingNewMember")
+  buddyPairingsAsBuddy   BuddyPairing[]             @relation("BuddyPairingBuddy")
+  buddyInvitations       BuddyInvitation[]          @relation("BuddyInvitationCandidate")
+  buddyFallbackFor       BelongingSettings[]        @relation("BuddyFallbackAdmin")
+  suggestionDismissals   BuddySuggestionDismissal[]
+  articlesAuthored       KnowledgeArticle[]         @relation("ArticleAuthor")
+  articleAcknowledgments ArticleAcknowledgment[]
+  articleLikes           ArticleLike[]
+  articleComments        ArticleComment[]
 
   @@unique([userId, orgId])
   @@index([orgId])
@@ -1424,4 +1447,286 @@ model Attachment {
   @@index([commentId])
   @@index([eventId])
   @@map("attachments")
+}
+
+// ── Belonging Support (BEL-01 … BEL-08)
+//
+// Two tools that share one idea: a new member should not have to work out on
+// their own who to talk to or what this place expects of them. The Buddy
+// System gives them a named human within days; the Knowledge Center gives the
+// co-op somewhere durable to say what it stands for, and a way to know people
+// have read it.
+//
+// **A "member" here is a `UserOrg`, not a `User`.** Someone in two co-ops has
+// two memberships, two buddy histories, and two sets of acknowledgments —
+// having served as a buddy in one co-op is not a reason to skip you in
+// another, and agreeing to one co-op's norms says nothing about the other's.
+
+/// Per-org configuration for both tools (PRD §4).
+///
+/// A row rather than keys in `Organization.settings`, because the scheduler
+/// filters on these every fifteen minutes and a JSON blob cannot be indexed
+/// or type-checked. Defaults live here so a co-op that has never opened the
+/// settings page still has coherent behaviour — and both tools default OFF,
+/// so enabling MaybeOS never silently starts emailing a co-op's members.
+model BelongingSettings {
+  id    String @id @default(uuid())
+  orgId String @unique
+
+  buddySystemEnabled      Boolean @default(false)
+  buddyInviteTimeoutHours Int     @default(48)
+  buddyAskCooldownDays    Int     @default(30)
+  buddyServeCooldownDays  Int     @default(90)
+  buddyMaxActivePairings  Int     @default(1)
+  /// The membership a pairing falls back to when the pool is exhausted.
+  /// Null means "whichever admin has been here longest", resolved at use.
+  buddyFallbackAdminId    String?
+
+  knowledgeCenterEnabled   Boolean @default(false)
+  requiredReadingGraceDays Int     @default(14)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org           Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  fallbackAdmin UserOrg?     @relation("BuddyFallbackAdmin", fields: [buddyFallbackAdminId], references: [id], onDelete: SetNull)
+
+  @@map("belonging_settings")
+}
+
+enum BuddyPairingState {
+  SEEKING
+  ACTIVE
+  NEEDS_ADMIN
+  CLOSED
+}
+
+/// One new member's search for a buddy, and its outcome (PRD §5.1).
+model BuddyPairing {
+  id            String            @id @default(uuid())
+  orgId         String
+  newMemberId   String
+  buddyMemberId String?
+  state         BuddyPairingState @default(SEEKING)
+  /// Set when an admin closes or reassigns, so the log can say who and why.
+  closedById    String?
+  closeReason   String?
+  createdAt     DateTime          @default(now())
+  resolvedAt    DateTime?
+  updatedAt     DateTime          @updatedAt
+
+  org         Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  newMember   UserOrg           @relation("BuddyPairingNewMember", fields: [newMemberId], references: [id], onDelete: Cascade)
+  buddyMember UserOrg?          @relation("BuddyPairingBuddy", fields: [buddyMemberId], references: [id], onDelete: SetNull)
+  invitations BuddyInvitation[]
+
+  @@index([orgId, state])
+  @@index([newMemberId])
+  @@map("buddy_pairings")
+}
+
+enum BuddyInvitationState {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  SUPERSEDED
+}
+
+/// One ask, answered or not (PRD §5.2: "every ask writes to the log whether
+/// or not it is answered — this is what makes rotation real").
+///
+/// The token is **stored hashed**. It is emailed and works without a login,
+/// so a database read must not yield a working accept link. The plaintext
+/// exists once, in the moment the email is built, and never again.
+model BuddyInvitation {
+  id               String               @id @default(uuid())
+  pairingId        String
+  candidateId      String
+  tokenHash        String               @unique
+  state            BuddyInvitationState @default(PENDING)
+  sentAt           DateTime             @default(now())
+  expiresAt        DateTime
+  respondedAt      DateTime?
+  /// Whether the Off the Hook email has gone out, so a retried scheduler run
+  /// cannot send it twice.
+  offTheHookSentAt DateTime?
+
+  pairing   BuddyPairing @relation(fields: [pairingId], references: [id], onDelete: Cascade)
+  candidate UserOrg      @relation("BuddyInvitationCandidate", fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([pairingId, state])
+  @@index([state, expiresAt])
+  @@index([candidateId])
+  @@map("buddy_invitations")
+}
+
+/// Rotation state, kept as counters rather than derived from the invitation
+/// log every time (PRD §5.2 sorts the whole eligible pool by these on every
+/// ask, and a co-op with a long history should not pay for its own past).
+///
+/// Written in the same transaction as the invitation that changes them, so
+/// the counters and the log cannot disagree.
+model MemberBuddyStats {
+  id           String    @id @default(uuid())
+  memberId     String    @unique
+  timesAsked   Int       @default(0)
+  timesServed  Int       @default(0)
+  lastAskedAt  DateTime?
+  lastServedAt DateTime?
+  /// The member's own choice, from their profile. Never set by an admin.
+  optedOut     Boolean   @default(false)
+  updatedAt    DateTime  @updatedAt
+
+  member UserOrg @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@map("member_buddy_stats")
+}
+
+/// Admin-authored prompts a buddy sees in the DM thread (PRD §5.4).
+///
+/// The new member never sees these. A buddy being coached is fine; a new
+/// member watching their welcome be scripted is not.
+model BuddySuggestion {
+  id        String   @id @default(uuid())
+  orgId     String
+  body      String
+  position  Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org        Organization               @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  dismissals BuddySuggestionDismissal[]
+
+  @@index([orgId, position])
+  @@map("buddy_suggestions")
+}
+
+model BuddySuggestionDismissal {
+  id           String   @id @default(uuid())
+  suggestionId String
+  memberId     String
+  dismissedAt  DateTime @default(now())
+
+  suggestion BuddySuggestion @relation(fields: [suggestionId], references: [id], onDelete: Cascade)
+  member     UserOrg         @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([suggestionId, memberId])
+  @@map("buddy_suggestion_dismissals")
+}
+
+enum ArticleState {
+  DRAFT
+  PUBLISHED
+}
+
+/// One Knowledge Center article (PRD §6.1).
+model KnowledgeArticle {
+  id                     String       @id @default(uuid())
+  orgId                  String
+  title                  String
+  slug                   String
+  coverImagePath         String?
+  body                   String
+  authorId               String?
+  position               Int          @default(0)
+  state                  ArticleState @default(DRAFT)
+  requiresAcknowledgment Boolean      @default(false)
+  /// Bumped only by a *material* edit. An acknowledgment is of a version, so
+  /// a typo fix must not silently invalidate everyone's agreement — and a
+  /// change of meaning must not silently keep it.
+  version                Int          @default(1)
+  publishedAt            DateTime?
+  /// When the current version started requiring acknowledgment. The grace
+  /// period counts from here, not from `publishedAt`, so a v2 gets its own.
+  requiredSince          DateTime?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  org             Organization            @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  author          UserOrg?                @relation("ArticleAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  acknowledgments ArticleAcknowledgment[]
+  likes           ArticleLike[]
+  comments        ArticleComment[]
+
+  @@unique([orgId, slug])
+  @@index([orgId, position])
+  @@map("knowledge_articles")
+}
+
+/// "I have read and understand this", recorded against a version (PRD §6.2).
+///
+/// An explicit checkbox and button, never scroll depth. What is stored is
+/// what a co-op would need if the agreement were ever disputed: who, which
+/// version, when, and from where.
+model ArticleAcknowledgment {
+  id             String   @id @default(uuid())
+  articleId      String
+  articleVersion Int
+  memberId       String
+  acknowledgedAt DateTime @default(now())
+  ip             String?
+
+  article KnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  member  UserOrg          @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, articleVersion, memberId])
+  @@index([memberId])
+  @@map("article_acknowledgments")
+}
+
+model ArticleLike {
+  id        String   @id @default(uuid())
+  articleId String
+  memberId  String
+  createdAt DateTime @default(now())
+
+  article KnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  member  UserOrg          @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([articleId, memberId])
+  @@map("article_likes")
+}
+
+model ArticleComment {
+  id        String   @id @default(uuid())
+  articleId String
+  memberId  String
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  article KnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  member  UserOrg          @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([articleId, createdAt])
+  @@map("article_comments")
+}
+
+enum BelongingEmailKind {
+  BUDDY_INVITATION
+  OFF_THE_HOOK
+  INTRO_TO_BUDDY
+  INTRO_TO_NEW_MEMBER
+  REQUIRED_READING
+}
+
+/// An admin's own words for one of the module's emails (PRD §5.3).
+///
+/// Absent means "use the shipped default", so a co-op that never edits
+/// anything still sends sensible mail, and editing is a real override rather
+/// than a copy of the default that silently stops tracking improvements to it.
+model BelongingEmailTemplate {
+  id        String             @id @default(uuid())
+  orgId     String
+  kind      BelongingEmailKind
+  subject   String
+  body      String
+  updatedAt DateTime           @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, kind])
+  @@map("belonging_email_templates")
 }
