@@ -155,6 +155,78 @@ describe('The written impact report paywall', () => {
     );
   });
 
+  describe('export is gated too, or the paywall is a formality (IMP-26)', () => {
+    // Charley, 2026-08-27: "charge to publish or export". Publishing and
+    // exporting are the only two ways the finished artefact leaves MaybeOS,
+    // so charging for one and not the other would let anybody walk around
+    // the paywall by pressing the other button.
+    beforeEach(() => {
+      prisma.impactReport.findFirst.mockResolvedValue({
+        id: 'r1',
+        title: 'Sunrise: 2026 impact',
+        tier: 'WRITTEN',
+        status: 'DRAFT',
+        periodStart: new Date('2026-01-01'),
+        periodEnd: new Date('2026-12-31'),
+        publishedAt: null,
+        generatedAt: new Date('2027-01-10'),
+        org: { name: 'Sunrise', mission: null },
+        blocks: [{ kind: 'intro', heading: 'About', body: 'Something true.' }],
+      });
+    });
+
+    it('refuses to export an unpaid written report', async () => {
+      await expect(reports.exportDocument('org1', 'r1')).rejects.toMatchObject({
+        status: HttpStatus.PAYMENT_REQUIRED,
+      });
+    });
+
+    it('exports it once the period is paid for', async () => {
+      paidFor('2026-01-01', '2026-12-31');
+      await expect(reports.exportDocument('org1', 'r1')).resolves.toMatchObject({
+        filename: expect.stringContaining('.html'),
+      });
+    });
+
+    it('exports the free report without asking anyone for money', async () => {
+      prisma.impactReport.findFirst.mockResolvedValue({
+        id: 'r1',
+        title: 'Sunrise: 2026 impact',
+        tier: 'BASIC',
+        status: 'DRAFT',
+        periodStart: new Date('2026-01-01'),
+        periodEnd: new Date('2026-12-31'),
+        publishedAt: null,
+        generatedAt: new Date('2027-01-10'),
+        org: { name: 'Sunrise', mission: null },
+        blocks: [],
+      });
+
+      await expect(reports.exportDocument('org1', 'r1')).resolves.toBeDefined();
+      expect(prisma.impactReportPurchase.findMany).not.toHaveBeenCalled();
+    });
+
+    it('stops asking once the report is published, because the page is public', async () => {
+      // There is nothing left to gate: publishing was the paid act, and the
+      // report is readable by anyone with the link from that moment.
+      prisma.impactReport.findFirst.mockResolvedValue({
+        id: 'r1',
+        title: 'Sunrise: 2026 impact',
+        tier: 'WRITTEN',
+        status: 'PUBLISHED',
+        periodStart: new Date('2026-01-01'),
+        periodEnd: new Date('2026-12-31'),
+        publishedAt: null,
+        generatedAt: new Date('2027-01-10'),
+        org: { name: 'Sunrise', mission: null },
+        blocks: [],
+      });
+
+      await expect(reports.exportDocument('org1', 'r1')).resolves.toBeDefined();
+      expect(prisma.impactReportPurchase.findMany).not.toHaveBeenCalled();
+    });
+  });
+
   describe('statusFor — what the admin sees before deciding', () => {
     it('offers nothing to buy on a free report', async () => {
       reportIs('BASIC');

@@ -12,7 +12,9 @@ import {
   BuddyPairingRow,
   BuddySuggestion,
 } from '@/lib/api';
+import { apiUrl } from '@/lib/api';
 import { timeAgo } from '@/lib/relative-time';
+import { downloadAuthenticated } from '@/lib/download';
 
 type Tab = 'settings' | 'pairs' | 'invitations' | 'members' | 'suggestions' | 'emails';
 
@@ -213,7 +215,9 @@ export default function BelongingPage() {
               Close
             </button>,
           ])}
-          csv={`/orgs/${orgId}/belonging/buddy/export.csv?view=pairings`}
+          view="pairings"
+          orgId={orgId}
+          token={token}
         />
       )}
 
@@ -227,7 +231,9 @@ export default function BelongingPage() {
             timeAgo(i.sentAt),
             i.state.toLowerCase(),
           ])}
-          csv={`/orgs/${orgId}/belonging/buddy/export.csv?view=invitations`}
+          view="invitations"
+          orgId={orgId}
+          token={token}
         />
       )}
 
@@ -242,7 +248,9 @@ export default function BelongingPage() {
             m.lastAskedAt ? timeAgo(m.lastAskedAt) : 'never',
             m.optedOut ? 'yes' : '',
           ])}
-          csv={`/orgs/${orgId}/belonging/buddy/export.csv?view=members`}
+          view="members"
+          orgId={orgId}
+          token={token}
         />
       )}
 
@@ -526,21 +534,45 @@ function Table({
   head,
   rows,
   empty,
-  csv,
+  view,
+  orgId,
+  token,
 }: {
   head: string[];
   rows: React.ReactNode[][];
   empty: string;
-  csv: string;
+  view: 'pairings' | 'invitations' | 'members';
+  orgId: string | null;
+  token: string | null;
 }) {
-  const base = process.env.NEXT_PUBLIC_API_URL ?? '';
+  const [failed, setFailed] = useState('');
+
   return (
     <div className="space-y-2">
-      <div className="flex justify-end">
-        <a href={`${base}${csv}`} className="btn-secondary text-xs">
+      <div className="flex items-center justify-end gap-3">
+        {failed && <span className="text-xs text-red-700">{failed}</span>}
+        {/* A fetch, not a link: the endpoint wants a bearer token and an
+            `<a href>` cannot carry one, so the link version answered 401 and
+            the file never arrived. */}
+        <button
+          onClick={async () => {
+            if (!orgId || !token) return;
+            setFailed('');
+            try {
+              await downloadAuthenticated(
+                apiUrl(`/orgs/${orgId}/belonging/buddy/export.csv?view=${view}`),
+                `buddy-${view}.csv`,
+                token,
+              );
+            } catch (err) {
+              setFailed(err instanceof Error ? err.message : 'That did not download');
+            }
+          }}
+          className="btn-secondary text-xs"
+        >
           <Download className="mr-1 inline h-3.5 w-3.5" />
           CSV
-        </a>
+        </button>
       </div>
       <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
         <table className="w-full text-sm">

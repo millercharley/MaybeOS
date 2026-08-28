@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { AlertTriangle, ArrowLeft, Check, ExternalLink, FileText, Loader2, Lock, Pencil, RefreshCw, Sparkles } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, Download, ExternalLink, FileText, Loader2, Lock, Pencil, RefreshCw, Sparkles } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, ApiError, ImpactReport, ReportPurchaseStatus, ReportSummary } from '@/lib/api';
+import { downloadAuthenticated } from '@/lib/download';
 import { WRITTEN_REPORT_PRICE_CENTS, money } from '@/lib/fees';
 import { ReportBody } from '@/components/impact/report-body';
 
@@ -227,7 +228,36 @@ export default function ReportsPage() {
                   View
                 </a>
               )}
-              <button onClick={togglePublish} disabled={busy} className={published ? 'btn-secondary text-sm' : 'btn-primary text-sm'}>
+              <button
+                onClick={async () => {
+                  if (!orgId || !token) return;
+                  setBusy(true);
+                  setError('');
+                  try {
+                    await downloadAuthenticated(
+                      api.impact.reportExportUrl(orgId, open.id),
+                      `${open.slug}.html`,
+                      token,
+                    );
+                  } catch (err) {
+                    // A 402 here is the price, not a failure — the same
+                    // wording the publish path uses, for the same reason.
+                    if (err instanceof ApiError && err.status === 402) {
+                      setPurchase(await api.impact.reportPurchaseStatus(orgId, open.id, token));
+                    } else {
+                      setError(err instanceof Error ? err.message : 'That did not download');
+                    }
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+                disabled={busy}
+                className="btn-secondary text-sm"
+              >
+                <Download className="mr-1.5 inline h-4 w-4" />
+                Export
+              </button>
+                            <button onClick={togglePublish} disabled={busy} className={published ? 'btn-secondary text-sm' : 'btn-primary text-sm'}>
                 {published ? 'Unpublish' : 'Publish'}
               </button>
             </div>

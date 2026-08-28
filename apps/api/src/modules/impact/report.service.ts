@@ -11,6 +11,7 @@ import { ExpenseService } from './expense.service';
 import { ReportPurchaseService } from './report-purchase.service';
 import { ComposerService } from './composer.service';
 import { COMPOSABLE_KINDS, buildFactSheet, periodYears } from './report-composer';
+import { exportFilename, renderReportDocument } from './report-export';
 import { CATEGORY_PHRASE } from './report-language';
 
 /**
@@ -362,6 +363,40 @@ export class ReportService {
       data: { status: 'PUBLISHED', publishedAt: new Date() },
       select: { id: true, slug: true, status: true, publishedAt: true },
     });
+  }
+
+  /**
+   * The report as a file (IMP-26).
+   *
+   * Gated exactly like publishing, and for the same reason: **the two are the
+   * only ways the finished artefact leaves MaybeOS**, so charging for one and
+   * not the other would make the paywall a formality anybody could walk
+   * around by pressing Export instead of Publish (Charley, 2026-08-27 —
+   * "charge to publish or export").
+   *
+   * Once a report *is* published its page is public, so exporting it then is
+   * naturally free — there is nothing left to gate. What this stops is
+   * getting a written report out without paying at all.
+   */
+  async exportDocument(orgId: string, reportId: string) {
+    const report = await this.prisma.impactReport.findFirst({
+      where: { id: reportId, orgId },
+      include: {
+        blocks: { orderBy: { sortOrder: 'asc' } },
+        org: { select: { name: true, mission: true } },
+      },
+    });
+    if (!report) throw new NotFoundException('Report not found');
+
+    if (report.tier === 'WRITTEN' && report.status !== 'PUBLISHED') {
+      await this.purchases.requireEntitlement(orgId, report, 'export');
+    }
+
+    // The same frozen blocks the public page renders. A second source here
+    // would be a second thing that can disagree with the number a funder was
+    // cited, which is what freezing them was for.
+    const html = renderReportDocument(report.org, report);
+    return { filename: exportFilename(report.org, report), html };
   }
 
   async unpublish(orgId: string, reportId: string) {
