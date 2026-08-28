@@ -105,9 +105,38 @@ describe('ComposerService', () => {
       messages: { parse: jest.fn().mockRejectedValue(new Error('503 upstream')) },
     };
 
-    await expect(service.compose(facts)).resolves.toMatchObject({
-      outcome: 'gave-up',
-      reason: '503 upstream',
+    await expect(service.compose(facts)).resolves.toMatchObject({ outcome: 'gave-up' });
+  });
+
+  describe('what an admin is told when the provider fails', () => {
+    // Found by running it: a bad key put
+    // `401 {"type":"error","error":{...}}` on a co-op's report page, because
+    // `composeNote` is rendered straight into the UI. Nobody reading that
+    // learns anything except that MaybeOS leaks its own stack.
+    const reason = (status?: number) =>
+      ComposerService.humanReason(Object.assign(new Error('raw'), { status }));
+
+    it('never leaks the provider’s own message', () => {
+      for (const status of [401, 403, 429, 500, undefined]) {
+        expect(reason(status)).not.toMatch(/\d{3}|\{|error_type|authentication_error/);
+      }
+    });
+
+    it('tells a co-op it is not their fault when MaybeOS is misconfigured', () => {
+      // And does not invite a retry that will fail identically.
+      expect(reason(401)).toMatch(/not set up/i);
+      expect(reason(401)).not.toMatch(/try again/i);
+      expect(reason(403)).toMatch(/not set up/i);
+    });
+
+    it('invites a retry when the failure is transient', () => {
+      expect(reason(429)).toMatch(/try again/i);
+      expect(reason(500)).toMatch(/try again/i);
+      expect(reason(undefined)).toMatch(/try again/i);
+    });
+
+    it('says nothing is lost, because nothing is', () => {
+      expect(reason(500)).toMatch(/nothing is lost/i);
     });
   });
 

@@ -62,6 +62,27 @@ export class ComposerService {
     });
   }
 
+  /**
+   * A provider failure in words an admin can act on.
+   *
+   * Found by running the thing: a bad key produced
+   * `401 {"type":"error","error":{...}}` on a co-op's report page. Nobody
+   * reading that learns anything except that MaybeOS leaks its own stack.
+   */
+  static humanReason(err: unknown): string {
+    const status = (err as { status?: number })?.status;
+
+    if (status === 401 || status === 403) {
+      // The co-op did nothing wrong and cannot fix this. Say so, and do not
+      // invite them to retry something that will fail identically.
+      return 'MaybeOS is not set up to write reports yet — nothing is wrong with yours.';
+    }
+    if (status === 429) {
+      return 'The writer is busy right now. Try again in a few minutes — nothing is lost.';
+    }
+    return 'The writer could not be reached just now. Try again in a few minutes — nothing is lost.';
+  }
+
   get available(): boolean {
     return this.client !== null;
   }
@@ -120,10 +141,12 @@ export class ComposerService {
         }
         composed = parsed.blocks as Composed[];
       } catch (err) {
-        // A provider failure is not a defect in the report. Logged, and the
-        // co-op keeps the deterministic one.
+        // A provider failure is not a defect in the report. Logged in full,
+        // and the co-op is told something it can act on — the raw message is
+        // an HTTP status and a JSON blob, and `composeNote` is rendered
+        // straight onto the report page.
         this.logger.error(`Composition call failed: ${(err as Error).message}`);
-        return { outcome: 'gave-up', reason: (err as Error).message };
+        return { outcome: 'gave-up', reason: ComposerService.humanReason(err) };
       }
 
       const violations = validateComposition(composed, checkable, globals);
