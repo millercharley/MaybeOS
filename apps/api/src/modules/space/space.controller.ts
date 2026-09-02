@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Put,
   Delete,
   Param,
   Body,
@@ -22,6 +23,7 @@ import { CreateRoomDto } from './dto/create-room.dto';
 import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { AvailabilityRuleDto } from './dto/availability-rule.dto';
+import { OpeningHoursDto } from './dto/opening-hours.dto';
 import { ListBookingsQueryDto } from './dto/list-bookings.dto';
 import { RoomImageDto } from './dto/room-image.dto';
 import { viewerFor } from '../../common/access/contact-visibility';
@@ -133,6 +135,17 @@ export class SpaceController {
     @Body() dto: AvailabilityRuleDto,
   ) {
     return this.spaceService.addAvailabilityRule(orgId, roomId, dto);
+  }
+
+  @Put('rooms/:roomId/rules')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: "Replace a room's opening hours in one transaction" })
+  replaceOpeningHours(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('roomId', ParseUUIDPipe) roomId: string,
+    @Body() dto: OpeningHoursDto,
+  ) {
+    return this.spaceService.replaceOpeningHours(orgId, roomId, dto.rules);
   }
 
   @Delete('rooms/:roomId/rules/:ruleId')

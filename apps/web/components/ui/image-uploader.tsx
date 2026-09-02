@@ -27,12 +27,15 @@ const ACCEPTED = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 export function ImageUploader({
   imageUrl,
   what = 'Images',
+  addLabel = 'Add an image',
   onUpload,
   onRemove,
 }: {
   imageUrl: string | null | undefined;
   /** What these images are called, for the size message. */
   what?: string;
+  /** The empty-state button. Says what this particular image is. */
+  addLabel?: string;
   onUpload: (data: string, mimeType: string) => Promise<void>;
   onRemove: () => Promise<void>;
 }) {
@@ -127,7 +130,7 @@ export function ImageUploader({
           ) : (
             <ImagePlus className="h-6 w-6 text-gray-400" />
           )}
-          {busy ? 'Uploading…' : 'Add a cover image'}
+          {busy ? 'Uploading…' : addLabel}
         </button>
       )}
 

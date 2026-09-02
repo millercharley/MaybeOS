@@ -206,6 +206,7 @@ export default function AdminWelcomePage() {
 
         <ImageUploader
           what="Cover images"
+          addLabel="Add a cover image"
           imageUrl={editing.coverImageUrl}
           onUpload={async (data, mimeType) => {
             if (!token || !orgId) return;
