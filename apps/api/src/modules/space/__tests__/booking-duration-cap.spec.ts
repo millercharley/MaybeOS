@@ -41,6 +41,7 @@ describe('SpaceService — maximum booking length', () => {
 
   beforeEach(async () => {
     prisma = {
+      orgClosure: { findMany: jest.fn().mockResolvedValue([]) },
       room: { findFirst: jest.fn() },
       booking: {
         findFirst: jest.fn().mockResolvedValue(null),

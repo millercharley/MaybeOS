@@ -70,6 +70,16 @@ export interface SlotQuery {
   booked: Busy[];
   /** Periods the room's Google Calendar reports busy. */
   busy: Busy[];
+  /**
+   * Closures that apply to the whole building (SPC-13).
+   *
+   * Deliberately not folded into `rules`. A room with no rules of its own is
+   * *unfinished*, not open around the clock — and merging a building closure
+   * into that array would give such a room one rule, so it would stop looking
+   * unfinished, fall through to unrestricted, and become bookable at every
+   * hour of the day. These only ever subtract.
+   */
+  closures?: Rule[];
   now: Date;
 }
 
@@ -163,7 +173,12 @@ export function slotsForDate(query: SlotQuery): Slot[] {
 
   const dayOfWeek = zonedParts(instantAt(date, 12 * 60, timeZone), timeZone).dayOfWeek;
   const { open, unrestricted } = openWindows(rules, date, dayOfWeek, timeZone);
-  const closed = blackouts(rules, date, dayOfWeek, timeZone);
+  const closed = blackouts(
+    [...rules, ...(query.closures ?? [])],
+    date,
+    dayOfWeek,
+    timeZone,
+  );
 
   // A room with neither rules nor the always-available flag is unfinished, not
   // open around the clock — those were the same state until SPC-05, and a room

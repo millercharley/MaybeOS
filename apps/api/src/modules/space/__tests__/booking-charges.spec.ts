@@ -42,6 +42,7 @@ describe('SpaceService — charging for hire', () => {
 
   beforeEach(async () => {
     prisma = {
+      orgClosure: { findMany: jest.fn().mockResolvedValue([]) },
       room: { findFirst: jest.fn().mockResolvedValue(freeRoom) },
       booking: {
         findFirst: jest.fn().mockResolvedValue(null),
