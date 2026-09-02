@@ -14,7 +14,7 @@ import {
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Article, ArticleCompliance, ArticleSummary } from '@/lib/api';
 import { RichComposer } from '@/components/composer/rich-composer';
-import { CoverUploader } from '@/components/belonging/cover-uploader';
+import { ImageUploader } from '@/components/ui/image-uploader';
 import { timeAgo } from '@/lib/relative-time';
 
 /**
@@ -204,8 +204,9 @@ export default function AdminWelcomePage() {
 
         {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
-        <CoverUploader
-          coverImageUrl={editing.coverImageUrl}
+        <ImageUploader
+          what="Cover images"
+          imageUrl={editing.coverImageUrl}
           onUpload={async (data, mimeType) => {
             if (!token || !orgId) return;
             setEditing(

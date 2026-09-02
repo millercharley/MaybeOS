@@ -127,3 +127,38 @@ describe('a room’s charging fields', () => {
     });
   });
 });
+
+/**
+ * The duration cap has to survive the same trip (SPC-09).
+ *
+ * Added alongside the charging fields because it is the identical hazard: the
+ * API strips unknown properties and rejects the request, so a field the form
+ * sends and the DTO does not know refuses every room save — not just the new
+ * feature. That is how room charging shipped under a form that could not
+ * succeed, leaving a co-op with no rooms at all.
+ */
+describe('a room’s booking length cap', () => {
+  it('accepts the cap the form sends', async () => {
+    const dto = plainToInstance(CreateRoomDto, { name: 'Attic', maxBookingMinutes: 180 });
+
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('accepts a room with no cap at all', async () => {
+    const dto = plainToInstance(CreateRoomDto, { name: 'Attic' });
+
+    expect(await validate(dto)).toHaveLength(0);
+  });
+
+  it('refuses a cap longer than a day', async () => {
+    const dto = plainToInstance(CreateRoomDto, { name: 'Attic', maxBookingMinutes: 2000 });
+
+    expect(await validate(dto)).not.toHaveLength(0);
+  });
+
+  it('refuses a cap of zero, which would book nothing', async () => {
+    const dto = plainToInstance(CreateRoomDto, { name: 'Attic', maxBookingMinutes: 0 });
+
+    expect(await validate(dto)).not.toHaveLength(0);
+  });
+});

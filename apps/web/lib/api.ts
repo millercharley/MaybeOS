@@ -228,6 +228,39 @@ class ApiClient {
       }),
   };
 
+  // ── Booking availability (SPC-09) ────────────────
+  availability = {
+    /**
+     * Every candidate slot on a date, with the reason each unavailable one is
+     * unavailable. The screen crosses them out rather than hiding them: a list
+     * that omits taken times looks like a quiet day rather than a full one.
+     */
+    slots: (
+      orgId: string,
+      roomId: string,
+      date: string,
+      durationMinutes: number,
+      token: string,
+    ) =>
+      this.request<SlotsResponse>(
+        `/orgs/${orgId}/rooms/${roomId}/slots?date=${date}&duration=${durationMinutes}`,
+        { token },
+      ),
+
+    /** Which days in a month have anything left — the dots on the calendar. */
+    openDays: (
+      orgId: string,
+      roomId: string,
+      month: string,
+      durationMinutes: number,
+      token: string,
+    ) =>
+      this.request<{ month: string; timeZone: string; open: string[] }>(
+        `/orgs/${orgId}/rooms/${roomId}/open-days?month=${month}&duration=${durationMinutes}`,
+        { token },
+      ),
+  };
+
   // ── Calendar ─────────────────────────────────────
   calendar = {
     /**
@@ -788,6 +821,26 @@ class ApiClient {
   rooms = {
     list: (orgId: string, token: string) =>
       this.request<Room[]>(`/orgs/${orgId}/rooms`, { token }),
+
+    /** Put a photo on a room (SPC-10). Base64 or a data: URL. */
+    uploadImage: (
+      orgId: string,
+      roomId: string,
+      data: string,
+      mimeType: string,
+      token: string,
+    ) =>
+      this.request<Room>(`/orgs/${orgId}/rooms/${roomId}/image`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ data, mimeType }),
+      }),
+
+    removeImage: (orgId: string, roomId: string, token: string) =>
+      this.request<Room>(`/orgs/${orgId}/rooms/${roomId}/image`, {
+        method: 'DELETE',
+        token,
+      }),
 
     get: (orgId: string, roomId: string, token: string) =>
       this.request<Room>(`/orgs/${orgId}/rooms/${roomId}`, { token }),
@@ -2014,6 +2067,11 @@ export interface Room {
   chargeForBooking?: boolean;
   /** Bookable at any hour, said deliberately rather than inferred. */
   alwaysAvailable?: boolean;
+  /** A signed URL for the room's photo, when it has one (SPC-10). */
+  imageUrl?: string | null;
+  imagePath?: string | null;
+  /** Longest single booking, in minutes. Null means no cap (SPC-09). */
+  maxBookingMinutes?: number | null;
   /** Set once a calendar has been chosen for this room (SPC-04, SPC-07). */
   googleCalendarId?: string | null;
   /** The chosen calendar's name, so the page can say which one. */
@@ -2023,6 +2081,26 @@ export interface Room {
   googleConnectedAt?: string | null;
   hourlyRate?: number | null;
   isActive?: boolean;
+}
+
+/** One candidate booking time, and whether it can be taken (SPC-09). */
+export interface Slot {
+  start: string;
+  end: string;
+  /** Minutes past local midnight, so the UI need not re-derive the timezone. */
+  minutes: number;
+  available: boolean;
+  reason?: 'past' | 'closed' | 'blackout' | 'booked' | 'calendar';
+}
+
+export interface SlotsResponse {
+  date: string;
+  timeZone: string;
+  durationMinutes: number;
+  /** Durations this room offers, trimmed to its cap. */
+  durations: number[];
+  maxBookingMinutes: number | null;
+  slots: Slot[];
 }
 
 export interface CreateRoomData {
@@ -2036,6 +2114,8 @@ export interface CreateRoomData {
   memberOnly?: boolean;
   /** Bookable at any hour, rather than inferred from having no rules. */
   alwaysAvailable?: boolean;
+  /** Longest single booking in minutes; null or absent means no cap. */
+  maxBookingMinutes?: number | null;
   /** Cents per hour. Charged when `chargeForBooking` is on (SPC-06). */
   hourlyRate?: number;
 }

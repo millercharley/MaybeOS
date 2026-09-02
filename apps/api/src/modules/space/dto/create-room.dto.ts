@@ -6,6 +6,8 @@ import {
   IsArray,
   IsUUID,
   IsBoolean,
+  Min,
+  Max,
 } from 'class-validator';
 
 export class CreateRoomDto {
@@ -56,6 +58,22 @@ export class CreateRoomDto {
   @IsOptional()
   @IsBoolean()
   alwaysAvailable?: boolean;
+
+  /**
+   * The longest a single booking may run, in minutes (SPC-09).
+   *
+   * Absent or null means no cap, which is what every room built before this
+   * existed has. Whitelisted here deliberately: the API strips unknown
+   * properties and rejects the request, so a field the form sends and the DTO
+   * does not know breaks every room save — which is how room charging shipped
+   * with a form that could not succeed.
+   */
+  @ApiPropertyOptional({ example: 180, description: 'Minutes; null means no cap' })
+  @IsOptional()
+  @IsInt()
+  @Min(15)
+  @Max(24 * 60)
+  maxBookingMinutes?: number | null;
 
   /**
    * Whether members are charged to book this room (SPC-06).
