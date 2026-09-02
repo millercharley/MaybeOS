@@ -62,7 +62,10 @@ describe('SpaceService — charging for hire', () => {
         { provide: ConnectService, useValue: connect },
         {
           provide: CalendarService,
-          useValue: { syncBooking: jest.fn().mockResolvedValue({ synced: false }) },
+          useValue: {
+            syncBooking: jest.fn().mockResolvedValue({ synced: false }),
+            busyConflictForRoom: jest.fn().mockResolvedValue({ busy: false }),
+          },
         },
       ],
     }).compile();

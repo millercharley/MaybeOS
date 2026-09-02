@@ -5,6 +5,8 @@ import { Plus, Loader2, AlertCircle, CheckCircle2, Users, DoorOpen } from 'lucid
 import { useAuthStore } from '@/lib/auth-store';
 import { useApi } from '@/hooks/use-api';
 import { api, Room, CreateRoomData, ApiError } from '@/lib/api';
+import { RoomCalendar } from '@/components/rooms/room-calendar';
+import { calendarNotice } from '@/lib/room-calendar';
 
 type Draft = {
   name: string;
@@ -72,32 +74,8 @@ export default function AdminRoomsPage() {
 
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [connecting, setConnecting] = useState<string | null>(null);
   const [calendarError, setCalendarError] = useState('');
 
-  /**
-   * Hand a room's calendar to Google (SPC-04).
-   *
-   * The endpoint has existed since SpaceOS was built and nothing had ever
-   * called it, so bookings could sync to a calendar no admin could connect.
-   * It needs GOOGLE_CLIENT_ID, which has never been set — so the honest
-   * failure is an unconfigured platform, said plainly rather than as a
-   * Google error page.
-   */
-  async function connectCalendar(roomId: string) {
-    if (!token || !orgId) return;
-    setConnecting(roomId);
-    setCalendarError('');
-    try {
-      const { url } = await api.calendar.connectRoom(orgId, roomId, token);
-      window.location.assign(url);
-    } catch (err) {
-      setCalendarError(
-        err instanceof Error ? err.message : 'Could not start the Google connection',
-      );
-      setConnecting(null);
-    }
-  }
   const [draft, setDraft] = useState<Draft>(emptyDraft);
 
   const load = useCallback(async () => {
@@ -112,6 +90,32 @@ export default function AdminRoomsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  /**
+   * What Google's redirect is telling us.
+   *
+   * Without this the admin returns from consent to a page that looks exactly
+   * as it did before they left — the room list re-renders with a calendar now
+   * attached and nothing marks the moment. "Connected" is also not "finished":
+   * a calendar still has to be chosen, so the message says so.
+   */
+  useEffect(() => {
+    // Read from `window.location` rather than `useSearchParams`, matching the
+    // reports page: one query string is not worth a Suspense boundary.
+    const result = new URLSearchParams(window.location.search).get('calendar');
+    if (!result) return;
+
+    // Cleared from the URL so a refresh does not replay the message.
+    window.history.replaceState({}, '', window.location.pathname);
+
+    const said = calendarNotice(result);
+    if (!said) return;
+
+    if (said.kind === 'error') setCalendarError(said.message);
+    else setNotice(said.message);
+    // Once, on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function startCreate() {
     setDraft(emptyDraft);
@@ -415,17 +419,9 @@ export default function AdminRoomsPage() {
                 </p>
               </div>
 
-              <div className="flex shrink-0 items-center gap-2">
-                {r.googleCalendarId ? (
-                  <span className="text-xs text-[var(--text-secondary)]">Calendar connected</span>
-                ) : (
-                  <button
-                    onClick={() => connectCalendar(r.id)}
-                    disabled={busy || connecting === r.id}
-                    className="btn-secondary"
-                  >
-                    {connecting === r.id ? 'Opening Google...' : 'Connect calendar'}
-                  </button>
+              <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-start">
+                {token && orgId && (
+                  <RoomCalendar room={r} orgId={orgId} token={token} onChange={load} />
                 )}
                 <button onClick={() => startEdit(r)} disabled={busy} className="btn-secondary">
                   Edit

@@ -67,7 +67,10 @@ describe('SpaceService — booking email times', () => {
         },
         {
           provide: CalendarService,
-          useValue: { syncBooking: jest.fn().mockResolvedValue({ synced: false }) },
+          useValue: {
+            syncBooking: jest.fn().mockResolvedValue({ synced: false }),
+            busyConflictForRoom: jest.fn().mockResolvedValue({ busy: false }),
+          },
         },
       ],
     }).compile();

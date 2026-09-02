@@ -80,7 +80,10 @@ describe('SpaceService — availability rules', () => {
         },
         {
           provide: CalendarService,
-          useValue: { syncBooking: jest.fn().mockResolvedValue({ synced: false }) },
+          useValue: {
+            syncBooking: jest.fn().mockResolvedValue({ synced: false }),
+            busyConflictForRoom: jest.fn().mockResolvedValue({ busy: false }),
+          },
         },
       ],
     }).compile();

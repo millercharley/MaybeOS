@@ -300,6 +300,23 @@ export class SpaceService {
       throw new ConflictException('This time slot conflicts with an existing booking');
     }
 
+    // --- And against the room's own Google Calendar (SPC-08) ---
+    // Bookings were pushed to Google and nothing was ever read back, so a
+    // co-op that put a rehearsal straight into the room's calendar would still
+    // take a member's booking for the same hour and confirm it. Never throws:
+    // Google being unreachable must not stop a co-op booking its own rooms.
+    const { busy } = await this.calendar.busyConflictForRoom(
+      orgId,
+      roomId,
+      startTime,
+      endTime,
+    );
+    if (busy) {
+      throw new ConflictException(
+        "This time is already taken on the room's calendar",
+      );
+    }
+
     // A room only charges once an admin has switched it on and set a rate
     // (SPC-06). Either alone means free, so a half-filled form cannot start
     // billing people.
@@ -521,6 +538,22 @@ export class SpaceService {
     );
     if (hasConflict) {
       throw new ConflictException('This time slot conflicts with an existing booking');
+    }
+
+    // The room's Google Calendar counts here too (SPC-08), minus this
+    // booking's own event — a booking being moved would otherwise collide
+    // with the copy of itself that is already on the calendar.
+    const { busy } = await this.calendar.busyConflictForRoom(
+      orgId,
+      booking.roomId,
+      startTime,
+      endTime,
+      booking.googleEventId,
+    );
+    if (busy) {
+      throw new ConflictException(
+        "This time is already taken on the room's calendar",
+      );
     }
 
     // An admin approved a *specific* slot. Moving it means that approval no
