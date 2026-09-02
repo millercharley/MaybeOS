@@ -48,12 +48,25 @@ export class CalendarService {
    * The `state` parameter encodes the orgId and roomId so the callback
    * can associate the tokens with the correct room.
    */
+  /**
+   * The Google settings that are missing, by name.
+   *
+   * The redirect URI counts. Google rejects an OAuth request whose
+   * `redirect_uri` is empty or is not one of the client's registered URIs,
+   * and it rejects it on Google's own page — so leaving it out of this check
+   * reproduces exactly the failure the check exists to prevent: a connect
+   * button that succeeds locally and strands the admin on an error page
+   * that says nothing about MaybeOS.
+   */
+  private get missingConfig(): string[] {
+    return (
+      ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI'] as const
+    ).filter((key) => !this.configService.get<string>(key)?.trim());
+  }
+
   /** Whether Google credentials are present at all. */
   get isConfigured(): boolean {
-    return Boolean(
-      this.configService.get<string>('GOOGLE_CLIENT_ID') &&
-        this.configService.get<string>('GOOGLE_CLIENT_SECRET'),
-    );
+    return this.missingConfig.length === 0;
   }
 
   getAuthUrl(orgId: string, roomId: string): string {
@@ -62,9 +75,13 @@ export class CalendarService {
     // succeeded, sent the admin to Google, and landed them on an invalid_client
     // error page with nothing explaining why. Found by executing the route
     // (SPC-04); GOOGLE_CLIENT_ID has never been set in dev.
-    if (!this.isConfigured) {
+    const missing = this.missingConfig;
+    if (missing.length > 0) {
+      // Naming only what is actually absent: an admin who has set the client
+      // id and secret and is missing the redirect URI should not be sent to
+      // re-check the two things that are already right.
       throw new ServiceUnavailableException(
-        'Google Calendar is not configured on this server (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).',
+        `Google Calendar is not configured on this server (${missing.join(' / ')}).`,
       );
     }
 
