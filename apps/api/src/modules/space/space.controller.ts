@@ -182,6 +182,35 @@ export class SpaceController {
   }
 
   /* ------------------------------------------------------------------ */
+  /*  Building closures (SPC-13)                                         */
+  /* ------------------------------------------------------------------ */
+
+  @Get('closures')
+  @ApiOperation({ summary: 'Periods the whole building is shut' })
+  listOrgClosures(@Param('orgId', ParseUUIDPipe) orgId: string) {
+    // Any member: someone deciding when to come in needs to know the building
+    // is shut over the holidays as much as an organiser does.
+    return this.spaceService.listOrgClosures(orgId);
+  }
+
+  @Post('closures')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Close the whole building for a day or a run of days' })
+  addOrgClosure(@Param('orgId', ParseUUIDPipe) orgId: string, @Body() dto: ClosureDto) {
+    return this.spaceService.addOrgClosure(orgId, dto);
+  }
+
+  @Delete('closures/:closureId')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Reopen the building by removing a closure' })
+  removeOrgClosure(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('closureId', ParseUUIDPipe) closureId: string,
+  ) {
+    return this.spaceService.removeOrgClosure(orgId, closureId);
+  }
+
+  /* ------------------------------------------------------------------ */
   /*  Closures (SPC-12)                                                  */
   /* ------------------------------------------------------------------ */
 

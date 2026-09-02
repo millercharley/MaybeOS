@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, Loader2, AlertCircle, CheckCircle2, Users, DoorOpen } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { useApi } from '@/hooks/use-api';
@@ -8,7 +8,7 @@ import { api, Room, CreateRoomData, ApiError } from '@/lib/api';
 import { RoomCalendar } from '@/components/rooms/room-calendar';
 import { ImageUploader } from '@/components/ui/image-uploader';
 import { RoomHours } from '@/components/rooms/room-hours';
-import { RoomClosures } from '@/components/rooms/room-closures';
+import { ClosureEditor } from '@/components/rooms/closure-editor';
 import { calendarNotice } from '@/lib/room-calendar';
 
 type Draft = {
@@ -99,6 +99,18 @@ export default function AdminRoomsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Memoised: the editor keeps this in a ref, and a fresh object each render
+  // would be one more thing relying on that.
+  const buildingClosures = useMemo(
+    () => ({
+      list: () => api.orgClosures.list(orgId!, token!),
+      add: (closure: Parameters<typeof api.orgClosures.add>[1]) =>
+        api.orgClosures.add(orgId!, closure, token!),
+      remove: (id: string) => api.orgClosures.remove(orgId!, id, token!),
+    }),
+    [orgId, token],
+  );
 
   /**
    * What Google's redirect is telling us.
@@ -408,6 +420,22 @@ export default function AdminRoomsPage() {
         </div>
       )}
 
+      {/*
+        Above the rooms, because it is one answer for the whole co-op rather
+        than a property of any room. A public holiday used to mean adding the
+        same fortnight to every room and remembering to remove it from every
+        room (SPC-13).
+      */}
+      {token && orgId && (
+        <ClosureEditor
+          what="the building"
+          heading="When the building is closed"
+          blurb="Holidays and shutdowns that apply to every room at once. Rooms can still have their own closures on top of these."
+          store={buildingClosures}
+          onChanged={load}
+        />
+      )}
+
       <div className="mt-8 grid gap-3">
         {calendarError && (
           <p className="mb-3 text-sm text-red-600" role="alert">
@@ -466,11 +494,15 @@ export default function AdminRoomsPage() {
                 )}
 
                 {token && orgId && (
-                  <RoomClosures
-                    roomId={r.id}
-                    roomName={r.name}
-                    orgId={orgId}
-                    token={token}
+                  <ClosureEditor
+                    what={`the ${r.name}`}
+                    heading="Closed periods"
+                    blurb="Holidays, maintenance, anything that shuts this room regardless of its usual hours. Members see these on the booking screen with the reason you give."
+                    store={{
+                      list: () => api.rooms.closures(orgId, r.id, token),
+                      add: (closure) => api.rooms.addClosure(orgId, r.id, closure, token),
+                      remove: (id) => api.rooms.removeClosure(orgId, r.id, id, token),
+                    }}
                     onChanged={load}
                   />
                 )}

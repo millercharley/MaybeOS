@@ -62,6 +62,7 @@ describe('SpaceService — availability rules', () => {
         {
           provide: PrismaService,
           useValue: {
+            orgClosure: { findMany: jest.fn().mockResolvedValue([]) },
             room: { findFirst: jest.fn() },
             booking: {
               findMany: jest.fn().mockResolvedValue([]),

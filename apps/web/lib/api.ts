@@ -228,6 +228,42 @@ class ApiClient {
       }),
   };
 
+  // ── Building closures (SPC-13) ───────────────────
+  orgClosures = {
+    /**
+     * Periods the whole building is shut.
+     *
+     * Per-room closures are right for a repair to one room and tedious for a
+     * public holiday — a co-op with a dozen rooms had to add the same
+     * fortnight twelve times.
+     */
+    list: (orgId: string, token: string) =>
+      this.request<Closure[]>(`/orgs/${orgId}/closures`, { token }),
+
+    add: (
+      orgId: string,
+      closure: {
+        fromDate: string;
+        toDate?: string;
+        startTime?: string;
+        endTime?: string;
+        label?: string;
+      },
+      token: string,
+    ) =>
+      this.request<unknown>(`/orgs/${orgId}/closures`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify(closure),
+      }),
+
+    remove: (orgId: string, closureId: string, token: string) =>
+      this.request<unknown>(`/orgs/${orgId}/closures/${closureId}`, {
+        method: 'DELETE',
+        token,
+      }),
+  };
+
   // ── Booking availability (SPC-09) ────────────────
   availability = {
     /**

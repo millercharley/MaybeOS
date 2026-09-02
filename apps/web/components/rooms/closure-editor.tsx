@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { CalendarOff, Plus, Trash2 } from 'lucide-react';
-import { api, ApiError, type Closure } from '@/lib/api';
+import { ApiError, type Closure } from '@/lib/api';
 import { closureLabel } from '@/lib/room-closures';
 
 /**
@@ -17,17 +17,30 @@ import { closureLabel } from '@/lib/room-closures';
  * is the server's to apply: an organiser travelling would otherwise close the
  * room on the wrong day.
  */
-export function RoomClosures({
-  roomId,
-  roomName,
-  orgId,
-  token,
+export interface ClosureStore {
+  list: () => Promise<Closure[]>;
+  add: (closure: {
+    fromDate: string;
+    toDate?: string;
+    startTime?: string;
+    endTime?: string;
+    label?: string;
+  }) => Promise<unknown>;
+  remove: (closureId: string) => Promise<unknown>;
+}
+
+export function ClosureEditor({
+  what,
+  heading,
+  blurb,
+  store,
   onChanged,
 }: {
-  roomId: string;
-  roomName: string;
-  orgId: string;
-  token: string;
+  /** What is being closed, for the confirmation: "the Attic", "the building". */
+  what: string;
+  heading: string;
+  blurb: string;
+  store: ClosureStore;
   onChanged?: () => void;
 }) {
   const [closures, setClosures] = useState<Closure[] | null>(null);
@@ -42,13 +55,20 @@ export function RoomClosures({
   const [end, setEnd] = useState('17:00');
   const [label, setLabel] = useState('');
 
+  // Held in a ref because callers build `store` inline, so it is a fresh
+  // object on every render. Depending on it directly would make `load` change
+  // every render, and the effect below would refetch in a loop for as long as
+  // the page was open.
+  const storeRef = useRef(store);
+  storeRef.current = store;
+
   const load = useCallback(async () => {
     try {
-      setClosures(await api.rooms.closures(orgId, roomId, token));
+      setClosures(await storeRef.current.list());
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not load the closures.');
     }
-  }, [orgId, roomId, token]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -73,9 +93,7 @@ export function RoomClosures({
     setBusy(true);
     setError('');
     try {
-      await api.rooms.addClosure(
-        orgId,
-        roomId,
+      await storeRef.current.add(
         {
           fromDate: from,
           // Omitted rather than sent equal: a single day is the common case
@@ -84,7 +102,6 @@ export function RoomClosures({
           ...(allDay ? {} : { startTime: start, endTime: end }),
           ...(label.trim() ? { label: label.trim() } : {}),
         },
-        token,
       );
       reset();
       await load();
@@ -97,12 +114,12 @@ export function RoomClosures({
   }
 
   async function remove(closure: Closure) {
-    if (!window.confirm(`Reopen ${roomName} for ${closureLabel(closure)}?`)) return;
+    if (!window.confirm(`Reopen ${what} for ${closureLabel(closure)}?`)) return;
 
     setBusy(true);
     setError('');
     try {
-      await api.rooms.removeClosure(orgId, roomId, closure.id, token);
+      await storeRef.current.remove(closure.id);
       await load();
       onChanged?.();
     } catch (err) {
@@ -116,18 +133,16 @@ export function RoomClosures({
     <div className="mt-4 rounded-lg border border-[var(--border)] p-4">
       <h4 className="flex items-center gap-2 font-medium">
         <CalendarOff size={14} aria-hidden="true" />
-        Closed periods
+        {heading}
       </h4>
-      <p className="mt-1 text-xs text-[var(--text-secondary)]">
-        Holidays, maintenance, anything that shuts the room regardless of its usual hours.
-        Members see these on the booking screen with the reason you give.
-      </p>
+      <p className="mt-1 text-xs text-[var(--text-secondary)]">{blurb}</p>
 
       {closures === null ? (
         <p className="mt-3 text-sm text-[var(--text-secondary)]">Loading…</p>
       ) : closures.length === 0 ? (
         <p className="mt-3 text-sm text-[var(--text-secondary)]">
-          Nothing scheduled. The room follows its usual hours.
+          Nothing scheduled. {what.charAt(0).toUpperCase() + what.slice(1)} follows the usual
+          hours.
         </p>
       ) : (
         <ul className="mt-3 space-y-1">
@@ -226,7 +241,7 @@ export function RoomClosures({
 
           <div className="flex gap-2">
             <button onClick={add} disabled={busy} className="btn-primary">
-              {busy ? 'Saving…' : 'Close the room'}
+              {busy ? 'Saving…' : `Close ${what}`}
             </button>
             <button onClick={reset} disabled={busy} className="btn-secondary">
               Cancel

@@ -129,6 +129,7 @@ model Organization {
   tiers          MembershipTier[]
   events         Event[]
   rooms          Room[]
+  closures       OrgClosure[]
   channels       Channel[]
   collections    Collection[]
   surveys        Survey[]
@@ -611,6 +612,33 @@ model Room {
 
   @@index([orgId])
   @@map("rooms")
+}
+
+/// When the whole building is shut (SPC-13).
+///
+/// Separate from `AvailabilityRule` rather than a row with a null roomId: a
+/// room-level rule and a building-level one answer different questions, and
+/// making roomId optional would let every query that forgets to filter treat a
+/// building closure as belonging to whichever room it joined against.
+///
+/// These never make a room bookable. They only subtract, so a room with no
+/// opening hours of its own stays unbookable regardless.
+model OrgClosure {
+  id            String   @id @default(uuid())
+  orgId         String
+  /// Why the building is shut. Shown to members on the booking screen.
+  label         String?
+  /// "00:00"-"23:59" for a whole day; a narrower window closes part of it.
+  startTime     String   @default("00:00")
+  endTime       String   @default("23:59")
+  effectiveFrom DateTime
+  effectiveTo   DateTime
+  createdAt     DateTime @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@map("org_closures")
 }
 
 model AvailabilityRule {

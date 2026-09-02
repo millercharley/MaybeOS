@@ -42,6 +42,7 @@ describe('SpaceService — booking email times', () => {
           provide: PrismaService,
           useValue: {
             booking: { findUnique: jest.fn(), update: jest.fn(), findFirst: jest.fn() },
+            orgClosure: { findMany: jest.fn().mockResolvedValue([]) },
             room: { findFirst: jest.fn() },
           },
         },

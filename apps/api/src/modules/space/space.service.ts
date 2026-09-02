@@ -292,6 +292,110 @@ export class SpaceService {
   }
 
   /* ------------------------------------------------------------------ */
+  /*  Building closures (SPC-13)                                         */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Shut every room in the co-op at once.
+   *
+   * Per-room closures are right for a repair to one room and tedious for a
+   * public holiday: a co-op with a dozen rooms had to add the same fortnight
+   * twelve times and remove it twelve times.
+   *
+   * Same rule as room closures about dates — they arrive as calendar dates and
+   * become instants here, in the co-op's timezone.
+   */
+  async addOrgClosure(orgId: string, dto: ClosureDto) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { timezone: true },
+    });
+    if (!org) throw new NotFoundException('Organisation not found');
+
+    const toDate = dto.toDate ?? dto.fromDate;
+    if (toDate < dto.fromDate) {
+      throw new BadRequestException('A closure cannot end before it starts.');
+    }
+
+    const startTime = dto.startTime ?? '00:00';
+    const endTime = dto.endTime ?? '23:59';
+    if (endTime <= startTime) {
+      throw new BadRequestException(
+        'A closure has to end after it starts. For a whole day, leave the times blank.',
+      );
+    }
+
+    return this.prisma.orgClosure.create({
+      data: {
+        orgId,
+        label: dto.label?.trim() || null,
+        startTime,
+        endTime,
+        effectiveFrom: instantAt(dto.fromDate, 0, org.timezone),
+        effectiveTo: instantAt(toDate, 23 * 60 + 59, org.timezone),
+      },
+    });
+  }
+
+  /** The building's closures, with dates back in the co-op's own days. */
+  async listOrgClosures(orgId: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { timezone: true },
+    });
+    if (!org) throw new NotFoundException('Organisation not found');
+
+    const closures = await this.prisma.orgClosure.findMany({
+      where: { orgId },
+      orderBy: { effectiveFrom: 'asc' },
+    });
+
+    return closures.map((closure) => ({
+      id: closure.id,
+      label: closure.label,
+      fromDate: zonedParts(closure.effectiveFrom, org.timezone).date,
+      toDate: zonedParts(closure.effectiveTo, org.timezone).date,
+      startTime: closure.startTime,
+      endTime: closure.endTime,
+      allDay: closure.startTime === '00:00' && closure.endTime === '23:59',
+    }));
+  }
+
+  async removeOrgClosure(orgId: string, closureId: string) {
+    // Scoped through the org rather than found by bare id (SEC-04): an id on
+    // its own proves nothing about whose building this is.
+    const closure = await this.prisma.orgClosure.findFirst({
+      where: { id: closureId, orgId },
+    });
+    if (!closure) throw new NotFoundException('Closure not found');
+
+    return this.prisma.orgClosure.delete({ where: { id: closure.id } });
+  }
+
+  /**
+   * Building closures as blackout rules, for the slot engine.
+   *
+   * Handed to `slotsForDate` separately from the room's own rules, never
+   * merged into them: a room with no rules is unfinished rather than open all
+   * hours, and giving it one would make it bookable around the clock.
+   */
+  private async orgClosureRules(orgId: string, from: Date, to: Date) {
+    const closures = await this.prisma.orgClosure.findMany({
+      where: { orgId, effectiveFrom: { lte: to }, effectiveTo: { gte: from } },
+    });
+
+    return closures.map((closure) => ({
+      dayOfWeek: null,
+      startTime: closure.startTime,
+      endTime: closure.endTime,
+      isBlackout: true,
+      label: closure.label,
+      effectiveFrom: closure.effectiveFrom,
+      effectiveTo: closure.effectiveTo,
+    }));
+  }
+
+  /* ------------------------------------------------------------------ */
   /*  Closures (SPC-12)                                                  */
   /* ------------------------------------------------------------------ */
 
@@ -555,6 +659,12 @@ export class SpaceService {
       room.org.timezone,
     );
 
+    // --- And whether the whole building is shut (SPC-13) ---
+    // Checked here as well as in the slot list. The slot list is what a member
+    // sees; a request that never went through it is the one this stops, and
+    // "always available" does not mean "open on Christmas Day".
+    await this.validateBuildingOpen(orgId, room.org.timezone, startTime, endTime);
+
     // --- Check for conflicts ---
     const hasConflict = await this.checkConflicts(roomId, startTime, endTime);
     if (hasConflict) {
@@ -798,6 +908,13 @@ export class SpaceService {
       booking.room.org.timezone,
     );
 
+    await this.validateBuildingOpen(
+      orgId,
+      booking.room.org.timezone,
+      startTime,
+      endTime,
+    );
+
     const hasConflict = await this.checkConflicts(
       booking.roomId,
       startTime,
@@ -977,7 +1094,7 @@ export class SpaceService {
     const dayEnd = instantAt(date, 0, timeZone);
     dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
 
-    const [taken, calendar] = await Promise.all([
+    const [taken, calendar, buildingClosures] = await Promise.all([
       this.prisma.booking.findMany({
         where: {
           roomId,
@@ -995,6 +1112,8 @@ export class SpaceService {
       // Google being unreachable, returns nothing busy and the local rules
       // still apply.
       this.calendar.busyForRoom(orgId, roomId, dayStart, dayEnd),
+      // The whole building being shut (SPC-13).
+      this.orgClosureRules(orgId, dayStart, dayEnd),
     ]);
 
     const slots = slotsForDate({
@@ -1005,6 +1124,7 @@ export class SpaceService {
       rules: room.availabilityRules,
       booked: taken.map((b) => ({ start: b.startTime, end: b.endTime })),
       busy: calendar,
+      closures: buildingClosures,
       now: new Date(),
     });
 
@@ -1044,7 +1164,7 @@ export class SpaceService {
     const to = instantAt(dates[dates.length - 1], 0, timeZone);
     to.setUTCDate(to.getUTCDate() + 1);
 
-    const [taken, calendar] = await Promise.all([
+    const [taken, calendar, buildingClosures] = await Promise.all([
       this.prisma.booking.findMany({
         where: {
           roomId,
@@ -1058,6 +1178,7 @@ export class SpaceService {
         select: { startTime: true, endTime: true },
       }),
       this.calendar.busyForRoom(orgId, roomId, from, to),
+      this.orgClosureRules(orgId, from, to),
     ]);
 
     const booked = taken.map((b) => ({ start: b.startTime, end: b.endTime }));
@@ -1072,6 +1193,7 @@ export class SpaceService {
         rules: room.availabilityRules,
         booked,
         busy: calendar,
+        closures: buildingClosures,
         now,
       }),
     );
@@ -1126,6 +1248,49 @@ export class SpaceService {
    * sees, and a request that never went through them is exactly the one this
    * exists to stop.
    */
+  /**
+   * Refuse a booking that falls inside a building closure (SPC-13).
+   *
+   * A closure covers a run of days and a window within each of them, so both
+   * have to match: "closed 1pm to 5pm over the holidays" must not block a
+   * morning booking on the 27th, and must block an afternoon one.
+   */
+  private async validateBuildingOpen(
+    orgId: string,
+    timeZone: string,
+    startTime: Date,
+    endTime: Date,
+  ): Promise<void> {
+    const closures = await this.prisma.orgClosure.findMany({
+      where: {
+        orgId,
+        effectiveFrom: { lte: endTime },
+        effectiveTo: { gte: startTime },
+      },
+    });
+
+    if (closures.length === 0) return;
+
+    const local = zonedParts(startTime, timeZone);
+    const from = local.minutes;
+    const to = from + (endTime.getTime() - startTime.getTime()) / 60_000;
+
+    const shut = closures.find((closure) => {
+      const [openHour, openMin] = closure.startTime.split(':').map(Number);
+      const [shutHour, shutMin] = closure.endTime.split(':').map(Number);
+
+      return from < shutHour * 60 + shutMin && to > openHour * 60 + openMin;
+    });
+
+    if (shut) {
+      throw new BadRequestException(
+        shut.label
+          ? `The building is closed then: ${shut.label}.`
+          : 'The building is closed then.',
+      );
+    }
+  }
+
   private validateDuration(
     maxBookingMinutes: number | null,
     startTime: Date,
