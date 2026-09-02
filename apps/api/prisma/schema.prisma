@@ -621,6 +621,11 @@ model AvailabilityRule {
   endTime       String // "17:00" (HH:mm)
   bufferMinutes Int       @default(0)
   isBlackout    Boolean   @default(false) // true = blocked
+  /// Why the room is shut, for closures (SPC-12). Shown to members on the
+  /// booking screen: "Closed: Winter break" is worth far more than a greyed
+  /// out row, and a member who does not know why cannot tell a mistake from a
+  /// holiday.
+  label         String?
   effectiveFrom DateTime?
   effectiveTo   DateTime?
   createdAt     DateTime  @default(now())
