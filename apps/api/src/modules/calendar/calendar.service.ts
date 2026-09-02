@@ -641,6 +641,44 @@ export class CalendarService {
     }
   }
 
+  /**
+   * What the room's calendar has in a window, for the booking screen (SPC-09).
+   *
+   * `busyConflict` answers yes/no about one proposed booking; this returns the
+   * periods themselves, because the screen crosses out specific times rather
+   * than refusing a choice already made.
+   *
+   * **Never throws.** A room with no calendar, or Google being unreachable,
+   * returns nothing busy. Failing the whole page because someone else's API is
+   * down would be worse than showing slots the local rules still guard.
+   */
+  async busyForRoom(
+    orgId: string,
+    roomId: string,
+    from: Date,
+    to: Date,
+  ): Promise<{ start: Date; end: Date }[]> {
+    try {
+      const room = await this.prisma.room.findFirst({
+        where: { id: roomId, orgId },
+        omit: { googleTokens: false },
+      });
+
+      if (!room?.googleTokens || !room.googleCalendarId) return [];
+
+      const periods = await this.checkFreeBusy(room as any, from, to);
+
+      return periods.map((p) => ({ start: new Date(p.start), end: new Date(p.end) }));
+    } catch (err) {
+      this.logger.warn(
+        `Free/busy lookup failed for room ${roomId}; showing local availability only: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return [];
+    }
+  }
+
   /** When a single event on the room's calendar starts and ends. */
   private async eventWindow(
     room: { id: string; googleCalendarId?: string | null; googleTokens: any },

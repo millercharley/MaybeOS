@@ -7,6 +7,7 @@ import { EmailService } from '../../email/email.service';
 import { EventsService } from '../../events/events.service';
 import { ConnectService } from '../../stripe/connect.service';
 import { CalendarService } from '../../calendar/calendar.service';
+import { StorageService } from '../../storage/storage.service';
 
 /**
  * Availability rules (SPC-05).
@@ -48,6 +49,10 @@ describe('SpaceService — availability rules', () => {
     isActive: true,
     alwaysAvailable,
     availabilityRules: rules,
+    // Rules are wall-clock times in the co-op's own zone. These cases were
+    // written when they were compared against UTC, so the fixture says UTC to
+    // keep asserting the same times.
+    org: { timezone: 'UTC' },
   });
 
   beforeEach(async () => {
@@ -77,6 +82,10 @@ describe('SpaceService — availability rules', () => {
             createBookingCheckout: jest.fn().mockResolvedValue({ url: 'https://checkout.test' }),
             refundBooking: jest.fn().mockResolvedValue({ refunded: false }),
           },
+        },
+        {
+          provide: StorageService,
+          useValue: { signedAttachmentUrls: jest.fn().mockResolvedValue(new Map()) },
         },
         {
           provide: CalendarService,

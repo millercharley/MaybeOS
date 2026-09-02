@@ -5,6 +5,7 @@ import { EmailService } from '../../email/email.service';
 import { EventsService } from '../../events/events.service';
 import { ConnectService } from '../../stripe/connect.service';
 import { CalendarService } from '../../calendar/calendar.service';
+import { StorageService } from '../../storage/storage.service';
 import { ConfigService } from '@nestjs/config';
 
 /**
@@ -39,6 +40,10 @@ describe('SpaceService — who sees the connected Google account', () => {
         { provide: EmailService, useValue: {} },
         { provide: EventsService, useValue: {} },
         { provide: ConnectService, useValue: {} },
+        {
+          provide: StorageService,
+          useValue: { signedAttachmentUrls: jest.fn().mockResolvedValue(new Map()) },
+        },
         { provide: CalendarService, useValue: {} },
         { provide: ConfigService, useValue: { get: () => undefined } },
       ],

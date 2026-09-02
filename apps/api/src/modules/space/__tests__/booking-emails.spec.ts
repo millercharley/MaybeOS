@@ -6,6 +6,7 @@ import { EmailService } from '../../email/email.service';
 import { EventsService } from '../../events/events.service';
 import { ConnectService } from '../../stripe/connect.service';
 import { CalendarService } from '../../calendar/calendar.service';
+import { StorageService } from '../../storage/storage.service';
 
 /**
  * Booking emails state times in the co-op's timezone (SPC-08).
@@ -64,6 +65,10 @@ describe('SpaceService — booking email times', () => {
             createBookingCheckout: jest.fn().mockResolvedValue({ url: 'https://checkout.test' }),
             refundBooking: jest.fn().mockResolvedValue({ refunded: false }),
           },
+        },
+        {
+          provide: StorageService,
+          useValue: { signedAttachmentUrls: jest.fn().mockResolvedValue(new Map()) },
         },
         {
           provide: CalendarService,

@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { EventsService } from '../../events/events.service';
 import { ConnectService } from '../../stripe/connect.service';
 import { CalendarService } from '../../calendar/calendar.service';
+import { StorageService } from '../../storage/storage.service';
 
 /**
  * A room's charging switch has to survive the trip from the form.
@@ -73,6 +74,10 @@ describe('a room’s charging fields', () => {
           { provide: EventsService, useValue: { syncWithBooking: jest.fn() } },
           { provide: ConnectService, useValue: { refundBooking: jest.fn() } },
           {
+          provide: StorageService,
+          useValue: { signedAttachmentUrls: jest.fn().mockResolvedValue(new Map()) },
+        },
+        {
             provide: CalendarService,
             useValue: {
               syncBooking: jest.fn(),
