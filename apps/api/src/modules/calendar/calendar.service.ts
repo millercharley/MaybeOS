@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
@@ -110,11 +111,23 @@ export class CalendarService {
 
     const { tokens } = await this.oauth2Client.getToken(code);
 
-    // Store tokens on the room (as JSON; in production, encrypt at rest)
+    // Which account just authorised. Google's primary calendar is keyed by the
+    // account's own address, so this needs no extra scope and no extra consent
+    // screen — and an organiser who connected the wrong account (the co-op's
+    // shared login versus their own) can see that immediately instead of
+    // discovering it when bookings land somewhere nobody reads.
+    const accountEmail = await this.accountEmail(tokens).catch(() => null);
+
+    // Store tokens on the room (as JSON; in production, encrypt at rest).
+    // No calendar is chosen here: picking one is the admin's decision and
+    // defaulting to 'primary' would point a room at somebody's personal diary
+    // (SPC-07).
     await this.prisma.room.update({
       where: { id: roomId },
       data: {
         googleTokens: tokens as any,
+        googleAccountEmail: accountEmail,
+        googleConnectedAt: new Date(),
       },
     });
 
@@ -123,6 +136,24 @@ export class CalendarService {
     );
 
     return { orgId, roomId };
+  }
+
+  /** The address of the account these tokens belong to. */
+  private async accountEmail(tokens: unknown): Promise<string | null> {
+    const client = this.newOAuthClient();
+    client.setCredentials(tokens as StoredTokens);
+    const calendar = google.calendar({ version: 'v3', auth: client });
+    const primary = await calendar.calendars.get({ calendarId: 'primary' });
+    return primary.data.id ?? null;
+  }
+
+  /** A fresh OAuth client. The instance one carries no per-room credentials. */
+  private newOAuthClient(): OAuth2Client {
+    return new google.auth.OAuth2(
+      this.configService.get<string>('GOOGLE_CLIENT_ID'),
+      this.configService.get<string>('GOOGLE_CLIENT_SECRET'),
+      this.configService.get<string>('GOOGLE_REDIRECT_URI'),
+    );
   }
 
   // ──────────────────────────────────────────────────────────────
@@ -143,11 +174,7 @@ export class CalendarService {
     }
 
     const tokens = room.googleTokens as StoredTokens;
-    const client = new google.auth.OAuth2(
-      this.configService.get<string>('GOOGLE_CLIENT_ID'),
-      this.configService.get<string>('GOOGLE_CLIENT_SECRET'),
-      this.configService.get<string>('GOOGLE_REDIRECT_URI'),
-    );
+    const client = this.newOAuthClient();
 
     client.setCredentials(tokens);
 
@@ -164,6 +191,25 @@ export class CalendarService {
     });
 
     return google.calendar({ version: 'v3', auth: client });
+  }
+
+  /**
+   * Which calendar this room writes to.
+   *
+   * This used to be `room.googleCalendarId || 'primary'`, repeated at five
+   * call sites, and nothing ever set `googleCalendarId` — so every booking any
+   * co-op ever made would have gone into the primary calendar of the organiser
+   * who connected the room, and every entry in that organiser's personal diary
+   * would have counted against the room's availability. A room with no
+   * calendar chosen is a state to report, not one to guess past (SPC-07).
+   */
+  private calendarIdFor(room: { id: string; googleCalendarId?: string | null }): string {
+    if (!room.googleCalendarId) {
+      throw new BadRequestException(
+        `Room ${room.id} is connected to Google but no calendar has been chosen for it yet.`,
+      );
+    }
+    return room.googleCalendarId;
   }
 
   // ──────────────────────────────────────────────────────────────
@@ -213,6 +259,13 @@ export class CalendarService {
       // A room with no calendar connected is the normal case, not a fault.
       if (!booking.room.googleTokens) {
         return { synced: false, reason: 'room has no calendar connected' };
+      }
+
+      // Connected but not pointed anywhere yet. Falling through to 'primary'
+      // here would write the co-op's bookings into the personal diary of
+      // whoever clicked Connect (SPC-07).
+      if (!booking.room.googleCalendarId) {
+        return { synced: false, reason: 'room has no calendar chosen yet' };
       }
 
       const room = booking.room as typeof booking.room & { googleTokens: unknown };
@@ -277,7 +330,7 @@ export class CalendarService {
     },
   ) {
     const calendar = await this.getCalendarClient(room);
-    const calendarId = room.googleCalendarId || 'primary';
+    const calendarId = this.calendarIdFor(room);
 
     const event = await calendar.events.insert({
       calendarId,
@@ -328,7 +381,7 @@ export class CalendarService {
     }
 
     const calendar = await this.getCalendarClient(room);
-    const calendarId = room.googleCalendarId || 'primary';
+    const calendarId = this.calendarIdFor(room);
 
     const event = await calendar.events.update({
       calendarId,
@@ -367,7 +420,7 @@ export class CalendarService {
     }
 
     const calendar = await this.getCalendarClient(room);
-    const calendarId = room.googleCalendarId || 'primary';
+    const calendarId = this.calendarIdFor(room);
 
     await calendar.events.delete({
       calendarId,
@@ -386,6 +439,240 @@ export class CalendarService {
   }
 
   // ──────────────────────────────────────────────────────────────
+  // Choosing a calendar (SPC-07)
+  // ──────────────────────────────────────────────────────────────
+
+  /**
+   * The calendars this room's connected account can write to.
+   *
+   * Read-only calendars are left out deliberately: a room needs to *put*
+   * bookings somewhere, and offering a calendar the account can only read
+   * would produce a choice that fails at the first booking, hours later,
+   * in a log nobody reads.
+   */
+  async listCalendars(
+    room: { id: string; googleTokens: any },
+  ): Promise<{ id: string; name: string; primary: boolean }[]> {
+    const calendar = await this.getCalendarClient(room);
+    const { data } = await calendar.calendarList.list({ minAccessRole: 'writer' });
+
+    return (data.items ?? [])
+      .filter((c) => c.id)
+      .map((c) => ({
+        id: c.id,
+        name: c.summary ?? c.id,
+        primary: Boolean(c.primary),
+      }));
+  }
+
+  /**
+   * Point a room at one of those calendars.
+   *
+   * The id is checked against the account's own list rather than trusted from
+   * the request: a calendar the account cannot write to would be accepted
+   * here and then fail on every booking.
+   */
+  async selectCalendar(orgId: string, roomId: string, calendarId: string) {
+    const room = await this.prisma.room.findFirst({
+      where: { id: roomId, orgId },
+      omit: { googleTokens: false },
+    });
+
+    if (!room) throw new NotFoundException('Room not found');
+    if (!room.googleTokens) {
+      throw new BadRequestException(
+        'Connect this room to Google before choosing a calendar.',
+      );
+    }
+
+    const choices = await this.listCalendars(room as any);
+    const chosen = choices.find((c) => c.id === calendarId);
+
+    if (!chosen) {
+      throw new BadRequestException(
+        'That calendar is not one this Google account can write to.',
+      );
+    }
+
+    return this.prisma.room.update({
+      where: { id: room.id },
+      data: { googleCalendarId: chosen.id, googleCalendarName: chosen.name },
+      select: {
+        id: true,
+        googleCalendarId: true,
+        googleCalendarName: true,
+        googleAccountEmail: true,
+      },
+    });
+  }
+
+  /**
+   * Disconnect a room from Google.
+   *
+   * The token is revoked at Google as well as dropped here. Deleting our copy
+   * alone would leave a live grant on the organiser's account with nothing in
+   * either interface to show for it.
+   *
+   * Existing calendar events are left where they are: they are that co-op's
+   * record of what was booked, and deleting a term's worth of entries out of
+   * somebody's calendar because they changed an integration is not a decision
+   * this button is allowed to make.
+   */
+  async disconnect(orgId: string, roomId: string) {
+    const room = await this.prisma.room.findFirst({
+      where: { id: roomId, orgId },
+      omit: { googleTokens: false },
+    });
+
+    if (!room) throw new NotFoundException('Room not found');
+
+    const tokens = room.googleTokens as unknown as StoredTokens | null;
+    if (tokens?.refresh_token || tokens?.access_token) {
+      try {
+        const client = this.newOAuthClient();
+        client.setCredentials(tokens);
+        await client.revokeCredentials();
+      } catch (err) {
+        // A grant the member already revoked from their Google account page
+        // answers 400 here. Our copy still has to go.
+        this.logger.warn(
+          `Revoking Google credentials for room ${roomId} failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
+    await this.prisma.room.update({
+      where: { id: room.id },
+      data: {
+        googleTokens: null,
+        googleCalendarId: null,
+        googleCalendarName: null,
+        googleAccountEmail: null,
+        googleConnectedAt: null,
+      },
+    });
+
+    return { disconnected: true };
+  }
+
+  /**
+   * Whether the room's Google Calendar already has something in this window.
+   *
+   * The counterpart to `syncBooking`, and the half that was missing: bookings
+   * were pushed to Google and nothing was ever read back, so a co-op that put
+   * a rehearsal straight into the room's calendar would still take a member's
+   * booking for the same hour and confirm it.
+   *
+   * **Never throws.** Google being unreachable must not stop a member booking
+   * a room; the local rules and the local conflict check still apply. It fails
+   * open and says why, because the alternative is a co-op unable to book its
+   * own rooms because somebody else's API is down.
+   */
+  /**
+   * The same check, for a caller that has a room id and no tokens.
+   *
+   * The tokens are omitted from every ordinary room read (SEC-05), so the
+   * booking path cannot pass a room object that carries them. Resolving it
+   * here keeps them inside this service instead of widening what SpaceService
+   * is allowed to load.
+   */
+  async busyConflictForRoom(
+    orgId: string,
+    roomId: string,
+    startTime: Date,
+    endTime: Date,
+    ignoreEventId?: string | null,
+  ): Promise<{ busy: boolean; reason?: string }> {
+    const room = await this.prisma.room.findFirst({
+      where: { id: roomId, orgId },
+      omit: { googleTokens: false },
+    });
+
+    if (!room) return { busy: false };
+
+    return this.busyConflict(room, startTime, endTime, ignoreEventId);
+  }
+
+  async busyConflict(
+    room: { id: string; googleCalendarId?: string | null; googleTokens: any },
+    startTime: Date,
+    endTime: Date,
+    ignoreEventId?: string | null,
+  ): Promise<{ busy: boolean; reason?: string }> {
+    if (!room.googleTokens || !room.googleCalendarId) return { busy: false };
+
+    try {
+      const periods = await this.checkFreeBusy(room as any, startTime, endTime);
+
+      // A booking being moved is already on this calendar, so without this it
+      // collides with itself: shifting a 10–12 rehearsal to 11–13 would be
+      // refused because 11–12 is "taken" — by the very booking being moved.
+      // freebusy returns opaque merged periods with no event ids, so the
+      // booking's own window comes from Google rather than from our record of
+      // it, which is what an organiser who dragged the event in Google would
+      // expect. A period that is only *partly* covered by it still counts:
+      // that is somebody else's event overlapping ours.
+      const own = ignoreEventId
+        ? await this.eventWindow(room as any, ignoreEventId)
+        : null;
+
+      // Periods are clipped to the window already, and a zero-length one at
+      // the boundary is not an overlap: a booking that starts exactly when
+      // another ends is fine.
+      const overlaps = periods.some((p) => {
+        const start = new Date(p.start);
+        const end = new Date(p.end);
+
+        if (start >= endTime || end <= startTime) return false;
+        if (own && own.start <= start && own.end >= end) return false;
+
+        return true;
+      });
+
+      return { busy: overlaps };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Free/busy check failed for room ${room.id}; allowing the booking: ${reason}`,
+      );
+      return { busy: false, reason };
+    }
+  }
+
+  /** When a single event on the room's calendar starts and ends. */
+  private async eventWindow(
+    room: { id: string; googleCalendarId?: string | null; googleTokens: any },
+    eventId: string,
+  ): Promise<{ start: Date; end: Date } | null> {
+    try {
+      const calendar = await this.getCalendarClient(room);
+      const { data } = await calendar.events.get({
+        calendarId: this.calendarIdFor(room),
+        eventId,
+      });
+
+      // An all-day event has `date` rather than `dateTime`. A booking is never
+      // all-day, so an event that is tells us this id is not the booking's any
+      // more and nothing should be excused on its account.
+      if (!data.start?.dateTime || !data.end?.dateTime) return null;
+
+      return { start: new Date(data.start.dateTime), end: new Date(data.end.dateTime) };
+    } catch (err) {
+      // Deleted from Google, or unreachable. Excusing nothing is the safe
+      // direction: the worst case is refusing a move the organiser can retry,
+      // rather than double-booking a room.
+      this.logger.warn(
+        `Could not read event ${eventId} for room ${room.id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return null;
+    }
+  }
+
+  // ──────────────────────────────────────────────────────────────
   // Free/Busy & Sync
   // ──────────────────────────────────────────────────────────────
 
@@ -399,7 +686,7 @@ export class CalendarService {
     endTime: Date,
   ): Promise<{ start: string; end: string }[]> {
     const calendar = await this.getCalendarClient(room);
-    const calendarId = room.googleCalendarId || 'primary';
+    const calendarId = this.calendarIdFor(room);
 
     const response = await calendar.freebusy.query({
       requestBody: {
@@ -444,7 +731,7 @@ export class CalendarService {
     }
 
     const calendar = await this.getCalendarClient(room);
-    const calendarId = room.googleCalendarId || 'primary';
+    const calendarId = this.calendarIdFor(room);
 
     try {
       const response = await calendar.events.list({

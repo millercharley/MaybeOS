@@ -27,7 +27,12 @@ describe('CalendarService — syncBooking', () => {
     endTime: new Date('2026-09-01T12:00:00Z'),
     googleEventId: null,
     ...booking,
-    room: { id: 'room-1', name: 'Main Hall', googleCalendarId: null, ...room },
+    room: {
+      id: 'room-1',
+      name: 'Main Hall',
+      googleCalendarId: 'attic@group.calendar.google.com',
+      ...room,
+    },
   });
 
   beforeEach(async () => {

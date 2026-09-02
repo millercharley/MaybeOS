@@ -241,6 +241,39 @@ class ApiClient {
       this.request<{ url: string }>(`/orgs/${orgId}/rooms/${roomId}/calendar/connect`, {
         token,
       }),
+
+    /**
+     * The calendars this room could be pointed at (SPC-07).
+     *
+     * Connecting an account is not the same as choosing a calendar, and the
+     * two used to be conflated: nothing set `googleCalendarId`, so every room
+     * silently used the primary calendar of whoever pressed Connect.
+     */
+    listCalendars: (orgId: string, roomId: string, token: string) =>
+      this.request<{
+        connected: boolean;
+        account?: string | null;
+        selectedId?: string | null;
+        calendars: { id: string; name: string; primary: boolean }[];
+      }>(`/orgs/${orgId}/rooms/${roomId}/calendar/calendars`, { token }),
+
+    selectCalendar: (orgId: string, roomId: string, calendarId: string, token: string) =>
+      this.request<{
+        id: string;
+        googleCalendarId: string | null;
+        googleCalendarName: string | null;
+        googleAccountEmail: string | null;
+      }>(`/orgs/${orgId}/rooms/${roomId}/calendar`, {
+        method: 'PUT',
+        token,
+        body: JSON.stringify({ calendarId }),
+      }),
+
+    disconnectRoom: (orgId: string, roomId: string, token: string) =>
+      this.request<{ disconnected: boolean }>(
+        `/orgs/${orgId}/rooms/${roomId}/calendar`,
+        { method: 'DELETE', token },
+      ),
   };
 
   // ── Auth ─────────────────────────────────────────
@@ -1981,8 +2014,13 @@ export interface Room {
   chargeForBooking?: boolean;
   /** Bookable at any hour, said deliberately rather than inferred. */
   alwaysAvailable?: boolean;
-  /** Set once a Google Calendar is connected to this room (SPC-04). */
+  /** Set once a calendar has been chosen for this room (SPC-04, SPC-07). */
   googleCalendarId?: string | null;
+  /** The chosen calendar's name, so the page can say which one. */
+  googleCalendarName?: string | null;
+  /** Which Google account authorised it. */
+  googleAccountEmail?: string | null;
+  googleConnectedAt?: string | null;
   hourlyRate?: number | null;
   isActive?: boolean;
 }

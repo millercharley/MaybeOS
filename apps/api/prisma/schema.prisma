@@ -578,7 +578,19 @@ model Room {
   /// clock. Unchecked with no rules now means not bookable.
   alwaysAvailable  Boolean  @default(false)
   hourlyRate       Int? // cents per hour, null = not set
+  /// Which calendar on the connected account this room writes to. 'primary'
+  /// is a poor default for a co-op: the organiser who connects is usually
+  /// signed in as themselves, so bookings for the Attic would land in their
+  /// personal calendar and their dentist appointment would block the room.
+  /// Null means connected but not yet pointed at a calendar (SPC-07).
   googleCalendarId String?
+  /// The calendar's display name, kept so the rooms page can say which one is
+  /// connected without calling Google on every render.
+  googleCalendarName String?
+  /// Which Google account authorised this, shown to the admin. An organiser
+  /// who connects the wrong account otherwise has no way to tell.
+  googleAccountEmail String?
+  googleConnectedAt  DateTime?
   googleTokens     Json? // encrypted OAuth tokens
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt

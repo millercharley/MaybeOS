@@ -72,7 +72,13 @@ describe('a room’s charging fields', () => {
           { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },
           { provide: EventsService, useValue: { syncWithBooking: jest.fn() } },
           { provide: ConnectService, useValue: { refundBooking: jest.fn() } },
-          { provide: CalendarService, useValue: { syncBooking: jest.fn() } },
+          {
+            provide: CalendarService,
+            useValue: {
+              syncBooking: jest.fn(),
+              busyConflictForRoom: jest.fn().mockResolvedValue({ busy: false }),
+            },
+          },
         ],
       }).compile();
 
