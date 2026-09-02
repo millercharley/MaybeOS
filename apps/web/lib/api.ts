@@ -860,6 +860,40 @@ class ApiClient {
         body: JSON.stringify({ rules }),
       }),
 
+    /**
+     * Periods the room is shut (SPC-12).
+     *
+     * Dates go and come back as the co-op's own calendar days. The server
+     * applies its timezone — a browser in another city sending its own
+     * midnight would close the room on the wrong day.
+     */
+    closures: (orgId: string, roomId: string, token: string) =>
+      this.request<Closure[]>(`/orgs/${orgId}/rooms/${roomId}/closures`, { token }),
+
+    addClosure: (
+      orgId: string,
+      roomId: string,
+      closure: {
+        fromDate: string;
+        toDate?: string;
+        startTime?: string;
+        endTime?: string;
+        label?: string;
+      },
+      token: string,
+    ) =>
+      this.request<unknown>(`/orgs/${orgId}/rooms/${roomId}/closures`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify(closure),
+      }),
+
+    removeClosure: (orgId: string, roomId: string, closureId: string, token: string) =>
+      this.request<unknown>(`/orgs/${orgId}/rooms/${roomId}/closures/${closureId}`, {
+        method: 'DELETE',
+        token,
+      }),
+
     removeRule: (orgId: string, roomId: string, ruleId: string, token: string) =>
       this.request<unknown>(`/orgs/${orgId}/rooms/${roomId}/rules/${ruleId}`, {
         method: 'DELETE',
@@ -2149,6 +2183,19 @@ export interface Slot {
   minutes: number;
   available: boolean;
   reason?: 'past' | 'closed' | 'blackout' | 'booked' | 'calendar';
+  /** Why the room is shut, when a closure gave a reason (SPC-12). */
+  note?: string;
+}
+
+/** A period a room is shut (SPC-12). Dates are the co-op's own days. */
+export interface Closure {
+  id: string;
+  label: string | null;
+  fromDate: string | null;
+  toDate: string | null;
+  startTime: string;
+  endTime: string;
+  allDay: boolean;
 }
 
 export interface SlotsResponse {

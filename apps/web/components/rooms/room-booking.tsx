@@ -319,7 +319,9 @@ function reasonFor(slot: Slot): string {
     case 'closed':
       return 'Outside this room’s hours';
     case 'blackout':
-      return 'The room is closed then';
+      // The reason when a closure gave one: "Closed: Winter break" tells a
+      // member whether to come back tomorrow or in January (SPC-12).
+      return slot.note ? `Closed: ${slot.note}` : 'The room is closed then';
     case 'booked':
       return 'Someone has booked this';
     case 'calendar':

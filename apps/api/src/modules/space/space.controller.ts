@@ -24,6 +24,7 @@ import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { AvailabilityRuleDto } from './dto/availability-rule.dto';
 import { OpeningHoursDto } from './dto/opening-hours.dto';
+import { ClosureDto } from './dto/closure.dto';
 import { ListBookingsQueryDto } from './dto/list-bookings.dto';
 import { RoomImageDto } from './dto/room-image.dto';
 import { viewerFor } from '../../common/access/contact-visibility';
@@ -178,6 +179,43 @@ export class SpaceController {
     @Param('roomId', ParseUUIDPipe) roomId: string,
   ) {
     return this.spaceService.removeImage(orgId, roomId);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Closures (SPC-12)                                                  */
+  /* ------------------------------------------------------------------ */
+
+  @Get('rooms/:roomId/closures')
+  @ApiOperation({ summary: 'Periods this room is shut' })
+  listClosures(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('roomId', ParseUUIDPipe) roomId: string,
+  ) {
+    // Readable by any member: a member deciding when to come in needs to know
+    // the room is shut over the holidays as much as an organiser does.
+    return this.spaceService.listClosures(orgId, roomId);
+  }
+
+  @Post('rooms/:roomId/closures')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Close a room for a day, a run of days, or part of them' })
+  addClosure(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('roomId', ParseUUIDPipe) roomId: string,
+    @Body() dto: ClosureDto,
+  ) {
+    return this.spaceService.addClosure(orgId, roomId, dto);
+  }
+
+  @Delete('rooms/:roomId/closures/:closureId')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Reopen a room by removing a closure' })
+  removeClosure(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('roomId', ParseUUIDPipe) roomId: string,
+    @Param('closureId', ParseUUIDPipe) closureId: string,
+  ) {
+    return this.spaceService.removeClosure(orgId, roomId, closureId);
   }
 
   /* ------------------------------------------------------------------ */

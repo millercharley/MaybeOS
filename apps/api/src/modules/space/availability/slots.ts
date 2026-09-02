@@ -36,6 +36,12 @@ export interface Slot {
   minutes: number;
   available: boolean;
   reason?: Unavailable;
+  /**
+   * Why the room is shut, when a closure says so (SPC-12). "Closed: Winter
+   * break" tells a member whether to come back tomorrow or in January; a
+   * greyed-out row tells them nothing.
+   */
+  note?: string;
 }
 
 export interface Rule {
@@ -43,6 +49,7 @@ export interface Rule {
   startTime: string;
   endTime: string;
   isBlackout: boolean;
+  label?: string | null;
   effectiveFrom: Date | null;
   effectiveTo: Date | null;
 }
@@ -126,7 +133,7 @@ function blackouts(
   date: string,
   dayOfWeek: number,
   timeZone: string,
-): { from: number; to: number }[] {
+): { from: number; to: number; label?: string | null }[] {
   const noon = instantAt(date, 12 * 60, timeZone);
 
   return rules
@@ -137,7 +144,11 @@ function blackouts(
       if (rule.effectiveTo && noon > rule.effectiveTo) return false;
       return true;
     })
-    .map((r) => ({ from: minutesOf(r.startTime), to: minutesOf(r.endTime) }));
+    .map((r) => ({
+      from: minutesOf(r.startTime),
+      to: minutesOf(r.endTime),
+      label: r.label,
+    }));
 }
 
 /**
@@ -185,6 +196,11 @@ export function slotsForDate(query: SlotQuery): Slot[] {
     } else if (closed.some((w) => minutes < w.to && finishes > w.from)) {
       slot.available = false;
       slot.reason = 'blackout';
+
+      // The first closure covering this slot. Two overlapping closures is a
+      // rare enough state that naming one beats naming neither.
+      const why = closed.find((w) => minutes < w.to && finishes > w.from)?.label;
+      if (why) slot.note = why;
     } else if (booked.some((b) => overlaps(b, { start, end }))) {
       slot.available = false;
       slot.reason = 'booked';

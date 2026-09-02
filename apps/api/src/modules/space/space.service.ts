@@ -14,6 +14,7 @@ import { EventsService } from '../events/events.service';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { AvailabilityRuleDto } from './dto/availability-rule.dto';
+import { ClosureDto } from './dto/closure.dto';
 import {
   durationsFor,
   hasAnyOpening,
@@ -288,6 +289,108 @@ export class SpaceService {
         orderBy: [{ isBlackout: 'asc' }, { dayOfWeek: 'asc' }],
       });
     });
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Closures (SPC-12)                                                  */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Shut a room for a day, a run of days, or part of them.
+   *
+   * Stored as a blackout rule, which the slot engine already subtracts from
+   * opening hours. What is new is that the dates arrive as *calendar* dates
+   * and are turned into instants here, in the co-op's timezone: "closed on the
+   * 25th" means the 25th where the room is, and a browser sending its own
+   * midnight would shut the room on the wrong day for anyone travelling.
+   *
+   * The window runs from the first day's midnight to the last day's last
+   * minute, so the engine's noon-of-the-day test falls inside it for every day
+   * in between.
+   */
+  async addClosure(orgId: string, roomId: string, dto: ClosureDto) {
+    const room = await this.prisma.room.findFirst({
+      where: { id: roomId, orgId },
+      include: { org: { select: { timezone: true } } },
+    });
+    if (!room) throw new NotFoundException('Room not found');
+
+    const timeZone = room.org.timezone;
+    const toDate = dto.toDate ?? dto.fromDate;
+
+    if (toDate < dto.fromDate) {
+      throw new BadRequestException('A closure cannot end before it starts.');
+    }
+
+    const startTime = dto.startTime ?? '00:00';
+    const endTime = dto.endTime ?? '23:59';
+
+    if (endTime <= startTime) {
+      throw new BadRequestException(
+        'A closure has to end after it starts. For a whole day, leave the times blank.',
+      );
+    }
+
+    return this.prisma.availabilityRule.create({
+      data: {
+        roomId,
+        // Every weekday inside the range. A closure that applied to one
+        // weekday would be an odd thing to express as a date range.
+        dayOfWeek: null,
+        startTime,
+        endTime,
+        isBlackout: true,
+        label: dto.label?.trim() || null,
+        effectiveFrom: instantAt(dto.fromDate, 0, timeZone),
+        effectiveTo: instantAt(toDate, 23 * 60 + 59, timeZone),
+      },
+    });
+  }
+
+  /**
+   * The closures on a room, with their dates back in local terms.
+   *
+   * Rendered here rather than in the browser: the instants only mean the right
+   * days once the co-op's timezone is applied, and that is knowledge the
+   * server has and the client does not.
+   */
+  async listClosures(orgId: string, roomId: string) {
+    const room = await this.prisma.room.findFirst({
+      where: { id: roomId, orgId },
+      include: { org: { select: { timezone: true } } },
+    });
+    if (!room) throw new NotFoundException('Room not found');
+
+    const timeZone = room.org.timezone;
+    const closures = await this.prisma.availabilityRule.findMany({
+      where: { roomId, isBlackout: true },
+      orderBy: { effectiveFrom: 'asc' },
+    });
+
+    return closures.map((rule) => ({
+      id: rule.id,
+      label: rule.label,
+      fromDate: rule.effectiveFrom ? zonedParts(rule.effectiveFrom, timeZone).date : null,
+      toDate: rule.effectiveTo ? zonedParts(rule.effectiveTo, timeZone).date : null,
+      startTime: rule.startTime,
+      endTime: rule.endTime,
+      // A closure with no times covers the day; the editor shows that as a
+      // checkbox rather than as 00:00 to 23:59.
+      allDay: rule.startTime === '00:00' && rule.endTime === '23:59',
+    }));
+  }
+
+  async removeClosure(orgId: string, roomId: string, closureId: string) {
+    await this.findRoomInOrg(orgId, roomId);
+
+    // Scoped to blackouts: this route must not become a way to delete a room's
+    // opening hours one rule at a time.
+    const closure = await this.prisma.availabilityRule.findFirst({
+      where: { id: closureId, roomId, isBlackout: true },
+    });
+    if (!closure) throw new NotFoundException('Closure not found');
+
+    return this.prisma.availabilityRule.delete({ where: { id: closure.id } });
   }
 
   async addAvailabilityRule(orgId: string, roomId: string, dto: AvailabilityRuleDto) {

@@ -8,6 +8,7 @@ import { api, Room, CreateRoomData, ApiError } from '@/lib/api';
 import { RoomCalendar } from '@/components/rooms/room-calendar';
 import { ImageUploader } from '@/components/ui/image-uploader';
 import { RoomHours } from '@/components/rooms/room-hours';
+import { RoomClosures } from '@/components/rooms/room-closures';
 import { calendarNotice } from '@/lib/room-calendar';
 
 type Draft = {
@@ -465,6 +466,16 @@ export default function AdminRoomsPage() {
                 )}
 
                 {token && orgId && (
+                  <RoomClosures
+                    roomId={r.id}
+                    roomName={r.name}
+                    orgId={orgId}
+                    token={token}
+                    onChanged={load}
+                  />
+                )}
+
+                {token && orgId && (
                   <div className="mt-3 max-w-sm">
                     <ImageUploader
                       what="Room photos"
@@ -504,8 +515,8 @@ export default function AdminRoomsPage() {
       */}
       <p className="mt-8 text-xs text-[var(--text-tertiary)]">
         Set each room&apos;s bookable hours above, or mark it always available — a room with
-        neither cannot be booked at all. Google Calendar sync and booking emails are live.
-        Blackout dates are stored but not yet editable here.
+        neither cannot be booked at all. Google Calendar sync, booking emails and
+        closed periods are all live.
       </p>
     </div>
   );
