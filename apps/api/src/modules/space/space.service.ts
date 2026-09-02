@@ -243,6 +243,53 @@ export class SpaceService {
   /*  Availability Rules                                                 */
   /* ------------------------------------------------------------------ */
 
+  /**
+   * Replace a room's opening hours in one go (SPC-11).
+   *
+   * The editor shows the whole week, so what it sends is the complete answer.
+   * Doing that as a delete-per-rule then a create-per-rule from the browser
+   * was eleven round trips, and worse, not atomic: a failure halfway left the
+   * room with its old hours deleted and its new ones not written, which turns
+   * a room that opens at nine into one that cannot be booked at all — with
+   * nothing on screen saying so.
+   *
+   * Blackouts are untouched. They are not represented in the editor, and
+   * clearing them here would quietly reopen a room on a day the co-op closed.
+   */
+  async replaceOpeningHours(
+    orgId: string,
+    roomId: string,
+    rules: AvailabilityRuleDto[],
+  ) {
+    await this.findRoomInOrg(orgId, roomId);
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.availabilityRule.deleteMany({
+        where: { roomId, isBlackout: false },
+      });
+
+      if (rules.length > 0) {
+        await tx.availabilityRule.createMany({
+          data: rules.map((rule) => ({
+            roomId,
+            dayOfWeek: rule.dayOfWeek ?? null,
+            startTime: rule.startTime,
+            endTime: rule.endTime,
+            bufferMinutes: rule.bufferMinutes ?? 0,
+            isBlackout: false,
+            effectiveFrom: rule.effectiveFrom ? new Date(rule.effectiveFrom) : null,
+            effectiveTo: rule.effectiveTo ? new Date(rule.effectiveTo) : null,
+          })),
+        });
+      }
+
+      return tx.availabilityRule.findMany({
+        where: { roomId },
+        orderBy: [{ isBlackout: 'asc' }, { dayOfWeek: 'asc' }],
+      });
+    });
+  }
+
   async addAvailabilityRule(orgId: string, roomId: string, dto: AvailabilityRuleDto) {
     await this.findRoomInOrg(orgId, roomId);
 

@@ -7,6 +7,7 @@ import { useApi } from '@/hooks/use-api';
 import { api, Room, CreateRoomData, ApiError } from '@/lib/api';
 import { RoomCalendar } from '@/components/rooms/room-calendar';
 import { ImageUploader } from '@/components/ui/image-uploader';
+import { RoomHours } from '@/components/rooms/room-hours';
 import { calendarNotice } from '@/lib/room-calendar';
 
 type Draft = {
@@ -460,9 +461,14 @@ export default function AdminRoomsPage() {
                 </p>
 
                 {token && orgId && (
+                  <RoomHours room={r} orgId={orgId} token={token} onSaved={load} />
+                )}
+
+                {token && orgId && (
                   <div className="mt-3 max-w-sm">
                     <ImageUploader
                       what="Room photos"
+                      addLabel="Add a photo of this room"
                       imageUrl={r.imageUrl}
                       onUpload={async (data, mimeType) => {
                         await api.rooms.uploadImage(orgId, r.id, data, mimeType, token);
@@ -497,8 +503,9 @@ export default function AdminRoomsPage() {
         SPC-02/SPC-03 work.
       */}
       <p className="mt-8 text-xs text-[var(--text-tertiary)]">
-        Rooms with no availability rules can be booked at any time. Opening hours, blackout dates,
-        Google Calendar sync and booking emails are still to come.
+        Set each room&apos;s bookable hours above, or mark it always available — a room with
+        neither cannot be booked at all. Google Calendar sync and booking emails are live.
+        Blackout dates are stored but not yet editable here.
       </p>
     </div>
   );

@@ -822,6 +822,50 @@ class ApiClient {
     list: (orgId: string, token: string) =>
       this.request<Room[]>(`/orgs/${orgId}/rooms`, { token }),
 
+    /**
+     * Publish a window the room is open (SPC-11).
+     *
+     * The endpoint has existed since SpaceOS was built and nothing had ever
+     * called it, so a room could only be marked always-available or left
+     * unbookable — which is what every room with hours to keep was.
+     */
+    addRule: (
+      orgId: string,
+      roomId: string,
+      rule: { dayOfWeek: number | null; startTime: string; endTime: string },
+      token: string,
+    ) =>
+      this.request<AvailabilityRule>(`/orgs/${orgId}/rooms/${roomId}/rules`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify(rule),
+      }),
+
+    /**
+     * Replace the whole week in one transaction (SPC-11).
+     *
+     * The editor shows every day, so it always sends the complete answer.
+     * Deleting and creating rule by rule from here was eleven round trips and
+     * left the room half-configured if one failed.
+     */
+    replaceHours: (
+      orgId: string,
+      roomId: string,
+      rules: { dayOfWeek: number | null; startTime: string; endTime: string }[],
+      token: string,
+    ) =>
+      this.request<AvailabilityRule[]>(`/orgs/${orgId}/rooms/${roomId}/rules`, {
+        method: 'PUT',
+        token,
+        body: JSON.stringify({ rules }),
+      }),
+
+    removeRule: (orgId: string, roomId: string, ruleId: string, token: string) =>
+      this.request<unknown>(`/orgs/${orgId}/rooms/${roomId}/rules/${ruleId}`, {
+        method: 'DELETE',
+        token,
+      }),
+
     /** Put a photo on a room (SPC-10). Base64 or a data: URL. */
     uploadImage: (
       orgId: string,
@@ -2072,6 +2116,8 @@ export interface Room {
   imagePath?: string | null;
   /** Longest single booking, in minutes. Null means no cap (SPC-09). */
   maxBookingMinutes?: number | null;
+  /** When the room is open. Empty with alwaysAvailable off means unbookable. */
+  availabilityRules?: AvailabilityRule[];
   /** Set once a calendar has been chosen for this room (SPC-04, SPC-07). */
   googleCalendarId?: string | null;
   /** The chosen calendar's name, so the page can say which one. */
@@ -2081,6 +2127,18 @@ export interface Room {
   googleConnectedAt?: string | null;
   hourlyRate?: number | null;
   isActive?: boolean;
+}
+
+/** A window a room is open, or closed, as stored (SPC-11). */
+export interface AvailabilityRule {
+  id: string;
+  /** 0=Sunday..6=Saturday. Null applies to every day. */
+  dayOfWeek: number | null;
+  startTime: string;
+  endTime: string;
+  isBlackout: boolean;
+  effectiveFrom?: string | null;
+  effectiveTo?: string | null;
 }
 
 /** One candidate booking time, and whether it can be taken (SPC-09). */
