@@ -8,7 +8,12 @@ const MAX_BYTES = 8 * 1024 * 1024;
 const ACCEPTED = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
 /**
- * The cover photograph on an article.
+ * Picking an image, for anything that carries one.
+ *
+ * Started as the article cover uploader and moved here when rooms needed the
+ * same thing (SPC-10): the size limit, the sniffing, the signed-URL preview
+ * and the failure messages are identical, and a second copy would be a second
+ * place for them to drift out of step with what the bucket accepts.
  *
  * Checked here *and* on the server, and the two say the same thing. The
  * client check exists so somebody who picks a 40 MB photo from their phone
@@ -19,12 +24,15 @@ const ACCEPTED = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
  * shows the co-op exactly what a member will see, including the fact that it
  * is not a link anyone can pass around.
  */
-export function CoverUploader({
-  coverImageUrl,
+export function ImageUploader({
+  imageUrl,
+  what = 'Images',
   onUpload,
   onRemove,
 }: {
-  coverImageUrl: string | null | undefined;
+  imageUrl: string | null | undefined;
+  /** What these images are called, for the size message. */
+  what?: string;
   onUpload: (data: string, mimeType: string) => Promise<void>;
   onRemove: () => Promise<void>;
 }) {
@@ -42,7 +50,7 @@ export function CoverUploader({
     if (file.size > MAX_BYTES) {
       // Named in the units somebody's photo library uses, not in bytes.
       setProblem(
-        `That is ${(file.size / 1024 / 1024).toFixed(1)} MB. Cover images have to be under ${
+        `That is ${(file.size / 1024 / 1024).toFixed(1)} MB. ${what} have to be under ${
           MAX_BYTES / 1024 / 1024
         } MB.`,
       );
@@ -79,10 +87,10 @@ export function CoverUploader({
         }}
       />
 
-      {coverImageUrl ? (
+      {imageUrl ? (
         <div className="relative overflow-hidden rounded-xl border border-gray-200">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={coverImageUrl} alt="" className="max-h-56 w-full object-cover" />
+          <img src={imageUrl} alt="" className="max-h-56 w-full object-cover" />
           <div className="absolute right-2 top-2 flex gap-2">
             <button
               onClick={() => input.current?.click()}

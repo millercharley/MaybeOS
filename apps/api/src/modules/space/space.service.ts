@@ -65,6 +65,9 @@ export class SpaceService {
         chargeForBooking: dto.chargeForBooking ?? false,
         alwaysAvailable: dto.alwaysAvailable ?? false,
         hourlyRate: dto.hourlyRate,
+        // Null is a real answer here: no cap. `?? null` rather than leaving it
+        // out so the column is written deliberately either way.
+        maxBookingMinutes: dto.maxBookingMinutes ?? null,
       },
     });
   }
@@ -110,6 +113,9 @@ export class SpaceService {
         ...(dto.memberOnly !== undefined && { memberOnly: dto.memberOnly }),
         ...(dto.chargeForBooking !== undefined && { chargeForBooking: dto.chargeForBooking }),
         ...(dto.alwaysAvailable !== undefined && { alwaysAvailable: dto.alwaysAvailable }),
+        ...(dto.maxBookingMinutes !== undefined && {
+          maxBookingMinutes: dto.maxBookingMinutes,
+        }),
         ...(dto.hourlyRate !== undefined && { hourlyRate: dto.hourlyRate }),
       },
     });

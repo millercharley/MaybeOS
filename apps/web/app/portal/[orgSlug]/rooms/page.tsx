@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { DoorOpen, Users, Check } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
+import { RoomBooking } from '@/components/rooms/room-booking';
 import { api } from '@/lib/api';
 
 export default function PortalRoomsPage() {
@@ -13,12 +14,10 @@ export default function PortalRoomsPage() {
   const [rooms, setRooms] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
-  const [title, setTitle] = useState('');
-  const [date, setDate] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
-  const [booking, setBooking] = useState(false);
   const [bookingResult, setBookingResult] = useState<string | null>(null);
+
+  const orgId = org?.id;
+  const selected = rooms.find((r) => r.id === selectedRoom) ?? null;
 
   useEffect(() => {
     if (!org || !token) {
@@ -36,43 +35,6 @@ export default function PortalRoomsPage() {
       .finally(() => setLoading(false));
   }, [org, token]);
 
-  async function handleBook() {
-    if (!org || !token || !selectedRoom || !title || !date || !startTime || !endTime) return;
-    setBooking(true);
-    setBookingResult(null);
-    try {
-      const created = await api.rooms.createBooking(
-        org.id,
-        selectedRoom,
-        {
-          title,
-          startTime: new Date(`${date}T${startTime}`).toISOString(),
-          endTime: new Date(`${date}T${endTime}`).toISOString(),
-        },
-        token,
-      );
-
-      // A room that charges for hire answers with a Stripe URL, and the
-      // booking is only a hold on the slot until it is paid for (SPC-06).
-      // Saying "booking submitted" and staying put would leave the member
-      // believing they had the room while their hold quietly lapsed.
-      if (created.checkoutUrl) {
-        window.location.href = created.checkoutUrl;
-        return;
-      }
-
-      setBookingResult('Booking submitted!');
-      setTitle('');
-      setDate('');
-      setStartTime('');
-      setEndTime('');
-      setSelectedRoom(null);
-    } catch (err: unknown) {
-      setBookingResult(err instanceof Error ? err.message : 'Booking failed');
-    } finally {
-      setBooking(false);
-    }
-  }
 
   if (!token) {
     return (
@@ -118,6 +80,17 @@ export default function PortalRoomsPage() {
                   : 'border-gray-200 bg-white hover:border-brand-300'
               }`}
             >
+              {/* The photo, always with the room (SPC-10). A member choosing
+                  between "Attic" and "Meeting Room A" is choosing between two
+                  physical spaces, and the names alone do not describe them. */}
+              {room.imageUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={room.imageUrl}
+                  alt=""
+                  className="mb-3 h-32 w-full rounded-lg object-cover"
+                />
+              )}
               <div className="flex items-start justify-between">
                 <div>
                   <h3 className="text-sm font-semibold text-gray-900">{room.name}</h3>
@@ -168,59 +141,22 @@ export default function PortalRoomsPage() {
         </div>
       )}
 
-      {selectedRoom && (
-        <div className="rounded-xl border border-gray-200 bg-white p-6">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">Book This Room</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-sm font-medium text-gray-700">Booking Title</label>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Team Meeting"
-                className="input w-full"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Date</label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="input w-full"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Start</label>
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className="input w-full"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">End</label>
-                <input
-                  type="time"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  className="input w-full"
-                />
-              </div>
-            </div>
-          </div>
-          <button
-            onClick={handleBook}
-            disabled={booking || !title || !date || !startTime || !endTime}
-            className="btn-primary mt-4"
-          >
-            {booking ? 'Booking...' : 'Submit Booking'}
-          </button>
-        </div>
+      {/*
+        The date-and-two-times form this replaced could only refuse after the
+        fact: a member picked a start and an end, submitted, and was told the
+        room was shut or taken — which says their choice was wrong once they
+        have made it, and nothing about which choice would have worked
+        (SPC-09).
+      */}
+      {selected && token && orgId && (
+        <RoomBooking
+          room={selected}
+          orgId={orgId}
+          token={token}
+          onBooked={() => setBookingResult('Booked.')}
+        />
       )}
+
     </div>
   );
 }

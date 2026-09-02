@@ -6,6 +6,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { useApi } from '@/hooks/use-api';
 import { api, Room, CreateRoomData, ApiError } from '@/lib/api';
 import { RoomCalendar } from '@/components/rooms/room-calendar';
+import { ImageUploader } from '@/components/ui/image-uploader';
 import { calendarNotice } from '@/lib/room-calendar';
 
 type Draft = {
@@ -16,6 +17,7 @@ type Draft = {
   requiresApproval: boolean;
   memberOnly: boolean;
   alwaysAvailable: boolean;
+  maxBookingMinutes: string;
   chargeForBooking: boolean;
   hourlyRate: string;
 };
@@ -28,6 +30,7 @@ const emptyDraft: Draft = {
   requiresApproval: false,
   memberOnly: true,
   alwaysAvailable: false,
+  maxBookingMinutes: '',
   chargeForBooking: false,
   hourlyRate: '',
 };
@@ -40,6 +43,7 @@ const draftFrom = (r: Room): Draft => ({
   requiresApproval: r.requiresApproval,
   memberOnly: r.memberOnly,
   alwaysAvailable: r.alwaysAvailable ?? false,
+  maxBookingMinutes: r.maxBookingMinutes ? String(r.maxBookingMinutes) : '',
   chargeForBooking: r.chargeForBooking ?? false,
   hourlyRate: r.hourlyRate ? (r.hourlyRate / 100).toFixed(2).replace(/\.00$/, '') : '',
 });
@@ -52,6 +56,9 @@ const toPayload = (d: Draft): CreateRoomData => ({
   requiresApproval: d.requiresApproval,
   memberOnly: d.memberOnly,
   alwaysAvailable: d.alwaysAvailable,
+  // Null rather than undefined: an admin clearing the limit has to be able to
+  // clear it, and an omitted field leaves the old cap in place.
+  maxBookingMinutes: d.maxBookingMinutes ? parseInt(d.maxBookingMinutes, 10) : null,
   // Never sent as true without a rate: charging is two deliberate steps, and
   // a switch on its own would take a member to a checkout for $0.00.
   chargeForBooking: d.chargeForBooking && Boolean(d.hourlyRate),
@@ -298,6 +305,29 @@ export default function AdminRoomsPage() {
               </span>
             </label>
 
+            <label className="block">
+              <span className="text-sm font-medium">Longest booking</span>
+              <select
+                className="input mt-1 w-full"
+                value={draft.maxBookingMinutes}
+                onChange={(e) => setDraft({ ...draft, maxBookingMinutes: e.target.value })}
+              >
+                <option value="">No limit</option>
+                <option value="30">30 minutes</option>
+                <option value="60">1 hour</option>
+                <option value="90">1 hour 30 minutes</option>
+                <option value="120">2 hours</option>
+                <option value="180">3 hours</option>
+                <option value="240">4 hours</option>
+                <option value="480">8 hours</option>
+              </select>
+              <span className="mt-1 block text-xs text-[var(--text-secondary)]">
+                How long one member can hold the room in a single booking. This decides which
+                lengths the booking screen offers, and it is enforced on the server too — so a
+                request that skips the screen is refused as well.
+              </span>
+            </label>
+
             {/* Booking emails are not a setting; they already happen. Saying so
                 here because an organiser has no other way to know, and "does
                 this email anyone?" is the first question about a booking. */}
@@ -398,6 +428,17 @@ export default function AdminRoomsPage() {
         {rooms?.map((r) => (
           <div key={r.id} className="card">
             <div className="flex flex-wrap items-start justify-between gap-4">
+              {/* The photo travels with the room everywhere it appears
+                  (SPC-10). Signed and short-lived, like every other
+                  member-facing image. */}
+              {r.imageUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={r.imageUrl}
+                  alt=""
+                  className="h-20 w-20 shrink-0 rounded-lg object-cover"
+                />
+              )}
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <DoorOpen size={16} className="text-[var(--text-tertiary)]" aria-hidden="true" />
@@ -417,6 +458,23 @@ export default function AdminRoomsPage() {
                   ) : null}
                   {r.amenities?.length ? <span>{r.amenities.join(' · ')}</span> : null}
                 </p>
+
+                {token && orgId && (
+                  <div className="mt-3 max-w-sm">
+                    <ImageUploader
+                      what="Room photos"
+                      imageUrl={r.imageUrl}
+                      onUpload={async (data, mimeType) => {
+                        await api.rooms.uploadImage(orgId, r.id, data, mimeType, token);
+                        await load();
+                      }}
+                      onRemove={async () => {
+                        await api.rooms.removeImage(orgId, r.id, token);
+                        await load();
+                      }}
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-start">
