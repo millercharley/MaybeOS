@@ -9,6 +9,7 @@ import {
 import { PrismaHealthIndicator } from './prisma.health';
 import { EmailHealthIndicator } from './email.health';
 import { StorageHealthIndicator } from './storage.health';
+import { CalendarHealthIndicator } from './calendar.health';
 
 @ApiTags('health')
 @Controller('health')
@@ -18,6 +19,7 @@ export class HealthController {
     private prismaHealth: PrismaHealthIndicator,
     private emailHealth: EmailHealthIndicator,
     private storageHealth: StorageHealthIndicator,
+    private calendarHealth: CalendarHealthIndicator,
   ) {}
 
   @Get()
@@ -35,6 +37,10 @@ export class HealthController {
       // attachments and avatars silently, because both paths swallow their
       // failures by design (MEM-10).
       () => this.storageHealth.isHealthy('storage'),
+      // Reported, never failed. Added because the only way to find out whether
+      // a deployment had Google set up was to ask an admin to press a button
+      // on a room and read the error.
+      () => this.calendarHealth.isHealthy('calendar'),
     ]);
   }
 }

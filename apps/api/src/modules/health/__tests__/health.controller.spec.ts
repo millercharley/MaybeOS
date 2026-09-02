@@ -4,6 +4,7 @@ import { HealthController } from '../health.controller';
 import { PrismaHealthIndicator } from '../prisma.health';
 import { EmailHealthIndicator } from '../email.health';
 import { StorageHealthIndicator } from '../storage.health';
+import { CalendarHealthIndicator } from '../calendar.health';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../config/prisma.service';
 
@@ -19,6 +20,7 @@ describe('HealthController', () => {
         PrismaHealthIndicator,
         EmailHealthIndicator,
         StorageHealthIndicator,
+        CalendarHealthIndicator,
         {
           provide: ConfigService,
           useValue: { get: () => undefined },
