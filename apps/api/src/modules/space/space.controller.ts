@@ -58,8 +58,12 @@ export class SpaceController {
 
   @Get('rooms')
   @ApiOperation({ summary: 'List all active rooms for an organization' })
-  listRooms(@Param('orgId', ParseUUIDPipe) orgId: string) {
-    return this.spaceService.listRooms(orgId);
+  listRooms(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    // Members get the rooms; staff also get who connected each calendar.
+    return this.spaceService.listRooms(orgId, isStaff(user, orgId));
   }
 
   @Get('rooms/:roomId')

@@ -106,12 +106,25 @@ export class SpaceService {
     });
   }
 
-  async listRooms(orgId: string) {
-    return this.prisma.room.findMany({
+  /**
+   * The rooms a member can book.
+   *
+   * `googleAccountEmail` is stripped for anyone who is not staff. It is the
+   * address of whichever organiser connected the room — often a personal one —
+   * and this route is open to every member of the org, so returning it would
+   * publish an organiser's email to the whole co-op as a side effect of them
+   * setting up a calendar.
+   */
+  async listRooms(orgId: string, isStaff = false) {
+    const rooms = await this.prisma.room.findMany({
       where: { orgId, isActive: true },
       include: { availabilityRules: true },
       orderBy: { name: 'asc' },
     });
+
+    if (isStaff) return rooms;
+
+    return rooms.map(({ googleAccountEmail, googleConnectedAt, ...room }) => room);
   }
 
   async getRoom(orgId: string, roomId: string) {
