@@ -9,8 +9,9 @@ import {
   Query,
   UseGuards,
   ParseUUIDPipe,
+  BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
@@ -22,6 +23,7 @@ import { RescheduleBookingDto } from './dto/reschedule-booking.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { AvailabilityRuleDto } from './dto/availability-rule.dto';
 import { ListBookingsQueryDto } from './dto/list-bookings.dto';
+import { RoomImageDto } from './dto/room-image.dto';
 import { viewerFor } from '../../common/access/contact-visibility';
 
 
@@ -29,6 +31,38 @@ import { viewerFor } from '../../common/access/contact-visibility';
  * Staff and admins may act on any booking in their org; everyone else only on
  * their own. PLATFORM_ADMIN is included so support can unstick a co-op.
  */
+/**
+ * A date the slot engine can use, or a refusal.
+ *
+ * Validated rather than passed through: these strings are split on "-" and fed
+ * to `Date.UTC`, and "banana" would otherwise produce NaN instants and a day
+ * of slots that are all silently unavailable.
+ */
+function isoDate(value: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value ?? '')) {
+    throw new BadRequestException('date must look like YYYY-MM-DD');
+  }
+  return value;
+}
+
+function isoMonth(value: string): string {
+  if (!/^\d{4}-\d{2}$/.test(value ?? '')) {
+    throw new BadRequestException('month must look like YYYY-MM');
+  }
+  return value;
+}
+
+/** Duration in minutes, defaulting to an hour. */
+function minutes(value?: string): number {
+  if (value === undefined) return 60;
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 24 * 60) {
+    throw new BadRequestException('duration must be a whole number of minutes within a day');
+  }
+  return parsed;
+}
+
 function isStaff(user: RequestUser, orgId: string): boolean {
   if (user.globalRole === 'PLATFORM_ADMIN') return true;
   const role = user.orgRoles?.[orgId];
@@ -110,6 +144,57 @@ export class SpaceController {
     @Param('ruleId', ParseUUIDPipe) ruleId: string,
   ) {
     return this.spaceService.removeAvailabilityRule(orgId, ruleId);
+  }
+
+  @Post('rooms/:roomId/image')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Put a photo on a room' })
+  uploadRoomImage(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('roomId', ParseUUIDPipe) roomId: string,
+    @Body() dto: RoomImageDto,
+  ) {
+    return this.spaceService.replaceImage(orgId, roomId, dto.data, dto.mimeType);
+  }
+
+  @Delete('rooms/:roomId/image')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: "Remove a room's photo" })
+  removeRoomImage(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('roomId', ParseUUIDPipe) roomId: string,
+  ) {
+    return this.spaceService.removeImage(orgId, roomId);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Availability, as slots (SPC-09)                                    */
+  /* ------------------------------------------------------------------ */
+
+  @Get('rooms/:roomId/slots')
+  @ApiOperation({ summary: 'Candidate booking slots for a date, and why each is unavailable' })
+  @ApiQuery({ name: 'date', description: 'Local date, YYYY-MM-DD', required: true })
+  @ApiQuery({ name: 'duration', description: 'Minutes', required: false })
+  slots(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('roomId', ParseUUIDPipe) roomId: string,
+    @Query('date') date: string,
+    @Query('duration') duration?: string,
+  ) {
+    return this.spaceService.slots(orgId, roomId, isoDate(date), minutes(duration));
+  }
+
+  @Get('rooms/:roomId/open-days')
+  @ApiOperation({ summary: 'Which days in a month have any slot left' })
+  @ApiQuery({ name: 'month', description: 'YYYY-MM', required: true })
+  @ApiQuery({ name: 'duration', description: 'Minutes', required: false })
+  openDays(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('roomId', ParseUUIDPipe) roomId: string,
+    @Query('month') month: string,
+    @Query('duration') duration?: string,
+  ) {
+    return this.spaceService.openDays(orgId, roomId, isoMonth(month), minutes(duration));
   }
 
   /* ------------------------------------------------------------------ */

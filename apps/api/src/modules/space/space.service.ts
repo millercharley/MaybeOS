@@ -14,8 +14,15 @@ import { EventsService } from '../events/events.service';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { AvailabilityRuleDto } from './dto/availability-rule.dto';
+import {
+  durationsFor,
+  hasAnyOpening,
+  slotsForDate,
+} from './availability/slots';
+import { datesInMonth, instantAt, zonedParts } from './availability/zoned-time';
 import { ConnectService } from '../stripe/connect.service';
 import { CalendarService } from '../calendar/calendar.service';
+import { StorageService } from '../storage/storage.service';
 
 @Injectable()
 export class SpaceService {
@@ -34,6 +41,8 @@ export class SpaceService {
     // A booking that never reaches the room's calendar is invisible to
     // everyone not looking at MaybeOS (SPC-04).
     private readonly calendar: CalendarService,
+    // Room photos, stored privately and signed on read (SPC-10).
+    private readonly storage: StorageService,
   ) {}
 
   /* ------------------------------------------------------------------ */
@@ -115,6 +124,78 @@ export class SpaceService {
    * publish an organiser's email to the whole co-op as a side effect of them
    * setting up a calendar.
    */
+  /**
+   * Put a photo on a room (SPC-10).
+   *
+   * Private and signed on read, like article covers and avatars: a room photo
+   * shows the inside of a co-op's building, and a co-op that has not published
+   * its address has not published its rooms either.
+   */
+  async replaceImage(orgId: string, roomId: string, data: string, mimeType: string) {
+    const room = await this.prisma.room.findFirst({
+      where: { id: roomId, orgId },
+      select: { id: true, imagePath: true },
+    });
+    if (!room) throw new NotFoundException('Room not found');
+
+    // Browsers hand back a full data: URL from FileReader; accept either.
+    const base64 = data.includes(',') ? data.slice(data.indexOf(',') + 1) : data;
+    const bytes = Buffer.from(base64.replace(/\s/g, ''), 'base64');
+
+    const imagePath = await this.storage.uploadRoomImage(orgId, bytes, mimeType);
+
+    const updated = await this.prisma.room.update({
+      where: { id: room.id },
+      data: { imagePath },
+    });
+
+    // Only now is the previous file unreferenced.
+    if (room.imagePath) {
+      await this.storage.deleteAttachment(orgId, room.imagePath).catch(() => {});
+    }
+
+    return this.withImageUrls([updated]).then((rooms) => rooms[0]);
+  }
+
+  async removeImage(orgId: string, roomId: string) {
+    const room = await this.prisma.room.findFirst({
+      where: { id: roomId, orgId },
+      select: { id: true, imagePath: true },
+    });
+    if (!room) throw new NotFoundException('Room not found');
+
+    const updated = await this.prisma.room.update({
+      where: { id: room.id },
+      data: { imagePath: null },
+    });
+
+    if (room.imagePath) {
+      await this.storage.deleteAttachment(orgId, room.imagePath).catch(() => {});
+    }
+
+    return updated;
+  }
+
+  /**
+   * Attach a signed URL to each room that has a photo.
+   *
+   * One request for the whole list rather than one per room: a co-op with a
+   * dozen rooms would otherwise make a dozen round trips to Storage to render
+   * one screen.
+   */
+  private async withImageUrls<T extends { imagePath?: string | null }>(
+    rooms: T[],
+  ): Promise<(T & { imageUrl: string | null })[]> {
+    const signed = await this.storage.signedAttachmentUrls(
+      rooms.map((r) => r.imagePath).filter((p): p is string => Boolean(p)),
+    );
+
+    return rooms.map((room) => ({
+      ...room,
+      imageUrl: room.imagePath ? (signed.get(room.imagePath) ?? null) : null,
+    }));
+  }
+
   async listRooms(orgId: string, isStaff = false) {
     const rooms = await this.prisma.room.findMany({
       where: { orgId, isActive: true },
@@ -122,9 +203,11 @@ export class SpaceService {
       orderBy: { name: 'asc' },
     });
 
-    if (isStaff) return rooms;
+    const withImages = await this.withImageUrls(rooms);
 
-    return rooms.map(({ googleAccountEmail, googleConnectedAt, ...room }) => room);
+    if (isStaff) return withImages;
+
+    return withImages.map(({ googleAccountEmail, googleConnectedAt, ...room }) => room);
   }
 
   async getRoom(orgId: string, roomId: string) {
@@ -286,7 +369,7 @@ export class SpaceService {
   async createBooking(orgId: string, roomId: string, userId: string, dto: CreateBookingDto) {
     const room = await this.prisma.room.findFirst({
       where: { id: roomId, orgId },
-      include: { availabilityRules: true },
+      include: { availabilityRules: true, org: { select: { timezone: true } } },
     });
 
     if (!room) {
@@ -304,8 +387,17 @@ export class SpaceService {
       throw new BadRequestException('End time must be after start time');
     }
 
+    // --- Check the room's own limit on how long a booking may run ---
+    this.validateDuration(room.maxBookingMinutes, startTime, endTime);
+
     // --- Check availability rules ---
-    this.validateAvailability(room.availabilityRules, startTime, endTime, room.alwaysAvailable);
+    this.validateAvailability(
+      room.availabilityRules,
+      startTime,
+      endTime,
+      room.alwaysAvailable,
+      room.org.timezone,
+    );
 
     // --- Check for conflicts ---
     const hasConflict = await this.checkConflicts(roomId, startTime, endTime);
@@ -487,7 +579,11 @@ export class SpaceService {
     // same result, but it cannot be separated from the lookup by a later edit.
     const booking = await this.prisma.booking.findFirst({
       where: { id: bookingId, room: { orgId } },
-      include: { room: { include: { availabilityRules: true } } },
+      include: {
+        room: {
+          include: { availabilityRules: true, org: { select: { timezone: true } } },
+        },
+      },
     });
 
     if (!booking) {
@@ -536,11 +632,14 @@ export class SpaceService {
       throw new BadRequestException('Room is not currently active');
     }
 
+    this.validateDuration(booking.room.maxBookingMinutes, startTime, endTime);
+
     this.validateAvailability(
       booking.room.availabilityRules,
       startTime,
       endTime,
       booking.room.alwaysAvailable,
+      booking.room.org.timezone,
     );
 
     const hasConflict = await this.checkConflicts(
@@ -693,6 +792,137 @@ export class SpaceService {
     });
   }
 
+  /**
+   * Every candidate slot on a date, and whether each can be booked (SPC-09).
+   *
+   * The one place that merges what the room publishes, what members have
+   * already taken, and what the room's own Google Calendar says. Those three
+   * lived in `validateAvailability`, `checkConflicts` and `busyConflict`, each
+   * reachable only by attempting a booking and reading the refusal — so the
+   * only way to find a free hour was to guess at one.
+   */
+  async slots(
+    orgId: string,
+    roomId: string,
+    date: string,
+    durationMinutes: number,
+  ) {
+    const room = await this.prisma.room.findFirst({
+      where: { id: roomId, orgId },
+      include: { availabilityRules: true, org: { select: { timezone: true } } },
+    });
+
+    if (!room) throw new NotFoundException('Room not found');
+
+    const timeZone = room.org.timezone;
+    const dayStart = instantAt(date, 0, timeZone);
+    // A day is not always 24 hours: the window runs to midnight local, which
+    // is 23 or 25 hours long on the mornings the clocks change.
+    const dayEnd = instantAt(date, 0, timeZone);
+    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+
+    const [taken, calendar] = await Promise.all([
+      this.prisma.booking.findMany({
+        where: {
+          roomId,
+          startTime: { lt: dayEnd },
+          endTime: { gt: dayStart },
+          OR: [
+            { status: { in: ['APPROVED', 'PENDING'] } },
+            // A slot being paid for is taken, and an expired hold is not.
+            { status: 'PENDING_PAYMENT', holdExpiresAt: { gt: new Date() } },
+          ],
+        },
+        select: { startTime: true, endTime: true },
+      }),
+      // Never throws and never blocks the page: a room with no calendar, or
+      // Google being unreachable, returns nothing busy and the local rules
+      // still apply.
+      this.calendar.busyForRoom(orgId, roomId, dayStart, dayEnd),
+    ]);
+
+    const slots = slotsForDate({
+      date,
+      timeZone,
+      durationMinutes,
+      alwaysAvailable: room.alwaysAvailable,
+      rules: room.availabilityRules,
+      booked: taken.map((b) => ({ start: b.startTime, end: b.endTime })),
+      busy: calendar,
+      now: new Date(),
+    });
+
+    return {
+      date,
+      timeZone,
+      durationMinutes,
+      durations: durationsFor(room.maxBookingMinutes),
+      maxBookingMinutes: room.maxBookingMinutes,
+      slots,
+    };
+  }
+
+  /**
+   * Which days in a month have anything left — the dots on the calendar.
+   *
+   * One free/busy call for the whole month rather than one per day: thirty
+   * round trips to Google to render one month view would make the calendar
+   * slower than the booking it exists to start.
+   */
+  async openDays(
+    orgId: string,
+    roomId: string,
+    month: string,
+    durationMinutes: number,
+  ) {
+    const room = await this.prisma.room.findFirst({
+      where: { id: roomId, orgId },
+      include: { availabilityRules: true, org: { select: { timezone: true } } },
+    });
+
+    if (!room) throw new NotFoundException('Room not found');
+
+    const timeZone = room.org.timezone;
+    const dates = datesInMonth(month);
+    const from = instantAt(dates[0], 0, timeZone);
+    const to = instantAt(dates[dates.length - 1], 0, timeZone);
+    to.setUTCDate(to.getUTCDate() + 1);
+
+    const [taken, calendar] = await Promise.all([
+      this.prisma.booking.findMany({
+        where: {
+          roomId,
+          startTime: { lt: to },
+          endTime: { gt: from },
+          OR: [
+            { status: { in: ['APPROVED', 'PENDING'] } },
+            { status: 'PENDING_PAYMENT', holdExpiresAt: { gt: new Date() } },
+          ],
+        },
+        select: { startTime: true, endTime: true },
+      }),
+      this.calendar.busyForRoom(orgId, roomId, from, to),
+    ]);
+
+    const booked = taken.map((b) => ({ start: b.startTime, end: b.endTime }));
+    const now = new Date();
+
+    const open = dates.filter((date) =>
+      hasAnyOpening({
+        date,
+        timeZone,
+        durationMinutes,
+        alwaysAvailable: room.alwaysAvailable,
+        rules: room.availabilityRules,
+        booked,
+        busy: calendar,
+        now,
+      }),
+    );
+
+    return { month, timeZone, open };
+  }
+
   async checkConflicts(
     roomId: string,
     startTime: Date,
@@ -733,6 +963,34 @@ export class SpaceService {
    * - At least one non-blackout rule must cover the requested time.
    * - No blackout rule may overlap the requested time.
    */
+  /**
+   * A booking may not run longer than the room allows (SPC-09).
+   *
+   * Checked here as well as in the duration chips: the chips are what a member
+   * sees, and a request that never went through them is exactly the one this
+   * exists to stop.
+   */
+  private validateDuration(
+    maxBookingMinutes: number | null,
+    startTime: Date,
+    endTime: Date,
+  ): void {
+    if (!maxBookingMinutes) return;
+
+    const requested = (endTime.getTime() - startTime.getTime()) / 60_000;
+    if (requested > maxBookingMinutes) {
+      const hours = maxBookingMinutes / 60;
+      const limit =
+        maxBookingMinutes % 60 === 0
+          ? `${hours} ${hours === 1 ? 'hour' : 'hours'}`
+          : `${maxBookingMinutes} minutes`;
+
+      throw new BadRequestException(
+        `This room can be booked for up to ${limit} at a time.`,
+      );
+    }
+  }
+
   private validateAvailability(
     rules: {
       dayOfWeek: number | null;
@@ -745,6 +1003,7 @@ export class SpaceService {
     startTime: Date,
     endTime: Date,
     alwaysAvailable: boolean,
+    timeZone: string,
   ): void {
     // Said deliberately, or not at all.
     if (alwaysAvailable) {
@@ -760,9 +1019,18 @@ export class SpaceService {
       );
     }
 
-    const dayOfWeek = startTime.getUTCDay();
-    const bookingStart = this.toMinutes(startTime);
-    const bookingEnd = this.toMinutes(endTime);
+    // In the co-op's own timezone. These were `getUTCDay()` and
+    // `getUTCHours()`, so "09:00-17:00" meant 5am-1pm for every organisation
+    // on the default America/New_York — and the weekday a late-evening booking
+    // was tested against was tomorrow's. No rule had been written anywhere
+    // when this was found, so the semantics changed rather than the data.
+    const local = zonedParts(startTime, timeZone);
+    const dayOfWeek = local.dayOfWeek;
+    const bookingStart = local.minutes;
+    // Measured from the start rather than read off the end, so a booking that
+    // finishes at midnight compares as 24:00 and not as 00:00.
+    const bookingEnd =
+      bookingStart + (endTime.getTime() - startTime.getTime()) / 60_000;
 
     // Filter rules that are effective for the requested date.
     const applicableRules = rules.filter((rule) => {

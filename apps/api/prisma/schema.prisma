@@ -563,7 +563,11 @@ model Room {
   description      String?
   capacity         Int?
   amenities        String[] @default([])
-  imageUrl         String?
+  /// A photo of the room, stored privately and served as a signed URL like
+  /// every other member-facing image (BEL-10). Named `imagePath` rather than
+  /// `imageUrl` because it holds a storage key — the previous name is what led
+  /// to article covers being published publicly the first time.
+  imagePath        String?
   isActive         Boolean  @default(true)
   requiresApproval Boolean  @default(false)
   memberOnly       Boolean  @default(true)
@@ -578,6 +582,10 @@ model Room {
   /// clock. Unchecked with no rules now means not bookable.
   alwaysAvailable  Boolean  @default(false)
   hourlyRate       Int? // cents per hour, null = not set
+  /// Longest single booking a member can make, in minutes. Null means no cap.
+  /// Drives which duration choices the booking screen offers, so a room that
+  /// cannot be held for three hours never shows the option (SPC-09).
+  maxBookingMinutes Int?
   /// Which calendar on the connected account this room writes to. 'primary'
   /// is a poor default for a co-op: the organiser who connects is usually
   /// signed in as themselves, so bookings for the Attic would land in their

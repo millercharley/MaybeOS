@@ -360,7 +360,36 @@ export class StorageService {
    * A fresh key every time, so a failed replacement leaves the article with
    * the cover it had rather than a broken image.
    */
+  async uploadRoomImage(orgId: string, body: Buffer, mimeType: string): Promise<string> {
+    return this.uploadImage(orgId, 'room-images', body, mimeType, 'Room photos');
+  }
+
   async uploadArticleCover(orgId: string, body: Buffer, mimeType: string): Promise<string> {
+    return this.uploadImage(orgId, 'article-covers', body, mimeType, 'Cover images');
+  }
+
+  /**
+   * Store an image against an org, under `folder`.
+   *
+   * Was `uploadArticleCover` alone; room photos need exactly the same
+   * sniffing, size limit and failure handling, and a second copy of it would
+   * be a second place for the mime sniffing to drift out of step with what the
+   * bucket accepts.
+   *
+   * Uses the attachments bucket, which is already private, already signed on
+   * read, and already accepts images. A separate bucket would be another thing
+   * to configure and get the policies right on.
+   *
+   * A fresh key every time, so a failed replacement leaves the old image in
+   * place rather than a broken one.
+   */
+  private async uploadImage(
+    orgId: string,
+    folder: string,
+    body: Buffer,
+    mimeType: string,
+    what: string,
+  ): Promise<string> {
     if (!this.isConfigured) {
       throw new ServiceUnavailableException(
         'Image uploads are not configured on this server (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).',
@@ -375,11 +404,11 @@ export class StorageService {
     }
     if (body.length > COVER_MAX_BYTES) {
       throw new BadRequestException(
-        `Cover images have to be under ${Math.round(COVER_MAX_BYTES / 1024 / 1024)} MB.`,
+        `${what} have to be under ${Math.round(COVER_MAX_BYTES / 1024 / 1024)} MB.`,
       );
     }
 
-    const path = `${orgId}/article-covers/${randomUUID()}.${EXTENSION[sniffed]}`;
+    const path = `${orgId}/${folder}/${randomUUID()}.${EXTENSION[sniffed]}`;
     const response = await fetch(`${this.url}/storage/v1/object/${ATTACHMENT_BUCKET}/${path}`, {
       method: 'POST',
       headers: { ...this.headers, 'Content-Type': sniffed },
@@ -389,7 +418,7 @@ export class StorageService {
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
       this.logger.error(
-        `Cover upload failed for org ${orgId}: ${response.status} ${detail.slice(0, 200)}`,
+        `${folder} upload failed for org ${orgId}: ${response.status} ${detail.slice(0, 200)}`,
       );
       throw new ServiceUnavailableException(
         response.status === 400 || response.status === 401 || response.status === 403
