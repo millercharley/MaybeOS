@@ -604,7 +604,11 @@ export class SpaceService {
         orgName: b.room.org.name,
         title: b.title,
         when: this.formatWhen(b.startTime, b.endTime, b.room.org.timezone),
+        // Two destinations, because these emails ask for two different things.
+        // Every one of them used to link to the room list, so "Reschedule or
+        // cancel" opened a page offering neither.
         manageUrl: `${webUrl}/portal/${b.room.org.slug}/rooms`,
+        bookingsUrl: `${webUrl}/member/${b.room.org.slug}/bookings`,
       };
 
       const to = b.user.email;

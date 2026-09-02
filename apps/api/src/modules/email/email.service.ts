@@ -10,7 +10,17 @@ export interface BookingEmailData {
   when: string;
   title: string;
   /** Where the member manages this booking. Must be a page that exists. */
+  /**
+   * Where to go and book something. The room list.
+   *
+   * Distinct from `bookingsUrl` because these emails ask for two different
+   * things: "find another time" wants the rooms, "reschedule or cancel" wants
+   * the booking. One URL served both and pointed at the rooms, so the button
+   * offering to cancel a booking opened a page with no cancel on it.
+   */
   manageUrl: string;
+  /** The member's own bookings, where reschedule and cancel live. */
+  bookingsUrl: string;
 }
 
 export interface EmailJobData {
@@ -311,7 +321,7 @@ export class EmailService {
             <p>Hi ${data.memberName}, your request for <strong>${data.roomName}</strong> at ${data.orgName} is with an organiser.</p>
             <p><strong>${data.title}</strong><br>${data.when}</p>
             <p>You'll get another email once it's confirmed. Nothing is held until then.</p>
-            <p><a href="${data.manageUrl}" style="display:inline-block;padding:12px 24px;background:#c81e2c;color:#fffdf8;border:1.5px solid #211c16;border-radius:8px;text-decoration:none;font-weight:600;">View your bookings</a></p>
+            <p><a href="${data.bookingsUrl}" style="display:inline-block;padding:12px 24px;background:#c81e2c;color:#fffdf8;border:1.5px solid #211c16;border-radius:8px;text-decoration:none;font-weight:600;">View your bookings</a></p>
           `,
         };
 
@@ -322,7 +332,7 @@ export class EmailService {
             <h1>Your booking is confirmed</h1>
             <p>Hi ${data.memberName}, <strong>${data.roomName}</strong> at ${data.orgName} is yours.</p>
             <p><strong>${data.title}</strong><br>${data.when}</p>
-            <p><a href="${data.manageUrl}" style="display:inline-block;padding:12px 24px;background:#c81e2c;color:#fffdf8;border:1.5px solid #211c16;border-radius:8px;text-decoration:none;font-weight:600;">Reschedule or cancel</a></p>
+            <p><a href="${data.bookingsUrl}" style="display:inline-block;padding:12px 24px;background:#c81e2c;color:#fffdf8;border:1.5px solid #211c16;border-radius:8px;text-decoration:none;font-weight:600;">Reschedule or cancel</a></p>
             <p style="color:#8b8072;font-size:14px;">If your plans change, cancelling frees the room for someone else.</p>
           `,
         };
@@ -359,7 +369,7 @@ export class EmailService {
             <p>Hi ${data.memberName}, <strong>${data.roomName}</strong> at ${data.orgName} is now booked for:</p>
             <p><strong>${data.title}</strong><br>${data.when}</p>
             ${data.needsApproval ? `<p>Because the time changed, it needs confirming again. We'll email you when it is.</p>` : ''}
-            <p><a href="${data.manageUrl}" style="display:inline-block;padding:12px 24px;background:#c81e2c;color:#fffdf8;border:1.5px solid #211c16;border-radius:8px;text-decoration:none;font-weight:600;">View your bookings</a></p>
+            <p><a href="${data.bookingsUrl}" style="display:inline-block;padding:12px 24px;background:#c81e2c;color:#fffdf8;border:1.5px solid #211c16;border-radius:8px;text-decoration:none;font-weight:600;">View your bookings</a></p>
           `,
         };
 
