@@ -92,10 +92,35 @@ in the repo. The ones production needs:
 | `POSTMARK_API_TOKEN` | email delivery — **see below, this one fails silently** |
 | `EMAIL_FROM` | must be a Postmark-verified sender; defaults to `noreply@maybeos.org` |
 | `SENTRY_DSN` | error tracking |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | optional; calendar sync refuses with 503 when unset |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | optional; calendar sync refuses with 503 naming whichever are unset. All three count — Google rejects an empty or unregistered `redirect_uri` on its own page, so two out of three fails in exactly the way the refusal exists to prevent |
 
 Dev and prod Supabase credentials are **not interchangeable**, and the two
 dashboards look identical. Check the project name before pasting anything.
+
+### Google Calendar
+
+One OAuth client for the whole platform — it is MaybeOS's identity as an
+application, not a link to any one co-op's calendar. Admins connect their own
+calendars through the rooms page; nothing about a co-op belongs in this config.
+
+`GOOGLE_REDIRECT_URI` must be **byte-identical** to a URI registered on the
+OAuth client, including scheme and trailing slash:
+
+- production: `https://maybeos.org/api/calendar/oauth/callback`
+- local: `http://localhost:3001/api/calendar/oauth/callback`
+
+There is no `api.` subdomain — `netlify.toml` routes `/api/*` to the function
+on the same host. An earlier version of `.env.production.example` pointed at
+`api.maybeitsfate.com`, which has never existed.
+
+Set the consent screen's publishing status to **In production**. While it is
+**Testing**, Google expires refresh tokens after seven days: sync works, then
+silently stops a week later and every room has to be reconnected, with nothing
+in our logs explaining why. Unverified apps in production show an extra warning
+screen and are capped at 100 users, which is fine; verification removes it.
+
+Scopes requested: `calendar.events` (writing bookings) and `calendar.readonly`
+(free/busy, and listing which calendars an account can write to).
 
 ## Database connections are the thing that takes the site down
 
