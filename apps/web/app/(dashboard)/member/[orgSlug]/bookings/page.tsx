@@ -175,7 +175,7 @@ export default function MemberBookingsPage() {
   const past = (bookings ?? []).filter((b) => b.status !== 'PENDING' && b.status !== 'APPROVED');
 
   return (
-    <div className="max-w-3xl">
+    <div className="mx-auto max-w-3xl">
       <h1 className="font-display text-2xl leading-tight">My bookings</h1>
       <p className="mt-1 text-sm text-[var(--text-secondary)]">
         Rooms you&apos;ve booked, and anything still waiting on an organiser.
@@ -303,7 +303,7 @@ export default function MemberBookingsPage() {
 
               {publishingId === b.id && (
                 <div className="mt-4 border-t border-[var(--border)] pt-4">
-                  <div className="mb-3 flex items-start justify-between gap-4">
+                  <div className="mb-3 flex flex-wrap items-start justify-between gap-4">
                     <div>
                       <p className="text-sm font-medium">Tell people about it</p>
                       <p className="mt-1 text-sm text-[var(--text-secondary)]">

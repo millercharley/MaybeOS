@@ -102,7 +102,7 @@ export default function BelongingPage() {
   ];
 
   return (
-    <div className="max-w-4xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Belonging Support</h1>
         <p className="mt-1 text-sm text-gray-500">
@@ -376,7 +376,7 @@ function EmailEditor({
     <div className="rounded-xl border border-gray-200 bg-white">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+        className="flex flex-wrap w-full items-center justify-between gap-3 px-4 py-3 text-left"
       >
         <span>
           <span className="font-medium text-gray-900">

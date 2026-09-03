@@ -74,7 +74,7 @@ export function EventSummary({ orgId, eventId }: { orgId: string; eventId: strin
 
       {m && (
         <dl className="mt-5 space-y-2 border-t border-gray-100 pt-4 text-sm">
-          <div className="flex justify-between">
+          <div className="flex flex-wrap justify-between gap-3">
             <dt className="text-gray-500">
               Tickets sold
               {m.refundedCount > 0 && (
@@ -83,17 +83,17 @@ export function EventSummary({ orgId, eventId }: { orgId: string; eventId: strin
             </dt>
             <dd className="font-medium text-gray-900">{m.ticketCount}</dd>
           </div>
-          <div className="flex justify-between">
+          <div className="flex flex-wrap justify-between gap-3">
             <dt className="text-gray-500">Ticket sales</dt>
             <dd className="font-medium text-gray-900">{money(m.grossCents)}</dd>
           </div>
           {m.coopShareCents > 0 && (
-            <div className="flex justify-between">
+            <div className="flex flex-wrap justify-between gap-3">
               <dt className="text-gray-500">The co-op&rsquo;s share</dt>
               <dd className="text-gray-600">−{money(m.coopShareCents)}</dd>
             </div>
           )}
-          <div className="flex justify-between border-t border-gray-100 pt-2">
+          <div className="flex flex-wrap justify-between border-t border-gray-100 pt-2 gap-3">
             <dt className="font-medium text-gray-900">Yours</dt>
             <dd className="font-semibold text-gray-900">{money(m.netCents)}</dd>
           </div>

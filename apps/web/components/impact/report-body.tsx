@@ -50,7 +50,7 @@ function BlockFigures({ block }: { block: ReportBlock }) {
       <div className="mt-4 space-y-3">
         {data.figures.map((f) => (
           <div key={f.label}>
-            <div className="flex items-baseline justify-between gap-3 text-sm">
+            <div className="flex flex-wrap items-baseline justify-between gap-3 text-sm">
               <span className="text-gray-600">{f.label}</span>
               <span className="tabular-nums text-gray-900">
                 {f.average.toFixed(1)}

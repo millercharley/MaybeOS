@@ -64,7 +64,7 @@ export function ArticleModal({
         className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
           <h2 className="truncate text-xl font-bold text-gray-900">{article.title}</h2>
           <button
             onClick={onClose}
@@ -161,7 +161,7 @@ export function ArticleModal({
             </div>
           )}
 
-          <div className="mt-6 flex items-center justify-between border-t border-gray-100 pt-4">
+          <div className="mt-6 flex flex-wrap items-center justify-between border-t border-gray-100 pt-4 gap-3">
             <div className="flex items-center gap-4">
               <button
                 onClick={onLike}

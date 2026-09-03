@@ -24,7 +24,7 @@ export function LegalPage({
   return (
     <div className="min-h-screen bg-paper">
       <header className="border-b-[1.5px] border-ink">
-        <div className="mx-auto flex max-w-container items-center justify-between px-6 py-6">
+        <div className="mx-auto flex flex-wrap max-w-container items-center justify-between px-6 py-6 gap-3">
           <Link href="/" aria-label="MaybeOS home">
             <Wordmark height={22} />
           </Link>

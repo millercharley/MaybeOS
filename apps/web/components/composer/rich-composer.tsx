@@ -222,7 +222,7 @@ export function RichComposer({
         </p>
       )}
 
-      <div className="flex items-center justify-between gap-2 border-t border-gray-100 px-2 py-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 px-2 py-1.5">
         <div className="relative flex items-center gap-1">
           <button
             type="button"

@@ -66,7 +66,7 @@ export default function MemberPortalPage() {
   );
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-container px-4 py-8 sm:px-6 lg:px-8">
       {/* Welcome Message */}
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">
@@ -82,7 +82,7 @@ export default function MemberPortalPage() {
         {/* Left: Membership Card */}
         <div className="lg:col-span-2">
           <div className="card rounded-xl border border-gray-200">
-            <div className="flex items-start justify-between">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">My Membership</h2>
                 <p className="mt-1 text-sm text-gray-500">
@@ -170,7 +170,7 @@ export default function MemberPortalPage() {
                 <li key={rsvp.id}>
                   <Link
                     href={`/member/${orgSlug}/rsvps`}
-                    className="card flex items-center justify-between rounded-xl border border-gray-200 hover:border-brand-300"
+                    className="card flex flex-wrap items-center justify-between rounded-xl border border-gray-200 hover:border-brand-300 gap-3"
                   >
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium text-gray-900">

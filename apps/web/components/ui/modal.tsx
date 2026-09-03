@@ -35,7 +35,7 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
       }}
     >
       <div className="w-full max-w-lg rounded-xl bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+        <div className="flex flex-wrap items-center justify-between border-b border-gray-200 px-6 py-4 gap-3">
           <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="h-5 w-5" />

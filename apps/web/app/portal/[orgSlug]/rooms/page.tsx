@@ -91,7 +91,7 @@ export default function PortalRoomsPage() {
                   className="mb-3 h-32 w-full rounded-lg object-cover"
                 />
               )}
-              <div className="flex items-start justify-between">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-semibold text-gray-900">{room.name}</h3>
                   {room.description && (

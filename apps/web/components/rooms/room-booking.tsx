@@ -191,7 +191,7 @@ export function RoomBooking({
           )}
         </div>
 
-        <div className="mt-6 flex items-center justify-between">
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
           <button
             onClick={() => setMonth(shiftMonth(month, -1))}
             className="btn-ghost"

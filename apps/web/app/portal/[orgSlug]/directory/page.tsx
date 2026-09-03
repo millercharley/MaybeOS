@@ -63,7 +63,7 @@ export default function PortalDirectoryPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-900">Member Directory</h1>
         <span className="text-sm text-gray-500">{members.length} members</span>
       </div>
@@ -160,7 +160,7 @@ function MemberProfile({ member, onClose }: { member: Member; onClose: () => voi
         className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-brand-100">
               {member.user.avatarUrl ? (

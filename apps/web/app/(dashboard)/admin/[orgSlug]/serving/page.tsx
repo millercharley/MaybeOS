@@ -213,7 +213,7 @@ export default function ServingPage() {
                   {group.occurrences.map((occurrence) => (
                     <li
                       key={`${occurrence.dutyId}:${occurrence.date}`}
-                      className="flex items-center justify-between gap-3 p-3 text-sm"
+                      className="flex flex-wrap items-center justify-between gap-3 p-3 text-sm"
                     >
                       <span className="min-w-0">
                         <span className="font-medium">{occurrence.title}</span>
@@ -287,7 +287,7 @@ export default function ServingPage() {
 
         <ul className="mt-2 divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
           {(standing?.members ?? []).map((member) => (
-            <li key={member.userId} className="flex items-center justify-between gap-3 p-3 text-sm">
+            <li key={member.userId} className="flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
               <span className="min-w-0">
                 <span className="font-medium">{member.name ?? 'A member'}</span>
                 {member.tier && (

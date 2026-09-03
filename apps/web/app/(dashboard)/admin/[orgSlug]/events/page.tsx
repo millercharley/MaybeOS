@@ -119,7 +119,7 @@ export default function EventsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-900">Events</h1>
         {/* This button has had no handler since the page was built (EVT-07),
             so organisers — the people most likely to be programming events —
@@ -137,7 +137,7 @@ export default function EventsPage() {
 
       {(creating || editing) && (
         <section className="card">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-semibold text-gray-900">
               {editing ? `Edit ${editing.title}` : 'New event'}
             </h2>
@@ -216,7 +216,7 @@ export default function EventsPage() {
               href={`/admin/${orgSlug}/events/${event.id}`}
               className="card block cursor-pointer transition-shadow hover:shadow-md"
             >
-              <div className="mb-3 flex items-start justify-between">
+              <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                 <h3 className="text-base font-semibold text-gray-900">{event.title}</h3>
                 <span
                   className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${

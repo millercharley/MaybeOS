@@ -130,7 +130,7 @@ export default function MemberBillingPage() {
   );
 
   return (
-    <div className="max-w-3xl">
+    <div className="mx-auto max-w-3xl">
       <p className="data mb-2 text-xs uppercase tracking-wider text-[var(--text-tertiary)]">
         {membership.org?.name}
       </p>

@@ -87,7 +87,7 @@ export function Locations({ orgId }: { orgId: string }) {
       ) : (
         <ul className="space-y-2">
           {locations.map((l) => (
-            <li key={l.id} className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 p-3">
+            <li key={l.id} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-gray-200 p-3">
               <div className="min-w-0">
                 <p className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
                   <MapPin className="h-3.5 w-3.5 text-gray-400" />

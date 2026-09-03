@@ -204,7 +204,7 @@ export default function MyServicePage() {
           </p>
           <ul className="mt-2 divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
             {data!.adoptions.map((adoption) => (
-              <li key={adoption.id} className="flex items-center justify-between gap-3 p-4">
+              <li key={adoption.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
                 <div className="min-w-0">
                   <p className="inline-flex items-center gap-2 font-medium">
                     <Repeat size={14} aria-hidden="true" />
@@ -239,7 +239,7 @@ export default function MyServicePage() {
         ) : (
           <ul className="mt-2 divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
             {done.map((claim) => (
-              <li key={claim.id} className="flex items-center justify-between gap-3 p-4">
+              <li key={claim.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
                 <div className="min-w-0">
                   <p className="font-medium">{claim.duty?.title}</p>
                   <p className="mt-1 text-xs text-[var(--text-secondary)]">
