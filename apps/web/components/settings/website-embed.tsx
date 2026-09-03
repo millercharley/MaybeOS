@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { Copy, Check, ExternalLink } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Copy, Check } from 'lucide-react';
 import { Org } from '@/lib/api';
+import { DEFAULT_ACCENT, embedSnippet, normaliseHex } from '@/lib/embed-snippet';
 
 /**
  * The co-op's events, on the co-op's own website.
@@ -18,11 +19,16 @@ import { Org } from '@/lib/api';
  */
 export function WebsiteEmbed({ org }: { org: Org }) {
   const [copied, setCopied] = useState(false);
+  const [accentInput, setAccentInput] = useState(DEFAULT_ACCENT);
+
+  const accent = normaliseHex(accentInput);
+  const invalid = accentInput.trim() !== '' && accent === null;
 
   // Whatever host this app is served from, so a staging copy never hands out a
   // production snippet.
   const origin = typeof window === 'undefined' ? 'https://maybeos.org' : window.location.origin;
-  const snippet = `<script src="${origin}/embed.js" data-org="${org.slug}" defer></script>`;
+
+  const snippet = embedSnippet(origin, org.slug, accentInput);
 
   async function copy() {
     try {
@@ -41,30 +47,63 @@ export function WebsiteEmbed({ org }: { org: Org }) {
         <h2 className="text-base font-semibold text-gray-900">Your events on your website</h2>
         <p className="mt-1 text-sm text-gray-500">
           Paste this into an embed or custom-code block on your own site. Your public events
-          appear there and stay in step on their own — there is nothing to update when you add
-          an event.
+          for the next 30 days appear there and stay in step on their own — there is nothing
+          to update when you add an event.
         </p>
       </div>
+
+      <label className="block">
+        <span className="text-sm font-medium text-gray-700">Accent colour</span>
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          {/* Two ways in, one value: the picker for people who want to see the
+              colour, the text field for people who have a brand hex to paste. */}
+          <input
+            type="color"
+            aria-label="Pick an accent colour"
+            className="h-9 w-12 cursor-pointer rounded border border-gray-200 bg-white p-1"
+            value={accent ?? DEFAULT_ACCENT}
+            onChange={(e) => setAccentInput(e.target.value)}
+          />
+          <input
+            type="text"
+            className="input w-36 font-mono"
+            spellCheck={false}
+            placeholder={DEFAULT_ACCENT}
+            value={accentInput}
+            onChange={(e) => setAccentInput(e.target.value)}
+          />
+          {accentInput.trim() !== DEFAULT_ACCENT && (
+            <button
+              type="button"
+              onClick={() => setAccentInput(DEFAULT_ACCENT)}
+              className="btn-ghost text-xs"
+            >
+              Reset
+            </button>
+          )}
+        </div>
+        <span className="mt-1 block text-xs text-gray-500">
+          {invalid
+            ? 'That is not a colour yet — use a hex like #b03030.'
+            : 'Used for event dates and ticket prices in the embed. Match your own site.'}
+        </span>
+      </label>
 
       <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
         <code className="block break-all font-mono text-xs text-gray-800">{snippet}</code>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button type="button" onClick={copy} className="btn-primary inline-flex items-center gap-2 text-sm">
-          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-          {copied ? 'Copied' : 'Copy embed code'}
-        </button>
-        <a
-          href={`/portal/${org.slug}/events`}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700"
-        >
-          See what it will show
-          <ExternalLink className="h-3.5 w-3.5" />
-        </a>
-      </div>
+      <button
+        type="button"
+        onClick={copy}
+        disabled={invalid}
+        className="btn-primary inline-flex items-center gap-2 text-sm"
+      >
+        {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+        {copied ? 'Copied' : 'Copy embed code'}
+      </button>
+
+      <EmbedPreview origin={origin} slug={org.slug} accent={accent ?? DEFAULT_ACCENT} />
 
       <div className="border-t border-gray-100 pt-3 text-xs text-gray-500">
         <p>
@@ -72,12 +111,67 @@ export function WebsiteEmbed({ org }: { org: Org }) {
           members-only or private stays off your website, and a draft stays off until you publish
           it.
         </p>
-        <p className="mt-2">
-          Optional: add <code className="font-mono">data-limit=&quot;5&quot;</code> to show fewer,
-          or <code className="font-mono">data-accent=&quot;#b03030&quot;</code> to match your
-          site&apos;s colour.
-        </p>
       </div>
     </section>
+  );
+}
+
+/**
+ * The embed, actually running.
+ *
+ * This used to be a link to the portal's events page, which is a different
+ * page with a different design — so "See what it will show" showed something
+ * else. It now loads the real `embed.js` against the real feed, which is the
+ * only preview that cannot drift from what a visitor gets.
+ *
+ * The script is re-inserted whenever the accent changes: `embed.js` reads its
+ * attributes once, at execution, and a live-updating preview would mean two
+ * implementations of the same rendering.
+ */
+function EmbedPreview({
+  origin,
+  slug,
+  accent,
+}: {
+  origin: string;
+  slug: string;
+  accent: string;
+}) {
+  const holder = useRef<HTMLDivElement>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const node = holder.current;
+    if (!node) return;
+
+    node.replaceChildren();
+    setFailed(false);
+
+    const script = document.createElement('script');
+    script.src = `${origin}/embed.js`;
+    script.setAttribute('data-org', slug);
+    script.setAttribute('data-accent', accent);
+    script.onerror = () => setFailed(true);
+    node.appendChild(script);
+
+    return () => node.replaceChildren();
+  }, [origin, slug, accent]);
+
+  return (
+    <div>
+      <p className="text-sm font-medium text-gray-700">What it will show</p>
+      <p className="mt-0.5 text-xs text-gray-500">
+        This is the embed itself, running against your live events — not a picture of it.
+      </p>
+      <div className="mt-2 rounded-lg border border-dashed border-gray-300 bg-white p-4">
+        {failed ? (
+          <p className="text-sm text-gray-500">
+            The embed script could not be loaded from {origin}.
+          </p>
+        ) : (
+          <div ref={holder} />
+        )}
+      </div>
+    </div>
   );
 }

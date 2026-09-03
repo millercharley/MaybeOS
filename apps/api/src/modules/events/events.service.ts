@@ -567,6 +567,9 @@ export class EventsService {
    * widening the model later cannot quietly start publishing more than a co-op
    * agreed to — RSVP counts, host identities and internal ids stay here.
    */
+  /** How far ahead a website embed looks. See `listEmbedEvents` (EVT-21). */
+  private static readonly EMBED_WINDOW_DAYS = 30;
+
   async listEmbedEvents(orgSlug: string) {
     const org = await this.prisma.organization.findUnique({
       where: { slug: orgSlug },
@@ -574,10 +577,26 @@ export class EventsService {
     });
     if (!org) throw new NotFoundException('Organization not found');
 
-    const { data } = await this.listPublicEvents(org.id, { perPage: 50 });
+    // The next 30 days, all of them (EVT-21). Charley: "always shows the next
+    // 30 days of events without needing pagination." A window rather than a
+    // count, because a co-op with a busy fortnight and a quiet one should not
+    // see the busy fortnight truncated — and because a page of embedded events
+    // with a "next" button on somebody's marketing site is a dead end.
+    const now = new Date();
+    const horizon = new Date(now.getTime() + EventsService.EMBED_WINDOW_DAYS * 86_400_000);
+
+    const { data } = await this.listPublicEvents(org.id, {
+      from: now.toISOString(),
+      to: horizon.toISOString(),
+      // High enough that the window is what limits the list, not the page
+      // size. A co-op with more than 200 public events in 30 days has a
+      // different problem.
+      perPage: 200,
+    });
 
     return {
       org: { name: org.name, slug: org.slug },
+      windowDays: EventsService.EMBED_WINDOW_DAYS,
       events: data.map((event) => ({
         title: event.title,
         slug: event.slug,

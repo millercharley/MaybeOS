@@ -25,8 +25,11 @@
   if (!script) return;
 
   var slug = script.getAttribute('data-org');
-  var limit = parseInt(script.getAttribute('data-limit') || '10', 10);
   var accent = script.getAttribute('data-accent') || '#b03030';
+
+  // `data-limit` is gone (EVT-21). The feed is the next 30 days and every
+  // event in it renders: a cap would silently hide events inside the window
+  // the co-op is advertising, which is worse than a long list.
 
   // The API lives wherever this script was served from, so a co-op never
   // configures a hostname and staging never points at production by accident.
@@ -49,7 +52,10 @@
     '.wrap { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1a1a1a; }',
     '.event { display: flex; gap: 16px; padding: 16px 0; border-bottom: 1px solid #e2e2e2; align-items: baseline; }',
     '.event:last-child { border-bottom: 0; }',
-    '.when { flex: 0 0 7.5rem; font-size: 13px; color: #666; font-variant-numeric: tabular-nums; }',
+    // The accent carries the date as well as the price. It used to colour the
+    // price alone, so a co-op whose events are free saw no change at all from
+    // setting their brand colour (EVT-21).
+    '.when { flex: 0 0 7.5rem; font-size: 13px; color: ' + accent + '; font-variant-numeric: tabular-nums; font-weight: 600; }',
     '.body { min-width: 0; flex: 1; }',
     '.title { font-weight: 600; }',
     '.meta { margin-top: 2px; font-size: 13px; color: #666; }',
@@ -127,12 +133,14 @@
       return res.json();
     })
     .then(function (data) {
-      var events = (data.events || []).slice(0, limit);
+      var events = data.events || [];
 
       if (!events.length) {
         var empty = document.createElement('div');
         empty.className = 'empty';
-        empty.textContent = 'No upcoming events.';
+        // Says the window, so an empty embed reads as "nothing booked yet"
+        // rather than as a broken script on the co-op's own website.
+        empty.textContent = 'No events in the next 30 days.';
         wrap.appendChild(empty);
         return;
       }
