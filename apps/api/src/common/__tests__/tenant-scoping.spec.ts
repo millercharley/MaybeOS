@@ -46,6 +46,9 @@ const TENANT_OWNED = [
   'membershipTier',
   'invitation',
   'location',
+  'duty',
+  'dutyClaim',
+  'dutyAdoption',
 ];
 
 const ALLOW_COMMENT = 'tenant-scoping-exempt';

@@ -12,6 +12,7 @@ import { OrgModule } from './modules/org/org.module';
 import { MemberModule } from './modules/member/member.module';
 import { EventsModule } from './modules/events/events.module';
 import { SpaceModule } from './modules/space/space.module';
+import { ServiceModule } from './modules/service/service.module';
 import { CommonsModule } from './modules/commons/commons.module';
 import { ImpactModule } from './modules/impact/impact.module';
 import { SchedulerModule } from './modules/scheduler/scheduler.module';
@@ -106,6 +107,7 @@ import { HealthModule } from './modules/health/health.module';
     MemberModule,
     EventsModule,
     SpaceModule,
+    ServiceModule,
     CommonsModule,
     ImpactModule,
     StripeModule,
