@@ -37,33 +37,38 @@ describe('which nav section is open', () => {
     expect(openSectionLabel(sections, '/admin/maybeitsfate/members/import')).toBe('Organising');
   });
 
-  it('leaves every section closed on the dashboard itself', () => {
-    // The dashboard is hoisted out and has no header of its own, so there is
-    // no section to open — and `/admin/<slug>` must not drag Organising open
-    // by being a prefix of its items' hrefs.
-    expect(openSectionLabel(sections, '/admin/maybeitsfate')).toBeNull();
+  it('opens the co-op on the dashboard, where everybody lands', () => {
+    // The dashboard is hoisted out and has no header of its own, so no section
+    // matches — and `/admin/<slug>` must not drag Organising open by being a
+    // prefix of its items' hrefs either. What is left is the default, and the
+    // default is the co-op: Welcome, Commons, Directory.
+    expect(openSectionLabel(sections, '/admin/maybeitsfate')).toBe('MaybeItsFate');
   });
 
-  it('does not guess when the address is unknown', () => {
-    expect(openSectionLabel(sections, '/login')).toBeNull();
-    expect(openSectionLabel(sections, null)).toBeNull();
+  it('falls back to the co-op off the nav entirely', () => {
+    expect(openSectionLabel(sections, '/login')).toBe('MaybeItsFate');
+    expect(openSectionLabel(sections, null)).toBe('MaybeItsFate');
   });
 
-  it('never opens two sections for one address', () => {
-    // Events exists in both the co-op portal and the organising tools, under
-    // the same slug. Whichever wins, it is one.
-    const paths = [
-      '/admin/maybeitsfate/events',
-      '/portal/maybeitsfate/events',
-      '/member/maybeitsfate/events',
-    ];
-    for (const path of paths) {
-      const matched = sections.filter(
-        (s) => s.label && s.items.some((i) => isNavItemActive(i.href, path)),
-      );
-      expect(matched).toHaveLength(1);
-      expect(openSectionLabel(sections, path)).toBe(matched[0].label);
-    }
+  it('has nothing to open before a co-op is known', () => {
+    // Signed in with no membership loaded yet: no community section exists, so
+    // the fallback must not invent one.
+    const empty = sidebarSections({ signedIn: true });
+    expect(openSectionLabel(empty, '/member')).toBeNull();
+  });
+
+  it('opens whatever the co-op happens to be called', () => {
+    // Found by id, not by label — the community section is named after the
+    // co-op, so there is no string to look for. Even a co-op that calls itself
+    // after one of the fixed sections gets its own.
+    const awkward = sidebarSections({
+      membership: { role: 'ADMIN', org: { name: 'Organising', slug: 'org' } },
+      signedIn: true,
+    });
+    expect(awkward.find((s) => s.id === 'community')?.items[0].href).toBe(
+      '/portal/org/welcome',
+    );
+    expect(openSectionLabel(awkward, '/admin/org')).toBe('Organising');
   });
 });
 

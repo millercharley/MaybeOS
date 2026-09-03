@@ -24,8 +24,18 @@ export interface NavItem {
   icon: LucideIcon;
 }
 
+/**
+ * Which section this is, independent of what it is called.
+ *
+ * The community section is labelled with the co-op's own name, so anything
+ * that needs to find it — the default open section, below — would otherwise
+ * have to match on a string that changes per co-op.
+ */
+export type NavSectionId = 'community' | 'organising' | 'membership' | 'platform';
+
 export interface NavSection {
   label?: string;
+  id?: NavSectionId;
   items: NavItem[];
 }
 
@@ -162,22 +172,22 @@ export function sidebarSections({
   // Omitted rather than guessed when there is no slug: `/portal/undefined/...`
   // reads as a broken product rather than a profile that has not loaded.
   if (slug) {
-    sections.push({ label: name, items: coopNav(slug) });
+    sections.push({ label: name, id: 'community', items: coopNav(slug) });
   }
 
   if (signedIn && isOrganiser && slug) {
-    sections.push({ label: 'Organising', items: admin.slice(1) });
+    sections.push({ label: 'Organising', id: 'organising', items: admin.slice(1) });
   }
 
   if (signedIn && slug) {
-    sections.push({ label: 'My membership', items: member.slice(1) });
+    sections.push({ label: 'My membership', id: 'membership', items: member.slice(1) });
   }
 
   // Last, and labelled as MaybeOS rather than as part of the co-op — because
   // it is not part of the co-op, and a console sitting among a co-op's own
   // tools would read as one of them (PLT-01).
   if (signedIn && isPlatformAdmin) {
-    sections.push({ label: 'MaybeOS', items: platformNav });
+    sections.push({ label: 'MaybeOS', id: 'platform', items: platformNav });
   }
 
   return sections;
@@ -233,19 +243,26 @@ export function activeNavHref(
  *
  * Built on the active item rather than on "contains a match", so the same
  * prefix problem cannot open two sections: on `/admin/<slug>` the active item
- * is the hoisted Dashboard, which belongs to no labelled section, and
- * everything stays closed.
+ * is the hoisted Dashboard, which belongs to no labelled section.
+ *
+ * Which is the case the fallback exists for. The dashboard is where everybody
+ * lands, and a nav of nothing but closed headers there says a co-op is a set
+ * of filing cabinets — Charley, 2026-09-03: "the default state of the
+ * navigation pane is to have the user's community expanded to show Welcome,
+ * Commons, etc." So the co-op is what is open until an address says otherwise.
  */
 export function openSectionLabel(
   sections: NavSection[],
   pathname?: string | null,
 ): string | null {
   const active = activeNavHref(sections, pathname);
-  if (!active) return null;
 
-  const section = sections.find(
-    (s) => s.label && s.items.some((i) => i.href === active),
-  );
+  const matched = active
+    ? sections.find((s) => s.label && s.items.some((i) => i.href === active))
+    : undefined;
 
-  return section?.label ?? null;
+  if (matched?.label) return matched.label;
+
+  // By `id`, not by label: the community section is named after the co-op.
+  return sections.find((s) => s.id === 'community')?.label ?? null;
 }
