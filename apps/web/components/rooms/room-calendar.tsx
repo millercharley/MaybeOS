@@ -127,19 +127,26 @@ export function RoomCalendar({
   }
 
   return (
-    <div className="w-full max-w-sm text-sm">
+    // `min-w-0` so a long calendar name or account address can shrink the
+    // panel rather than push it off a phone. Found on production: dev has no
+    // room with a calendar connected, so this whole panel never rendered
+    // there (UI-01).
+    <div className="w-full min-w-0 max-w-sm text-sm">
       {chosen ? (
-        <p className="flex items-center gap-2 text-[var(--text-secondary)]">
-          <Check size={14} className="text-[var(--success)]" aria-hidden="true" />
-          <span>
+        <p className="flex items-start gap-2 text-[var(--text-secondary)]">
+          <Check size={14} className="mt-0.5 shrink-0 text-[var(--success)]" aria-hidden="true" />
+          {/* `break-words`: a calendar id is one unbroken 40-character token
+              and an email address nearly so, and neither has a space to wrap
+              at. */}
+          <span className="min-w-0 break-words">
             Syncing to <strong>{room.googleCalendarName ?? room.googleCalendarId}</strong>
             {account ? <span className="text-[var(--text-tertiary)]"> · {account}</span> : null}
           </span>
         </p>
       ) : (
-        <p className="flex items-center gap-2 text-[var(--text-secondary)]">
-          <Calendar size={14} aria-hidden="true" />
-          <span>
+        <p className="flex items-start gap-2 text-[var(--text-secondary)]">
+          <Calendar size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 break-words">
             Connected{account ? ` as ${account}` : ''}. Choose which calendar this room uses.
           </span>
         </p>

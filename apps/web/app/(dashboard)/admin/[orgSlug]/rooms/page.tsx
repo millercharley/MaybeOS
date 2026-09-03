@@ -533,7 +533,9 @@ export default function AdminRoomsPage() {
                 )}
               </div>
 
-              <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-start">
+              {/* Was `shrink-0`, which on a phone kept the calendar panel at its full
+                  width and pushed Edit off the screen entirely. */}
+              <div className="flex min-w-0 flex-col items-end gap-2 sm:flex-row sm:items-start">
                 {token && orgId && (
                   <RoomCalendar room={r} orgId={orgId} token={token} onChange={load} />
                 )}
