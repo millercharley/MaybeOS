@@ -1144,6 +1144,61 @@ class ApiClient {
     pending: (orgId: string, token: string) =>
       this.request<PendingClaim[]>(`/orgs/${orgId}/service/pending`, { token }),
 
+    // ── Hosting: what a host does around a booking (SRV-03) ──────────
+
+    hostDuties: (orgId: string, token: string) =>
+      this.request<HostDuty[]>(`/orgs/${orgId}/host-duties`, { token }),
+
+    createHostDuty: (orgId: string, data: HostDutyInput, token: string) =>
+      this.request<HostDuty>(`/orgs/${orgId}/host-duties`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    updateHostDuty: (orgId: string, dutyId: string, data: HostDutyInput, token: string) =>
+      this.request<HostDuty>(`/orgs/${orgId}/host-duties/${dutyId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    removeHostDuty: (orgId: string, dutyId: string, token: string) =>
+      this.request<HostDuty>(`/orgs/${orgId}/host-duties/${dutyId}`, {
+        method: 'DELETE',
+        token,
+      }),
+
+    hostBriefings: (orgId: string, token: string) =>
+      this.request<HostBriefing[]>(`/orgs/${orgId}/host-briefings`, { token }),
+
+    /** Write the message for one phase. Creates it if there is none. */
+    saveHostBriefing: (
+      orgId: string,
+      phase: HostDutyPhase,
+      data: HostBriefingInput,
+      token: string,
+    ) =>
+      this.request<HostBriefing>(`/orgs/${orgId}/host-briefings/${phase}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    /** Removing the message is how a phase is switched off. */
+    removeHostBriefing: (orgId: string, phase: HostDutyPhase, token: string) =>
+      this.request<{ removed: boolean }>(`/orgs/${orgId}/host-briefings/${phase}`, {
+        method: 'DELETE',
+        token,
+      }),
+
+    /** The email as a host would receive it, built by the code that sends it. */
+    previewHostBriefing: (orgId: string, phase: HostDutyPhase, token: string) =>
+      this.request<{ subject: string; html: string; sendsAt: string }>(
+        `/orgs/${orgId}/host-briefings/${phase}/preview`,
+        { token },
+      ),
+
     /** What members gave, for ImpactOS (SRV-02). Staff only. */
     contribution: (
       orgId: string,
@@ -3300,6 +3355,62 @@ export interface ServiceContribution {
     minutes: number;
     hours: number;
   }[];
+}
+
+// ── Hosting (SRV-03) ────────────────────────────────────────────────────
+
+export type HostDutyPhase = 'BEFORE' | 'DURING' | 'AFTER';
+
+export type BriefingAnchor =
+  | 'CLOCK_ON_DAY'
+  | 'BEFORE_START'
+  | 'AFTER_START'
+  | 'BEFORE_END'
+  | 'AFTER_END';
+
+export interface HostDuty {
+  id: string;
+  phase: HostDutyPhase;
+  text: string;
+  /** Null applies to every room. */
+  roomId?: string | null;
+  room?: { id: string; name: string } | null;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface HostDutyInput {
+  phase: HostDutyPhase;
+  text: string;
+  roomId?: string | null;
+}
+
+/**
+ * The message a host is sent for one phase, and when.
+ *
+ * A co-op has none until an admin writes them, and that absence is how the
+ * feature stays off — there is no enabled flag to look for.
+ */
+export interface HostBriefing {
+  id: string;
+  phase: HostDutyPhase;
+  subject: string;
+  body: string;
+  anchor: BriefingAnchor;
+  /** "HH:MM" in the co-op's timezone. Read only for CLOCK_ON_DAY. */
+  clockTime: string;
+  /** Minutes. Read for every other anchor. */
+  offsetMinutes: number;
+  isActive: boolean;
+}
+
+export interface HostBriefingInput {
+  subject: string;
+  body: string;
+  anchor?: BriefingAnchor;
+  clockTime?: string;
+  offsetMinutes?: number;
+  isActive?: boolean;
 }
 
 export interface StandingDuty extends DutyAdoption {

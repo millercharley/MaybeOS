@@ -9,6 +9,7 @@ import { RoomCalendar } from '@/components/rooms/room-calendar';
 import { ImageUploader } from '@/components/ui/image-uploader';
 import { RoomHours } from '@/components/rooms/room-hours';
 import { ClosureEditor } from '@/components/rooms/closure-editor';
+import { HostDuties } from '@/components/rooms/host-duties';
 import { calendarNotice } from '@/lib/room-calendar';
 
 type Draft = {
@@ -435,6 +436,11 @@ export default function AdminRoomsPage() {
           onChanged={load}
         />
       )}
+
+      {/* Also above the rooms: these are one answer for the whole co-op, with
+          per-room exceptions inside, and they are about booking rather than
+          about any one room (SRV-03). */}
+      {token && orgId && <HostDuties orgId={orgId} token={token} rooms={rooms ?? []} />}
 
       <div className="mt-8 grid gap-3">
         {calendarError && (

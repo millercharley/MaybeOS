@@ -142,6 +142,8 @@ model Organization {
   rooms          Room[]
   closures       OrgClosure[]
   duties         Duty[]
+  hostDuties     HostDuty[]
+  hostBriefings  HostBriefing[]
   channels       Channel[]
   collections    Collection[]
   surveys        Survey[]
@@ -642,6 +644,7 @@ model Room {
   location          Location?          @relation(fields: [locationId], references: [id])
   availabilityRules AvailabilityRule[]
   bookings          Booking[]
+  hostDuties        HostDuty[]
   events            Event[]
 
   @@index([orgId])
@@ -765,9 +768,10 @@ model Booking {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  room  Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  user  User   @relation(fields: [userId], references: [id])
-  event Event?
+  room      Room                 @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user      User                 @relation(fields: [userId], references: [id])
+  event     Event?
+  briefings HostBriefingNotice[]
 
   @@index([roomId, startTime, endTime])
   @@index([userId])
@@ -1998,4 +2002,97 @@ model DutyAdoption {
   @@index([dutyId, releasedAt])
   @@index([userId])
   @@map("duty_adoptions")
+}
+
+/// Where in a booking a host duty falls (SRV-03).
+enum HostDutyPhase {
+  BEFORE
+  DURING
+  AFTER
+}
+
+/// When a briefing goes out, relative to the booking it is about.
+///
+/// Two kinds, because the two defaults Charley asked for are two different
+/// things: "7am on the day" is a clock time, and "an hour before it ends" is
+/// an offset. Collapsing them into one would mean expressing 7am as "minutes
+/// before start", which changes meaning with every booking.
+enum BriefingAnchor {
+  /// At `clockTime` on the booking's own day, in the co-op's timezone.
+  CLOCK_ON_DAY
+  BEFORE_START
+  AFTER_START
+  BEFORE_END
+  AFTER_END
+}
+
+/// Something a host has to do around their booking (SRV-03).
+///
+/// Not a `Duty`: nobody claims these and nobody volunteers for them. They come
+/// with the room, they are always the host's, and they recur because bookings
+/// do rather than because a rule says so. The two models share a word and
+/// nothing else.
+model HostDuty {
+  id        String        @id @default(uuid())
+  orgId     String
+  /// Null applies to every room. Set scopes it to one — the Attic's lockup is
+  /// not the Studio's.
+  roomId    String?
+  phase     HostDutyPhase
+  text      String
+  sortOrder Int           @default(0)
+  isActive  Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  room Room?        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, phase, isActive])
+  @@map("host_duties")
+}
+
+/// The message a host is sent for one phase, and when (SRV-03).
+///
+/// One row per phase per co-op, and **no rows until an admin writes them**.
+/// A co-op does not start emailing its members because MaybeOS shipped a
+/// feature; the absence of a row is how the feature stays off.
+model HostBriefing {
+  id            String         @id @default(uuid())
+  orgId         String
+  phase         HostDutyPhase
+  subject       String
+  /// The admin's own words. The duties for this phase are listed underneath.
+  body          String
+  anchor        BriefingAnchor @default(CLOCK_ON_DAY)
+  /// "HH:MM" in the co-op's timezone. Read only for CLOCK_ON_DAY.
+  clockTime     String         @default("07:00")
+  /// Minutes. Read for every anchor except CLOCK_ON_DAY.
+  offsetMinutes Int            @default(60)
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, phase])
+  @@map("host_briefings")
+}
+
+/// What has already been sent, so a re-run cannot send it twice (SRV-03).
+///
+/// The scheduler has no jobs table by design (D-022): each task asks the
+/// database what is overdue and acts. That makes a record of what went out the
+/// only thing standing between a retried invocation and a member getting the
+/// same email four times.
+model HostBriefingNotice {
+  id        String        @id @default(uuid())
+  bookingId String
+  phase     HostDutyPhase
+  sentAt    DateTime      @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@unique([bookingId, phase])
+  @@map("host_briefing_notices")
 }
