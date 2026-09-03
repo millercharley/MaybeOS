@@ -13,6 +13,7 @@ import { ComposerService } from './composer.service';
 import { COMPOSABLE_KINDS, buildFactSheet, periodYears } from './report-composer';
 import { exportFilename, renderReportDocument } from './report-export';
 import { CATEGORY_PHRASE } from './report-language';
+import { ServiceService } from '../service/service.service';
 
 /**
  * The year-end report (IMP-22, PRD §7).
@@ -48,6 +49,7 @@ export class ReportService {
     private readonly expenses: ExpenseService,
     private readonly purchases: ReportPurchaseService,
     private readonly composer: ComposerService,
+    private readonly rota: ServiceService,
   ) {}
 
   async list(orgId: string) {
@@ -112,9 +114,16 @@ export class ReportService {
       throw new BadRequestException('The period has to start before it ends');
     }
 
-    const [signals, spend] = await Promise.all([
+    const [signals, spend, contribution] = await Promise.all([
       this.impact.getSignalsByGoal(orgId),
-      this.expenses.summary(orgId),
+      // The period, which this did not pass. The spend block's own prose says
+      // "over this period" while the figure covered all time — a false
+      // sentence in the one document a co-op sends a funder. Found while
+      // adding the service figure beside it, which would otherwise have made
+      // the report internally inconsistent: hours over a year next to
+      // spending over all time.
+      this.expenses.summary(orgId, periodStart, periodEnd),
+      this.rota.contribution(orgId, periodStart, periodEnd),
     ]);
 
     const reportable = signals.goals.flatMap((g) =>
@@ -131,7 +140,15 @@ export class ReportService {
     const slug = await this.uniqueSlug(orgId, title);
 
     const tier = input.tier ?? 'BASIC';
-    const blocks = this.composeBlocks({ org, signals, spend, periodStart, periodEnd, tier });
+    const blocks = this.composeBlocks({
+      org,
+      signals,
+      spend,
+      contribution,
+      periodStart,
+      periodEnd,
+      tier,
+    });
 
     const report = await this.prisma.impactReport.create({
       data: {
@@ -456,11 +473,12 @@ export class ReportService {
     org: { name: string; mission: string | null };
     signals: Awaited<ReturnType<ImpactService['getSignalsByGoal']>>;
     spend: Awaited<ReturnType<ExpenseService['summary']>>;
+    contribution: Awaited<ReturnType<ServiceService['contribution']>>;
     periodStart: Date;
     periodEnd: Date;
     tier: 'BASIC' | 'WRITTEN';
   }) {
-    const { org, signals, spend, periodStart, periodEnd, tier } = input;
+    const { org, signals, spend, contribution, periodStart, periodEnd, tier } = input;
     const blocks: Array<{
       kind: string;
       heading?: string;
@@ -535,6 +553,63 @@ export class ReportService {
             answerCount: m.signal!.answerCount,
             higherIsBetter: m.signal!.higherIsBetter,
           })),
+        },
+      });
+    }
+
+    /**
+     * What members gave, in time (SRV-02).
+     *
+     * Its own block rather than a line in the spending one: money the co-op
+     * spent and hours its members gave are different kinds of fact, and a
+     * funder reading them added together would be reading something nobody
+     * measured.
+     *
+     * Hours lead. The dollar figure appears only when the co-op has set a
+     * rate, and the block says whose rate it is — an unattributed
+     * "$4,200 of volunteer value" invites a reader to assume a standard
+     * behind it, and there isn't one.
+     */
+    if (contribution.totalMinutes > 0) {
+      const hours = contribution.totalHours;
+      const people = contribution.members;
+      const valued =
+        contribution.valueCents !== null && contribution.hourValueCents !== null;
+
+      blocks.push({
+        kind: 'contribution',
+        heading: 'What members gave',
+        body:
+          `${people} ${people === 1 ? 'member' : 'members'} gave ${hours} ` +
+          `${hours === 1 ? 'hour' : 'hours'} to running ${org.name} over this period, ` +
+          `across ${contribution.turns} ${contribution.turns === 1 ? 'turn' : 'turns'} on the rota.` +
+          (valued
+            ? `\n\nAt the ${money(contribution.hourValueCents!)} an hour ${org.name} values` +
+              ` this work at, that is ${money(contribution.valueCents!)}. The rate is the` +
+              ` co-op's own — MaybeOS does not supply one.`
+            : '') +
+          `\n\nOnly turns a member marked done are counted, on the day the turn` +
+          ` fell rather than the day it was recorded.` +
+          // Three cases, not two. "N were corrected; the rest are the
+          // estimate" is false when N is all of them, and a sentence about a
+          // "rest" that does not exist is the kind of slip a careful reader
+          // notices in the one paragraph explaining the method.
+          (contribution.correctedTurns === 0
+            ? ` Every figure is the co-op's own estimate of what a turn takes.`
+            : contribution.correctedTurns === contribution.turns
+              ? ` Every turn was timed by the member who did it rather than taken` +
+                ` from the co-op's estimate.`
+              : ` ${contribution.correctedTurns} of these were timed by the member` +
+                ` who did them; the rest are the co-op's estimate.`),
+        data: {
+          hours,
+          totalMinutes: contribution.totalMinutes,
+          turns: contribution.turns,
+          members: people,
+          hourValueCents: contribution.hourValueCents,
+          valueCents: contribution.valueCents,
+          correctedTurns: contribution.correctedTurns,
+          byDuty: contribution.byDuty,
         },
       });
     }

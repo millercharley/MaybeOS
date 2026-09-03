@@ -6,6 +6,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
 import { TicketPayouts } from '@/components/settings/ticket-payouts';
+import { ServiceValue } from '@/components/settings/service-value';
 import { MaybeOsPlan } from '@/components/settings/maybeos-plan';
 import { Locations } from '@/components/settings/locations';
 import { Support } from '@/components/settings/support';
@@ -187,7 +188,11 @@ export default function SettingsPage() {
     }
   }
 
-  if (loading) {
+  // Only while there is nothing to show. `refetch` sets `loading` again, and
+  // blanking the whole page for it unmounted the very components that had
+  // just set a "Saved." message — so saving the ticket fee, or the service
+  // rate, destroyed its own confirmation and read as a save that did nothing.
+  if (loading && !org) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
@@ -310,6 +315,7 @@ export default function SettingsPage() {
         believing the doors were open when they were not.
       */}
       {activeTab === 'general' && org && <TicketPayouts org={org} onSaved={refetch} />}
+      {activeTab === 'general' && org && <ServiceValue org={org} onSaved={refetch} />}
       {activeTab === 'general' && org && <Locations orgId={org.id} />}
       {activeTab === 'general' && org && (
         <MaybeOsPlan org={org} memberCount={billableMembers} />

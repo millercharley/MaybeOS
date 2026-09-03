@@ -5,6 +5,7 @@ import { ExpenseService } from '../expense.service';
 import { ReportService } from '../report.service';
 import { ReportPurchaseService } from '../report-purchase.service';
 import { ComposerService } from '../composer.service';
+import { ServiceService } from '../../service/service.service';
 
 /**
  * Writing the prose over a report that already reads correctly (IMP-23
@@ -62,6 +63,22 @@ describe('ReportService.compose', () => {
         { provide: ExpenseService, useValue: {} },
         { provide: ReportPurchaseService, useValue: {} },
         { provide: ComposerService, useValue: composer },
+        {
+          provide: ServiceService,
+          useValue: {
+            contribution: jest.fn().mockResolvedValue({
+              timezone: 'UTC',
+              turns: 0,
+              totalMinutes: 0,
+              totalHours: 0,
+              members: 0,
+              hourValueCents: null,
+              valueCents: null,
+              correctedTurns: 0,
+              byDuty: [],
+            }),
+          },
+        },
       ],
     }).compile();
 
@@ -169,6 +186,19 @@ import { ReportService as RS } from '../report.service';
  * means the deterministic text is shipped prose, not a placeholder, and has
  * to be written like it.
  */
+/** A co-op with no rota, which is every co-op until an organiser adds a duty. */
+const NO_SERVICE = {
+  timezone: 'UTC',
+  turns: 0,
+  totalMinutes: 0,
+  totalHours: 0,
+  members: 0,
+  hourValueCents: null,
+  valueCents: null,
+  correctedTurns: 0,
+  byDuty: [],
+};
+
 describe('the written report’s own sections', () => {
   const compose = (goals: any[], threshold = 5) =>
     (RS.prototype as any).composeBlocks.call(
@@ -177,6 +207,7 @@ describe('the written report’s own sections', () => {
         org: { name: 'Sunrise', mission: null },
         signals: { goals, members: 8, suppressionThreshold: threshold, windows: [] },
         spend: { totalCents: 0, byCategory: [], byGoal: [], attributedShare: null, expenseCount: 0 },
+        contribution: NO_SERVICE,
         periodStart: new Date('2026-01-01'),
         periodEnd: new Date('2026-12-31'),
         tier: 'WRITTEN',
@@ -240,6 +271,7 @@ describe('the written report’s own sections', () => {
         org: { name: 'Sunrise', mission: null },
         signals: { goals: [measured('Belonging')], members: 8, suppressionThreshold: 5, windows: [] },
         spend: { totalCents: 0, byCategory: [], byGoal: [], attributedShare: null, expenseCount: 0 },
+        contribution: NO_SERVICE,
         periodStart: new Date('2026-01-01'),
         periodEnd: new Date('2026-12-31'),
         tier: 'BASIC',
