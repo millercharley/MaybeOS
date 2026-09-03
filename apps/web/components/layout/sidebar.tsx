@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { clsx } from 'clsx';
 import { LogOut, ChevronDown, Check } from 'lucide-react';
-import { sidebarSections } from '@/lib/nav';
+import { sidebarSections, openSectionLabel, activeNavHref } from '@/lib/nav';
 import { useAuthStore } from '@/lib/auth-store';
 import { Wordmark } from '@/components/brand/wordmark';
 
@@ -16,6 +16,13 @@ import { Wordmark } from '@/components/brand/wordmark';
  * one, so moving between a co-op and its admin changed the shape and the
  * colour of the app. Charley, 2026-08-19: "This nav bar should be the same
  * across all screens." So the portal renders this, and the light one is gone.
+ *
+ * Sections collapse to the one you are in (NAV-01). An organiser's nav is
+ * three sections and twenty-odd links, which on a laptop meant the page they
+ * were on sat in the middle of a scrolling column — Charley, 2026-09-03:
+ * "only expand the section where the user has navigated to a page." Headers
+ * still toggle by hand, or a collapsed section would be a place you could not
+ * get to.
  *
  * `orgSlug` / `orgName` let a portal page say which co-op is on screen, which
  * is not always the one the person has selected — somebody reading another
@@ -33,6 +40,24 @@ export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: stri
 
   const [switching, setSwitching] = useState(false);
 
+  /**
+   * Which sections the person has opened by hand, over the one the address
+   * opens on its own (NAV-01).
+   *
+   * Reset on every navigation, so following a link inside a collapsed section
+   * does not leave the old one hanging open behind it — Charley asked for the
+   * section you are in, not for every section you have ever visited. The
+   * render-phase reset is React's own pattern for state derived from a prop;
+   * an effect would paint the stale nav first.
+   */
+  const [opened, setOpened] = useState<{ path: string | null; by: Record<string, boolean> }>({
+    path: pathname ?? null,
+    by: {},
+  });
+  if (opened.path !== (pathname ?? null)) {
+    setOpened({ path: pathname ?? null, by: {} });
+  }
+
   const orgs = user?.orgs ?? [];
   const membership = orgs.find((o) => o.orgId === currentOrgId);
   const signedIn = Boolean(token && user);
@@ -44,6 +69,17 @@ export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: stri
     signedIn,
     isPlatformAdmin: user?.globalRole === 'PLATFORM_ADMIN',
   });
+
+  // The one item lit and the one section open — both the longest match, so a
+  // dashboard whose href roots the whole area does not claim every page in it.
+  const activeHref = activeNavHref(sections, pathname);
+  const routeSection = openSectionLabel(sections, pathname);
+  const isOpen = (label: string) => opened.by[label] ?? label === routeSection;
+  const toggle = (label: string) =>
+    setOpened((current) => ({
+      path: current.path,
+      by: { ...current.by, [label]: !(current.by[label] ?? label === routeSection) },
+    }));
 
   // Only worth a control when there is somewhere to switch to.
   const canSwitch = signedIn && orgs.length > 1;
@@ -105,41 +141,66 @@ export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: stri
         </div>
       )}
 
-      <nav className="flex-1 overflow-y-auto px-3 py-4">
-        {sections.map((section, index) => (
-          <div
-            key={section.label ?? `section-${index}`}
-            className={clsx('space-y-1', index > 0 && 'mt-6')}
-          >
-            {section.label && (
-              <p className="truncate px-3 pb-1 text-xs font-semibold uppercase tracking-wider text-paper-deep/60">
-                {section.label}
-              </p>
-            )}
-            {section.items.map((item) => {
-              // A portal home would otherwise light up on every portal page,
-              // since all of them start with its path.
-              const isActive =
-                pathname === item.href || pathname?.startsWith(item.href + '/');
+      {/* `no-scrollbar` rather than `overflow-hidden`: the bar is gone, the
+          scrolling is not. See the utility in globals.css. */}
+      <nav className="no-scrollbar flex-1 overflow-y-auto px-3 py-4">
+        {sections.map((section, index) => {
+          // An unlabelled section is the hoisted dashboard: there is no header
+          // to collapse it into, and one link is not a section.
+          const open = section.label ? isOpen(section.label) : true;
+          const id = `nav-section-${index}`;
 
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={clsx(
-                    'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-fast',
-                    isActive
-                      ? 'bg-brand-600 text-white'
-                      : 'text-paper-deep hover:bg-white/10 hover:text-paper',
-                  )}
+          return (
+            <div
+              key={section.label ?? `section-${index}`}
+              className={clsx('space-y-1', index > 0 && (open ? 'mt-6' : 'mt-2'))}
+            >
+              {section.label && (
+                <button
+                  type="button"
+                  onClick={() => toggle(section.label!)}
+                  aria-expanded={open}
+                  aria-controls={id}
+                  className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wider text-paper-deep/60 transition-colors hover:bg-white/5 hover:text-paper-deep"
                 >
-                  <item.icon className="h-5 w-5" strokeWidth={1.75} />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
+                  <span className="min-w-0 flex-1 truncate">{section.label}</span>
+                  <ChevronDown
+                    className={clsx(
+                      'h-3.5 w-3.5 shrink-0 transition-transform duration-fast',
+                      open ? 'rotate-0' : '-rotate-90',
+                    )}
+                  />
+                </button>
+              )}
+
+              {/* Unmounted rather than hidden, so a collapsed section's links
+                  are out of the tab order as well as out of sight. */}
+              {open && (
+                <div id={id} className="space-y-1">
+                  {section.items.map((item) => {
+                    const isActive = item.href === activeHref;
+
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={clsx(
+                          'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-fast',
+                          isActive
+                            ? 'bg-brand-600 text-white'
+                            : 'text-paper-deep hover:bg-white/10 hover:text-paper',
+                        )}
+                      >
+                        <item.icon className="h-5 w-5" strokeWidth={1.75} />
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </nav>
 
       <div className="shrink-0 border-t border-white/15 p-4">

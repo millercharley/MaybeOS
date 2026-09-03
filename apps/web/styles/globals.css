@@ -269,3 +269,19 @@
     margin-top: 1.5rem;
   }
 }
+
+@layer utilities {
+  /* A column that can still scroll on a short window, without a grey bar down
+     the side of the dark nav (Charley, 2026-09-03: "Remove the scroll bar on
+     the navigation panel"). Kept scrollable rather than clipped: collapsing
+     the sections you are not in means it almost never overflows, but "almost"
+     is not "never", and a hidden overflow would put Settings somewhere no
+     mouse or keyboard could reach it on a short window. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}

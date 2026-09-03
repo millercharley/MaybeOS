@@ -182,3 +182,70 @@ export function sidebarSections({
 
   return sections;
 }
+
+/**
+ * Whether a nav item could be the page on screen.
+ *
+ * A prefix match, so `/admin/mif/members/import` still counts as Members —
+ * with the `/` guard, or `/portal/mif/rooms` would match `/portal/mif/roomsy`.
+ *
+ * "Could be", not "is": several items can match one address, because a
+ * dashboard's href is a prefix of every page in its area. Use `activeNavHref`
+ * to pick the one to light up.
+ */
+export function isNavItemActive(href: string, pathname?: string | null): boolean {
+  if (!pathname) return false;
+  return pathname === href || pathname.startsWith(href + '/');
+}
+
+/**
+ * The one item to light up — the longest href that matches (NAV-01).
+ *
+ * Two things were lit at once before this. The Dashboard's href *is* the root
+ * of its area (`/admin/<slug>`), so on Host payouts both Dashboard and Host
+ * payouts came up red, and the nav answered "where am I" twice with different
+ * answers. Longest match is the fix: a more specific item beats the root it
+ * sits under, and nothing else changes.
+ */
+export function activeNavHref(
+  sections: NavSection[],
+  pathname?: string | null,
+): string | null {
+  let best: string | null = null;
+
+  for (const section of sections) {
+    for (const item of section.items) {
+      if (!isNavItemActive(item.href, pathname)) continue;
+      if (!best || item.href.length > best.length) best = item.href;
+    }
+  }
+
+  return best;
+}
+
+/**
+ * The one section to leave open (NAV-01).
+ *
+ * The nav lists everything a person can reach, which for an organiser is three
+ * sections and twenty-odd links — so the thing they are actually looking at
+ * sits somewhere in the middle of a column that scrolls. Collapsing the rest
+ * makes the open section the answer to "where am I".
+ *
+ * Built on the active item rather than on "contains a match", so the same
+ * prefix problem cannot open two sections: on `/admin/<slug>` the active item
+ * is the hoisted Dashboard, which belongs to no labelled section, and
+ * everything stays closed.
+ */
+export function openSectionLabel(
+  sections: NavSection[],
+  pathname?: string | null,
+): string | null {
+  const active = activeNavHref(sections, pathname);
+  if (!active) return null;
+
+  const section = sections.find(
+    (s) => s.label && s.items.some((i) => i.href === active),
+  );
+
+  return section?.label ?? null;
+}
