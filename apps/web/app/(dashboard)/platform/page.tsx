@@ -5,6 +5,7 @@ import { AlertTriangle, Ban, Check, ExternalLink, Loader2, Undo2 } from 'lucide-
 import { useAuthStore } from '@/lib/auth-store';
 import { api, PlatformOrg, PlatformSummary } from '@/lib/api';
 import { money } from '@/lib/fees';
+import { PageHeader } from '@/components/layout/page-header';
 
 /**
  * The co-ops running on MaybeOS (PLT-01).
@@ -78,8 +79,10 @@ export default function PlatformPage() {
   if (user?.globalRole !== 'PLATFORM_ADMIN' && error) {
     return (
       <div className="py-16 text-center">
-        <h1 className="text-xl font-semibold text-gray-900">Platform administrators only</h1>
-        <p className="mt-2 text-sm text-gray-500">This console is not part of any co-op.</p>
+        <PageHeader
+          title="Platform administrators only"
+          description="This console is not part of any co-op."
+        />
       </div>
     );
   }
@@ -87,7 +90,9 @@ export default function PlatformPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Co-ops on MaybeOS</h1>
+        <PageHeader
+          title="Co-ops on MaybeOS"
+        />
         <p className="mt-1 max-w-2xl text-sm text-gray-500">
           {/* Said on the page, because a console that quietly could see more
               than it says would be worse than one that says nothing. */}

@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { Repeat, Check, Undo2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, type MyService } from '@/lib/api';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   formatMinutes,
   recurrenceLabel,
@@ -89,12 +90,9 @@ export default function MyServicePage() {
   return (
     <div>
       <header>
-        <h1 className="text-2xl font-bold">My service</h1>
-        <p className="mt-1 text-[var(--text-secondary)]">
-          {data?.totalMinutes
-            ? `${formatMinutes(data.totalMinutes)} for the co-op, all told.`
-            : 'Nothing banked yet.'}
-        </p>
+        <PageHeader
+          title="My service"
+        />
       </header>
 
       {error && (

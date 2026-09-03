@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft, Check, Loader2, Plus, Trash2, X } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, MeasurementPlan, DraftedIndicator } from '@/lib/api';
+import { PageHeader } from '@/components/layout/page-header';
 
 /**
  * What the co-op is trying to do, and how it will know (IMP-21, PRD §5).
@@ -110,10 +111,10 @@ export default function MeasurementPlanPage() {
       </Link>
 
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Your measurement plan</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          What your co-op is trying to do, and how you&apos;ll know whether it&apos;s working.
-        </p>
+        <PageHeader
+          title="Your measurement plan"
+          description="What your co-op is trying to do, and how you&apos;ll know whether it&apos;s working."
+        />
       </div>
 
       {error && (

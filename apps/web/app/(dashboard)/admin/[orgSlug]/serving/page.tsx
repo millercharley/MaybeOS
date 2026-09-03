@@ -20,6 +20,7 @@ import {
   timeOf,
 } from '@/lib/service-rota';
 import { DutyForm } from '@/components/service/duty-form';
+import { PageHeader } from '@/components/layout/page-header';
 
 /**
  * Serving — naming the work, and seeing whether it is covered (SRV-01).
@@ -116,10 +117,10 @@ export default function ServingPage() {
     <div>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Serving</h1>
-          <p className="mt-1 text-[var(--text-secondary)]">
-            Name what the co-op needs doing. Members take turns from Serve.
-          </p>
+          <PageHeader
+            title="Serving"
+            description="Name what the co-op needs doing. Members take turns from Serve."
+          />
         </div>
         <button
           onClick={() => setCreating((open) => !open)}

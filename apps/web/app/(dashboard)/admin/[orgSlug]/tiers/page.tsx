@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Plus, Loader2, AlertCircle, CheckCircle2, Users, EyeOff, Eye } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, AdminTier, TierInput, ServicePeriod, ApiError } from '@/lib/api';
+import { PageHeader } from '@/components/layout/page-header';
 
 const money = (cents: number) =>
   cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`;
@@ -192,10 +193,10 @@ export default function AdminTiersPage() {
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl leading-tight">Membership tiers</h1>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">
-            What members can pay, and what they get for it.
-          </p>
+          <PageHeader
+            title="Membership tiers"
+            description="What members can pay, and what they get for it."
+          />
         </div>
         {!showForm && (
           <button onClick={startCreate} className="btn-primary inline-flex items-center gap-2">

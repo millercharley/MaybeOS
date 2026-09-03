@@ -8,6 +8,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { api, type DutyOpenings } from '@/lib/api';
 import { byDate, shortDate, formatMinutes } from '@/lib/service-rota';
 import { DutyCard } from '@/components/service/duty-card';
+import { PageHeader } from '@/components/layout/page-header';
 
 /**
  * Serve — what the co-op needs doing (SRV-01).
@@ -66,10 +67,10 @@ export default function ServePage() {
     return (
       <div className="py-12 text-center">
         <HandHelping className="mx-auto h-10 w-10 text-[var(--text-tertiary)]" />
-        <h1 className="mt-4 text-2xl font-bold">Serve</h1>
-        <p className="mt-2 text-sm text-[var(--text-secondary)]">
-          Sign in to see what needs doing and take a turn.
-        </p>
+        <PageHeader
+          title="Serve"
+          description="Sign in to see what needs doing and take a turn."
+        />
         <Link href="/login" className="btn-primary mt-4 inline-block">
           Sign in
         </Link>
@@ -83,10 +84,10 @@ export default function ServePage() {
   return (
     <div>
       <header>
-        <h1 className="text-2xl font-bold">Serve</h1>
-        <p className="mt-1 text-[var(--text-secondary)]">
-          What the co-op needs doing. Take a single turn, or take one on for good.
-        </p>
+        <PageHeader
+          title="Serve"
+          description="What the co-op needs doing. Take a single turn, or take one on for good."
+        />
       </header>
 
       {notice && (

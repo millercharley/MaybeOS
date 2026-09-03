@@ -8,6 +8,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { usePublicApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
 import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
+import { PageHeader } from '@/components/layout/page-header';
 
 export default function PortalEventsPage() {
   const { org } = usePortal();
@@ -142,9 +143,9 @@ export default function PortalEventsPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="font-display text-2xl leading-tight">Events</h1>
-
-      {returned === 'purchased' && (
+      <PageHeader
+        title="Events"
+      />{returned === 'purchased' && (
         <div className="rounded-xl border border-green-200 bg-green-50 p-4" role="status">
           <p className="text-sm font-medium text-green-800">Payment received — thank you.</p>
           <p className="mt-1 text-sm text-green-700">

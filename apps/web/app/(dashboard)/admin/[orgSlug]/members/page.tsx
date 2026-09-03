@@ -8,6 +8,7 @@ import { useApi } from '@/hooks/use-api';
 import { useAuthStore } from '@/lib/auth-store';
 import { api } from '@/lib/api';
 import { Modal } from '@/components/ui/modal';
+import { PageHeader } from '@/components/layout/page-header';
 
 const roleBadge: Record<string, string> = {
   ADMIN: 'badge-success',
@@ -154,7 +155,9 @@ export default function MembersPage() {
         <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{roleError}</p>
       )}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-gray-900">Members</h1>
+        <PageHeader
+          title="Members"
+        />
         <div className="flex items-center gap-2">
         <Link
           href={`/admin/${orgSlug}/members/import`}

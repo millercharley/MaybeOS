@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, MyImpact } from '@/lib/api';
 import { SignalsView, CATEGORY_LABEL } from '@/components/impact/signals';
+import { PageHeader } from '@/components/layout/page-header';
 
 /**
  * What you told your co-op, and what it learned from everyone (IMP-20).
@@ -53,11 +54,10 @@ export default function MyImpactPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="font-display text-2xl leading-tight">What we&apos;re learning</h1>
-        <p className="mt-1 text-sm text-[var(--text-secondary)]">
-          Your co-op asks one short question at a time, at most once a month. Here is what you
-          said, and what everyone&apos;s answers add up to.
-        </p>
+        <PageHeader
+          title="What we&apos;re learning"
+          description="Your co-op asks one short question at a time, at most once a month. Here is what you said, and what everyone&apos;s answers add up to."
+        />
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}

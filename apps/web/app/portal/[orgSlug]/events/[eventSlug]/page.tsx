@@ -13,6 +13,7 @@ import { RsvpFaces } from '@/components/events/rsvp-faces';
 import { uploadAttachments } from '@/lib/attachments';
 import { ticketCost, describeFees, money } from '@/lib/fees';
 import { eventArt } from '@/lib/event-art';
+import { PageHeader } from '@/components/layout/page-header';
 
 /**
  * One event, at the size an event deserves (EVT-08, EVT-11).
@@ -126,8 +127,9 @@ export default function PortalEventPage(props: {
     return (
       <div className="py-16 text-center">
         <Calendar className="mx-auto h-10 w-10 text-gray-300" />
-        <h1 className="mt-4 text-xl font-semibold text-gray-900">Event not found</h1>
-        <p className="mt-2 text-sm text-gray-500">{error || 'It may have been cancelled.'}</p>
+        <PageHeader
+          title="Event not found"
+        />
         <Link href={`/portal/${orgSlug}/events`} className="btn-secondary mt-6 inline-block text-sm">
           All events
         </Link>
@@ -174,7 +176,7 @@ export default function PortalEventPage(props: {
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
         <div className="min-w-0 space-y-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">{event.title}</h1>
+            <h1 className="font-display text-2xl leading-tight text-ink">{event.title}</h1>
             {event.host?.name && (
               <p className="mt-2 flex items-center gap-2 text-sm text-gray-500">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-100 text-[11px] font-medium text-brand-700">

@@ -13,6 +13,7 @@ import { EventForm, EventFormValues } from '@/components/events/event-form';
 import { MyRsvps } from '@/components/events/my-rsvps';
 import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 import { HostEarnings } from '@/components/events/host-earnings';
+import { PageHeader } from '@/components/layout/page-header';
 
 /**
  * A member's own events (EVT-05).
@@ -114,7 +115,9 @@ export default function MyEventsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">My Events</h1>
+          <PageHeader
+            title="My Events"
+          />
           <p className="mt-1 text-sm text-gray-500">
             Things you are running, and things you are going to. You can also{' '}
             <Link href={`/member/${orgSlug}/bookings`} className="text-brand-600 hover:underline">

@@ -11,6 +11,7 @@ import { MaybeOsPlan } from '@/components/settings/maybeos-plan';
 import { Locations } from '@/components/settings/locations';
 import { Support } from '@/components/settings/support';
 import { WebsiteEmbed } from '@/components/settings/website-embed';
+import { PageHeader } from '@/components/layout/page-header';
 
 type SettingsTab = 'general' | 'branding' | 'integrations' | 'billing';
 
@@ -212,9 +213,9 @@ export default function SettingsPage() {
         </p>
       )}
 
-      <h1 className="text-2xl font-bold text-gray-900">Organization Settings</h1>
-
-      {/* Scrolls sideways rather than clipping the last tab off a phone
+      <PageHeader
+        title="Organization Settings"
+      />{/* Scrolls sideways rather than clipping the last tab off a phone
           (UI-01). `-mx-4 px-4` lets the row run to the screen edges inside a
           padded shell, so a half-visible tab reads as "there is more" instead
           of as a cut-off one. */}
