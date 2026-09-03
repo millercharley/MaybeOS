@@ -81,21 +81,39 @@ import { HealthModule } from './modules/health/health.module';
       }),
     }),
 
+    /**
+     * Global rate limits (OPS-34).
+     *
+     * These were 3/second, 20/10s and 100/minute, which no page in the product
+     * could load inside. The member profile page fans out six requests at once
+     * and 429'd **every time**, in production as well as dev — the page simply
+     * did not work. Belonging does the same with six of its own. It read as a
+     * flaky backend and was a ceiling set below the floor.
+     *
+     * Raised to what a single-page app actually does: a page load is a burst
+     * of 5–12 requests, and somebody clicking through four screens in ten
+     * seconds is normal use, not abuse.
+     *
+     * This is not where brute force is stopped. Login, registration, magic
+     * links and password reset carry their own `@Throttle` of 3–5 per
+     * *minute* in `auth.controller.ts`, and those are the limits that matter.
+     * These three only stop a client hammering the whole API.
+     */
     ThrottlerModule.forRoot([
       {
         name: 'short',
         ttl: 1000,
-        limit: 3,
+        limit: 50,
       },
       {
         name: 'medium',
         ttl: 10000,
-        limit: 20,
+        limit: 200,
       },
       {
         name: 'long',
         ttl: 60000,
-        limit: 100,
+        limit: 1000,
       },
     ]),
 
