@@ -10,7 +10,7 @@ export default function PublicLayout({
     <div className="min-h-screen bg-white flex flex-col">
       {/* Header */}
       <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex flex-wrap h-16 max-w-container items-center justify-between px-4 sm:px-6 lg:px-8 gap-3">
           <div className="flex items-center gap-8">
             {/*
               The wordmark asset, never a hand-drawn substitute. This header

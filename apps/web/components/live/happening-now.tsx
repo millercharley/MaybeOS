@@ -99,7 +99,7 @@ export function HappeningNow({ orgId, orgSlug }: { orgId: string; orgSlug: strin
       aria-label="Happening now"
       className="rounded-2xl border border-gray-200 bg-white p-5"
     >
-      <div className="mb-4 flex items-baseline justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
         <h2 className="flex items-center gap-2 font-semibold text-gray-900">
           <span className="relative flex h-2 w-2" aria-hidden>
             {/* One quiet pulse, not a flashing dot. A home screen that

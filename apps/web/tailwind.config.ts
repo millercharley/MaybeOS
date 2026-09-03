@@ -122,7 +122,11 @@ const config: Config = {
 
       transitionTimingFunction: { standard: 'cubic-bezier(.2,.8,.2,1)' },
       transitionDuration: { fast: '120ms', base: '180ms' },
-      maxWidth: { container: '1200px' },
+      // One standard measure for the whole product (UI-01). Charley,
+      // 2026-09-03: "make sure the UI of the body has a standard width of
+      // 1280 px." Was 1200 and used only by the marketing pages, so the app
+      // and the site it advertises were built on different grids.
+      maxWidth: { container: '1280px' },
     },
   },
   plugins: [],

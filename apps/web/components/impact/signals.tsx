@@ -104,7 +104,7 @@ function CategoryBar({ category: c }: { category: SignalCategory }) {
 
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
         <span className="text-sm font-medium text-gray-900">
           {CATEGORY_LABEL[c.category] ?? c.category}
         </span>

@@ -195,7 +195,7 @@ export default function AdminImpactPage() {
                 ) : (
                   <ul className="mt-1 space-y-1">
                     {goal.measures.map((m) => (
-                      <li key={m.indicatorId} className="flex items-baseline justify-between gap-3 text-sm">
+                      <li key={m.indicatorId} className="flex flex-wrap items-baseline justify-between gap-3 text-sm">
                         <span className="text-gray-600">{m.label}</span>
                         <span className="tabular-nums text-gray-900">
                           {m.signal?.average != null ? (

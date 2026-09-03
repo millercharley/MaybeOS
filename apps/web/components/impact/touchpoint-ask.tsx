@@ -98,7 +98,7 @@ export function TouchpointAsk({
 
   return (
     <section className="mt-6 rounded-xl border border-gray-200 bg-gray-50 p-4">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="text-sm font-medium text-gray-900">{ask.text}</p>
         <button
           onClick={dismiss}

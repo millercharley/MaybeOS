@@ -243,7 +243,7 @@ function DutyList({
       {duties.length > 0 && (
         <ul className="mb-3 space-y-1">
           {duties.map((duty) => (
-            <li key={duty.id} className="flex items-start justify-between gap-3 text-sm">
+            <li key={duty.id} className="flex flex-wrap items-start justify-between gap-3 text-sm">
               <span>
                 {duty.text}
                 {duty.room && (
@@ -452,7 +452,7 @@ function PreviewPane({
 }) {
   return (
     <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-wide text-gray-400">Preview</p>
           <p className="mt-1 font-medium text-gray-900">{preview.subject}</p>

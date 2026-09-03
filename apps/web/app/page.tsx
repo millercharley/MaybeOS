@@ -57,7 +57,7 @@ export default function HomePage() {
     <div className="min-h-screen bg-paper">
       {/* ── Masthead ─────────────────────────────────────────── */}
       <header className="border-b-[1.5px] border-ink">
-        <div className="mx-auto flex max-w-container items-center justify-between px-6 py-5">
+        <div className="mx-auto flex flex-wrap max-w-container items-center justify-between px-6 py-5 gap-3">
           <Wordmark height={28} />
           <nav className="flex shrink-0 items-center gap-2 sm:gap-3">
             <Link href="/login" className="btn-ghost whitespace-nowrap px-3">

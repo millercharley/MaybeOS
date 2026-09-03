@@ -194,7 +194,7 @@ export default function ReportsPage() {
   if (open) {
     const published = open.status === 'PUBLISHED';
     return (
-      <div className="max-w-3xl space-y-6">
+      <div className="mx-auto max-w-3xl space-y-6">
         <button
           onClick={() => { setOpen(null); setEditing(null); }}
           className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900"
@@ -411,7 +411,7 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6">
       <Link href="../impact" className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900">
         <ArrowLeft className="h-4 w-4" />
         Measuring
@@ -457,7 +457,7 @@ export default function ReportsPage() {
             <li key={r.id}>
               <button
                 onClick={() => openReport(r.id)}
-                className="flex w-full items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4 text-left hover:border-brand-400"
+                className="flex flex-wrap w-full items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-4 text-left hover:border-brand-400"
               >
                 <div className="min-w-0">
                   <p className="font-medium text-gray-900">{r.title}</p>

@@ -143,7 +143,7 @@ export default function MyEventsPage() {
 
       {creating && (
         <section className="card">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-semibold text-gray-900">New event</h2>
             <button
               type="button"

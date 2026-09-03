@@ -149,7 +149,7 @@ export function ClosureEditor({
           {closures.map((closure) => (
             <li
               key={closure.id}
-              className="flex items-center justify-between gap-3 rounded-md bg-[var(--surface-sunken)] px-3 py-2 text-sm"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-[var(--surface-sunken)] px-3 py-2 text-sm"
             >
               <span>
                 {closure.label ? <strong>{closure.label}</strong> : 'Closed'}

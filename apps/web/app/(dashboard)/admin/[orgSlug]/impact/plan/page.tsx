@@ -100,7 +100,7 @@ export default function MeasurementPlanPage() {
   const atLimit = (plan?.goals.length ?? 0) >= (plan?.maxGoals ?? 5);
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6">
       <Link
         href="../impact"
         className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900"
@@ -161,7 +161,7 @@ export default function MeasurementPlanPage() {
       </section>
 
       <section className="space-y-4">
-        <div className="flex items-baseline justify-between">
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
           <h2 className="text-sm font-semibold text-gray-900">
             Goals <span className="font-normal text-gray-400">({plan?.goals.length ?? 0} of {plan?.maxGoals})</span>
           </h2>
@@ -169,7 +169,7 @@ export default function MeasurementPlanPage() {
 
         {plan?.goals.map((goal) => (
           <div key={goal.id} className="rounded-xl border border-gray-200 bg-white p-5">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <h3 className="font-medium text-gray-900">{goal.title}</h3>
                 {goal.description && <p className="mt-0.5 text-sm text-gray-500">{goal.description}</p>}
@@ -191,7 +191,7 @@ export default function MeasurementPlanPage() {
               {goal.indicators.length > 0 ? (
                 <ul className="mt-1.5 space-y-1.5">
                   {goal.indicators.map((ind) => (
-                    <li key={ind.id} className="flex items-center justify-between gap-2 text-sm">
+                    <li key={ind.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
                       <span className="text-gray-900">{ind.label}</span>
                       <button
                         onClick={() => run(() => api.impact.removeIndicator(orgId!, goal.id, ind.id, token!))}

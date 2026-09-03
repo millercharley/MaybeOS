@@ -169,8 +169,10 @@ function ChannelsSection() {
     <div className="space-y-4">
       {error && <ErrorNote message={error} />}
       {org && <TouchpointAsk orgId={org.id} touchpoint="COMMONS" />}
-      <div className="flex gap-6">
-      <div className="w-48 shrink-0 space-y-1">
+      {/* Stacked below `lg`, side by side above it (UI-01). See the admin
+          Commons for why. */}
+      <div className="flex flex-col gap-6 lg:flex-row">
+      <div className="w-full shrink-0 space-y-1 lg:w-48">
         {/*
           Pinned channels first, and said so. Admins can pin a channel (CMN-03)
           and the portal ignored it entirely, so the one ordering a co-op had
@@ -192,7 +194,7 @@ function ChannelsSection() {
           ))}
       </div>
 
-      <div className="flex-1 space-y-4">
+      <div className="min-w-0 flex-1 space-y-4">
         <RichComposer
           value={newPost}
           onChange={setNewPost}

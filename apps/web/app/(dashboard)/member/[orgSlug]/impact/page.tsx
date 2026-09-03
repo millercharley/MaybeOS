@@ -51,7 +51,7 @@ export default function MyImpactPage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-8">
+    <div className="mx-auto max-w-3xl space-y-8">
       <div>
         <h1 className="font-display text-2xl leading-tight">What we&apos;re learning</h1>
         <p className="mt-1 text-sm text-[var(--text-secondary)]">

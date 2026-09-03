@@ -153,7 +153,7 @@ export default function MembersPage() {
       {roleError && (
         <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{roleError}</p>
       )}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-gray-900">Members</h1>
         <div className="flex items-center gap-2">
         <Link
@@ -257,7 +257,7 @@ export default function MembersPage() {
               return (
                 <div
                   key={inv.id}
-                  className="flex items-center justify-between rounded-lg bg-white px-4 py-3 border border-amber-100"
+                  className="flex flex-wrap items-center justify-between rounded-lg bg-white px-4 py-3 border border-amber-100 gap-3"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100">
@@ -305,8 +305,13 @@ export default function MembersPage() {
         />
       </div>
 
-      <div className="card overflow-hidden !p-0">
-        <table className="w-full">
+      {/* `overflow-hidden` clipped the table on a narrow screen rather than
+          letting it scroll, so the last columns were unreachable on a phone
+          (UI-01). `overflow-x-auto` keeps the rounded corners and gives the
+          table somewhere to go; `min-w-[40rem]` stops the columns crushing
+          into each other instead of scrolling. */}
+      <div className="card overflow-x-auto !p-0">
+        <table className="w-full min-w-[40rem]">
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50">
               <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">

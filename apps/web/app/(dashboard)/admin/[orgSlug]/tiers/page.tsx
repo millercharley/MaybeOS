@@ -189,7 +189,7 @@ export default function AdminTiersPage() {
   const showForm = creating || !!editingId;
 
   return (
-    <div className="max-w-3xl">
+    <div className="mx-auto max-w-3xl">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl leading-tight">Membership tiers</h1>

@@ -271,6 +271,24 @@
 }
 
 @layer utilities {
+  /**
+   * The body of every page (UI-01).
+   *
+   * Charley asked in August for content to start at the left edge and stay
+   * uncapped, and reversed it on 2026-09-03: "This doesn't look right on big
+   * screens. Center the body of content on each page." On a wide monitor an
+   * uncapped column stretches a line of text across two feet of glass, and
+   * left-aligned it leaves the whole right half of the screen empty.
+   *
+   * One class rather than a max-width repeated per page, because the previous
+   * decision *was* repeated per page and that is why reversing it is a job at
+   * all. Padding steps down on small screens: `p-8` on a 375px phone spends
+   * 17% of the width on margin.
+   */
+  .page-shell {
+    @apply mx-auto w-full max-w-container px-4 py-6 sm:px-6 lg:px-8 lg:py-8;
+  }
+
   /* A column that can still scroll on a short window, without a grey bar down
      the side of the dark nav (Charley, 2026-09-03: "Remove the scroll bar on
      the navigation panel"). Kept scrollable rather than clipped: collapsing

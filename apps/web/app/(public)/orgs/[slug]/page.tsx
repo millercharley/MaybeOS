@@ -44,7 +44,7 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
   );
 
   if (orgError || !org) return (
-    <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-container px-4 py-12 sm:px-6 lg:px-8">
       <div className="text-center">
         <Users className="mx-auto h-12 w-12 text-gray-300" />
         <p className="mt-4 text-lg font-medium text-gray-900">
@@ -59,7 +59,7 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
   const displayTiers = tiers || org.tiers || [];
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-container px-4 py-12 sm:px-6 lg:px-8">
       {/* Org Header */}
       <div className="text-center">
         <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-brand-100">
@@ -197,7 +197,7 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
 
       {/* Upcoming Events */}
       <section className="mt-16">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-2xl font-bold text-gray-900">Upcoming Events</h2>
           <div className="flex items-center gap-4">
             {/* The .ics feed has existed since EventOS was built and nothing

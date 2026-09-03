@@ -113,7 +113,7 @@ export default function AdminWelcomePage() {
 
   if (compliance) {
     return (
-      <div className="max-w-3xl space-y-5">
+      <div className="mx-auto max-w-3xl space-y-5">
         <button
           onClick={() => setCompliance(null)}
           className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900"
@@ -144,7 +144,7 @@ export default function AdminWelcomePage() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-semibold text-gray-900">
             {compliance.outstanding.length === 0
               ? 'Everybody has agreed'
@@ -177,7 +177,7 @@ export default function AdminWelcomePage() {
             something about. */}
         <ul className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white">
           {compliance.outstanding.map((m) => (
-            <li key={m.memberId} className="flex items-center justify-between px-4 py-3 text-sm">
+            <li key={m.memberId} className="flex flex-wrap items-center justify-between px-4 py-3 text-sm gap-3">
               <span className="text-gray-900">{m.name ?? m.email}</span>
               <span className="text-gray-400">member since {timeAgo(m.memberSince)}</span>
             </li>
@@ -190,7 +190,7 @@ export default function AdminWelcomePage() {
   if (editing) {
     const wasLive = editing.state === 'PUBLISHED' && editing.requiresAcknowledgment;
     return (
-      <div className="max-w-3xl space-y-5">
+      <div className="mx-auto max-w-3xl space-y-5">
         <button
           onClick={() => {
             setEditing(null);
@@ -326,7 +326,7 @@ export default function AdminWelcomePage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="mx-auto max-w-3xl space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Welcoming</h1>

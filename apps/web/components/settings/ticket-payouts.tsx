@@ -116,7 +116,7 @@ export function TicketPayouts({ org, onSaved }: { org: Org; onSaved?: () => void
 
   return (
     <section className="card max-w-2xl space-y-4">
-      <div className="flex items-start justify-between gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-6">
         <div>
           <h2 className="text-base font-semibold text-gray-900">Ticket sales</h2>
           <p className="mt-1 text-sm text-gray-500">

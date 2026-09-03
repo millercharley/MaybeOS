@@ -297,12 +297,15 @@ export default function CommonsPage() {
     <div className="space-y-8">
       <h1 className="text-2xl font-bold text-gray-900">Commons</h1>
 
-      <div className="flex gap-6">
+      {/* Stacked below `lg`, side by side above it (UI-01). A 240px rail
+          beside the feed left 111px for the conversation on a 375px phone,
+          and the composer ran off the screen. */}
+      <div className="flex flex-col gap-6 lg:flex-row">
         {/* Left rail: Collections, Channels, People */}
-        <div className="w-60 shrink-0 space-y-4">
+        <div className="w-full shrink-0 space-y-4 lg:w-60">
           {/* Collections */}
           <div className="card">
-            <div className="mb-3 flex items-center justify-between">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500">Collections</h2>
               {isAdmin && (
                 <button
@@ -505,7 +508,7 @@ export default function CommonsPage() {
 
           {/* People / DMs */}
           <div className="card">
-            <div className="mb-3 flex items-center justify-between">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500">People</h2>
               <button onClick={() => setShowMemberPicker((s) => !s)} className="text-gray-400 hover:text-brand-600">
                 <Plus className="h-4 w-4" />
@@ -559,7 +562,7 @@ export default function CommonsPage() {
         </div>
 
         {/* Main pane */}
-        <div className="flex-1 space-y-6">
+        <div className="flex-1 space-y-6 min-w-0">
           {view?.type === 'page' ? (
             pageLoading || !pageContent ? (
               <div className="flex items-center justify-center py-12">
@@ -698,7 +701,7 @@ export default function CommonsPage() {
             </div>
           ) : (
             <>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold text-gray-900">
                   {selectedChannel ? `#${selectedChannel.name}` : 'All Posts'}
                 </h2>
@@ -816,7 +819,7 @@ export default function CommonsPage() {
 
               return (
                 <div key={proposal.id} className="card">
-                  <div className="mb-3 flex items-start justify-between">
+                  <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                     <h3 className="text-sm font-semibold text-gray-900">{proposal.title}</h3>
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -869,7 +872,7 @@ export default function CommonsPage() {
 
                   {quorum > 0 && (
                     <div className="mt-3 border-t border-gray-100 pt-3">
-                      <div className="flex items-center justify-between text-xs text-gray-500">
+                      <div className="flex flex-wrap items-center justify-between text-xs text-gray-500 gap-3">
                         <span>Quorum progress</span>
                         <span>{Math.min(quorumPercent, 100)}%</span>
                       </div>

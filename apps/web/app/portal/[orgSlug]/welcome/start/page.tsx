@@ -96,7 +96,7 @@ export default function WelcomeStartPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-gray-500">
           {remaining === 1 ? 'One thing to read' : `${remaining} things to read`}
         </p>

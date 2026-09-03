@@ -201,7 +201,11 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    // Every section on this page is a `max-w-2xl` card, so without a wrapper
+    // the whole stack hugged the left of the centred 1280 column and left
+    // half the screen empty — the shape of the complaint UI-01 is about. The
+    // cap matches the widest card so nothing is narrowed.
+    <div className="mx-auto max-w-2xl space-y-6">
       {justSubscribed && (
         <p className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-800" role="status">
           Thanks — your MaybeOS plan is active. What you&apos;re billed for is below.
@@ -210,12 +214,16 @@ export default function SettingsPage() {
 
       <h1 className="text-2xl font-bold text-gray-900">Organization Settings</h1>
 
-      <div className="flex gap-1 border-b border-gray-200">
+      {/* Scrolls sideways rather than clipping the last tab off a phone
+          (UI-01). `-mx-4 px-4` lets the row run to the screen edges inside a
+          padded shell, so a half-visible tab reads as "there is more" instead
+          of as a cut-off one. */}
+      <div className="-mx-4 flex gap-1 overflow-x-auto border-b border-gray-200 px-4 sm:mx-0 sm:px-0">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => { setActiveTab(tab.key); setSaveMessage(''); }}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${
+            className={`whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors ${
               activeTab === tab.key
                 ? 'border-b-2 border-brand-600 text-brand-600'
                 : 'text-gray-500 hover:text-gray-700'
@@ -325,7 +333,7 @@ export default function SettingsPage() {
 
       {activeTab === 'general' && (
         <section className="card max-w-2xl space-y-4">
-          <div className="flex items-start justify-between gap-6">
+          <div className="flex flex-wrap items-start justify-between gap-6">
             <div>
               <h2 className="text-base font-semibold text-gray-900">Who can join</h2>
               <p className="mt-1 text-sm text-gray-500">
@@ -483,21 +491,21 @@ export default function SettingsPage() {
 
       {activeTab === 'integrations' && (
         <div className="max-w-2xl space-y-4">
-          <div className="card flex items-center justify-between">
+          <div className="card flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-semibold text-gray-900">Stripe</h3>
               <p className="mt-1 text-sm text-gray-500">Payment processing for memberships and events</p>
             </div>
             <span className="text-xs text-gray-400">Coming soon</span>
           </div>
-          <div className="card flex items-center justify-between">
+          <div className="card flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-semibold text-gray-900">Google Calendar</h3>
               <p className="mt-1 text-sm text-gray-500">Sync events with Google Calendar</p>
             </div>
             <span className="text-xs text-gray-400">Coming soon</span>
           </div>
-          <div className="card flex items-center justify-between">
+          <div className="card flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-semibold text-gray-900">Email Provider</h3>
               <p className="mt-1 text-sm text-gray-500">Transactional emails for notifications and invites</p>
@@ -511,7 +519,7 @@ export default function SettingsPage() {
         <div className="card max-w-2xl">
           <h2 className="mb-4 text-lg font-semibold text-gray-900">Plan</h2>
           <div className="rounded-lg border border-gray-200 p-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-medium text-gray-900">Free Plan</p>
                 <p className="text-xs text-gray-500">All features included during beta</p>

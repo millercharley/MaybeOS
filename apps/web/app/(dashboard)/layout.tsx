@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { useRouter, usePathname, useParams } from 'next/navigation';
-import { Lock } from 'lucide-react';
-import { useEffect } from 'react';
+import { Lock, Menu } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { CommandPalette, OPEN_SEARCH_EVENT } from '@/components/layout/command-palette';
 import { useAuthStore } from '@/lib/auth-store';
@@ -54,11 +54,22 @@ export default function DashboardLayout({
   const params = useParams();
   const urlSlug = typeof params?.orgSlug === 'string' ? params.orgSlug : undefined;
 
+  // The sidebar is a permanent column from `lg` up and a drawer below it
+  // (UI-01). It used to be permanent at every width: 256px of a 375px phone,
+  // leaving 119px for the page.
+  const [navOpen, setNavOpen] = useState(false);
+
   useEffect(() => {
     if (!isLoading && !token) {
       router.push('/login');
     }
   }, [isLoading, token, router]);
+
+  // Following a link inside the drawer would otherwise leave it open over the
+  // page it just opened.
+  useEffect(() => {
+    setNavOpen(false);
+  }, [pathname]);
 
   // Everything downstream still asks the store for an org id — every API call
   // takes one — so the URL leads and the store follows.
@@ -138,13 +149,39 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <div className="fixed inset-y-0 left-0 w-64 z-30">
+      {/* The permanent column, from `lg` up. */}
+      <div className="fixed inset-y-0 left-0 z-30 hidden w-64 lg:block">
         <Sidebar />
       </div>
 
-      <div className="flex flex-1 flex-col pl-64">
-        <header className="sticky top-0 z-20 flex h-16 items-center border-b border-gray-200 bg-white px-8">
-          <nav className="flex items-center gap-2 text-sm">
+      {/* The same column as a drawer below `lg`. The backdrop is a button so
+          tapping outside closes it, which is what everybody tries first. */}
+      {navOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <button
+            type="button"
+            aria-label="Close navigation"
+            onClick={() => setNavOpen(false)}
+            className="absolute inset-0 bg-black/40"
+          />
+          <div className="absolute inset-y-0 left-0 w-64">
+            <Sidebar />
+          </div>
+        </div>
+      )}
+
+      <div className="flex min-w-0 flex-1 flex-col lg:pl-64">
+        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-gray-200 bg-white px-4 sm:px-6 lg:px-8">
+          <button
+            type="button"
+            onClick={() => setNavOpen(true)}
+            aria-label="Open navigation"
+            className="-ml-1 rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 lg:hidden"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+
+          <nav className="flex min-w-0 items-center gap-2 text-sm">
             {/* This said "Admin" on every member page too. It was also a bare
                 span, so "My co-op" named a place a member had no way to go —
                 the one crumb that should lead somewhere led nowhere. */}
@@ -158,7 +195,7 @@ export default function DashboardLayout({
             {breadcrumbSegments.length > 1 && (
               <>
                 <span className="text-gray-300">/</span>
-                <span className="font-medium text-gray-900">{currentPage}</span>
+                <span className="truncate font-medium text-gray-900">{currentPage}</span>
               </>
             )}
             {breadcrumbSegments.length <= 1 && (
@@ -174,15 +211,17 @@ export default function DashboardLayout({
           <button
             type="button"
             onClick={() => window.dispatchEvent(new Event(OPEN_SEARCH_EVENT))}
-            className="ml-auto flex items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-400 transition-colors hover:border-gray-300 hover:text-gray-600"
+            className="ml-auto flex shrink-0 items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-400 transition-colors hover:border-gray-300 hover:text-gray-600"
           >
             <span>Search</span>
-            <kbd className="rounded border border-gray-200 bg-gray-50 px-1 font-sans">⌘K</kbd>
+            {/* The shortcut is a desktop affordance and there is no room for
+                it beside a breadcrumb on a phone. */}
+            <kbd className="hidden rounded border border-gray-200 bg-gray-50 px-1 font-sans sm:inline">⌘K</kbd>
           </button>
         </header>
 
         <main className="flex-1 overflow-auto">
-          <div className="p-8">
+          <div className="page-shell">
             {wantsAdmin && !isOrganiser ? <OrganiserOnly /> : children}
           </div>
         </main>
