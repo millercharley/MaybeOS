@@ -2,7 +2,7 @@ import { closureLabel, dayLabel } from '@/lib/room-closures';
 import type { Closure } from '@/lib/api';
 
 /**
- * How a closed period reads (SPC-12).
+ * How a closed period reads (SPC-18).
  *
  * One day or several, all day or part of it — each is a different sentence
  * rather than a template with blanks.

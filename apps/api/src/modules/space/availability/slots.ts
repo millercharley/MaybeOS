@@ -37,7 +37,7 @@ export interface Slot {
   available: boolean;
   reason?: Unavailable;
   /**
-   * Why the room is shut, when a closure says so (SPC-12). "Closed: Winter
+   * Why the room is shut, when a closure says so (SPC-18). "Closed: Winter
    * break" tells a member whether to come back tomorrow or in January; a
    * greyed-out row tells them nothing.
    */
@@ -71,7 +71,7 @@ export interface SlotQuery {
   /** Periods the room's Google Calendar reports busy. */
   busy: Busy[];
   /**
-   * Closures that apply to the whole building (SPC-13).
+   * Closures that apply to the whole building (SPC-19).
    *
    * Deliberately not folded into `rules`. A room with no rules of its own is
    * *unfinished*, not open around the clock — and merging a building closure
@@ -220,7 +220,7 @@ export function slotsForDate(query: SlotQuery): Slot[] {
       slot.available = false;
       slot.reason = 'booked';
     } else if (busy.some((b) => overlaps(b, { start, end }))) {
-      // The room's own Google Calendar. Before SPC-08 nothing read it, so a
+      // The room's own Google Calendar. Before SPC-14 nothing read it, so a
       // rehearsal put straight into the calendar left the slot showing free.
       slot.available = false;
       slot.reason = 'calendar';

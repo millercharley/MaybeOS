@@ -33,7 +33,7 @@ export class CreateBookingDto {
   description?: string;
 
   /**
-   * Everything below is asked when the booking is made (SPC-15) and shown on
+   * Everything below is asked when the booking is made (SPC-21) and shown on
    * the room's Google Calendar, which is where a co-op actually looks — and
    * often the only place someone not in MaybeOS looks at all.
    *

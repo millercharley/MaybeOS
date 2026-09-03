@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 
 /**
- * What the booking is for (SPC-15).
+ * What the booking is for (SPC-21).
  *
  * Clicking a slot used to book it outright, sending the room's own name as the
  * title — so the co-op's Google Calendar read "Attic" against a three-hour

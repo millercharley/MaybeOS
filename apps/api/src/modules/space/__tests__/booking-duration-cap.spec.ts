@@ -10,7 +10,7 @@ import { CalendarService } from '../../calendar/calendar.service';
 import { StorageService } from '../../storage/storage.service';
 
 /**
- * A room's cap on how long a booking may run (SPC-09).
+ * A room's cap on how long a booking may run (SPC-15).
  *
  * Enforced on the server as well as in the duration chips. The chips are what
  * a member sees; a request that never went through them is the one this
@@ -103,7 +103,7 @@ describe('SpaceService — maximum booking length', () => {
   });
 
   it('leaves a room with no cap alone', async () => {
-    // Null means no limit, which is what every room built before SPC-09 has.
+    // Null means no limit, which is what every room built before SPC-15 has.
     prisma.room.findFirst.mockResolvedValue(room(null));
 
     await expect(

@@ -1,7 +1,7 @@
 import { calendarNotice, calendarState } from '@/lib/room-calendar';
 
 /**
- * Connected is not the same as chosen (SPC-07).
+ * Connected is not the same as chosen (SPC-13).
  *
  * A room that holds a Google token but has no calendar id used to be
  * indistinguishable from one that was fully set up — the page said "Calendar
@@ -27,7 +27,7 @@ describe('calendarState', () => {
   });
 
   it('counts a room connected before an older record grew an account address', () => {
-    // Rooms connected before SPC-07 have a calendar id and no account email.
+    // Rooms connected before SPC-13 have a calendar id and no account email.
     expect(calendarState({ googleCalendarId: 'attic@group.calendar.google.com' })).toBe('syncing');
   });
 });

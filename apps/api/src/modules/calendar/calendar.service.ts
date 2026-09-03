@@ -51,7 +51,7 @@ export class CalendarService {
    * can associate the tokens with the correct room.
    */
   /**
-   * The Google settings that are missing, by name.
+   * The Google settings that are missing, by name (SPC-12).
    *
    * The redirect URI counts. Google rejects an OAuth request whose
    * `redirect_uri` is empty or is not one of the client's registered URIs,
@@ -122,7 +122,7 @@ export class CalendarService {
     // Store tokens on the room (as JSON; in production, encrypt at rest).
     // No calendar is chosen here: picking one is the admin's decision and
     // defaulting to 'primary' would point a room at somebody's personal diary
-    // (SPC-07).
+    // (SPC-13).
     await this.prisma.room.update({
       where: { id: roomId },
       data: {
@@ -202,7 +202,7 @@ export class CalendarService {
    * co-op ever made would have gone into the primary calendar of the organiser
    * who connected the room, and every entry in that organiser's personal diary
    * would have counted against the room's availability. A room with no
-   * calendar chosen is a state to report, not one to guess past (SPC-07).
+   * calendar chosen is a state to report, not one to guess past (SPC-13).
    */
   private calendarIdFor(room: { id: string; googleCalendarId?: string | null }): string {
     if (!room.googleCalendarId) {
@@ -248,7 +248,7 @@ export class CalendarService {
         where: { id: bookingId, room: { orgId } },
         include: {
           // Who booked it and where the room is, so the calendar entry says
-          // more than the room's own name (SPC-15).
+          // more than the room's own name (SPC-21).
           user: { select: { name: true, email: true } },
           room: {
             // The tokens are omitted for every other reader (SEC-05); calling
@@ -271,7 +271,7 @@ export class CalendarService {
 
       // Connected but not pointed anywhere yet. Falling through to 'primary'
       // here would write the co-op's bookings into the personal diary of
-      // whoever clicked Connect (SPC-07).
+      // whoever clicked Connect (SPC-13).
       if (!booking.room.googleCalendarId) {
         return { synced: false, reason: 'room has no calendar chosen yet' };
       }
@@ -322,7 +322,7 @@ export class CalendarService {
   }
 
   /**
-   * The summary, description and attendee for a booking (SPC-15).
+   * The summary, description and attendee for a booking (SPC-21).
    *
    * Built once and used by both create and update, so an edited booking does
    * not quietly lose the detail the original carried.
@@ -526,7 +526,7 @@ export class CalendarService {
   }
 
   // ──────────────────────────────────────────────────────────────
-  // Choosing a calendar (SPC-07)
+  // Choosing a calendar (SPC-13)
   // ──────────────────────────────────────────────────────────────
 
   /**
@@ -729,7 +729,7 @@ export class CalendarService {
   }
 
   /**
-   * What the room's calendar has in a window, for the booking screen (SPC-09).
+   * What the room's calendar has in a window, for the booking screen (SPC-15).
    *
    * `busyConflict` answers yes/no about one proposed booking; this returns the
    * periods themselves, because the screen crosses out specific times rather

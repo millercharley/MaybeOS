@@ -9,7 +9,7 @@ import {
 import type { AvailabilityRule } from '@/lib/api';
 
 /**
- * Opening hours, as a week to edit and rules to store (SPC-11).
+ * Opening hours, as a week to edit and rules to store (SPC-17).
  *
  * The rules API has existed since SpaceOS was built and nothing had ever
  * called it, so a room could only ever be marked always-available or left

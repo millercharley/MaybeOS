@@ -6,7 +6,7 @@ import { CalendarService } from '../calendar.service';
 import { PrismaService } from '../../../config/prisma.service';
 
 /**
- * A room points at a calendar somebody chose (SPC-07).
+ * A room points at a calendar somebody chose (SPC-13).
  *
  * `googleCalendarId` sat in the schema since SpaceOS was built and nothing
  * ever set it, so five call sites read `room.googleCalendarId || 'primary'`

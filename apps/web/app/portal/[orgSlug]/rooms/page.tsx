@@ -80,7 +80,7 @@ export default function PortalRoomsPage() {
                   : 'border-gray-200 bg-white hover:border-brand-300'
               }`}
             >
-              {/* The photo, always with the room (SPC-10). A member choosing
+              {/* The photo, always with the room (SPC-16). A member choosing
                   between "Attic" and "Meeting Room A" is choosing between two
                   physical spaces, and the names alone do not describe them. */}
               {room.imageUrl && (
@@ -146,7 +146,7 @@ export default function PortalRoomsPage() {
         fact: a member picked a start and an end, submitted, and was told the
         room was shut or taken — which says their choice was wrong once they
         have made it, and nothing about which choice would have worked
-        (SPC-09).
+        (SPC-15).
       */}
       {selected && token && orgId && (
         <RoomBooking

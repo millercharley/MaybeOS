@@ -9,7 +9,7 @@ import { CalendarService } from '../../calendar/calendar.service';
 import { StorageService } from '../../storage/storage.service';
 
 /**
- * Replacing a room's opening hours (SPC-11).
+ * Replacing a room's opening hours (SPC-17).
  *
  * The editor shows the whole week, so what it sends is the complete answer.
  * Doing that from the browser as a delete-per-rule then a create-per-rule was

@@ -11,7 +11,7 @@ import { ConfigService } from '@nestjs/config';
 /**
  * Connecting a calendar must not publish the organiser's email address.
  *
- * `GET /orgs/:orgId/rooms` is open to every member of the org, and SPC-07
+ * `GET /orgs/:orgId/rooms` is open to every member of the org, and SPC-13
  * added the address of whichever organiser authorised Google to the room
  * record so the admin page could say which account is connected. Returned
  * unfiltered, that turns one organiser's private setup step into a directory

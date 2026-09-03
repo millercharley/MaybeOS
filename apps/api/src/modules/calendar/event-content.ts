@@ -1,5 +1,5 @@
 /**
- * What a booking looks like on the room's Google Calendar (SPC-15).
+ * What a booking looks like on the room's Google Calendar (SPC-21).
  *
  * It used to be the room's own name against a three-hour block — the booking
  * screen sent `title: room.name`, so the calendar read "Attic" and an
@@ -8,7 +8,7 @@
  * not in MaybeOS looks at all.
  *
  * Pure, so the wording can be exercised without a Google account. Every field
- * is optional at the edges because a booking made before SPC-15 has none of
+ * is optional at the edges because a booking made before SPC-21 has none of
  * them, and those must still render as something a person can read.
  */
 
@@ -52,7 +52,7 @@ export function eventSummary(booking: BookingForCalendar, room: RoomForCalendar)
   const what = booking.title?.trim() || room.name;
 
   // A booking whose title is just the room's name — every one made before
-  // SPC-15 — reads as "Maya Chen · Attic" rather than "Attic · Attic".
+  // SPC-21 — reads as "Maya Chen · Attic" rather than "Attic · Attic".
   const subject = what.toLowerCase() === room.name.toLowerCase() ? room.name : `${what} · ${room.name}`;
 
   return who ? `${who} · ${subject}` : subject;
@@ -80,7 +80,7 @@ export function eventDescription(
   push('Booked by', booking.memberName?.trim() || null);
 
   // The title is skipped when it is only the room's name again, which is what
-  // every booking made before SPC-15 carries.
+  // every booking made before SPC-21 carries.
   const title = booking.title?.trim();
   if (title && title.toLowerCase() !== room.name.toLowerCase()) {
     push('What', title);

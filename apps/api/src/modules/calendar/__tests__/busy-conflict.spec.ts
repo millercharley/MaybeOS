@@ -5,7 +5,7 @@ import { CalendarService } from '../calendar.service';
 import { PrismaService } from '../../../config/prisma.service';
 
 /**
- * The room's calendar is read as well as written (SPC-08).
+ * The room's calendar is read as well as written (SPC-14).
  *
  * SPC-04 made bookings reach Google. Nothing ever came back the other way, so
  * a co-op that put a rehearsal straight into the room's calendar would still

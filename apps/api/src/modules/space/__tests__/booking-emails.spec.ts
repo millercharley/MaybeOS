@@ -9,7 +9,7 @@ import { CalendarService } from '../../calendar/calendar.service';
 import { StorageService } from '../../storage/storage.service';
 
 /**
- * Booking emails state times in the co-op's timezone (SPC-08).
+ * Booking emails state times in the co-op's timezone (SPC-14).
  *
  * These used to send `toUTCString()`, so a member who booked 10am in the app
  * received "Mon, 05 Apr 2027 14:00:00 GMT". The app itself showed local time
