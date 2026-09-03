@@ -2,15 +2,17 @@
 
 import { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Calendar, MapPin, Users, Ticket } from 'lucide-react';
+import { DoorOpen, ArrowLeft, Calendar, MapPin, Users, Ticket } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Event, Comment } from '@/lib/api';
 import { renderBodyHtml, isBlankBody } from '@/lib/rich-text';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
 import { AttachmentList } from '@/components/composer/attachment-list';
+import { RsvpFaces } from '@/components/events/rsvp-faces';
 import { uploadAttachments } from '@/lib/attachments';
 import { ticketCost, describeFees, money } from '@/lib/fees';
+import { eventArt } from '@/lib/event-art';
 
 /**
  * One event, at the size an event deserves (EVT-08, EVT-11).
@@ -41,6 +43,8 @@ export default function PortalEventPage(props: {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [rsvpStatus, setRsvpStatus] = useState<'CONFIRMED' | 'WAITLISTED' | null>(null);
+  const [rsvpError, setRsvpError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +79,22 @@ export default function PortalEventPage(props: {
       cancelled = true;
     };
   }, [orgSlug, eventSlug, org, token, isMember]);
+
+  async function rsvp() {
+    if (!org || !token || !event) return;
+    setBusy(true);
+    setRsvpError('');
+    try {
+      const created = await api.events.rsvp(org.id, event.id, token);
+      setRsvpStatus(created.status);
+    } catch (err) {
+      // A full event answers "Event is at capacity", which is news rather than
+      // a fault — said here rather than swallowed.
+      setRsvpError(err instanceof Error ? err.message : 'Could not RSVP');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function buy() {
     if (!org || !event) return;
@@ -137,14 +157,19 @@ export default function PortalEventPage(props: {
 
       {/* The poster first. It is what a co-op made to advertise this, and the
           old list showed none of it. */}
-      {event.imageUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={event.imageUrl}
-          alt=""
-          className="max-h-96 w-full rounded-2xl object-cover"
-        />
-      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={eventArt({
+          id: event.id,
+          title: event.title,
+          tags: event.tags,
+          category: event.category,
+          roomName: event.room?.name ?? null,
+          imageUrl: event.imageUrl,
+        })}
+        alt=""
+        className="max-h-96 w-full rounded-2xl object-cover"
+      />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
         <div className="min-w-0 space-y-6">
@@ -219,12 +244,23 @@ export default function PortalEventPage(props: {
               </div>
             </div>
 
+            {/* The room is what somebody has to find once they are in the
+                building, and it was replaced by the venue name rather than
+                shown beside it — so an event in the Attic said only
+                "MaybeItsFate". */}
+            {event.room?.name && (
+              <p className="mt-4 flex items-center gap-3 border-t border-gray-100 pt-4 text-sm">
+                <DoorOpen className="h-4 w-4 shrink-0 text-gray-400" />
+                <span className="font-medium text-gray-900">{event.room.name}</span>
+              </p>
+            )}
+
             {(event.location?.name || event.room?.name) && (
               <div className="mt-4 flex items-start gap-3 border-t border-gray-100 pt-4 text-sm">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
                 <div className="min-w-0">
                   <p className="font-medium text-gray-900">
-                    {event.location?.name ?? event.room?.name}
+                    {event.location?.name ?? 'In person'}
                   </p>
                   {event.location?.address && (
                     <a
@@ -251,6 +287,45 @@ export default function PortalEventPage(props: {
               </p>
             ) : null}
 
+            {/*
+              Saying you are coming, which this page could not do (EVT-19). It
+              offered Buy on a ticketed event and nothing at all on a free one
+              — so the page a member opens to read about an event was the one
+              place they could not RSVP to it.
+            */}
+            {!cost && (
+              <div className="mt-4 border-t border-gray-100 pt-4">
+                {rsvpStatus ? (
+                  <p className="rounded-lg border border-[var(--success)] px-3 py-2 text-center text-sm font-medium">
+                    {rsvpStatus === 'CONFIRMED' ? "You're going" : "You're on the waitlist"}
+                  </p>
+                ) : isMember && token ? (
+                  <button onClick={rsvp} disabled={busy} className="btn-primary w-full text-sm">
+                    {busy ? 'Saving…' : 'RSVP'}
+                  </button>
+                ) : (
+                  <p className="text-center text-sm text-gray-500">
+                    <Link href="/login" className="text-brand-600 hover:underline">
+                      Sign in
+                    </Link>{' '}
+                    to RSVP.
+                  </p>
+                )}
+                {rsvpError && (
+                  <p className="mt-1.5 text-center text-xs text-[var(--danger)]">{rsvpError}</p>
+                )}
+              </div>
+            )}
+
+            {/* Charged at the door rather than ticketed here — most co-op
+                events that cost money work that way, and silence reads as
+                free (EVT-17). */}
+            {!cost && event.hasCost && (
+              <p className="mt-3 text-center text-xs text-gray-500">
+                There is a cost to attend — ask the host.
+              </p>
+            )}
+
             {cost ? (
               <div className="mt-4 border-t border-gray-100 pt-4">
                 <button
@@ -274,6 +349,51 @@ export default function PortalEventPage(props: {
               </div>
             ) : null}
           </div>
+
+          {/*
+            Who else is going. People decide based on this more than on the
+            description, and the page showed a count at most (UX-03). Members
+            only: an event link may be public so strangers can RSVP, but the
+            guest list is not.
+          */}
+          {isMember && event.rsvpFaces?.length ? (
+            <div className="rounded-2xl border border-gray-200 bg-white p-5">
+              <p className="text-sm font-medium text-gray-900">
+                {event.rsvpCount ?? event.rsvpFaces.length}{' '}
+                {(event.rsvpCount ?? event.rsvpFaces.length) === 1 ? 'attendee' : 'attendees'}
+              </p>
+              <div className="mt-3">
+                <RsvpFaces
+                  faces={event.rsvpFaces}
+                  total={event.rsvpCount ?? event.rsvpFaces.length}
+                  size="md"
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {/*
+            An event in no room is an event with nowhere to happen. The host
+            can fix that from here rather than discovering it on the night —
+            and booking the room is where MaybeOS then captures everything
+            this page needs anyway (SPC-21).
+          */}
+          {!event.room && isMember && (
+            <div className="rounded-2xl border border-gray-200 bg-white p-5">
+              <p className="text-sm font-medium text-gray-900">No room booked</p>
+              <p className="mt-1 text-sm text-gray-500">
+                This event has nowhere to happen yet. Reserving a room also holds it against
+                other bookings.
+              </p>
+              <Link
+                href={`/portal/${orgSlug}/rooms`}
+                className="btn-secondary mt-3 inline-flex w-full items-center justify-center gap-2 text-sm"
+              >
+                <DoorOpen className="h-4 w-4" />
+                Reserve a room
+              </Link>
+            </div>
+          )}
         </aside>
       </div>
     </div>

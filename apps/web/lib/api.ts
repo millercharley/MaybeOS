@@ -2076,6 +2076,11 @@ export interface Event {
   /** CONFIRMED RSVPs only — cancelled and waitlisted are not attendees. */
   rsvpCount?: number;
   /**
+   * Whether the host charges attendees (EVT-17) — cash at the door, Venmo.
+   * Distinct from `priceCents`, which is a ticket sold through MaybeOS.
+   */
+  hasCost?: boolean;
+  /**
    * Who runs this event (EVT-04). Present on org-scoped reads only — the
    * public endpoints deliberately omit it, so a member's name is not
    * published to the internet by default. Null when nobody is assigned,
