@@ -44,6 +44,13 @@ describe('EventsService — member events', () => {
     endTime: new Date('2027-04-05T16:00:00Z'),
     room: { id: 'room-1', capacity: 30 },
     event: null,
+    // What the booking form asks (SPC-21). An event published from a booking
+    // inherits these rather than asking again (EVT-17).
+    description: null,
+    visibility: 'MEMBERS_ONLY',
+    expectedAttendance: null,
+    hasCost: false,
+    categories: [],
     ...over,
   });
 
@@ -95,14 +102,51 @@ describe('EventsService — member events', () => {
       expect(data.hostId).toBe(MEMBER);
     });
 
-    it('defaults to members-only, not public', async () => {
-      prisma.booking.findFirst.mockResolvedValue(booking());
+    it('inherits who the booking was open to, rather than asking again', async () => {
+      // The member answered this when they booked the room (SPC-21). Asking a
+      // second time is a step backwards, and the two answers drifting apart is
+      // worse than either — an event published as public from a booking made
+      // for private guests is the co-op advertising something it did not.
+      prisma.booking.findFirst.mockResolvedValue(booking({ visibility: 'PUBLIC' }));
 
       await service.createFromBooking(ORG, 'booking-1', MEMBER, false, {});
 
-      // Publishing to the open internet under the co-op's name should be a
-      // choice somebody makes, not what happens when they accept the default.
+      expect(prisma.event.create.mock.calls[0][0].data.visibility).toBe('PUBLIC');
+    });
+
+    it('never widens what the member chose', async () => {
+      // Publishing to the open internet under the co-op's name is a choice
+      // somebody makes, not what happens when they accept a default.
+      prisma.booking.findFirst.mockResolvedValue(booking({ visibility: 'MEMBERS_ONLY' }));
+
+      await service.createFromBooking(ORG, 'booking-1', MEMBER, false, {});
+
       expect(prisma.event.create.mock.calls[0][0].data.visibility).toBe('MEMBERS_ONLY');
+    });
+
+    it('carries the size, the cost and the kind of gathering across', async () => {
+      prisma.booking.findFirst.mockResolvedValue(
+        booking({ expectedAttendance: 15, hasCost: true, categories: ['Art or expression'] }),
+      );
+
+      await service.createFromBooking(ORG, 'booking-1', MEMBER, false, {});
+
+      const data = prisma.event.create.mock.calls[0][0].data;
+      expect(data).toMatchObject({
+        capacity: 15,
+        hasCost: true,
+        tags: ['Art or expression'],
+        category: 'Art or expression',
+      });
+    });
+
+    it("prefers the member's own estimate to the room's capacity", async () => {
+      // They know who they invited; the room's number is an upper bound.
+      prisma.booking.findFirst.mockResolvedValue(booking({ expectedAttendance: 8 }));
+
+      await service.createFromBooking(ORG, 'booking-1', MEMBER, false, {});
+
+      expect(prisma.event.create.mock.calls[0][0].data.capacity).toBe(8);
     });
 
     it('publishes it live, because a draft nobody can share is a dead end', async () => {

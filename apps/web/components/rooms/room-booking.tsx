@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, DoorOpen, Loader2 } from 'lucide-react';
 import { api, ApiError, type Room, type Slot, type SlotsResponse } from '@/lib/api';
 import { BookingDetailsForm, type BookingDetails } from '@/components/rooms/booking-details';
+import { publishPrompt, publishedNotice } from '@/lib/publish-prompt';
+import { CalendarPlus, Check } from 'lucide-react';
 import {
   dateLabel,
   durationLabel,
@@ -55,6 +57,11 @@ export function RoomBooking({
   const [chosen, setChosen] = useState<Slot | null>(null);
   const [error, setError] = useState('');
   const [confirmed, setConfirmed] = useState<Slot | null>(null);
+  // What was just booked, so the confirmation can offer to publish it and know
+  // who it is open to (EVT-17).
+  const [booked, setBooked] = useState<{ id: string; details: BookingDetails } | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const [published, setPublished] = useState<string | null>(null);
 
   const timeZone = data?.timeZone ?? 'UTC';
   const durations = data?.durations ?? [30, 60, 90, 120, 180];
@@ -121,6 +128,7 @@ export function RoomBooking({
       }
 
       setConfirmed(slot);
+      setBooked({ id: created.id, details });
       setChosen(null);
       if (date) await loadSlots(date);
       onBooked?.();
@@ -128,6 +136,31 @@ export function RoomBooking({
       setError(err instanceof ApiError ? err.message : 'Could not book that time.');
     } finally {
       setBooking(null);
+    }
+  }
+
+  async function publish({ id, details }: { id: string; details: BookingDetails }) {
+    setPublishing(true);
+    setError('');
+    try {
+      await api.events.publishFromBooking(
+        orgId,
+        id,
+        {
+          title: details.title,
+          description: details.description,
+          visibility: details.visibility,
+          capacity: details.expectedAttendance,
+          category: details.categories[0],
+          publish: true,
+        },
+        token,
+      );
+      setPublished(publishedNotice(details.visibility));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not publish that as an event.');
+    } finally {
+      setPublishing(false);
     }
   }
 
@@ -308,10 +341,44 @@ export function RoomBooking({
         )}
 
         {confirmed && (
-          <p className="mt-4 rounded-lg border border-[var(--success)] px-4 py-3 text-sm">
-            Booked — {dateLabel(confirmed.start.slice(0, 10))} at{' '}
-            {timeLabel(confirmed.minutes)}.
-          </p>
+          <div className="mt-4 rounded-lg border border-[var(--success)] px-4 py-3">
+            <p className="flex items-center gap-2 text-sm font-medium">
+              <Check size={14} className="text-[var(--success)]" aria-hidden="true" />
+              Booked — {dateLabel(confirmed.start.slice(0, 10))} at{' '}
+              {timeLabel(confirmed.minutes)}.
+            </p>
+
+            {/*
+              The offer belongs here rather than three screens away in My
+              Bookings. A member has just decided to gather people in a room;
+              the moment they will say yes to telling the co-op about it is
+              this one (EVT-17).
+            */}
+            {published ? (
+              <p className="mt-3 text-sm text-[var(--text-secondary)]">{published}</p>
+            ) : (
+              booked &&
+              (() => {
+                const prompt = publishPrompt(booked.details.visibility);
+                if (!prompt) return null;
+
+                return (
+                  <div className="mt-3 border-t border-[var(--border)] pt-3">
+                    <p className="font-medium">{prompt.question}</p>
+                    <p className="mt-1 text-sm text-[var(--text-secondary)]">{prompt.detail}</p>
+                    <button
+                      onClick={() => publish(booked)}
+                      disabled={publishing}
+                      className="btn-primary mt-3 inline-flex items-center gap-2"
+                    >
+                      <CalendarPlus size={14} aria-hidden="true" />
+                      {publishing ? 'Publishing…' : prompt.action}
+                    </button>
+                  </div>
+                );
+              })()
+            )}
+          </div>
         )}
         {error && <p className="mt-4 text-sm text-[var(--danger)]">{error}</p>}
       </div>
