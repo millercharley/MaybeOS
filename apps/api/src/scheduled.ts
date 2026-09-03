@@ -5,6 +5,7 @@ import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { SchedulerService } from './modules/scheduler/scheduler.service';
+import { schedulerMonitor } from './scheduler-monitor';
 
 /**
  * Netlify Scheduled Function entry point (D-022).
@@ -66,24 +67,35 @@ export async function handler(
     return { statusCode: 404, body: 'Not found' };
   }
 
-  const app = await NestFactory.createApplicationContext(AppModule, {
-    bufferLogs: true,
-  });
+  // Opened before the app is built, so a run that cannot even boot Nest is
+  // still a run Sentry saw start and then saw fail — rather than a silence
+  // indistinguishable from the function never being invoked (OPS-33).
+  const monitor = schedulerMonitor(process.env.SENTRY_DSN ? Sentry : null);
+  const checkInId = monitor.start();
+
+  let app: Awaited<ReturnType<typeof NestFactory.createApplicationContext>> | undefined;
 
   try {
+    app = await NestFactory.createApplicationContext(AppModule, { bufferLogs: true });
     const result = await app.get(SchedulerService).runDueTasks();
+
+    // Reported on their own rather than as a failed run — see reportFailures.
+    monitor.reportFailures(result);
+    monitor.finish(checkInId, 'ok');
     return { statusCode: 200, body: JSON.stringify(result) };
   } catch (error) {
     // A throw here would be swallowed by the platform and the run would
     // look like it never happened, so report it explicitly.
     logger.error('Scheduled run failed', error as Error);
     if (process.env.SENTRY_DSN) Sentry.captureException(error);
+    monitor.finish(checkInId, 'error');
     return { statusCode: 500, body: JSON.stringify({ error: (error as Error).message }) };
   } finally {
     // Order matters: close the Nest app first so Prisma disconnects and the
     // Postgres connection is handed back, then flush Sentry, then let the
-    // container freeze.
-    await app.close().catch(() => undefined);
+    // container freeze. The check-in is in that flush — without it the
+    // container freezes with the monitor's own heartbeat still buffered.
+    await app?.close().catch(() => undefined);
 
     if (process.env.SENTRY_DSN) {
       try {
