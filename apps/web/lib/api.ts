@@ -1038,6 +1038,123 @@ class ApiClient {
   };
 
   // ── Commons ──────────────────────────────────────
+  /**
+   * Serve, My Service and Serving (SRV-01).
+   *
+   * One group, three audiences — the same split the nav shows: the co-op's
+   * open list, a member's own record, and the organiser's coverage view.
+   */
+  service = {
+    /** Every turn in a window, with who is on it and how many are needed. */
+    openings: (
+      orgId: string,
+      range: { from?: string; to?: string },
+      token: string,
+    ) => {
+      const query = new URLSearchParams();
+      if (range.from) query.set('from', range.from);
+      if (range.to) query.set('to', range.to);
+      const suffix = query.toString() ? `?${query}` : '';
+      return this.request<DutyOpenings>(`/orgs/${orgId}/duties${suffix}`, { token });
+    },
+
+    /**
+     * Take one turn or several.
+     *
+     * Dates, not occurrence ids: the occurrences are computed rather than
+     * stored, so there is no id to send until somebody has claimed one.
+     */
+    claim: (orgId: string, dutyId: string, dates: string[], token: string) =>
+      this.request<{ dutyId: string; claimed: string[] }>(
+        `/orgs/${orgId}/duties/${dutyId}/claim`,
+        { method: 'POST', body: JSON.stringify({ dates }), token },
+      ),
+
+    /** Take a recurring duty on standing. */
+    adopt: (orgId: string, dutyId: string, token: string) =>
+      this.request<{ adoption: DutyAdoption; claimed: number }>(
+        `/orgs/${orgId}/duties/${dutyId}/adopt`,
+        { method: 'POST', token },
+      ),
+
+    releaseAdoption: (orgId: string, adoptionId: string, token: string) =>
+      this.request<{ released: boolean }>(
+        `/orgs/${orgId}/service/adoptions/${adoptionId}/release`,
+        { method: 'POST', token },
+      ),
+
+    releaseClaim: (orgId: string, claimId: string, token: string) =>
+      this.request<DutyClaim>(`/orgs/${orgId}/service/claims/${claimId}/release`, {
+        method: 'POST',
+        token,
+      }),
+
+    /** Mark a turn done. Omitting minutes credits the duty's own estimate. */
+    complete: (
+      orgId: string,
+      claimId: string,
+      data: { minutes?: number; note?: string },
+      token: string,
+    ) =>
+      this.request<DutyClaim>(`/orgs/${orgId}/service/claims/${claimId}/done`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    mine: (orgId: string, token: string) =>
+      this.request<MyService>(`/orgs/${orgId}/my-service`, { token }),
+
+    // ── Organiser ────────────────────────────────────────────────────
+
+    createDuty: (orgId: string, data: DutyInput, token: string) =>
+      this.request<Duty>(`/orgs/${orgId}/duties`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    updateDuty: (
+      orgId: string,
+      dutyId: string,
+      data: Partial<DutyInput> & { isActive?: boolean },
+      token: string,
+    ) =>
+      this.request<Duty>(`/orgs/${orgId}/duties/${dutyId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    /** Retires the duty when anybody has served it, rather than deleting. */
+    removeDuty: (orgId: string, dutyId: string, token: string) =>
+      this.request<Duty>(`/orgs/${orgId}/duties/${dutyId}`, {
+        method: 'DELETE',
+        token,
+      }),
+
+    standing: (orgId: string, token: string) =>
+      this.request<CoopStanding>(`/orgs/${orgId}/service/standing`, { token }),
+
+    pending: (orgId: string, token: string) =>
+      this.request<PendingClaim[]>(`/orgs/${orgId}/service/pending`, { token }),
+
+    adoptions: (orgId: string, token: string) =>
+      this.request<StandingDuty[]>(`/orgs/${orgId}/service/adoptions`, { token }),
+
+    confirmClaim: (orgId: string, claimId: string, token: string) =>
+      this.request<DutyClaim>(`/orgs/${orgId}/service/claims/${claimId}/confirm`, {
+        method: 'POST',
+        token,
+      }),
+
+    rejectClaim: (orgId: string, claimId: string, token: string) =>
+      this.request<DutyClaim>(`/orgs/${orgId}/service/claims/${claimId}/reject`, {
+        method: 'POST',
+        token,
+      }),
+  };
+
   commons = {
     listChannels: (orgId: string, token: string) =>
       this.request<Channel[]>(`/orgs/${orgId}/channels`, { token }),
@@ -1907,6 +2024,14 @@ export interface TierInput {
   isPayWhatYouCan?: boolean;
   minPrice?: number;
   benefits?: string[];
+  /**
+   * What this tier asks of a member in service (SRV-01).
+   *
+   * Explicit null clears an expectation; omitting the field leaves it alone.
+   * The two travel together — the API refuses one without the other.
+   */
+  serviceMinutes?: number | null;
+  servicePeriod?: ServicePeriod | null;
 }
 
 export interface AdminTier extends MembershipTier {
@@ -1934,6 +2059,9 @@ export interface MembershipTier {
   /** Floor for a pay-what-you-can tier, in cents. Server-enforced. */
   minPrice?: number;
   benefits: string[];
+  /** Both null, and usually are, meaning the tier asks for money only. */
+  serviceMinutes?: number | null;
+  servicePeriod?: ServicePeriod | null;
 }
 
 /** One row of an export, in MaybeOS's own field names (MEM-06). */
@@ -2970,4 +3098,148 @@ export interface ExpenseSummary {
   /** 0–1, or null when nothing has been recorded — not the same as zero. */
   attributedShare: number | null;
   expenseCount: number;
+}
+
+
+// ── Serve (SRV-01) ──────────────────────────────────────────────────────
+
+export type Recurrence = 'NONE' | 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY';
+export type ServicePeriod = 'WEEK' | 'MONTH' | 'YEAR';
+export type DutyClaimStatus =
+  | 'CLAIMED'
+  | 'CONFIRMED'
+  | 'DONE'
+  | 'MISSED'
+  | 'RELEASED';
+
+export interface Duty {
+  id: string;
+  title: string;
+  description?: string | null;
+  estimatedMinutes: number;
+  capacity: number;
+  requiresApproval: boolean;
+  recurrence: Recurrence;
+  startsOn: string;
+  endsOn?: string | null;
+  startTime: string;
+  isActive: boolean;
+}
+
+/** What a form sends when naming a duty. Dates are local, "YYYY-MM-DD". */
+export interface DutyInput {
+  title: string;
+  description?: string;
+  estimatedMinutes: number;
+  capacity?: number;
+  requiresApproval?: boolean;
+  recurrence?: Recurrence;
+  startsOn: string;
+  endsOn?: string;
+  startTime?: string;
+}
+
+/** Somebody already down for a turn. */
+export interface OccupantSummary {
+  id: string;
+  userId: string;
+  name?: string | null;
+  avatarUrl?: string | null;
+  status: DutyClaimStatus;
+}
+
+/**
+ * One turn of one duty.
+ *
+ * Carries the duty's own fields alongside the date, because the open list is
+ * flat: an occurrence is the row, and a caller that had to join back to the
+ * duty to render a title would need the duties in a second request.
+ */
+export interface DutyOccurrence {
+  dutyId: string;
+  title: string;
+  description?: string | null;
+  estimatedMinutes: number;
+  capacity: number;
+  requiresApproval: boolean;
+  recurrence: Recurrence;
+  /** Local date, "YYYY-MM-DD". */
+  date: string;
+  occursAt: string;
+  /** How many more people are needed. Zero means covered. */
+  remaining: number;
+  claims: OccupantSummary[];
+}
+
+export interface DutyOpenings {
+  from: string;
+  to: string;
+  timezone: string;
+  occurrences: DutyOccurrence[];
+}
+
+export interface DutyClaim {
+  id: string;
+  dutyId: string;
+  userId: string;
+  occursAt: string;
+  status: DutyClaimStatus;
+  minutes?: number | null;
+  minutesEdited: boolean;
+  minutesNote?: string | null;
+  completedAt?: string | null;
+  adoptionId?: string | null;
+  duty?: Pick<Duty, 'id' | 'title' | 'estimatedMinutes'>;
+}
+
+export interface DutyAdoption {
+  id: string;
+  dutyId: string;
+  userId: string;
+  startedAt: string;
+  releasedAt?: string | null;
+  duty?: Pick<Duty, 'id' | 'title' | 'recurrence'>;
+}
+
+/** How a member stands against their tier, for the window in progress. */
+export interface ServiceStanding {
+  period: ServicePeriod;
+  window: { from: string; to: string };
+  /** Null when the tier asks for nothing. */
+  expectedMinutes: number | null;
+  servedMinutes: number;
+  shortfallMinutes: number | null;
+  /** True when the expectation is scaled because they joined mid-window. */
+  prorated: boolean;
+}
+
+export interface MyService {
+  timezone: string;
+  totalMinutes: number;
+  standing: ServiceStanding | null;
+  upcoming: DutyClaim[];
+  past: DutyClaim[];
+  adoptions: DutyAdoption[];
+}
+
+export interface CoopStanding {
+  timezone: string;
+  members: {
+    userId: string;
+    name?: string | null;
+    avatarUrl?: string | null;
+    tier?: string | null;
+    totalMinutes: number;
+    standing: ServiceStanding | null;
+  }[];
+}
+
+export interface PendingClaim extends DutyClaim {
+  duty: Pick<Duty, 'id' | 'title' | 'estimatedMinutes'>;
+  user: { id: string; name?: string | null; avatarUrl?: string | null };
+}
+
+export interface StandingDuty extends DutyAdoption {
+  duty: Pick<Duty, 'id' | 'title' | 'recurrence'>;
+  user: { id: string; name?: string | null; avatarUrl?: string | null };
 }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Loader2, AlertCircle, CheckCircle2, Users, EyeOff, Eye } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
-import { api, AdminTier, TierInput, ApiError } from '@/lib/api';
+import { api, AdminTier, TierInput, ServicePeriod, ApiError } from '@/lib/api';
 
 const money = (cents: number) =>
   cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`;
@@ -19,6 +19,9 @@ type Draft = {
   isPayWhatYouCan: boolean;
   minPrice: string;
   benefits: string;
+  /** Service asked of this tier, in hours. Blank means none (SRV-01). */
+  serviceHours: string;
+  servicePeriod: string;
 };
 
 const emptyDraft: Draft = {
@@ -28,6 +31,8 @@ const emptyDraft: Draft = {
   isPayWhatYouCan: false,
   minPrice: '',
   benefits: '',
+  serviceHours: '',
+  servicePeriod: 'MONTH',
 };
 
 const draftFrom = (t: AdminTier): Draft => ({
@@ -37,6 +42,10 @@ const draftFrom = (t: AdminTier): Draft => ({
   isPayWhatYouCan: t.isPayWhatYouCan,
   minPrice: t.minPrice ? toDollars(t.minPrice) : '',
   benefits: (t.benefits ?? []).join('\n'),
+  // Hours in the form, minutes on the wire: a co-op says "four hours a
+  // month", and asking an organiser to type 240 invites a slip of a zero.
+  serviceHours: t.serviceMinutes ? String(t.serviceMinutes / 60) : '',
+  servicePeriod: t.servicePeriod ?? 'MONTH',
 });
 
 const toInput = (d: Draft): TierInput => ({
@@ -46,6 +55,12 @@ const toInput = (d: Draft): TierInput => ({
   isPayWhatYouCan: d.isPayWhatYouCan,
   minPrice: d.isPayWhatYouCan ? toCents(d.minPrice) : undefined,
   benefits: d.benefits.split('\n').map((b) => b.trim()).filter(Boolean),
+  // Explicit null rather than omitted, so clearing the field removes the
+  // expectation instead of silently leaving the old one in place.
+  serviceMinutes: d.serviceHours.trim()
+    ? Math.round(parseFloat(d.serviceHours) * 60)
+    : null,
+  servicePeriod: d.serviceHours.trim() ? (d.servicePeriod as ServicePeriod) : null,
 });
 
 export default function AdminTiersPage() {
@@ -281,6 +296,43 @@ export default function AdminTiersPage() {
                 placeholder={'One per line\nAccess to events\nCommunity forum'}
               />
             </label>
+
+            {/* Service asked of this tier (SRV-01). Blank is the default and
+                true of every tier that exists today — most tiers ask for
+                money and nothing else. */}
+            <fieldset className="block">
+              <legend className="text-sm font-medium">Service expected</legend>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  className="input w-24"
+                  value={draft.serviceHours}
+                  onChange={(e) => setDraft({ ...draft, serviceHours: e.target.value })}
+                  placeholder="4"
+                />
+                <span className="text-sm text-[var(--text-secondary)]">hours per</span>
+                <select
+                  /* `.input` is `w-full`, which pushed the select onto its own
+                     line and made "4 hours per" read as an unfinished
+                     sentence. */
+                  className="input w-32"
+                  value={draft.servicePeriod}
+                  disabled={!draft.serviceHours.trim()}
+                  onChange={(e) => setDraft({ ...draft, servicePeriod: e.target.value })}
+                >
+                  <option value="WEEK">week</option>
+                  <option value="MONTH">month</option>
+                  <option value="YEAR">year</option>
+                </select>
+              </div>
+              <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+                Leave blank to ask for nothing. Members see how they stand under My
+                Service, and you see the co-op under Serving. Somebody joining part way
+                through a period is asked for a share of it, not the whole thing.
+              </p>
+            </fieldset>
 
             {/* Only shown when a price change would actually hit somebody. */}
             {affectsMembers && (
