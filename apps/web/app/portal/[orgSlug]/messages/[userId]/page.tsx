@@ -87,7 +87,7 @@ export default function ThreadPage() {
   const myId = messages.find((m) => m.sender.id !== otherUserId)?.sender.id ?? null;
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <Link
         href={`/portal/${org?.slug}/messages`}
         className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900"

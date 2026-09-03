@@ -31,7 +31,7 @@ export function MaybeOsPlan({
   const perTransaction = PLATFORM_FEE_CENTS[plan] ?? PLATFORM_FEE_CENTS.FREE;
 
   return (
-    <section className="card max-w-3xl space-y-4">
+    <section className="card space-y-4">
       <div>
         <h2 className="text-lg font-semibold text-gray-900">Your MaybeOS plan</h2>
         <p className="mt-1 text-sm text-gray-500">

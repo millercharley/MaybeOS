@@ -113,7 +113,7 @@ export default function ServingPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Serving</h1>

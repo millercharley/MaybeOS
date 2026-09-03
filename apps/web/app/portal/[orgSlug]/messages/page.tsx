@@ -52,7 +52,7 @@ export default function MessagesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-900">Messages</h1>
 
       {conversations.length === 0 ? (

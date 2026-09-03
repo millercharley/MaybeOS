@@ -95,7 +95,7 @@ export default function WelcomeStartPage() {
   const isBlocking = outstanding?.blocking.some((a) => a.id === article.id) ?? false;
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5">
+    <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-gray-500">
           {remaining === 1 ? 'One thing to read' : `${remaining} things to read`}

@@ -87,7 +87,7 @@ export default function MyServicePage() {
   const hidden = upcoming.length - shown.length;
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div>
       <header>
         <h1 className="text-2xl font-bold">My service</h1>
         <p className="mt-1 text-[var(--text-secondary)]">

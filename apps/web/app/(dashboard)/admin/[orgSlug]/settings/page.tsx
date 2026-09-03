@@ -205,7 +205,7 @@ export default function SettingsPage() {
     // the whole stack hugged the left of the centred 1280 column and left
     // half the screen empty — the shape of the complaint UI-01 is about. The
     // cap matches the widest card so nothing is narrowed.
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="space-y-6">
       {justSubscribed && (
         <p className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-800" role="status">
           Thanks — your MaybeOS plan is active. What you&apos;re billed for is below.
@@ -241,7 +241,7 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'general' && (
-        <form onSubmit={handleSaveGeneral} className="card max-w-2xl space-y-6">
+        <form onSubmit={handleSaveGeneral} className="card space-y-6">
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
               Organization Name
@@ -332,7 +332,7 @@ export default function SettingsPage() {
       {activeTab === 'general' && org && <WebsiteEmbed org={org} />}
 
       {activeTab === 'general' && (
-        <section className="card max-w-2xl space-y-4">
+        <section className="card space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-6">
             <div>
               <h2 className="text-base font-semibold text-gray-900">Who can join</h2>
@@ -406,7 +406,7 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'branding' && (
-        <section className="card max-w-2xl space-y-4">
+        <section className="card space-y-4">
           <div>
             <h2 className="text-base font-semibold text-gray-900">Logo</h2>
             <p className="mt-1 text-sm text-gray-500">
@@ -457,7 +457,7 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'branding' && (
-        <form onSubmit={handleSaveBranding} className="card max-w-2xl space-y-6">
+        <form onSubmit={handleSaveBranding} className="card space-y-6">
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Brand Color</label>
             <div className="flex items-center gap-3">
@@ -490,7 +490,7 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'integrations' && (
-        <div className="max-w-2xl space-y-4">
+        <div className="space-y-4">
           <div className="card flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-semibold text-gray-900">Stripe</h3>
@@ -516,7 +516,7 @@ export default function SettingsPage() {
       )}
 
       {activeTab === 'billing' && (
-        <div className="card max-w-2xl">
+        <div className="card">
           <h2 className="mb-4 text-lg font-semibold text-gray-900">Plan</h2>
           <div className="rounded-lg border border-gray-200 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">

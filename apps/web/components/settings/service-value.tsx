@@ -56,7 +56,7 @@ export function ServiceValue({ org, onSaved }: { org: Org; onSaved?: () => void 
   }
 
   return (
-    <section className="card max-w-2xl space-y-4">
+    <section className="card space-y-4">
       <div>
         <h2 className="flex items-center gap-2 font-medium text-gray-900">
           <HandHelping className="h-4 w-4 text-gray-400" />

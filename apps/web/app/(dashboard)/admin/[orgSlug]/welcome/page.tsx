@@ -113,7 +113,7 @@ export default function AdminWelcomePage() {
 
   if (compliance) {
     return (
-      <div className="mx-auto max-w-3xl space-y-5">
+      <div className="space-y-5">
         <button
           onClick={() => setCompliance(null)}
           className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900"
@@ -190,7 +190,7 @@ export default function AdminWelcomePage() {
   if (editing) {
     const wasLive = editing.state === 'PUBLISHED' && editing.requiresAcknowledgment;
     return (
-      <div className="mx-auto max-w-3xl space-y-5">
+      <div className="space-y-5">
         <button
           onClick={() => {
             setEditing(null);
@@ -326,7 +326,7 @@ export default function AdminWelcomePage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Welcoming</h1>

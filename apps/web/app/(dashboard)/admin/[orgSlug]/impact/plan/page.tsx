@@ -100,7 +100,7 @@ export default function MeasurementPlanPage() {
   const atLimit = (plan?.goals.length ?? 0) >= (plan?.maxGoals ?? 5);
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="space-y-6">
       <Link
         href="../impact"
         className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900"

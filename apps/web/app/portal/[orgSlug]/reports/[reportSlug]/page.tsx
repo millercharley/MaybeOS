@@ -50,7 +50,7 @@ export default function PublicReportPage(props: {
   const { org, report } = data;
 
   return (
-    <article className="mx-auto max-w-2xl py-8">
+    <article className="py-8">
       <header className="border-b border-gray-200 pb-6">
         <p className="text-sm font-medium text-gray-500">{org.name}</p>
         <h1 className="mt-1 text-3xl font-bold text-gray-900">{report.title}</h1>

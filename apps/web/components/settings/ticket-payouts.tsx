@@ -115,7 +115,7 @@ export function TicketPayouts({ org, onSaved }: { org: Org; onSaved?: () => void
   const ready = status?.chargesEnabled;
 
   return (
-    <section className="card max-w-2xl space-y-4">
+    <section className="card space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-6">
         <div>
           <h2 className="text-base font-semibold text-gray-900">Ticket sales</h2>
