@@ -24,6 +24,30 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-032 — MaybeOS supplies no default value for a volunteer hour
+
+- **Date:** 2026-09-03
+- **Status:** Active
+- **Area:** Product / ImpactOS
+- **Decision:** `Organization.volunteerHourValueCents` is **nullable with no default**. ImpactOS always reports service **hours**; it reports a dollar "contributed value" **only** when the co-op has set its own hourly rate. Where it does, the report states in the same paragraph that the rate is the co-op's own and that MaybeOS does not supply one. The rate is capped at $500/hour — not a judgement about anyone's time, but a guard against a cents-field typo turning 25 hours into a six-figure claim. The stated value is computed from the **printed** hours, so hours × rate always equals the total a reader can check.
+- **Alternatives rejected:** **Defaulting to a published national figure** (Independent Sector's volunteer hour value, or similar) — the number would be asserted in the co-op's name, in a grant application, without anybody in the co-op choosing it; challenged by a funder, the co-op would be defending a figure its software picked. **Offering a suggested figure as a placeholder** — rejected for the same reason one step removed: a prefilled number is a number most people accept, and the consent is nominal. **Omitting monetary value entirely** — rejected because "contributed value" is what funders ask for, and a co-op that has thought about its own rate should be able to state it. **Valuing the exact recorded minutes rather than the printed hours** — rejected after seeing the output: 165 minutes prints as "2.8 hours" and values exactly at $77.00, so "2.8 hours at $28.00 an hour" sat beside $77.00 and anybody multiplying got $78.40. Every minute in the total is an organiser's estimate of what a turn takes, so a tenth of an hour is well inside the noise; arithmetic that does not check out is not.
+- **Rationale:** The impact report is a document a co-op sends to funders under its own name. MaybeOS may compute what it can observe — hours a member actually served, on the day the turn fell — and must not manufacture what it cannot observe, which is what an hour is worth. The rate is a claim, and claims belong to the claimant. This is the same principle as D-021's suppression and G5 provenance: the product's job is to make a co-op's own figures defensible, not to supply figures on its behalf.
+- **Supersedes:** none. Extends D-021's reporting rules to a non-survey figure.
+
+---
+
+### D-031 — Service expectations run over shared calendar windows, prorated for a member's first
+
+- **Date:** 2026-09-03
+- **Status:** Active
+- **Area:** Product / ServiceOS
+- **Decision:** A membership tier may ask for **N minutes of service per WEEK, MONTH or YEAR — or nothing**, which is the default and true of every tier that exists today. Both halves travel together: an amount without a period, or a period without an amount, is refused. Every member of a co-op is measured over the **same calendar window** — Sunday–Saturday, calendar month, or calendar year, read in the co-op's timezone. A member's **first window is prorated from the day they joined**. Minutes on the wire, hours in the interface.
+- **Alternatives rejected:** **Anniversary windows**, each member measured over their own year from joining — defensible for one member and useless in aggregate: "who is short" becomes forty private stopwatches running over forty different stretches of time, and an organiser cannot say a single true thing about the co-op from them. **No proration** — a 24-hour yearly expectation makes somebody who joins on 20 December 24 hours in arrears on their first day; a poor first thing for the co-op's software to tell a new member, and a number no organiser would act on anyway. **A single fixed period for all co-ops** — "two hours a month" and "twenty hours a year" are both real and not interchangeable. **Storing the expectation in hours** — a duty is measured in minutes, and an expectation held in a coarser unit than the thing measured against it can only be compared by rounding one of them.
+- **Rationale:** The whole point of an expectation is that an organiser can look at the co-op and act on what they see, which requires figures that compare. Comparability requires a shared window. Fairness to a new member then becomes a proration problem rather than a windowing problem, and proration is much the cheaper of the two to get right. Weeks run Sunday–Saturday to match the `0 = Sunday` numbering the room opening hours already use — one convention per codebase.
+- **Supersedes:** none.
+
+---
+
 ### D-030 — MaybeOS's per-transaction fee, repriced; the initiation fee removed
 
 - **Date:** 2026-08-20
