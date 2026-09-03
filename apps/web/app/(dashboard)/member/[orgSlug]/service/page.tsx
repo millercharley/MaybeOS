@@ -7,6 +7,7 @@ import { Repeat, Check, Undo2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, type MyService } from '@/lib/api';
 import { PageHeader } from '@/components/layout/page-header';
+import { Panel } from '@/components/layout/panel';
 import {
   formatMinutes,
   recurrenceLabel,
@@ -105,13 +106,12 @@ export default function MyServicePage() {
           than shown as "no requirement": a member whose tier asks nothing does
           not need telling that every time they open the page. */}
       {data?.standing && (
-        <p className="mt-4 rounded-lg bg-[var(--surface-sunken)] px-4 py-3 text-sm">
-          {standingSentence(data.standing)}
-        </p>
+        <Panel className="mt-4">
+          <p className="text-sm">{standingSentence(data.standing)}</p>
+        </Panel>
       )}
 
-      <section className="mt-8">
-        <h2 className="font-semibold">Coming up</h2>
+      <Panel className="mt-8" title="Coming up" bodyClassName="">
         {upcoming.length === 0 ? (
           <p className="mt-2 text-sm text-[var(--text-secondary)]">
             Nothing booked in.{' '}
@@ -121,7 +121,7 @@ export default function MyServicePage() {
             .
           </p>
         ) : (
-          <ul className="mt-2 divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
+          <ul className="-mx-5 -mb-5 divide-y divide-[var(--border)] border-t border-[var(--border)]">
             {shown.map((claim) => (
               <li key={claim.id} className="p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -191,16 +191,15 @@ export default function MyServicePage() {
             And {hidden} more after that, from the duties you have on standing.
           </p>
         )}
-      </section>
+      </Panel>
 
       {(data?.adoptions ?? []).length > 0 && (
-        <section className="mt-8">
-          <h2 className="font-semibold">Mine for good</h2>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">
-            You have these on standing. Hand one back and it goes to the co-op — the turns
-            you have already done stay yours.
-          </p>
-          <ul className="mt-2 divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
+        <Panel
+          className="mt-8"
+          title="Mine for good"
+          description="You have these on standing. Hand one back and it goes to the co-op — the turns you have already done stay yours."
+        >
+          <ul className="-mx-5 -mb-5 divide-y divide-[var(--border)] border-t border-[var(--border)]">
             {data!.adoptions.map((adoption) => (
               <li key={adoption.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
                 <div className="min-w-0">
@@ -227,15 +226,14 @@ export default function MyServicePage() {
               </li>
             ))}
           </ul>
-        </section>
+        </Panel>
       )}
 
-      <section className="mt-8">
-        <h2 className="font-semibold">Done</h2>
+      <Panel className="mt-8" title="Done">
         {done.length === 0 ? (
           <p className="mt-2 text-sm text-[var(--text-secondary)]">Nothing yet.</p>
         ) : (
-          <ul className="mt-2 divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
+          <ul className="-mx-5 -mb-5 divide-y divide-[var(--border)] border-t border-[var(--border)]">
             {done.map((claim) => (
               <li key={claim.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
                 <div className="min-w-0">
@@ -252,7 +250,7 @@ export default function MyServicePage() {
             ))}
           </ul>
         )}
-      </section>
+      </Panel>
     </div>
   );
 }

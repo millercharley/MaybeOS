@@ -69,8 +69,8 @@ export default function PortalDirectoryPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PageHeader
           title="Member Directory"
+          description={`${members.length} ${members.length === 1 ? 'member' : 'members'}`}
         />
-        <span className="text-sm text-gray-500">{members.length} members</span>
       </div>
 
       <div className="relative">

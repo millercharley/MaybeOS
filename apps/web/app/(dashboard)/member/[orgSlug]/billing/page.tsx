@@ -7,6 +7,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { usePublicApi } from '@/hooks/use-api';
 import { api, MembershipTier, ApiError } from '@/lib/api';
 import { PageHeader } from '@/components/layout/page-header';
+import { Panel } from '@/components/layout/panel';
 
 /** Cents → "$12" or "$12.50", never "$12.00". */
 function money(cents: number): string {
@@ -132,12 +133,11 @@ export default function MemberBillingPage() {
 
   return (
     <div>
-      <p className="data mb-2 text-xs uppercase tracking-wider text-[var(--text-tertiary)]">
-        {membership.org?.name}
-      </p>
       <PageHeader
         title="Dues &amp; billing"
-      />{justReturned === 'success' && (
+        description={membership.org?.name}
+      />
+      {justReturned === 'success' && (
         <div className="card mt-6 flex gap-3 border-[var(--success)]">
           <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-[var(--success)]" />
           <div>
@@ -184,13 +184,11 @@ export default function MemberBillingPage() {
         </div>
       </div>
 
-      {/* Tier chooser */}
-      <h2 className="mt-10 font-display text-lg">
-        {mustUsePortal ? 'Change your tier' : 'Choose a tier'}
-      </h2>
-
+      {/* Tier chooser. The heading lives on the card below it rather than
+          loose on the co-op's colour (BRD-02). */}
       {mustUsePortal ? (
-        <div className="card mt-4">
+        <div className="card mt-10">
+          <h2 className="mb-3 text-lg font-semibold">Change your tier</h2>
           <p className="text-[var(--text-secondary)]">
             Switching tiers, updating your card, and cancelling all happen in the
             billing portal, so your existing membership is adjusted rather than a
@@ -207,13 +205,14 @@ export default function MemberBillingPage() {
         </div>
       ) : (
         <>
-      {(!tiers || tiers.length === 0) && (
-        <p className="mt-2 text-sm text-[var(--text-secondary)]">
-          {membership.org?.name} hasn&apos;t set up membership tiers yet.
-        </p>
-      )}
+      <Panel className="mt-10" title="Choose a tier">
+        {(!tiers || tiers.length === 0) && (
+          <p className="text-sm text-[var(--text-secondary)]">
+            {membership.org?.name} hasn&apos;t set up membership tiers yet.
+          </p>
+        )}
 
-      <div className="mt-4 grid gap-4">
+      <div className="grid gap-4">
         {(tiers ?? []).map((tier) => {
           const floorCents = Math.max(tier.minPrice ?? 0, 50);
           const raw = amounts[tier.id] ?? '';
@@ -298,12 +297,15 @@ export default function MemberBillingPage() {
           );
         })}
       </div>
+        </Panel>
         </>
       )}
 
-      <p className="mt-8 text-xs text-[var(--text-tertiary)]">
-        Payments are handled by Stripe. MaybeOS never sees your card details.
-      </p>
+      <Panel className="mt-8">
+        <p className="text-xs text-[var(--text-tertiary)]">
+          Payments are handled by Stripe. MaybeOS never sees your card details.
+        </p>
+      </Panel>
     </div>
   );
 }

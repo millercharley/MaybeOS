@@ -1960,7 +1960,7 @@ export interface UserProfile {
     /** Non-null in the database with a NONE default, so always present. */
     subscriptionStatus: string;
     memberSince?: string;
-    org?: { id: string; name: string; slug: string; logoUrl?: string | null };
+    org?: { id: string; name: string; slug: string; logoUrl?: string | null; brandColor?: string | null };
   }>;
 }
 

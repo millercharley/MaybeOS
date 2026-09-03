@@ -236,7 +236,18 @@ export class AuthService {
             tierId: true,
             subscriptionStatus: true,
             memberSince: true,
-            org: { select: { id: true, name: true, slug: true, logoUrl: true } },
+            // `brandColor` and `logoUrl` so a member's own pages can carry
+            // their co-op's colours without a second request on every
+            // navigation (BRD-01).
+            org: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                logoUrl: true,
+                brandColor: true,
+              },
+            },
           },
         },
       },

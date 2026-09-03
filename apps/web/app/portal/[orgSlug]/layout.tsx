@@ -6,6 +6,8 @@ import { Menu } from 'lucide-react';
 import { PortalProvider, usePortal } from '@/contexts/portal-context';
 import { Sidebar } from '@/components/layout/sidebar';
 import { RequiredReadingBanner } from '@/components/belonging/required-reading-banner';
+import { OrgMark } from '@/components/layout/org-mark';
+import { brandStyle, brandTheme } from '@/lib/brand';
 
 function PortalShell({ children }: { children: React.ReactNode }) {
   const { org, orgSlug, loading, error } = usePortal();
@@ -19,6 +21,10 @@ function PortalShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setNavOpen(false);
   }, [pathname]);
+
+  // The co-op's own colour, behind its own members' pages (BRD-01). Null when
+  // it has not set one, and then nothing here changes.
+  const theme = brandTheme(org?.brandColor);
 
   if (loading) {
     return (
@@ -40,7 +46,7 @@ function PortalShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-gray-50" style={brandStyle(theme)}>
       {/* The same column as every other screen (Charley, 2026-08-19). It is
           given this page's co-op explicitly, because the portal can be showing
           a co-op the viewer has not selected — or is not a member of at all. */}
@@ -74,8 +80,18 @@ function PortalShell({ children }: { children: React.ReactNode }) {
           >
             <Menu className="h-5 w-5" />
           </button>
-          <span className="truncate font-medium text-gray-900">{org?.name}</span>
+          <span className="min-w-0 flex-1 truncate font-medium">{org?.name}</span>
+          <OrgMark name={org?.name} logoUrl={org?.logoUrl} />
         </div>
+
+        {/* The portal had no desktop header at all, so there was nowhere for a
+            co-op's mark to sit above `lg`. Slim and right-aligned: it says
+            whose space this is without becoming a second masthead (BRD-01). */}
+        {org?.logoUrl && (
+          <div className="hidden justify-end px-4 pt-6 sm:px-6 lg:flex lg:px-8">
+            <OrgMark name={org?.name} logoUrl={org?.logoUrl} />
+          </div>
+        )}
 
         {/* Above the content on every portal page (BEL, §6.2): a member
             needs to know what they owe *before* they write a paragraph into a

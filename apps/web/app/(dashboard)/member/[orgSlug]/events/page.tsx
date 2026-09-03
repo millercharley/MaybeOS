@@ -14,6 +14,7 @@ import { MyRsvps } from '@/components/events/my-rsvps';
 import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 import { HostEarnings } from '@/components/events/host-earnings';
 import { PageHeader } from '@/components/layout/page-header';
+import { Panel } from '@/components/layout/panel';
 
 /**
  * A member's own events (EVT-05).
@@ -117,14 +118,16 @@ export default function MyEventsPage() {
         <div>
           <PageHeader
             title="My Events"
+            description={
+              <>
+                Things you are running, and things you are going to. You can also{' '}
+                <Link href={`/member/${orgSlug}/bookings`} className="underline">
+                  publish an event from a room booking
+                </Link>
+                .
+              </>
+            }
           />
-          <p className="mt-1 text-sm text-gray-500">
-            Things you are running, and things you are going to. You can also{' '}
-            <Link href={`/member/${orgSlug}/bookings`} className="text-brand-600 hover:underline">
-              publish an event from a room booking
-            </Link>
-            .
-          </p>
         </div>
         {!creating && (
           <button
@@ -203,10 +206,9 @@ export default function MyEventsPage() {
       {/* Going, not just hosting. These were a separate page and a separate nav
           item, which split "what am I doing this month" across two screens and
           answered it on neither. */}
-      <section className="border-t border-gray-200 pt-6">
-        <h2 className="mb-3 text-lg font-semibold text-gray-900">Going</h2>
+      <Panel title="Going">
         <MyRsvps />
-      </section>
+      </Panel>
     </div>
   );
 }
@@ -229,8 +231,7 @@ function Section({
   if (events.length === 0) return null;
 
   return (
-    <section>
-      <h2 className="mb-3 text-lg font-semibold text-gray-900">{title}</h2>
+    <Panel title={title}>
       <div className={`space-y-3 ${muted ? 'opacity-70' : ''}`}>
         {events.map((event) => (
           <EventRow
@@ -242,7 +243,7 @@ function Section({
           />
         ))}
       </div>
-    </section>
+    </Panel>
   );
 }
 
