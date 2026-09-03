@@ -2285,6 +2285,15 @@ export interface Booking {
 export interface CreateBookingData {
   title: string;
   description?: string;
+  /**
+   * What the booking is for (SPC-15). All optional — a booking that answers
+   * none of them still works, and every booking made before these were asked
+   * answered none. They are what the room's Google Calendar shows.
+   */
+  visibility?: 'PUBLIC' | 'MEMBERS_ONLY' | 'PRIVATE';
+  expectedAttendance?: number;
+  hasCost?: boolean;
+  categories?: string[];
   startTime: string;
   endTime: string;
 }

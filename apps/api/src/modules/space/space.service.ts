@@ -709,6 +709,13 @@ export class SpaceService {
         userId,
         title: dto.title,
         description: dto.description,
+        // What the booking is for (SPC-15). Defaults match the column
+        // defaults, so a client that sends none of them behaves exactly as
+        // every booking made before these were asked.
+        visibility: dto.visibility ?? 'PRIVATE',
+        expectedAttendance: dto.expectedAttendance ?? null,
+        hasCost: dto.hasCost ?? false,
+        categories: dto.categories ?? [],
         startTime,
         endTime,
         status,
