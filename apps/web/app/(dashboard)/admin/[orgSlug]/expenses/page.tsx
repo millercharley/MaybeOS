@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { Receipt, Trash2, AlertCircle } from 'lucide-react';
+import { Trash2, AlertCircle } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Expense, ExpenseSummary } from '@/lib/api';
 import { PageHeader } from '@/components/layout/page-header';

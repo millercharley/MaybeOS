@@ -10,7 +10,6 @@ import { api, DirectMessage } from '@/lib/api';
 import { renderBodyHtml } from '@/lib/rich-text';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
 import { timeAgo } from '@/lib/relative-time';
-import { PageHeader } from '@/components/layout/page-header';
 
 /**
  * One conversation, and — if you are somebody's buddy — the prompts for it

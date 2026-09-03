@@ -17,7 +17,6 @@ import {
 import { useAuthStore } from '@/lib/auth-store';
 import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
-import { PageHeader } from '@/components/layout/page-header';
 
 const quickLinksFor = (orgSlug: string) => [
   { label: 'My RSVPs', href: `/member/${orgSlug}/rsvps`, icon: Calendar },

@@ -9,7 +9,6 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { HappeningNow } from '@/components/live/happening-now';
 import { WelcomeCard } from '@/components/live/welcome-card';
-import { PageHeader } from '@/components/layout/page-header';
 
 export default function PortalHomePage() {
   const { orgSlug } = useParams();

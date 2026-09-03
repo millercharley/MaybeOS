@@ -77,6 +77,7 @@ export default function AdminDashboardPage() {
       <div>
         <PageHeader
           title="Dashboard"
+          description={`Welcome back, ${user?.name || 'Admin'}`}
         />
       </div>
 
