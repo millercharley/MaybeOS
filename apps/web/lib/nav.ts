@@ -16,6 +16,9 @@ import {
   BookOpen,
   HeartHandshake,
   Mail,
+  HandHelping,
+  ListChecks,
+  ClipboardCheck,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -71,6 +74,10 @@ const adminNav = (slug: string): NavItem[] => [
   // Money owed *out* to members who hosted, which is a different job from
   // spending and a different one from ticket sales (EVT-15).
   { href: `/admin/${slug}/payouts`, label: 'Host payouts', icon: HandCoins },
+  // Naming the work and seeing whether it is covered (SRV-01). Beside Rooms
+  // rather than under Members: it is a thing the co-op needs doing, not a
+  // fact about a person.
+  { href: `/admin/${slug}/serving`, label: 'Serving', icon: ListChecks },
   { href: `/admin/${slug}/welcome`, label: 'Welcoming', icon: BookOpen },
   { href: `/admin/${slug}/belonging`, label: 'Belonging', icon: HeartHandshake },
   { href: `/admin/${slug}/settings`, label: 'Settings', icon: Settings },
@@ -93,6 +100,8 @@ const memberNav = (slug: string): NavItem[] => [
   // and going to something are the same question asked twice.
   { href: `/member/${slug}/events`, label: 'My Events', icon: CalendarPlus },
   { href: `/member/${slug}/bookings`, label: 'My Bookings', icon: DoorOpen },
+  // What I have taken on and what it adds up to (SRV-01).
+  { href: `/member/${slug}/service`, label: 'My Service', icon: ClipboardCheck },
   { href: `/member/${slug}/billing`, label: 'Billing', icon: CreditCard },
   // What they told the co-op and what it added up to (IMP-20). A member who
   // answers a question a month and is told nothing stops answering, and
@@ -112,6 +121,10 @@ const coopNav = (slug: string): NavItem[] => [
   { href: `/portal/${slug}/directory`, label: 'Directory', icon: Users },
   { href: `/portal/${slug}/events`, label: 'Events', icon: Calendar },
   { href: `/portal/${slug}/rooms`, label: 'Rooms', icon: DoorOpen },
+  // What needs doing, and taking a turn (SRV-01). Last in the section
+  // deliberately: a member comes to the portal to find out what is on before
+  // they come to find out what needs doing.
+  { href: `/portal/${slug}/serve`, label: 'Serve', icon: HandHelping },
 ];
 
 /**

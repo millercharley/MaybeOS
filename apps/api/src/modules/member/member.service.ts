@@ -447,6 +447,7 @@ export class MemberService {
         isPayWhatYouCan: dto.isPayWhatYouCan ?? false,
         minPrice: dto.minPrice,
         benefits: dto.benefits ?? [],
+        ...this.serviceExpectation(dto),
         sortOrder: nextOrder,
       },
     });
@@ -559,6 +560,58 @@ export class MemberService {
   /**
    * Update a membership tier.
    */
+  /**
+   * The service expectation, checked as a pair (SRV-01).
+   *
+   * Minutes with no period is a number over no stretch of time; a period with
+   * no minutes is a stretch of time with nothing asked in it. Either alone
+   * produces a tier that appears to ask something and reports nothing — and a
+   * member being told they are short of an expectation nobody can state.
+   *
+   * `existing` is what the tier already holds, and it matters: without it, an
+   * organiser changing only the period on a tier that already asks for four
+   * hours would be refused for sending "half" an expectation, when in fact
+   * they sent the half that changed.
+   *
+   * Nulling either half clears both, because no amount and no period are the
+   * same answer — no expectation.
+   */
+  private serviceExpectation(
+    dto: Partial<CreateTierDto>,
+    existing?: { serviceMinutes: number | null; servicePeriod: string | null },
+  ) {
+    const touched = 'serviceMinutes' in dto || 'servicePeriod' in dto;
+    if (!touched) return {};
+
+    const minutes =
+      'serviceMinutes' in dto ? (dto.serviceMinutes ?? null) : (existing?.serviceMinutes ?? null);
+    const period =
+      'servicePeriod' in dto ? (dto.servicePeriod ?? null) : (existing?.servicePeriod ?? null);
+
+    if (minutes === null || period === null) {
+      // One half missing, and the *other* half was asked for in this call.
+      // That is a request for something the co-op cannot state — an amount
+      // over no period, or a period with nothing asked in it — so it is
+      // refused rather than quietly stored as nothing.
+      const askedFor =
+        (minutes !== null && 'serviceMinutes' in dto) ||
+        (period !== null && 'servicePeriod' in dto);
+
+      if (askedFor) {
+        throw new BadRequestException(
+          'A service expectation needs both an amount and a period — or neither, for no expectation.',
+        );
+      }
+
+      // Nothing was asked for, so this is a clearing. Both go: no amount and
+      // no period are the same answer, and a stray period left behind would
+      // be a tier asking for a month of nothing.
+      return { serviceMinutes: null, servicePeriod: null };
+    }
+
+    return { serviceMinutes: minutes, servicePeriod: period as never };
+  }
+
   async updateTier(
     orgId: string,
     tierId: string,
@@ -577,6 +630,12 @@ export class MemberService {
     const { applyToExistingMembers, ...fields } = dto as Partial<CreateTierDto> & {
       applyToExistingMembers?: boolean;
     };
+
+    // Pulled out of the spread rather than passed through it: `servicePeriod`
+    // arrives as a string and Prisma wants the enum, and routing both through
+    // the helper is what makes the pair check govern the write.
+    const { serviceMinutes: _m, servicePeriod: _p, ...rest } = fields;
+    const expectation = this.serviceExpectation(fields, tier);
 
     // A price change has to reach Stripe, and Stripe Prices are immutable.
     // Previously this method wrote the new amount to the database and stopped
@@ -616,7 +675,8 @@ export class MemberService {
     const updated = await this.prisma.membershipTier.update({
       where: { id: tierId },
       data: {
-        ...fields,
+        ...rest,
+        ...expectation,
         ...(priceChanged ? { stripePriceIdMonthly } : {}),
       },
     });

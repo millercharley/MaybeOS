@@ -172,4 +172,50 @@ describe('the sidebar', () => {
       expect(links).toEqual([]);
     });
   });
+
+  /**
+   * Serve, My Service and Serving (SRV-01).
+   *
+   * The same failure this file was written for: three pages that work and
+   * nothing linking to them is indistinguishable from three pages that do not
+   * exist. Each audience gets exactly one of them, and none gets another's.
+   */
+  describe('the service rota', () => {
+    it('gives a member the open list and their own record', () => {
+      const links = hrefs(sidebarSections({ membership: member, signedIn: true }));
+
+      expect(links).toContain('/portal/maybeitsfate/serve');
+      expect(links).toContain('/member/maybeitsfate/service');
+      // Naming the work is not a member's job.
+      expect(links).not.toContain('/admin/maybeitsfate/serving');
+    });
+
+    it('gives an organiser all three, because they are also a member', () => {
+      const links = hrefs(sidebarSections({ membership: organiser, signedIn: true }));
+
+      expect(links).toContain('/admin/maybeitsfate/serving');
+      expect(links).toContain('/portal/maybeitsfate/serve');
+      expect(links).toContain('/member/maybeitsfate/service');
+    });
+
+    it('offers a signed-out visitor the open list, since the portal is public', () => {
+      // The page itself asks them to sign in before it shows anybody's name.
+      const links = hrefs(
+        sidebarSections({ orgSlug: 'maybeitsfate', orgName: 'MaybeItsFate', signedIn: false }),
+      );
+
+      expect(links).toContain('/portal/maybeitsfate/serve');
+      expect(links).not.toContain('/member/maybeitsfate/service');
+    });
+
+    it('puts each one in the section its audience looks in', () => {
+      const sections = sidebarSections({ membership: organiser, signedIn: true });
+      const sectionOf = (href: string) =>
+        sections.find((s) => s.items.some((i) => i.href === href))?.id;
+
+      expect(sectionOf('/portal/maybeitsfate/serve')).toBe('community');
+      expect(sectionOf('/member/maybeitsfate/service')).toBe('membership');
+      expect(sectionOf('/admin/maybeitsfate/serving')).toBe('organising');
+    });
+  });
 });
