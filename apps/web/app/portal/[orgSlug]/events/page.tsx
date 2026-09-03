@@ -1,14 +1,12 @@
 'use client';
 
-import Link from 'next/link';
 import { useState, useEffect } from 'react';
-import { Calendar, Users } from 'lucide-react';
-import { RsvpFaces } from '@/components/events/rsvp-faces';
+import { NextEventCard, EventRow, type EventActions } from '@/components/events/event-cards';
+import { groupUpcoming } from '@/lib/event-list';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { usePublicApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
-import { ticketCost, describeFees, money } from '@/lib/fees';
 import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 
 export default function PortalEventsPage() {
@@ -124,12 +122,27 @@ export default function PortalEventsPage() {
   }
 
   const eventList = events || [];
-  const upcoming = eventList.filter((e) => new Date(e.startTime) > new Date());
-  const past = eventList.filter((e) => new Date(e.startTime) <= new Date());
+  const now = new Date();
+  const timeZone = eventList[0]?.timezone ?? 'America/New_York';
+  const { next, months } = groupUpcoming(eventList, timeZone, now);
+  const past = eventList
+    .filter((e) => new Date(e.startTime) <= now)
+    .sort((a, b) => b.startTime.localeCompare(a.startTime));
+
+  const actions: EventActions = {
+    orgSlug: org?.slug ?? '',
+    isMember,
+    busyId: rsvpingId ?? buyingId,
+    rsvpStatus,
+    errors: { ...rsvpError, ...buyError },
+    onRsvp: handleRsvp,
+    onBuy: handleBuy,
+    plan: org?.plan,
+  };
 
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-bold text-gray-900">Events</h1>
+      <h1 className="font-display text-2xl leading-tight">Events</h1>
 
       {returned === 'purchased' && (
         <div className="rounded-xl border border-green-200 bg-green-50 p-4" role="status">
@@ -159,181 +172,46 @@ export default function PortalEventsPage() {
         </div>
       )}
 
-      {upcoming.length === 0 && past.length === 0 && (
-        <p className="py-12 text-center text-sm text-gray-500">No events yet.</p>
+      {!next && past.length === 0 && (
+        <p className="py-12 text-center text-[var(--text-secondary)]">
+          Nothing on the calendar yet.
+        </p>
       )}
 
-      {upcoming.length > 0 && (
+      {/*
+        The next thing happening, given the room it deserves (EVT-19). The old
+        list was one flat run of cards, so tonight looked exactly like
+        November — and the question most people open an events page with is
+        whether anything is on soon.
+      */}
+      {next && (
         <section>
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">Upcoming</h2>
-          <div className="space-y-4">
-            {upcoming.map((event) => (
-              <div
-                key={event.id}
-                className="flex items-start justify-between rounded-xl border border-gray-200 bg-white p-5"
-              >
-                {/* The poster, small. An events list of nothing but titles
-                    hides the one thing a co-op actually made to advertise
-                    itself (EVT-11). */}
-                {event.imageUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={event.imageUrl}
-                    alt=""
-                    className="mr-4 h-20 w-20 shrink-0 rounded-lg object-cover"
-                  />
-                )}
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-base font-semibold text-gray-900">
-                    <Link
-                      href={`/portal/${org?.slug}/events/${event.slug}`}
-                      className="hover:text-brand-600"
-                    >
-                      {event.title}
-                    </Link>
-                  </h3>
-                  {event.description && (
-                    <p className="mt-1 text-sm text-gray-500 line-clamp-2">{event.description}</p>
-                  )}
-                  <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-500">
-                    <span className="inline-flex items-center gap-1">
-                      <Calendar className="h-3.5 w-3.5" />
-                      {new Date(event.startTime).toLocaleDateString('en-US', {
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric',
-                        hour: 'numeric',
-                        minute: '2-digit',
-                      })}
-                    </span>
-                    {event.capacity && (
-                      <span className="inline-flex items-center gap-1">
-                        <Users className="h-3.5 w-3.5" />
-                        {event.rsvpCount ?? 0} / {event.capacity}
-                      </span>
-                    )}
-                    {/* Who else is going. Absent on the public list by
-                        design, so a signed-out visitor sees the count and
-                        not the community. */}
-                    {(event.rsvpFaces?.length ?? 0) > 0 && (
-                      <RsvpFaces faces={event.rsvpFaces!} total={event.rsvpCount ?? 0} />
-                    )}
-                    {event.category && (
-                      <span className="inline-flex items-center rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700">
-                        {event.category}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="ml-4 shrink-0">
-                  {/* Charley's call: on a ticketed event, buying *is* the
-                      action. An RSVP beside a price is two ways to say you are
-                      coming, only one of which pays the co-op. */}
-                  {event.priceCents ? (
-                    (() => {
-                      const cost = ticketCost({
-                        ticketCents: event.priceCents,
-                        plan: org?.plan,
-                        orgFeeCents: org?.ticketFeeCents ?? 0,
-                      });
-                      const fees = describeFees(cost);
-
-                      if (!org?.stripeChargesEnabled) {
-                        return (
-                          <span className="text-xs text-gray-400">
-                            Tickets aren&apos;t on sale yet
-                          </span>
-                        );
-                      }
-
-                      return (
-                        <div className="text-right">
-                          <button
-                            onClick={() => handleBuy(event.id)}
-                            disabled={buyingId === event.id}
-                            className="btn-primary text-sm"
-                          >
-                            {buyingId === event.id
-                              ? 'Opening checkout...'
-                              : `Buy ticket · ${money(cost.totalCents)}`}
-                          </button>
-                          {/* Named before they leave the page, not discovered
-                              on Stripe's. */}
-                          {fees && <p className="mt-1 text-xs text-gray-400">{fees}</p>}
-                          {buyError[event.id] && (
-                            <p className="mt-1 max-w-[14rem] text-xs text-red-600" role="alert">
-                              {buyError[event.id]}
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })()
-                  ) : token ? (
-                    rsvpStatus[event.id] ? (
-                      <span
-                        className={`text-sm font-medium ${
-                          rsvpStatus[event.id] === 'WAITLISTED'
-                            ? 'text-amber-600'
-                            : 'text-green-600'
-                        }`}
-                      >
-                        {rsvpStatus[event.id] === 'WAITLISTED'
-                          ? "You're on the waitlist"
-                          : "RSVP'd"}
-                      </span>
-                    ) : (
-                      <div className="text-right">
-                        <button
-                          onClick={() => handleRsvp(event.id)}
-                          disabled={rsvpingId === event.id}
-                          className="btn-primary text-sm"
-                        >
-                          {rsvpingId === event.id ? 'Sending...' : 'RSVP'}
-                        </button>
-                        {rsvpError[event.id] && (
-                          <p className="mt-1 max-w-[12rem] text-xs text-red-600" role="alert">
-                            {rsvpError[event.id]}
-                          </p>
-                        )}
-                      </div>
-                    )
-                  ) : (
-                    <span className="text-xs text-gray-400">Sign in to RSVP</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          <h2 className="mb-3 text-lg font-semibold">Next event</h2>
+          <NextEventCard event={next} actions={actions} now={now} />
         </section>
       )}
 
+      {months.map((month) => (
+        <section key={month.heading}>
+          <h2 className="mb-3 text-lg font-semibold">{month.heading}</h2>
+          <ul className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+            {month.events.map((event) => (
+              <EventRow key={event.id} event={event} actions={actions} />
+            ))}
+          </ul>
+        </section>
+      ))}
+
       {past.length > 0 && (
         <section>
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">Past Events</h2>
-          <div className="space-y-3">
-            {past.map((event) => (
-              <div
-                key={event.id}
-                className="rounded-xl border border-gray-100 bg-white p-4 opacity-70"
-              >
-                <h3 className="text-sm font-medium text-gray-700">
-                  <Link
-                    href={`/portal/${org?.slug}/events/${event.slug}`}
-                    className="hover:text-brand-600"
-                  >
-                    {event.title}
-                  </Link>
-                </h3>
-                <p className="mt-1 text-xs text-gray-400">
-                  {new Date(event.startTime).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  })}
-                </p>
-              </div>
+          <h2 className="mb-3 text-lg font-semibold text-[var(--text-secondary)]">
+            Already happened
+          </h2>
+          <ul className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] opacity-70">
+            {past.slice(0, 10).map((event) => (
+              <EventRow key={event.id} event={event} actions={actions} />
             ))}
-          </div>
+          </ul>
         </section>
       )}
     </div>

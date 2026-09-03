@@ -80,7 +80,10 @@ export function defaultEventArt(event: ArtSubject): string {
 <circle cx="${100 + (hash(event.id) % 440)}" cy="${60 + (hash(event.title) % 240)}" r="150" fill="#ffffff" opacity="0.08"/>
 ${
   caption
-    ? `<text x="32" y="322" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="22" font-weight="600" fill="#ffffff" opacity="0.85">${escapeXml(caption)}</text>`
+    ? // Centred rather than in a corner: every surface crops this with
+      // `object-cover`, at aspect ratios from a wide hero to a small
+      // thumbnail, and a caption in the corner is the first thing cut.
+      `<text x="320" y="196" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="30" font-weight="600" fill="#ffffff" opacity="0.9">${escapeXml(caption)}</text>`
     : ''
 }
 </svg>`;
