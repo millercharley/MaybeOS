@@ -130,6 +130,7 @@ model Organization {
   events         Event[]
   rooms          Room[]
   closures       OrgClosure[]
+  duties         Duty[]
   channels       Channel[]
   collections    Collection[]
   surveys        Survey[]
@@ -224,6 +225,8 @@ model User {
   orgs             UserOrg[]
   rsvps            Rsvp[]
   bookings         Booking[]
+  dutyClaims       DutyClaim[]
+  dutyAdoptions    DutyAdoption[]
   posts            Post[]
   comments         Comment[]
   reactions        Reaction[]
@@ -364,8 +367,19 @@ model MembershipTier {
   stripeProductId      String?
   sortOrder            Int      @default(0)
   isActive             Boolean  @default(true)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+
+  /// What this tier asks of a member in service (SRV-01), as minutes over a
+  /// period. Both null means no expectation, which is the default and the
+  /// common case — most tiers ask for money and nothing else.
+  ///
+  /// Minutes rather than hours because a duty is measured in minutes, and an
+  /// expectation stored in a coarser unit than the thing measured against it
+  /// can only be compared by rounding one of them.
+  serviceMinutes Int?
+  servicePeriod  ServicePeriod?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   members     UserOrg[]
@@ -566,42 +580,42 @@ model Attendance {
 // ─── SpaceOS: Rooms & Bookings ───────────────────────────────
 
 model Room {
-  id               String   @id @default(uuid())
-  orgId            String
-  locationId       String?
-  name             String
-  description      String?
-  capacity         Int?
-  amenities        String[] @default([])
+  id                 String    @id @default(uuid())
+  orgId              String
+  locationId         String?
+  name               String
+  description        String?
+  capacity           Int?
+  amenities          String[]  @default([])
   /// A photo of the room, stored privately and served as a signed URL like
   /// every other member-facing image (BEL-10). Named `imagePath` rather than
   /// `imageUrl` because it holds a storage key — the previous name is what led
   /// to article covers being published publicly the first time.
-  imagePath        String?
-  isActive         Boolean  @default(true)
-  requiresApproval Boolean  @default(false)
-  memberOnly       Boolean  @default(true)
+  imagePath          String?
+  isActive           Boolean   @default(true)
+  requiresApproval   Boolean   @default(false)
+  memberOnly         Boolean   @default(true)
   /// Whether this room charges for hire (SPC-06). Off by default — Charley,
   /// 2026-08-13: rooms have no booking fee unless an admin activates one.
   /// Separate from `hourlyRate` so that turning charging off does not throw
   /// away the rate, and so a half-filled form cannot start billing people.
-  chargeForBooking Boolean  @default(false)
+  chargeForBooking   Boolean   @default(false)
   /// Bookable at any hour, said deliberately rather than inferred from having
   /// no availability rules. Those two used to be the same state, so a room
   /// whose opening hours nobody had set yet was silently published around the
   /// clock. Unchecked with no rules now means not bookable.
-  alwaysAvailable  Boolean  @default(false)
-  hourlyRate       Int? // cents per hour, null = not set
+  alwaysAvailable    Boolean   @default(false)
+  hourlyRate         Int? // cents per hour, null = not set
   /// Longest single booking a member can make, in minutes. Null means no cap.
   /// Drives which duration choices the booking screen offers, so a room that
   /// cannot be held for three hours never shows the option (SPC-09).
-  maxBookingMinutes Int?
+  maxBookingMinutes  Int?
   /// Which calendar on the connected account this room writes to. 'primary'
   /// is a poor default for a co-op: the organiser who connects is usually
   /// signed in as themselves, so bookings for the Attic would land in their
   /// personal calendar and their dentist appointment would block the room.
   /// Null means connected but not yet pointed at a calendar (SPC-07).
-  googleCalendarId String?
+  googleCalendarId   String?
   /// The calendar's display name, kept so the rooms page can say which one is
   /// connected without calling Google on every render.
   googleCalendarName String?
@@ -609,9 +623,9 @@ model Room {
   /// who connects the wrong account otherwise has no way to tell.
   googleAccountEmail String?
   googleConnectedAt  DateTime?
-  googleTokens     Json? // encrypted OAuth tokens
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  googleTokens       Json? // encrypted OAuth tokens
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   org               Organization       @relation(fields: [orgId], references: [id], onDelete: Cascade)
   location          Location?          @relation(fields: [locationId], references: [id])
@@ -686,11 +700,11 @@ enum BookingStatus {
 }
 
 model Booking {
-  id            String        @id @default(uuid())
-  roomId        String
-  userId        String
-  title         String
-  description   String?
+  id          String  @id @default(uuid())
+  roomId      String
+  userId      String
+  title       String
+  description String?
 
   /// What the booking is for, asked when it is made (SPC-15).
   ///
@@ -710,13 +724,13 @@ model Booking {
   hasCost            Boolean         @default(false)
   /// What kind of gathering: "Art or expression", "Organising", "Social".
   categories         String[]        @default([])
-  startTime     DateTime
-  endTime       DateTime
-  status        BookingStatus @default(PENDING)
-  googleEventId String? // synced calendar event ID
-  reviewedBy    String?
-  reviewedAt    DateTime?
-  canceledAt    DateTime?
+  startTime          DateTime
+  endTime            DateTime
+  status             BookingStatus   @default(PENDING)
+  googleEventId      String? // synced calendar event ID
+  reviewedBy         String?
+  reviewedAt         DateTime?
+  canceledAt         DateTime?
 
   /// Hire charges (SPC-06). Null throughout on a free room, which is the
   /// default and the common case for a co-op.
@@ -1837,4 +1851,140 @@ model BelongingEmailTemplate {
 
   @@unique([orgId, kind])
   @@map("belonging_email_templates")
+}
+
+/// How often a tier's service expectation resets (SRV-01).
+///
+/// Calendar windows, not anniversaries: every member is measured over the
+/// same week, month or year, which is what makes "who is short" a list an
+/// organiser can read across the co-op rather than a set of private
+/// stopwatches. A member's first window is prorated from the day they joined.
+enum ServicePeriod {
+  WEEK
+  MONTH
+  YEAR
+}
+
+enum DutyClaimStatus {
+  /// Volunteered, waiting on an organiser. Only reachable on a gated duty.
+  CLAIMED
+  /// Theirs to do.
+  CONFIRMED
+  /// Done, and the minutes counted.
+  DONE
+  /// The moment passed and nobody marked it done.
+  MISSED
+  /// Handed back before the day. Kept rather than deleted so a duty that is
+  /// claimed and dropped repeatedly is visible as such.
+  RELEASED
+}
+
+/// Something the co-op needs doing (SRV-01).
+///
+/// A definition, not a pile of dated rows. "Trash, Tuesdays, 30 minutes" is
+/// one record and its occurrences are computed from the rule, the way room
+/// slots already are — so there is no horizon to keep topped up, and moving
+/// the duty to Wednesdays does not leave a year of stale Tuesdays behind. A
+/// row in `duty_claims` exists only where somebody actually took a turn.
+model Duty {
+  id          String  @id @default(uuid())
+  orgId       String
+  title       String
+  description String?
+
+  /// What one turn takes, as the organiser's estimate. This is what gets
+  /// credited when a member marks it done, and what they can correct.
+  estimatedMinutes Int     @default(30)
+  /// How many people one occurrence needs. Two to shift the tables.
+  capacity         Int     @default(1)
+  /// Whether an organiser has to say yes before it is theirs — for the
+  /// duties that need training, keys, or trust.
+  requiresApproval Boolean @default(false)
+
+  recurrence RecurrenceRule @default(NONE)
+  /// The first occurrence, as the instant that local date begins. Dates are
+  /// stored as instants and read back through the co-op's timezone, the same
+  /// way closures are (SPC-12).
+  startsOn   DateTime
+  /// The last, or null for as long as the co-op needs it doing.
+  endsOn     DateTime?
+  /// "HH:MM" in the co-op's own timezone, like a room's opening hours. Not an
+  /// instant: "Tuesdays at 9" has to stay 9 across a daylight saving change.
+  startTime  String         @default("09:00")
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org       Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  claims    DutyClaim[]
+  adoptions DutyAdoption[]
+
+  @@index([orgId, isActive])
+  @@map("duties")
+}
+
+/// One member, one turn (SRV-01).
+model DutyClaim {
+  id       String          @id @default(uuid())
+  dutyId   String
+  userId   String
+  /// Which occurrence this is: the instant that turn starts.
+  occursAt DateTime
+  status   DutyClaimStatus @default(CONFIRMED)
+
+  /// Minutes credited, once done. Null until then.
+  minutes       Int?
+  /// Set when the member changed the number, so an organiser can tell a
+  /// correction from an estimate that was simply accepted.
+  minutesEdited Boolean @default(false)
+  /// Why it differed.
+  minutesNote   String?
+
+  completedAt DateTime?
+  releasedAt  DateTime?
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  /// Set when this turn came from adopting the series rather than from one
+  /// deliberate click, so releasing the adoption knows what to give back.
+  adoptionId  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  duty     Duty          @relation(fields: [dutyId], references: [id], onDelete: Cascade)
+  user     User          @relation(fields: [userId], references: [id])
+  adoption DutyAdoption? @relation(fields: [adoptionId], references: [id], onDelete: SetNull)
+
+  /// A member takes a given turn once. Two rows would count the hours twice.
+  @@unique([dutyId, userId, occursAt])
+  @@index([dutyId, occursAt])
+  @@index([userId, status])
+  @@map("duty_claims")
+}
+
+/// "I'll take all of these" (SRV-01).
+///
+/// Standing rather than a bulk claim of the occurrences that happen to exist
+/// today: somebody who adopts the trash owns it until they hand it back, and
+/// that has to include the Tuesdays nobody has computed yet. It materialises
+/// claims ahead of itself so the duty still appears on the calendar with a
+/// name against it — a standing arrangement that shows up nowhere is exactly
+/// how a co-op discovers in March that nobody has done it since December.
+model DutyAdoption {
+  id         String    @id @default(uuid())
+  dutyId     String
+  userId     String
+  startedAt  DateTime  @default(now())
+  /// Null while it stands.
+  releasedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  duty   Duty        @relation(fields: [dutyId], references: [id], onDelete: Cascade)
+  user   User        @relation(fields: [userId], references: [id])
+  claims DutyClaim[]
+
+  @@index([dutyId, releasedAt])
+  @@index([userId])
+  @@map("duty_adoptions")
 }
