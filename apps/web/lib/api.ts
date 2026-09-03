@@ -228,7 +228,7 @@ class ApiClient {
       }),
   };
 
-  // ── Building closures (SPC-13) ───────────────────
+  // ── Building closures (SPC-19) ───────────────────
   orgClosures = {
     /**
      * Periods the whole building is shut.
@@ -264,7 +264,7 @@ class ApiClient {
       }),
   };
 
-  // ── Booking availability (SPC-09) ────────────────
+  // ── Booking availability (SPC-15) ────────────────
   availability = {
     /**
      * Every candidate slot on a date, with the reason each unavailable one is
@@ -312,7 +312,7 @@ class ApiClient {
       }),
 
     /**
-     * The calendars this room could be pointed at (SPC-07).
+     * The calendars this room could be pointed at (SPC-13).
      *
      * Connecting an account is not the same as choosing a calendar, and the
      * two used to be conflated: nothing set `googleCalendarId`, so every room
@@ -859,7 +859,7 @@ class ApiClient {
       this.request<Room[]>(`/orgs/${orgId}/rooms`, { token }),
 
     /**
-     * Publish a window the room is open (SPC-11).
+     * Publish a window the room is open (SPC-17).
      *
      * The endpoint has existed since SpaceOS was built and nothing had ever
      * called it, so a room could only be marked always-available or left
@@ -878,7 +878,7 @@ class ApiClient {
       }),
 
     /**
-     * Replace the whole week in one transaction (SPC-11).
+     * Replace the whole week in one transaction (SPC-17).
      *
      * The editor shows every day, so it always sends the complete answer.
      * Deleting and creating rule by rule from here was eleven round trips and
@@ -897,7 +897,7 @@ class ApiClient {
       }),
 
     /**
-     * Periods the room is shut (SPC-12).
+     * Periods the room is shut (SPC-18).
      *
      * Dates go and come back as the co-op's own calendar days. The server
      * applies its timezone — a browser in another city sending its own
@@ -936,7 +936,7 @@ class ApiClient {
         token,
       }),
 
-    /** Put a photo on a room (SPC-10). Base64 or a data: URL. */
+    /** Put a photo on a room (SPC-16). Base64 or a data: URL. */
     uploadImage: (
       orgId: string,
       roomId: string,
@@ -2181,14 +2181,14 @@ export interface Room {
   chargeForBooking?: boolean;
   /** Bookable at any hour, said deliberately rather than inferred. */
   alwaysAvailable?: boolean;
-  /** A signed URL for the room's photo, when it has one (SPC-10). */
+  /** A signed URL for the room's photo, when it has one (SPC-16). */
   imageUrl?: string | null;
   imagePath?: string | null;
-  /** Longest single booking, in minutes. Null means no cap (SPC-09). */
+  /** Longest single booking, in minutes. Null means no cap (SPC-15). */
   maxBookingMinutes?: number | null;
   /** When the room is open. Empty with alwaysAvailable off means unbookable. */
   availabilityRules?: AvailabilityRule[];
-  /** Set once a calendar has been chosen for this room (SPC-04, SPC-07). */
+  /** Set once a calendar has been chosen for this room (SPC-04, SPC-13). */
   googleCalendarId?: string | null;
   /** The chosen calendar's name, so the page can say which one. */
   googleCalendarName?: string | null;
@@ -2199,7 +2199,7 @@ export interface Room {
   isActive?: boolean;
 }
 
-/** A window a room is open, or closed, as stored (SPC-11). */
+/** A window a room is open, or closed, as stored (SPC-17). */
 export interface AvailabilityRule {
   id: string;
   /** 0=Sunday..6=Saturday. Null applies to every day. */
@@ -2211,7 +2211,7 @@ export interface AvailabilityRule {
   effectiveTo?: string | null;
 }
 
-/** One candidate booking time, and whether it can be taken (SPC-09). */
+/** One candidate booking time, and whether it can be taken (SPC-15). */
 export interface Slot {
   start: string;
   end: string;
@@ -2219,11 +2219,11 @@ export interface Slot {
   minutes: number;
   available: boolean;
   reason?: 'past' | 'closed' | 'blackout' | 'booked' | 'calendar';
-  /** Why the room is shut, when a closure gave a reason (SPC-12). */
+  /** Why the room is shut, when a closure gave a reason (SPC-18). */
   note?: string;
 }
 
-/** A period a room is shut (SPC-12). Dates are the co-op's own days. */
+/** A period a room is shut (SPC-18). Dates are the co-op's own days. */
 export interface Closure {
   id: string;
   label: string | null;
@@ -2286,7 +2286,7 @@ export interface CreateBookingData {
   title: string;
   description?: string;
   /**
-   * What the booking is for (SPC-15). All optional — a booking that answers
+   * What the booking is for (SPC-21). All optional — a booking that answers
    * none of them still works, and every booking made before these were asked
    * answered none. They are what the room's Google Calendar shows.
    */

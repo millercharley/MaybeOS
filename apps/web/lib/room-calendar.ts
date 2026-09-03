@@ -5,7 +5,7 @@
  * point and is worth pinning down: connecting an account and choosing a
  * calendar are two different steps. Nothing ever set `googleCalendarId`, so
  * five call sites read `room.googleCalendarId || 'primary'` and every one
- * resolved to the personal calendar of whoever pressed Connect (SPC-07).
+ * resolved to the personal calendar of whoever pressed Connect (SPC-13).
  */
 export type CalendarState = 'disconnected' | 'connected' | 'syncing';
 

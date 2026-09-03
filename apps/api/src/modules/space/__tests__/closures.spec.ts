@@ -11,9 +11,9 @@ import { StorageService } from '../../storage/storage.service';
 import { slotsForDate, type Rule } from '../availability/slots';
 
 /**
- * Closing a room for a day, a run of days, or part of them (SPC-12).
+ * Closing a room for a day, a run of days, or part of them (SPC-18).
  *
- * The engine has subtracted blackout rules from opening hours since SPC-09 and
+ * The engine has subtracted blackout rules from opening hours since SPC-15 and
  * nothing could create one, so "closed for the holidays" was unsayable. The
  * hard part is not the storing: dates arrive as calendar dates and have to
  * become instants in the co-op's timezone, because "closed on the 25th" means

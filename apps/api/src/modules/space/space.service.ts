@@ -42,7 +42,7 @@ export class SpaceService {
     // A booking that never reaches the room's calendar is invisible to
     // everyone not looking at MaybeOS (SPC-04).
     private readonly calendar: CalendarService,
-    // Room photos, stored privately and signed on read (SPC-10).
+    // Room photos, stored privately and signed on read (SPC-16).
     private readonly storage: StorageService,
   ) {}
 
@@ -132,7 +132,7 @@ export class SpaceService {
    * setting up a calendar.
    */
   /**
-   * Put a photo on a room (SPC-10).
+   * Put a photo on a room (SPC-16).
    *
    * Private and signed on read, like article covers and avatars: a room photo
    * shows the inside of a co-op's building, and a co-op that has not published
@@ -245,7 +245,7 @@ export class SpaceService {
   /* ------------------------------------------------------------------ */
 
   /**
-   * Replace a room's opening hours in one go (SPC-11).
+   * Replace a room's opening hours in one go (SPC-17).
    *
    * The editor shows the whole week, so what it sends is the complete answer.
    * Doing that as a delete-per-rule then a create-per-rule from the browser
@@ -292,7 +292,7 @@ export class SpaceService {
   }
 
   /* ------------------------------------------------------------------ */
-  /*  Building closures (SPC-13)                                         */
+  /*  Building closures (SPC-19)                                         */
   /* ------------------------------------------------------------------ */
 
   /**
@@ -396,7 +396,7 @@ export class SpaceService {
   }
 
   /* ------------------------------------------------------------------ */
-  /*  Closures (SPC-12)                                                  */
+  /*  Closures (SPC-18)                                                  */
   /* ------------------------------------------------------------------ */
 
   /**
@@ -537,10 +537,14 @@ export class SpaceService {
    * booking must not fail because Postmark is down. Loads its own copy of the
    * booking so callers stay simple.
    *
-   * The manage link points at the org's public portal, which exists. It is
-   * deliberately NOT /member/bookings — that page has never been built, even
-   * though the member dashboard links to it. Sending members to a 404 would be
-   * worse than sending them somewhere real but general. See SPC-07.
+   * Two manage links, because these emails ask for two different things: the
+   * public portal for "find another time", the member's own bookings page for
+   * the three that talk about a booking that already exists.
+   *
+   * This used to be one link to the portal, with a note here explaining that
+   * /member/bookings had never been built. It has — SPC-13 built it — and the
+   * note outlived the fact, so "Reschedule or cancel" went on opening a page
+   * offering neither until somebody clicked it.
    */
   /**
    * Render a booking window in the co-op's own timezone (SPC-08).
@@ -663,7 +667,7 @@ export class SpaceService {
       room.org.timezone,
     );
 
-    // --- And whether the whole building is shut (SPC-13) ---
+    // --- And whether the whole building is shut (SPC-19) ---
     // Checked here as well as in the slot list. The slot list is what a member
     // sees; a request that never went through it is the one this stops, and
     // "always available" does not mean "open on Christmas Day".
@@ -675,7 +679,7 @@ export class SpaceService {
       throw new ConflictException('This time slot conflicts with an existing booking');
     }
 
-    // --- And against the room's own Google Calendar (SPC-08) ---
+    // --- And against the room's own Google Calendar (SPC-14) ---
     // Bookings were pushed to Google and nothing was ever read back, so a
     // co-op that put a rehearsal straight into the room's calendar would still
     // take a member's booking for the same hour and confirm it. Never throws:
@@ -709,7 +713,7 @@ export class SpaceService {
         userId,
         title: dto.title,
         description: dto.description,
-        // What the booking is for (SPC-15). Defaults match the column
+        // What the booking is for (SPC-21). Defaults match the column
         // defaults, so a client that sends none of them behaves exactly as
         // every booking made before these were asked.
         visibility: dto.visibility ?? 'PRIVATE',
@@ -936,7 +940,7 @@ export class SpaceService {
       throw new ConflictException('This time slot conflicts with an existing booking');
     }
 
-    // The room's Google Calendar counts here too (SPC-08), minus this
+    // The room's Google Calendar counts here too (SPC-14), minus this
     // booking's own event — a booking being moved would otherwise collide
     // with the copy of itself that is already on the calendar.
     const { busy } = await this.calendar.busyConflictForRoom(
@@ -1077,7 +1081,7 @@ export class SpaceService {
   }
 
   /**
-   * Every candidate slot on a date, and whether each can be booked (SPC-09).
+   * Every candidate slot on a date, and whether each can be booked (SPC-15).
    *
    * The one place that merges what the room publishes, what members have
    * already taken, and what the room's own Google Calendar says. Those three
@@ -1123,7 +1127,7 @@ export class SpaceService {
       // Google being unreachable, returns nothing busy and the local rules
       // still apply.
       this.calendar.busyForRoom(orgId, roomId, dayStart, dayEnd),
-      // The whole building being shut (SPC-13).
+      // The whole building being shut (SPC-19).
       this.orgClosureRules(orgId, dayStart, dayEnd),
     ]);
 
@@ -1253,14 +1257,14 @@ export class SpaceService {
    * - No blackout rule may overlap the requested time.
    */
   /**
-   * A booking may not run longer than the room allows (SPC-09).
+   * A booking may not run longer than the room allows (SPC-15).
    *
    * Checked here as well as in the duration chips: the chips are what a member
    * sees, and a request that never went through them is exactly the one this
    * exists to stop.
    */
   /**
-   * Refuse a booking that falls inside a building closure (SPC-13).
+   * Refuse a booking that falls inside a building closure (SPC-19).
    *
    * A closure covers a run of days and a window within each of them, so both
    * have to match: "closed 1pm to 5pm over the holidays" must not block a

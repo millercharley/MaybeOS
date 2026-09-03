@@ -7,7 +7,7 @@ import {
 } from '../slots';
 
 /**
- * What a member can book, slot by slot (SPC-09).
+ * What a member can book, slot by slot (SPC-15).
  *
  * The booking screen shows every candidate time and crosses out the taken
  * ones, so the reason a slot is unavailable has to reach the UI. The API could

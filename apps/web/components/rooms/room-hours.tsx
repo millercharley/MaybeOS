@@ -13,7 +13,7 @@ import {
 } from '@/lib/room-hours';
 
 /**
- * When a room is open (SPC-11).
+ * When a room is open (SPC-17).
  *
  * The rules endpoint has existed since SpaceOS was built and nothing had ever
  * called it, so an organiser's only two options were "always available" and

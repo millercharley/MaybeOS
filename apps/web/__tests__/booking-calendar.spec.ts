@@ -11,7 +11,7 @@ import {
 } from '@/lib/booking-calendar';
 
 /**
- * The month grid and its labels (SPC-09).
+ * The month grid and its labels (SPC-15).
  *
  * Arithmetic with edge cases — leading blanks, year boundaries, midnight —
  * none of which is worth discovering through a rendered calendar.

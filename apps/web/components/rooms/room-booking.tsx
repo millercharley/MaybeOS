@@ -17,7 +17,7 @@ import {
 } from '@/lib/booking-calendar';
 
 /**
- * Booking a room by picking a time that is actually free (SPC-09).
+ * Booking a room by picking a time that is actually free (SPC-15).
  *
  * The old form took a start and an end and refused afterwards if the room was
  * shut, taken, or on somebody's calendar — which tells a member their choice
@@ -51,7 +51,7 @@ export function RoomBooking({
   const [booking, setBooking] = useState<string | null>(null);
   // Picking a slot opens the details step rather than booking outright. It
   // used to book immediately with the room's own name as the title, which is
-  // why the calendar read "Attic" against every block (SPC-15).
+  // why the calendar read "Attic" against every block (SPC-21).
   const [chosen, setChosen] = useState<Slot | null>(null);
   const [error, setError] = useState('');
   const [confirmed, setConfirmed] = useState<Slot | null>(null);
@@ -334,7 +334,7 @@ function reasonFor(slot: Slot): string {
       return 'Outside this room’s hours';
     case 'blackout':
       // The reason when a closure gave one: "Closed: Winter break" tells a
-      // member whether to come back tomorrow or in January (SPC-12).
+      // member whether to come back tomorrow or in January (SPC-18).
       return slot.note ? `Closed: ${slot.note}` : 'The room is closed then';
     case 'booked':
       return 'Someone has booked this';

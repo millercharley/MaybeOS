@@ -1,7 +1,7 @@
 import { eventDescription, eventSummary } from '../event-content';
 
 /**
- * What a booking says on the room's Google Calendar (SPC-15).
+ * What a booking says on the room's Google Calendar (SPC-21).
  *
  * It said "Attic" against a three-hour block, because the booking screen sent
  * the room's own name as the title. The calendar is where a co-op actually
@@ -19,7 +19,7 @@ describe('eventSummary', () => {
   });
 
   it('does not repeat the room when the title is the room', () => {
-    // Every booking made before SPC-15 has the room's name as its title.
+    // Every booking made before SPC-21 has the room's name as its title.
     expect(eventSummary({ title: 'Attic', memberName: 'Charles Miller' }, room)).toBe(
       'Charles Miller · Attic',
     );

@@ -424,7 +424,7 @@ export default function AdminRoomsPage() {
         Above the rooms, because it is one answer for the whole co-op rather
         than a property of any room. A public holiday used to mean adding the
         same fortnight to every room and remembering to remove it from every
-        room (SPC-13).
+        room (SPC-19).
       */}
       {token && orgId && (
         <ClosureEditor
@@ -459,7 +459,7 @@ export default function AdminRoomsPage() {
           <div key={r.id} className="card">
             <div className="flex flex-wrap items-start justify-between gap-4">
               {/* The photo travels with the room everywhere it appears
-                  (SPC-10). Signed and short-lived, like every other
+                  (SPC-16). Signed and short-lived, like every other
                   member-facing image. */}
               {r.imageUrl && (
                 // eslint-disable-next-line @next/next/no-img-element

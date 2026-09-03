@@ -6,10 +6,10 @@ import { ApiError, type Closure } from '@/lib/api';
 import { closureLabel } from '@/lib/room-closures';
 
 /**
- * When a room is shut (SPC-12).
+ * When a room is shut (SPC-18).
  *
  * The slot engine has subtracted blackout rules from opening hours since
- * SPC-09 and nothing in the product could create one, so "closed for the
+ * SPC-15 and nothing in the product could create one, so "closed for the
  * holidays" was unsayable — a co-op's only option was to edit its opening
  * hours in December and remember to put them back.
  *

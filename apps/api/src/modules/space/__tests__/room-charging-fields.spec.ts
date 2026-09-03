@@ -129,7 +129,7 @@ describe('a room’s charging fields', () => {
 });
 
 /**
- * The duration cap has to survive the same trip (SPC-09).
+ * The duration cap has to survive the same trip (SPC-15).
  *
  * Added alongside the charging fields because it is the identical hazard: the
  * API strips unknown properties and rejects the request, so a field the form

@@ -1,7 +1,7 @@
 import type { Closure } from '@/lib/api';
 
 /**
- * How a closed period reads in a sentence (SPC-12).
+ * How a closed period reads in a sentence (SPC-18).
  *
  * Pulled out because the cases are fiddly — one day or several, all day or
  * part of it — and each is a different sentence rather than a template with

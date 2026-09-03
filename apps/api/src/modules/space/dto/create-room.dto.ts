@@ -60,7 +60,7 @@ export class CreateRoomDto {
   alwaysAvailable?: boolean;
 
   /**
-   * The longest a single booking may run, in minutes (SPC-09).
+   * The longest a single booking may run, in minutes (SPC-15).
    *
    * Absent or null means no cap, which is what every room built before this
    * existed has. Whitelisted here deliberately: the API strips unknown

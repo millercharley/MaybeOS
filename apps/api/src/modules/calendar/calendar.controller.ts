@@ -79,7 +79,7 @@ export class CalendarController {
 
       // Back to the rooms page, where the calendar picker is waiting: the
       // account is connected but no calendar has been chosen for the room yet
-      // (SPC-07), and that choice is the admin's.
+      // (SPC-13), and that choice is the admin's.
       return res.redirect(`${target}?calendar=connected&room=${roomId}`);
     } catch (err) {
       this.logger.error(`OAuth callback failed: ${err.message}`, err.stack);
@@ -124,7 +124,7 @@ export class CalendarController {
   }
 
   // ──────────────────────────────────────────────────────────────
-  // Choosing a calendar (SPC-07)
+  // Choosing a calendar (SPC-13)
   // ──────────────────────────────────────────────────────────────
 
   @Get('orgs/:orgId/rooms/:roomId/calendar/calendars')

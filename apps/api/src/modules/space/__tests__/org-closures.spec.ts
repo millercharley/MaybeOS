@@ -11,7 +11,7 @@ import { StorageService } from '../../storage/storage.service';
 import { slotsForDate, type Rule } from '../availability/slots';
 
 /**
- * Closing the whole building (SPC-13).
+ * Closing the whole building (SPC-19).
  *
  * Per-room closures are right for a repair to one room and tedious for a
  * public holiday: a co-op with a dozen rooms had to add the same fortnight

@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
 /**
- * A period a room is shut (SPC-12).
+ * A period a room is shut (SPC-18).
  *
  * Dates arrive as local calendar dates, not instants. "Closed on the 25th"
  * means the 25th where the room is, and the co-op's timezone is the server's

@@ -11,7 +11,7 @@ const ACCEPTED = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
  * Picking an image, for anything that carries one.
  *
  * Started as the article cover uploader and moved here when rooms needed the
- * same thing (SPC-10): the size limit, the sniffing, the signed-URL preview
+ * same thing (SPC-16): the size limit, the sniffing, the signed-URL preview
  * and the failure messages are identical, and a second copy would be a second
  * place for them to drift out of step with what the bucket accepts.
  *
