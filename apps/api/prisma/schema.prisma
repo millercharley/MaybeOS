@@ -682,6 +682,25 @@ model Booking {
   userId        String
   title         String
   description   String?
+
+  /// What the booking is for, asked when it is made (SPC-15).
+  ///
+  /// A room booking used to carry a title and nothing else, and the title the
+  /// form sent was the room's own name — so the co-op's Google Calendar read
+  /// "Attic" against a three-hour block and told an organiser walking past
+  /// nothing at all about who was in there or why.
+  ///
+  /// Who it is open to. Reuses EventVisibility rather than a second enum
+  /// saying the same three things, since a booking published as an event
+  /// (EVT-05) has to answer this question anyway.
+  visibility         EventVisibility @default(PRIVATE)
+  /// Roughly how many people. A guess, and asked as one.
+  expectedAttendance Int?
+  /// Whether attendees are charged by the member — not by the co-op, which is
+  /// `priceCents` below and a different question entirely.
+  hasCost            Boolean         @default(false)
+  /// What kind of gathering: "Art or expression", "Organising", "Social".
+  categories         String[]        @default([])
   startTime     DateTime
   endTime       DateTime
   status        BookingStatus @default(PENDING)

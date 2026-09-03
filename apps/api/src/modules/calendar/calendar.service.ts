@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { google, calendar_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { PrismaService } from '../../config/prisma.service';
+import { eventDescription, eventSummary } from './event-content';
 
 interface StoredTokens {
   access_token: string;
@@ -246,10 +247,17 @@ export class CalendarService {
       const booking = await this.prisma.booking.findFirst({
         where: { id: bookingId, room: { orgId } },
         include: {
+          // Who booked it and where the room is, so the calendar entry says
+          // more than the room's own name (SPC-15).
+          user: { select: { name: true, email: true } },
           room: {
             // The tokens are omitted for every other reader (SEC-05); calling
             // Google as the room needs them, and this object stays server-side.
             omit: { googleTokens: false },
+            include: {
+              location: { select: { address: true, city: true, state: true } },
+              org: { select: { slug: true } },
+            },
           },
         },
       });
@@ -286,9 +294,8 @@ export class CalendarService {
       // would leave the room's calendar permanently missing it.
       if (action === 'update' && booking.googleEventId) {
         await this.updateCalendarEvent(room as any, {
+          ...this.calendarFields(booking as any),
           id: booking.id,
-          title: booking.title,
-          description: booking.description ?? undefined,
           startTime: booking.startTime,
           endTime: booking.endTime,
           googleEventId: booking.googleEventId,
@@ -301,9 +308,8 @@ export class CalendarService {
       }
 
       await this.createCalendarEvent(room as any, {
+        ...this.calendarFields(booking as any),
         id: booking.id,
-        title: booking.title,
-        description: booking.description ?? undefined,
         startTime: booking.startTime,
         endTime: booking.endTime,
       });
@@ -316,6 +322,67 @@ export class CalendarService {
   }
 
   /**
+   * The summary, description and attendee for a booking (SPC-15).
+   *
+   * Built once and used by both create and update, so an edited booking does
+   * not quietly lose the detail the original carried.
+   */
+  private calendarFields(booking: {
+    title: string;
+    description: string | null;
+    status: string;
+    visibility?: string | null;
+    expectedAttendance?: number | null;
+    hasCost?: boolean | null;
+    categories?: string[] | null;
+    user?: { name: string | null; email: string } | null;
+    room: {
+      name: string;
+      location?: { address: string | null; city: string | null; state: string | null } | null;
+      org?: { slug: string } | null;
+    };
+  }) {
+    const address = [
+      booking.room.location?.address,
+      booking.room.location?.city,
+      booking.room.location?.state,
+    ]
+      .filter(Boolean)
+      .join(', ');
+
+    const forContent = {
+      title: booking.title,
+      description: booking.description,
+      memberName: booking.user?.name ?? null,
+      memberEmail: booking.user?.email ?? null,
+      visibility: booking.visibility as never,
+      expectedAttendance: booking.expectedAttendance,
+      hasCost: booking.hasCost,
+      categories: booking.categories,
+      needsApproval: booking.status === 'PENDING',
+    };
+
+    const room = { name: booking.room.name, address: address || null };
+    const webUrl = (
+      this.configService.get<string>('WEB_URL') || 'https://maybeos.org'
+    )
+      .split(',')[0]
+      .trim()
+      .replace(/\/+$/, '');
+
+    return {
+      title: eventSummary(forContent, room),
+      description: eventDescription(forContent, room, {
+        bookings: booking.room.org?.slug
+          ? `${webUrl}/member/${booking.room.org.slug}/bookings`
+          : null,
+      }),
+      location: address || null,
+      attendeeEmail: booking.user?.email ?? null,
+    };
+  }
+
+  /**
    * Create a Google Calendar event for a room booking.
    * Stores the resulting googleEventId on the booking record.
    */
@@ -325,6 +392,8 @@ export class CalendarService {
       id: string;
       title: string;
       description?: string;
+      location?: string | null;
+      attendeeEmail?: string | null;
       startTime: Date;
       endTime: Date;
     },
@@ -334,9 +403,20 @@ export class CalendarService {
 
     const event = await calendar.events.insert({
       calendarId,
+      // No invitation email from Google: MaybeOS already sends its own
+      // confirmation, and two messages for one booking is how people learn to
+      // ignore both. The event still lands on the member's calendar.
+      sendUpdates: 'none',
       requestBody: {
         summary: booking.title,
         description: booking.description || `Booking for ${room.name}`,
+        location: booking.location || undefined,
+        // The member, so the booking appears in their own calendar. Their
+        // address goes here rather than into the description, where it would
+        // sit in the body of a calendar a co-op may embed on its website.
+        attendees: booking.attendeeEmail
+          ? [{ email: booking.attendeeEmail, responseStatus: 'accepted' }]
+          : undefined,
         start: {
           dateTime: booking.startTime.toISOString(),
         },
@@ -368,6 +448,8 @@ export class CalendarService {
       id: string;
       title: string;
       description?: string;
+      location?: string | null;
+      attendeeEmail?: string | null;
       startTime: Date;
       endTime: Date;
       googleEventId: string;
@@ -386,9 +468,14 @@ export class CalendarService {
     const event = await calendar.events.update({
       calendarId,
       eventId: booking.googleEventId,
+      sendUpdates: 'none',
       requestBody: {
         summary: booking.title,
         description: booking.description || `Booking for ${room.name}`,
+        location: booking.location || undefined,
+        attendees: booking.attendeeEmail
+          ? [{ email: booking.attendeeEmail, responseStatus: 'accepted' }]
+          : undefined,
         start: {
           dateTime: booking.startTime.toISOString(),
         },

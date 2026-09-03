@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, DoorOpen, Loader2 } from 'lucide-react';
 import { api, ApiError, type Room, type Slot, type SlotsResponse } from '@/lib/api';
+import { BookingDetailsForm, type BookingDetails } from '@/components/rooms/booking-details';
 import {
   dateLabel,
   durationLabel,
@@ -48,6 +49,10 @@ export function RoomBooking({
   const [openDays, setOpenDays] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [booking, setBooking] = useState<string | null>(null);
+  // Picking a slot opens the details step rather than booking outright. It
+  // used to book immediately with the room's own name as the title, which is
+  // why the calendar read "Attic" against every block (SPC-15).
+  const [chosen, setChosen] = useState<Slot | null>(null);
   const [error, setError] = useState('');
   const [confirmed, setConfirmed] = useState<Slot | null>(null);
 
@@ -95,14 +100,14 @@ export function RoomBooking({
     if (date) loadSlots(date);
   }, [date, loadSlots]);
 
-  async function book(slot: Slot) {
+  async function book(slot: Slot, details: BookingDetails) {
     setBooking(slot.start);
     setError('');
     try {
       const created = await api.rooms.createBooking(
         orgId,
         room.id,
-        { title: room.name, startTime: slot.start, endTime: slot.end },
+        { ...details, startTime: slot.start, endTime: slot.end },
         token,
       );
 
@@ -116,6 +121,7 @@ export function RoomBooking({
       }
 
       setConfirmed(slot);
+      setChosen(null);
       if (date) await loadSlots(date);
       onBooked?.();
     } catch (err) {
@@ -219,7 +225,15 @@ export function RoomBooking({
 
       {/* ── Duration, then the times ──────────────────────────── */}
       <div className="p-6">
-        {!date ? (
+        {chosen ? (
+          <BookingDetailsForm
+            roomName={room.name}
+            when={`${dateLabel(chosen.start.slice(0, 10))} at ${timeLabel(chosen.minutes)}`}
+            busy={booking !== null}
+            onBack={() => setChosen(null)}
+            onConfirm={(details) => book(chosen, details)}
+          />
+        ) : !date ? (
           <p className="text-sm text-[var(--text-secondary)]">
             Pick a day. Days with a dot have time left.
           </p>
@@ -274,7 +288,7 @@ export function RoomBooking({
                 {slots.map((slot) => (
                   <li key={slot.start}>
                     <button
-                      onClick={() => book(slot)}
+                      onClick={() => setChosen(slot)}
                       disabled={!slot.available || booking !== null}
                       title={slot.available ? undefined : reasonFor(slot)}
                       className={[
