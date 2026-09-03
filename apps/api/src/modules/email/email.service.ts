@@ -176,18 +176,32 @@ export class EmailService {
    * never thrown. A Postmark outage must not roll back the buddy invitation
    * the email was announcing.
    */
-  async sendRaw(to: string, subject: string, htmlBody: string): Promise<void> {
+  /**
+   * Returns whether it actually went.
+   *
+   * Still never throws — every caller here sends email as a side effect of
+   * something more important, and a failed notification must not roll back
+   * the thing it was notifying about. But swallowing the failure *and*
+   * reporting nothing meant a caller that needs to know could not find out:
+   * the host briefings (SRV-03) mark themselves as sent before sending, so a
+   * silent Postmark failure was a message nobody received and nothing
+   * retried. Existing callers ignore the return and are unaffected.
+   */
+  async sendRaw(to: string, subject: string, htmlBody: string): Promise<boolean> {
     if (!this.client) {
       this.logger.log(`[DEV] Would send email to=${to} subject="${subject}"\n${htmlBody}`);
-      return;
+      // True in development: nothing failed, there is simply no provider.
+      return true;
     }
 
     try {
       await this.client.sendEmail({ From: this.emailFrom, To: to, Subject: subject, HtmlBody: htmlBody });
       this.logger.log(`Email sent successfully to ${to} (raw)`);
+      return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`Failed to send email to ${to}: ${message}`);
+      return false;
     }
   }
 

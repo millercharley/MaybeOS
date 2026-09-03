@@ -49,6 +49,8 @@ const TENANT_OWNED = [
   'duty',
   'dutyClaim',
   'dutyAdoption',
+  'hostDuty',
+  'hostBriefing',
 ];
 
 const ALLOW_COMMENT = 'tenant-scoping-exempt';

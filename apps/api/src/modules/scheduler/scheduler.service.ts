@@ -3,6 +3,7 @@ import { PrismaService } from '../../config/prisma.service';
 import { CommonsService } from '../commons/commons.service';
 import { ReportService } from '../impact/report.service';
 import { BuddyService } from '../belonging/buddy.service';
+import { HostBriefingService } from '../service/host-briefing.service';
 
 export interface TaskResult {
   task: string;
@@ -44,6 +45,7 @@ export class SchedulerService {
     private readonly commons: CommonsService,
     private readonly reports: ReportService,
     private readonly buddies: BuddyService,
+    private readonly hosting: HostBriefingService,
   ) {}
 
   async runDueTasks(now: Date = new Date()): Promise<RunResult> {
@@ -60,6 +62,7 @@ export class SchedulerService {
       { name: 'release-expired-booking-holds', run: () => this.releaseExpiredHolds(now) },
       { name: 'compose-pending-reports', run: () => this.composePendingReports(now) },
       { name: 'advance-buddy-pairings', run: () => this.advanceBuddyPairings(now) },
+      { name: 'send-host-briefings', run: () => this.sendHostBriefings(now) },
     ]) {
       try {
         tasks.push(await task.run());
@@ -85,6 +88,26 @@ export class SchedulerService {
     return result;
   }
 
+
+  /**
+   * Tell hosts what they have to do around their booking (SRV-03).
+   *
+   * Nothing is sent until a co-op has written a message, so on every co-op
+   * that has not this is one query returning nothing. The 15-minute cadence
+   * means a briefing set for 07:00 arrives between 07:00 and 07:15 — worth
+   * saying out loud, because "at 7am" is what the admin screen promises.
+   */
+  private async sendHostBriefings(now: Date): Promise<TaskResult> {
+    try {
+      const { sent, failed, errors } = await this.hosting.sendDue(now);
+      if (sent > 0) this.logger.log(`Sent ${sent} host briefing email(s)`);
+      return { task: 'send-host-briefings', processed: sent, failed, errors };
+    } catch (error) {
+      const message = (error as Error).message;
+      this.logger.error('Failed to send host briefings', error as Error);
+      return { task: 'send-host-briefings', processed: 0, failed: 1, errors: [message] };
+    }
+  }
 
   /**
    * Move buddy pairings along (BEL-01, PRD §7).

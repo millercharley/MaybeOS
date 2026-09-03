@@ -3,7 +3,9 @@ import {
   Get,
   Post,
   Patch,
+  Put,
   Delete,
+  BadRequestException,
   Param,
   Body,
   Query,
@@ -19,6 +21,8 @@ import { CurrentUser, RequestUser } from '../../common/decorators/current-user.d
 import { ServiceService } from './service.service';
 import { CreateDutyDto, UpdateDutyDto } from './dto/duty.dto';
 import { ClaimDutyDto, CompleteClaimDto } from './dto/claim.dto';
+import { HostDutyDto, HostBriefingDto, PHASES } from './dto/host-duty.dto';
+import { HostBriefingService, type Phase } from './host-briefing.service';
 
 /**
  * Serve, My Service and Serving (SRV-01) — one module, three audiences.
@@ -28,12 +32,99 @@ import { ClaimDutyDto, CompleteClaimDto } from './dto/claim.dto';
  * guard proves you belong to the co-op named in the URL; it proves nothing
  * about the duty id you sent alongside it.
  */
+/** A phase from the URL, or a 400. Anything else would silently match nothing. */
+function assertPhase(value: string): Phase {
+  const upper = (value ?? '').toUpperCase();
+  if (!(PHASES as readonly string[]).includes(upper)) {
+    throw new BadRequestException(`phase must be one of ${PHASES.join(', ')}`);
+  }
+  return upper as Phase;
+}
+
 @ApiTags('service')
 @ApiBearerAuth()
 @Controller('orgs/:orgId')
 @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
 export class ServiceController {
-  constructor(private readonly service: ServiceService) {}
+  constructor(
+    private readonly service: ServiceService,
+    private readonly hosting: HostBriefingService,
+  ) {}
+
+  // ── Hosting: what a host does before, during and after (SRV-03) ─────
+
+  @Get('host-duties')
+  @Roles('ADMIN', 'STAFF')
+  @ApiOperation({ summary: "What hosts are asked to do around a booking" })
+  hostDuties(@Param('orgId', ParseUUIDPipe) orgId: string) {
+    return this.hosting.listDuties(orgId);
+  }
+
+  @Post('host-duties')
+  @Roles('ADMIN', 'STAFF')
+  createHostDuty(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Body() dto: HostDutyDto,
+  ) {
+    return this.hosting.createDuty(orgId, dto);
+  }
+
+  @Patch('host-duties/:dutyId')
+  @Roles('ADMIN', 'STAFF')
+  updateHostDuty(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('dutyId', ParseUUIDPipe) dutyId: string,
+    @Body() dto: HostDutyDto,
+  ) {
+    return this.hosting.updateDuty(orgId, dutyId, dto);
+  }
+
+  @Delete('host-duties/:dutyId')
+  @Roles('ADMIN', 'STAFF')
+  removeHostDuty(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('dutyId', ParseUUIDPipe) dutyId: string,
+  ) {
+    return this.hosting.removeDuty(orgId, dutyId);
+  }
+
+  @Get('host-briefings')
+  @Roles('ADMIN', 'STAFF')
+  @ApiOperation({ summary: 'The messages hosts are sent, and when' })
+  hostBriefings(@Param('orgId', ParseUUIDPipe) orgId: string) {
+    return this.hosting.listBriefings(orgId);
+  }
+
+  @Put('host-briefings/:phase')
+  @Roles('ADMIN', 'STAFF')
+  @ApiOperation({ summary: 'Write the message for one phase' })
+  saveHostBriefing(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('phase') phase: string,
+    @Body() dto: HostBriefingDto,
+  ) {
+    return this.hosting.saveBriefing(orgId, assertPhase(phase), dto);
+  }
+
+  @Delete('host-briefings/:phase')
+  @Roles('ADMIN', 'STAFF')
+  @ApiOperation({ summary: 'Stop sending this phase' })
+  removeHostBriefing(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('phase') phase: string,
+  ) {
+    return this.hosting.removeBriefing(orgId, assertPhase(phase));
+  }
+
+  @Get('host-briefings/:phase/preview')
+  @Roles('ADMIN', 'STAFF')
+  @ApiOperation({ summary: 'The email as a host would receive it' })
+  previewHostBriefing(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('phase') phase: string,
+  ) {
+    return this.hosting.preview(orgId, assertPhase(phase));
+  }
 
   // ── Serving: an organiser names the work ────────────────────────────
 
