@@ -2116,6 +2116,17 @@ export interface CreateEventData {
    */
   waitlistEnabled?: boolean;
   category?: string;
+  /**
+   * What kind of gathering, from the same fixed set the booking form asks
+   * (EVT-20). Free text drifted — "Workshop", "workshop" and "Workshops" are
+   * three categories to a filter and one to a reader.
+   */
+  tags?: string[];
+  /**
+   * Whether the host charges attendees (EVT-17) — cash at the door, Venmo.
+   * Distinct from `priceCents`, which is a ticket sold through MaybeOS.
+   */
+  hasCost?: boolean;
   locationId?: string;
   roomId?: string;
   /** Go live immediately rather than saving a draft (EVT-05). */
