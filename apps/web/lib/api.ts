@@ -472,6 +472,11 @@ class ApiClient {
         allowPublicJoin?: boolean;
         /** The co-op's own fee per ticket, in cents (D-013 ticketing). */
         ticketFeeCents?: number;
+        /**
+         * What the co-op says an hour of service is worth, in cents (SRV-02).
+         * Explicit null clears it; omitting the field leaves it alone.
+         */
+        volunteerHourValueCents?: number | null;
       },
       token: string,
     ) =>
@@ -1138,6 +1143,22 @@ class ApiClient {
 
     pending: (orgId: string, token: string) =>
       this.request<PendingClaim[]>(`/orgs/${orgId}/service/pending`, { token }),
+
+    /** What members gave, for ImpactOS (SRV-02). Staff only. */
+    contribution: (
+      orgId: string,
+      range: { from?: string; to?: string },
+      token: string,
+    ) => {
+      const query = new URLSearchParams();
+      if (range.from) query.set('from', range.from);
+      if (range.to) query.set('to', range.to);
+      const suffix = query.toString() ? `?${query}` : '';
+      return this.request<ServiceContribution>(
+        `/orgs/${orgId}/service/contribution${suffix}`,
+        { token },
+      );
+    },
 
     adoptions: (orgId: string, token: string) =>
       this.request<StandingDuty[]>(`/orgs/${orgId}/service/adoptions`, { token }),
@@ -1939,6 +1960,12 @@ export interface Org {
   plan?: 'FREE' | 'PLUS' | 'UNLIMITED';
   /** A fee the co-op adds to its own ticket sales, in cents. */
   ticketFeeCents?: number;
+  /**
+   * What this co-op says an hour of a member's service is worth, in cents
+   * (SRV-02). Null until somebody sets it, and null is the honest state —
+   * ImpactOS reports hours alone until then.
+   */
+  volunteerHourValueCents?: number | null;
   /** Whether Stripe onboarding is finished and tickets can actually sell. */
   stripeChargesEnabled?: boolean;
 }
@@ -2597,6 +2624,13 @@ export interface ImpactDashboardData {
   totalAttendance: number;
   /** Responses as a percentage of members. Can exceed 100 over many windows. */
   participationRate: number;
+  /** Hours members gave on the rota — turns marked done only (SRV-02). */
+  serviceHours: number;
+  serviceTurns: number;
+  /** The co-op's own rate, in cents. Null until it sets one. */
+  serviceHourValueCents: number | null;
+  /** Hours at that rate. Null when there is no rate — never a guess. */
+  serviceValueCents: number | null;
   /** Headline categories first (belonging, loneliness, network_size). */
   scores: Array<{
     category: string;
@@ -3237,6 +3271,35 @@ export interface CoopStanding {
 export interface PendingClaim extends DutyClaim {
   duty: Pick<Duty, 'id' | 'title' | 'estimatedMinutes'>;
   user: { id: string; name?: string | null; avatarUrl?: string | null };
+}
+
+/**
+ * Hours members gave, and what the co-op says they are worth (SRV-02).
+ *
+ * `members` is a count and never a list: this figure feeds a document that
+ * leaves the co-op, and who did the work is not a funder's business.
+ */
+export interface ServiceContribution {
+  timezone: string;
+  turns: number;
+  totalMinutes: number;
+  /** Rounded to one place — the estimates cannot support more. */
+  totalHours: number;
+  /** How many people, not who. */
+  members: number;
+  /** The co-op's own rate, in cents. Null until it sets one. */
+  hourValueCents: number | null;
+  /** Hours at that rate, or null. Never a guess. */
+  valueCents: number | null;
+  /** Turns where the member corrected the co-op's estimate. */
+  correctedTurns: number;
+  byDuty: {
+    dutyId: string;
+    title: string;
+    turns: number;
+    minutes: number;
+    hours: number;
+  }[];
 }
 
 export interface StandingDuty extends DutyAdoption {

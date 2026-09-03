@@ -6,6 +6,7 @@ import { ExpenseService } from '../expense.service';
 import { ReportService } from '../report.service';
 import { ReportPurchaseService } from '../report-purchase.service';
 import { ComposerService } from '../composer.service';
+import { ServiceService } from '../../service/service.service';
 import {
   WRITTEN_REPORT_PRICE_CENTS,
   purchaseCoversPeriod,
@@ -45,6 +46,22 @@ describe('The written impact report paywall', () => {
         ReportPurchaseService,
         // Never reached by these tests: nothing here composes.
         { provide: ComposerService, useValue: { available: false } },
+        {
+          provide: ServiceService,
+          useValue: {
+            contribution: jest.fn().mockResolvedValue({
+              timezone: 'UTC',
+              turns: 0,
+              totalMinutes: 0,
+              totalHours: 0,
+              members: 0,
+              hourValueCents: null,
+              valueCents: null,
+              correctedTurns: 0,
+              byDuty: [],
+            }),
+          },
+        },
         { provide: PrismaService, useValue: prisma },
         { provide: ImpactService, useValue: {} },
         { provide: ExpenseService, useValue: {} },

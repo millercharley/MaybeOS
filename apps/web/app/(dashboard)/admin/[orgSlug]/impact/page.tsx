@@ -4,8 +4,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { Activity, Check, FileText, Loader2, Pause, Target } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import Link from 'next/link';
-import { api, MeasurementStatus, SignalsByGoal } from '@/lib/api';
+import { api, MeasurementStatus, ServiceContribution, SignalsByGoal } from '@/lib/api';
 import { SignalsView, CATEGORY_LABEL } from '@/components/impact/signals';
+import { ContributionCard } from '@/components/impact/contribution';
+import { useParams } from 'next/navigation';
 
 const TOUCHPOINT_LABEL: Record<string, string> = {
   TICKET_PURCHASE: 'After buying a ticket',
@@ -29,11 +31,14 @@ const TOUCHPOINT_LABEL: Record<string, string> = {
  * consent to survey your own membership.
  */
 export default function AdminImpactPage() {
+  const params = useParams();
+  const orgSlug = params?.orgSlug as string;
   const token = useAuthStore((s) => s.token);
   const orgId = useAuthStore((s) => s.currentOrgId);
 
   const [status, setStatus] = useState<MeasurementStatus | null>(null);
   const [signals, setSignals] = useState<SignalsByGoal | null>(null);
+  const [gave, setGave] = useState<ServiceContribution | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -41,12 +46,16 @@ export default function AdminImpactPage() {
   const load = useCallback(async () => {
     if (!token || !orgId) return;
     try {
-      const [measurement, learned] = await Promise.all([
+      const [measurement, learned, gave] = await Promise.all([
         api.impact.measurement(orgId, token),
         api.impact.signalsByGoal(orgId, token),
+        // Not fatal: a co-op with no rota still has a measurement plan, and a
+        // failure here must not blank the page it shares.
+        api.service.contribution(orgId, {}, token).catch(() => null),
       ]);
       setStatus(measurement);
       setSignals(learned);
+      setGave(gave);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not read the measurement plan');
     } finally {
@@ -100,6 +109,8 @@ export default function AdminImpactPage() {
       {error && (
         <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</p>
       )}
+
+      <ContributionCard gave={gave} orgSlug={orgSlug} />
 
       <section className="rounded-xl border border-gray-200 bg-white p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">

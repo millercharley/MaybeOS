@@ -691,6 +691,116 @@ export class ServiceService {
     });
   }
 
+  // ── What the co-op contributed (SRV-02) ─────────────────────────────
+
+  /**
+   * Service given over a period, for ImpactOS.
+   *
+   * The figure a co-op puts in a grant application, so what it counts matters
+   * more than usual:
+   *
+   * - **Only turns actually marked done.** A claimed Tuesday is a promise, and
+   *   a promise is not a contribution.
+   * - **Counted on the day the turn happened**, not the day somebody clicked
+   *   "done", so a member catching up on paperwork in January cannot move
+   *   hours into the wrong reporting year.
+   * - **`valueCents` is null until the co-op sets a rate.** Hours need no
+   *   assumption to be true; a dollar figure is an assertion, and it is the
+   *   co-op's to make (see `volunteerHourValueCents`).
+   * - **`members` is a count, never a list.** This feeds a document that goes
+   *   outside the co-op, and who did the work is not a funder's business.
+   */
+  async contribution(orgId: string, from?: Date, to?: Date) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { timezone: true, volunteerHourValueCents: true },
+    });
+    if (!org) throw new NotFoundException('Co-op not found');
+
+    const claims = await this.prisma.dutyClaim.findMany({
+      where: {
+        duty: { orgId },
+        status: 'DONE',
+        // The turn's own date, not `completedAt`.
+        ...(from || to
+          ? { occursAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } }
+          : {}),
+      },
+      select: {
+        userId: true,
+        minutes: true,
+        minutesEdited: true,
+        duty: { select: { id: true, title: true } },
+      },
+    });
+
+    const byDuty = new Map<string, { title: string; minutes: number; turns: number }>();
+    const servers = new Set<string>();
+    let totalMinutes = 0;
+    let correctedTurns = 0;
+
+    for (const claim of claims) {
+      const minutes = claim.minutes ?? 0;
+      totalMinutes += minutes;
+      servers.add(claim.userId);
+      if (claim.minutesEdited) correctedTurns += 1;
+
+      const row = byDuty.get(claim.duty.id) ?? {
+        title: claim.duty.title,
+        minutes: 0,
+        turns: 0,
+      };
+      row.minutes += minutes;
+      row.turns += 1;
+      byDuty.set(claim.duty.id, row);
+    }
+
+    const rate = org.volunteerHourValueCents;
+
+    // One decimal place. An hours figure to four places reads as precision the
+    // underlying estimates cannot support.
+    const totalHours = Math.round((totalMinutes / 60) * 10) / 10;
+
+    return {
+      timezone: org.timezone,
+      turns: claims.length,
+      totalMinutes,
+      totalHours,
+      /** How many people, not who. */
+      members: servers.size,
+      /** The co-op's own rate, echoed so a reader can see what produced the value. */
+      hourValueCents: rate ?? null,
+      /**
+       * Computed from the *rounded* hours, deliberately.
+       *
+       * 165 minutes is 2.75 hours, which prints as "2.8". Valuing the exact
+       * 2.75 gave $77.00 against a report that says "2.8 hours at $28.00" —
+       * so a funder doing the multiplication got $78.40 and a reason to
+       * distrust the document. Every minute here is an organiser's estimate
+       * of what a turn takes, so a tenth of an hour is well inside the noise;
+       * arithmetic that does not check out is not.
+       */
+      valueCents: rate ? Math.round(totalHours * rate) : null,
+      /**
+       * Turns where the member corrected the estimate.
+       *
+       * Reported because it is the honest measure of how much of this figure
+       * is estimate and how much is somebody's account of what happened —
+       * which is exactly what a careful funder would ask.
+       */
+      correctedTurns,
+      byDuty: [...byDuty.entries()]
+        .map(([dutyId, row]) => ({
+          dutyId,
+          title: row.title,
+          turns: row.turns,
+          minutes: row.minutes,
+          hours: Math.round((row.minutes / 60) * 10) / 10,
+        }))
+        .sort((a, b) => b.minutes - a.minutes),
+    };
+  }
+
   /** The next few turns of one duty, for the organiser's coverage view. */
   async upcomingFor(orgId: string, dutyId: string, count = 8) {
     const duty = await this.dutyFor(orgId, dutyId);

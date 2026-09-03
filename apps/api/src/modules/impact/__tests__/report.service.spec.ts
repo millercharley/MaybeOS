@@ -5,6 +5,7 @@ import { ImpactService } from '../impact.service';
 import { ExpenseService } from '../expense.service';
 import { ReportPurchaseService } from '../report-purchase.service';
 import { ComposerService } from '../composer.service';
+import { ServiceService } from '../../service/service.service';
 import { PrismaService } from '../../../config/prisma.service';
 
 /**
@@ -74,6 +75,22 @@ describe('ReportService', () => {
         ReportPurchaseService,
         // Never reached by these tests: nothing here composes.
         { provide: ComposerService, useValue: { available: false } },
+        {
+          provide: ServiceService,
+          useValue: {
+            contribution: jest.fn().mockResolvedValue({
+              timezone: 'UTC',
+              turns: 0,
+              totalMinutes: 0,
+              totalHours: 0,
+              members: 0,
+              hourValueCents: null,
+              valueCents: null,
+              correctedTurns: 0,
+              byDuty: [],
+            }),
+          },
+        },
       ],
     }).compile();
 

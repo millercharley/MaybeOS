@@ -29,20 +29,31 @@ datasource db {
 // ─── Multi-Tenant Foundation ─────────────────────────────────
 
 model Organization {
-  id                   String  @id @default(uuid())
-  name                 String
-  slug                 String  @unique
-  description          String?
-  mission              String?
-  logoUrl              String?
-  brandColor           String  @default("#6366f1")
-  customDomain         String? @unique
-  timezone             String  @default("America/New_York")
-  settings             Json    @default("{}")
+  id           String  @id @default(uuid())
+  name         String
+  slug         String  @unique
+  description  String?
+  mission      String?
+  logoUrl      String?
+  brandColor   String  @default("#6366f1")
+  customDomain String? @unique
+  timezone     String  @default("America/New_York")
+
+  /// What an hour of a member's service is worth to this co-op, in cents
+  /// (SRV-02). Null, and null by default, which is the honest state.
+  ///
+  /// Deliberately not defaulted to a national figure. Turning hours into a
+  /// dollar "contributed value" is the co-op asserting a rate in a document a
+  /// funder will read, and a number MaybeOS invented — however respectable
+  /// its source — would be asserted in the co-op's name without anybody
+  /// choosing it. Until this is set, ImpactOS reports hours only, which needs
+  /// no assumption to be true.
+  volunteerHourValueCents Int?
+  settings                Json    @default("{}")
   // Stripe Billing Portal configuration for this org's members. The portal
   // only offers plan switching when it is given an explicit product list,
   // so each org needs its own configuration naming its own tiers.
-  stripePortalConfigId String?
+  stripePortalConfigId    String?
 
   // Off by default: a housing co-op or members' club must not be joinable by
   // anyone with a card. Each org opts in. See D-020.

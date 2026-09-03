@@ -71,6 +71,30 @@ export class ServiceController {
     return this.service.coopStanding(orgId);
   }
 
+  /**
+   * What members gave, for ImpactOS (SRV-02).
+   *
+   * Staff-only, and a count of people rather than a list of them: this is the
+   * figure that ends up in a grant application, and who did the work is not a
+   * funder's business.
+   */
+  @Get('service/contribution')
+  @Roles('ADMIN', 'STAFF')
+  @ApiOperation({ summary: 'Hours members gave over a period, and what they are worth' })
+  @ApiQuery({ name: 'from', required: false, example: '2026-01-01' })
+  @ApiQuery({ name: 'to', required: false, example: '2026-12-31' })
+  contribution(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.contribution(
+      orgId,
+      from ? new Date(from) : undefined,
+      to ? new Date(to) : undefined,
+    );
+  }
+
   @Get('service/pending')
   @Roles('ADMIN', 'STAFF')
   @ApiOperation({ summary: 'Claims waiting on an organiser' })

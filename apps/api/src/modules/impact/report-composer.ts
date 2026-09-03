@@ -33,7 +33,16 @@
  * guarantee — and a model rewriting it would be a model rewriting the promise
  * it is being checked against.
  */
-export const COMPOSABLE_KINDS = new Set(['intro', 'goal', 'spend', 'synthesis', 'limitations']);
+export const COMPOSABLE_KINDS = new Set([
+  'intro',
+  'goal',
+  'spend',
+  // Composable like spend, and for the same reason: it is a figure with a
+  // caveat, and the caveat is the part worth writing well (SRV-02).
+  'contribution',
+  'synthesis',
+  'limitations',
+]);
 
 export interface SourceBlock {
   id: string;
