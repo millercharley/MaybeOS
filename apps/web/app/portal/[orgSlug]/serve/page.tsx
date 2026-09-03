@@ -8,6 +8,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { api, type DutyOpenings } from '@/lib/api';
 import { byDate, shortDate, formatMinutes } from '@/lib/service-rota';
 import { DutyCard } from '@/components/service/duty-card';
+import { Panel } from '@/components/layout/panel';
 import { PageHeader } from '@/components/layout/page-header';
 
 /**
@@ -117,20 +118,29 @@ export default function ServePage() {
         </div>
       ) : (
         <>
-          <p className="mt-6 text-sm text-[var(--text-secondary)]">
-            {openCount === 0
-              ? 'Everything in the next two months is covered.'
-              : `${openCount} ${openCount === 1 ? 'turn needs' : 'turns need'} somebody in the next two months.`}
-          </p>
+          <Panel className="mt-6">
+            <p className="text-sm">
+              {openCount === 0
+                ? 'Everything in the next two months is covered.'
+                : `${openCount} ${openCount === 1 ? 'turn needs' : 'turns need'} somebody in the next two months.`}
+            </p>
+          </Panel>
 
-          <div className="mt-4 space-y-6">
+          {/* One panel per day, so the date heading sits on a card with the
+              turns it belongs to rather than loose on the co-op's colour
+              (BRD-02). */}
+          <div className="mt-4 space-y-4">
             {groups.map((group) => (
-              <section key={group.date}>
-                <h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--text-secondary)]">
-                  <CalendarDays size={14} aria-hidden="true" />
-                  {shortDate(group.date)}
-                </h3>
-                <ul className="mt-2 space-y-2">
+              <Panel
+                key={group.date}
+                title={
+                  <span className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                    <CalendarDays size={14} aria-hidden="true" />
+                    {shortDate(group.date)}
+                  </span>
+                }
+              >
+                <ul className="space-y-2">
                   {group.occurrences.map((occurrence) => (
                     <DutyCard
                       key={`${occurrence.dutyId}:${occurrence.date}`}
@@ -161,7 +171,7 @@ export default function ServePage() {
                     />
                   ))}
                 </ul>
-              </section>
+              </Panel>
             ))}
           </div>
         </>

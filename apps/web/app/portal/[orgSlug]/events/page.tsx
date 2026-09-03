@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { Panel } from '@/components/layout/panel';
 import { NextEventCard, EventRow, type EventActions } from '@/components/events/event-cards';
 import { groupUpcoming } from '@/lib/event-list';
 import { usePortal } from '@/contexts/portal-context';
@@ -186,34 +187,29 @@ export default function PortalEventsPage() {
         whether anything is on soon.
       */}
       {next && (
-        <section>
-          <h2 className="mb-3 text-lg font-semibold">Next event</h2>
+        <Panel title="Next event">
           <NextEventCard event={next} actions={actions} now={now} />
-        </section>
+        </Panel>
       )}
 
       {months.map((month) => (
-        <section key={month.heading}>
-          <h2 className="mb-3 text-lg font-semibold">{month.heading}</h2>
-          <ul className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+        <Panel key={month.heading} title={month.heading}>
+          <ul className="-mx-5 -mb-5 border-t border-[var(--border)]">
             {month.events.map((event) => (
               <EventRow key={event.id} event={event} actions={actions} />
             ))}
           </ul>
-        </section>
+        </Panel>
       ))}
 
       {past.length > 0 && (
-        <section>
-          <h2 className="mb-3 text-lg font-semibold text-[var(--text-secondary)]">
-            Already happened
-          </h2>
-          <ul className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] opacity-70">
+        <Panel title={<span className="text-[var(--text-secondary)]">Already happened</span>}>
+          <ul className="-mx-5 -mb-5 border-t border-[var(--border)] opacity-70">
             {past.slice(0, 10).map((event) => (
               <EventRow key={event.id} event={event} actions={actions} />
             ))}
           </ul>
-        </section>
+        </Panel>
       )}
     </div>
   );

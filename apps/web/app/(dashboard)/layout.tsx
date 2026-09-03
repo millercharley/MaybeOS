@@ -8,6 +8,8 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { CommandPalette, OPEN_SEARCH_EVENT } from '@/components/layout/command-palette';
 import { useAuthStore } from '@/lib/auth-store';
 import { OrgSetup } from '@/components/setup/org-setup';
+import { OrgMark } from '@/components/layout/org-mark';
+import { brandStyle, brandTheme } from '@/lib/brand';
 
 // Keyed by the last segment rather than the whole path: every address now
 // carries a co-op slug in the middle, so a full-path key would have to be
@@ -119,6 +121,18 @@ export default function DashboardLayout({
   }
 
   const membership = fromUrl ?? user.orgs.find((o) => o.orgId === currentOrgId);
+
+  /**
+   * A co-op's colours on its members' own pages, and not on the admin (BRD-01).
+   *
+   * Charley asked for "all member pages". The organising tools are MaybeOS's,
+   * not the co-op's — and an organiser who runs two co-ops needs the admin to
+   * look like one product, not to change colour underneath them while they
+   * work.
+   */
+  const isMemberArea = pathname?.startsWith('/member');
+  const theme = isMemberArea ? brandTheme(membership?.org?.brandColor) : null;
+
   const role = membership?.role;
   const isOrganiser = role === 'ADMIN' || role === 'STAFF';
   const orgSlug = membership?.org?.slug;
@@ -148,7 +162,7 @@ export default function DashboardLayout({
     'Dashboard';
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50" style={brandStyle(theme)}>
       {/* The permanent column, from `lg` up. */}
       <div className="fixed inset-y-0 left-0 z-30 hidden w-64 lg:block">
         <Sidebar />
@@ -205,13 +219,21 @@ export default function DashboardLayout({
               </>
             )}
           </nav>
+          {/* The co-op's own mark, right-aligned, on its members' pages
+              (BRD-01). Not on the admin: see `theme` above. */}
+          {isMemberArea && (
+            <span className="ml-auto flex items-center">
+              <OrgMark name={membership?.org?.name} logoUrl={membership?.org?.logoUrl} />
+            </span>
+          )}
+
           {/* Was a div: it looked exactly like a button and did nothing when
               clicked, so the only way to search was a shortcut nobody had been
               told about. */}
           <button
             type="button"
             onClick={() => window.dispatchEvent(new Event(OPEN_SEARCH_EVENT))}
-            className="ml-auto flex shrink-0 items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-400 transition-colors hover:border-gray-300 hover:text-gray-600"
+            className="ml-auto flex shrink-0 items-center gap-1.5 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-400 transition-colors hover:border-gray-300 hover:text-gray-600 [&:not(:first-child)]:ml-3"
           >
             <span>Search</span>
             {/* The shortcut is a desktop affordance and there is no room for

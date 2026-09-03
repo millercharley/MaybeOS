@@ -17,6 +17,7 @@ import {
 import { useAuthStore } from '@/lib/auth-store';
 import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
+import { Panel } from '@/components/layout/panel';
 
 const quickLinksFor = (orgSlug: string) => [
   { label: 'My RSVPs', href: `/member/${orgSlug}/rsvps`, icon: Calendar },
@@ -67,15 +68,16 @@ export default function MemberPortalPage() {
 
   return (
     <div className="mx-auto max-w-container px-4 py-8 sm:px-6 lg:px-8">
-      {/* Welcome Message */}
-      <div className="mb-8">
+      {/* The headline is the one thing that sits on the co-op's colour
+          (BRD-02); its description belongs with it rather than loose below. */}
+      <header className="mb-8">
         <h1 className="font-display text-2xl leading-tight text-ink">
           Welcome back, {memberName}
         </h1>
-        <p className="mt-1 text-gray-600">
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">
           Here is an overview of your membership and upcoming activities.
         </p>
-      </div>
+      </header>
 
       {/* Two Column Layout */}
       <div className="grid gap-6 lg:grid-cols-3">
@@ -147,9 +149,8 @@ export default function MemberPortalPage() {
       </div>
 
       {/* My Upcoming Events */}
-      <section className="mt-8">
-        <h2 className="text-lg font-semibold text-gray-900">My Upcoming Events</h2>
-        <div className="mt-4">
+      <Panel className="mt-8" title="My Upcoming Events">
+        <div>
           {rsvpsLoading ? (
             <div className="card rounded-xl border border-gray-200 py-8 text-center">
               <div className="mx-auto h-6 w-6 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
@@ -193,12 +194,11 @@ export default function MemberPortalPage() {
             </ul>
           )}
         </div>
-      </section>
+      </Panel>
 
       {/* My Bookings */}
-      <section className="mt-8">
-        <h2 className="text-lg font-semibold text-gray-900">My Bookings</h2>
-        <div className="mt-4 space-y-3">
+      <Panel className="mt-8" title="My Bookings">
+        <div className="space-y-3">
           {bookingsLoading ? (
             <div className="flex items-center justify-center py-8">
               <div className="h-6 w-6 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
@@ -264,21 +264,17 @@ export default function MemberPortalPage() {
             })
           )}
         </div>
-      </section>
+      </Panel>
 
-      {/* Active Surveys */}
-      <section className="mt-8">
-        <h2 className="text-lg font-semibold text-gray-900">Active Surveys</h2>
-        <div className="mt-4 space-y-3">
-          <div className="card rounded-xl border border-gray-200 text-center py-8">
-            <ClipboardList className="mx-auto h-10 w-10 text-gray-300" />
-            <p className="mt-3 text-sm font-medium text-gray-900">No active surveys</p>
-            <p className="mt-1 text-sm text-gray-500">
-              When surveys are available, they will appear here.
-            </p>
-          </div>
+      <Panel className="mt-8" title="Active Surveys">
+        <div className="py-4 text-center">
+          <ClipboardList className="mx-auto h-10 w-10 text-gray-300" />
+          <p className="mt-3 text-sm font-medium">No active surveys</p>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+            When surveys are available, they will appear here.
+          </p>
         </div>
-      </section>
+      </Panel>
     </div>
   );
 }

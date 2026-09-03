@@ -6,6 +6,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { api, MyImpact } from '@/lib/api';
 import { SignalsView, CATEGORY_LABEL } from '@/components/impact/signals';
 import { PageHeader } from '@/components/layout/page-header';
+import { Panel } from '@/components/layout/panel';
 
 /**
  * What you told your co-op, and what it learned from everyone (IMP-20).
@@ -62,15 +63,13 @@ export default function MyImpactPage() {
 
       {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
-      <section>
-        <h2 className="text-sm font-semibold text-gray-900">Together</h2>
-        <div className="mt-3">{mine && <SignalsView signals={mine.community} />}</div>
-      </section>
+      <Panel title="Together">
+        {mine && <SignalsView signals={mine.community} />}
+      </Panel>
 
-      <section>
-        <h2 className="text-sm font-semibold text-gray-900">Your answers</h2>
+      <Panel title="Your answers">
         {mine && mine.answers.length > 0 ? (
-          <ul className="mt-3 space-y-3">
+          <ul className="space-y-3">
             {mine.answers.map((a, i) => (
               <li key={`${a.question}-${i}`} className="rounded-xl border border-gray-200 bg-white p-4">
                 <p className="text-sm text-gray-900">{a.question}</p>
@@ -98,7 +97,7 @@ export default function MyImpactPage() {
             somewhere you already were.
           </p>
         )}
-      </section>
+      </Panel>
 
       <p className="text-xs text-gray-400">
         {/* Stated to the person it is a promise to, not only in a privacy

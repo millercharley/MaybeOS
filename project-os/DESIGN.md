@@ -64,6 +64,35 @@ use the sibling-row shape, inherited from before this component existed.
 Headings *inside* a page are sans: `h2` is `text-lg font-semibold`, `h3` is
 `text-sm font-semibold`. The serif does not cascade down the page.
 
+## 2a. Everything else runs in a panel
+
+**The page headline is the only text allowed on the page background.** Every
+other word — section headings, descriptions, lists, empty states, footnotes —
+sits inside a `.card` or a `<Panel />`.
+
+The Members page is the shape: the title and its buttons on the background, the
+search field and the table on cards.
+
+This is not decoration. A co-op picks the colour behind all of it on
+Settings → Branding, and a heading left loose on that colour is legible or not
+depending on a choice made in a colour picker weeks earlier. Charley:
+*"This makes it so it doesn't matter what color an admin picks, everything
+remains readable inside the panels and cards."*
+
+```tsx
+<Panel title="Coming up" description="What you have taken on.">
+  …
+</Panel>
+```
+
+The headline is the one exception, so `brandTheme` lightens a background only
+as far as the headline needs — which for a colour like `#afd2e9` is not at all.
+
+**Checked by looking, not by reading.** The audit walks the rendered DOM and
+finds any text whose nearest painted ancestor is the page background. Source
+inspection cannot see this: whether text is on a card depends on computed
+styles, not on markup.
+
 ## 3. Type
 
 | Role | Class |
