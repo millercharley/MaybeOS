@@ -14,7 +14,7 @@ import { SUPPORT_EMAIL, supportMailto } from '@/lib/support';
  */
 export function Support({ orgName }: { orgName?: string }) {
   return (
-    <section className="card max-w-2xl space-y-3">
+    <section className="card space-y-3">
       <div>
         <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
           <LifeBuoy className="h-4 w-4 text-gray-400" />

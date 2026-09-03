@@ -71,7 +71,7 @@ export function Locations({ orgId }: { orgId: string }) {
   }
 
   return (
-    <section className="card max-w-2xl space-y-4">
+    <section className="card space-y-4">
       <div>
         <h2 className="text-lg font-semibold text-gray-900">Locations</h2>
         <p className="mt-1 text-sm text-gray-500">

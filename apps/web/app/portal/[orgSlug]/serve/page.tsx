@@ -81,7 +81,7 @@ export default function ServePage() {
   const openCount = (data?.occurrences ?? []).filter((o) => o.remaining > 0).length;
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div>
       <header>
         <h1 className="text-2xl font-bold">Serve</h1>
         <p className="mt-1 text-[var(--text-secondary)]">

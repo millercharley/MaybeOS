@@ -194,7 +194,7 @@ export default function ReportsPage() {
   if (open) {
     const published = open.status === 'PUBLISHED';
     return (
-      <div className="mx-auto max-w-3xl space-y-6">
+      <div className="space-y-6">
         <button
           onClick={() => { setOpen(null); setEditing(null); }}
           className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900"
@@ -411,7 +411,7 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="space-y-6">
       <Link href="../impact" className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-900">
         <ArrowLeft className="h-4 w-4" />
         Measuring

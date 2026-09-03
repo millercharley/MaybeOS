@@ -101,7 +101,7 @@ export default function AdminExpensesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="space-y-6">
       <header>
         <h1 className="flex items-center gap-2 text-xl font-semibold text-gray-900">
           <Receipt className="h-5 w-5" />
