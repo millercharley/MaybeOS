@@ -130,6 +130,17 @@ export class CreateEventDto {
   @IsArray()
   @IsString({ each: true })
   tags?: string[];
+
+  /**
+   * Whether the host charges attendees (EVT-17) — cash at the door, Venmo,
+   * whatever. Distinct from `priceCents`, which is a ticket sold through
+   * MaybeOS: an event can cost something and sell no ticket, and most co-op
+   * events that charge do exactly that.
+   */
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  hasCost?: boolean;
 }
 
 export class UpdateEventDto {

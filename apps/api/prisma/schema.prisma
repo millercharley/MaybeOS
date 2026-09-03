@@ -439,7 +439,16 @@ model Event {
   waitlistEnabled     Boolean         @default(false)
   requiresRsvp        Boolean         @default(true)
   category            String?
+  /// What kind of gathering, in the co-op's own words. Inherited from the
+  /// booking when an event is published from one (EVT-17), which is where they
+  /// are asked. `category` is the older singular field the admin form writes;
+  /// readers prefer these and fall back to it.
   tags                String[]        @default([])
+  /// Whether the host charges attendees — cash at the door, Venmo, whatever.
+  /// Distinct from `priceCents`, which is a ticket sold through MaybeOS: an
+  /// event can have a cost and no ticket, and most co-op events that charge
+  /// do exactly that.
+  hasCost             Boolean         @default(false)
   isPublished         Boolean         @default(false)
   publishedAt         DateTime?
   canceledAt          DateTime?

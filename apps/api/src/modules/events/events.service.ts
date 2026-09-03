@@ -143,20 +143,34 @@ export class EventsService {
       throw new BadRequestException('That booking has already finished');
     }
 
+    // Everything the booking already answered carries across (EVT-17). The
+    // member said who it is open to, roughly how many people, whether it
+    // costs, and what kind of gathering when they booked the room (SPC-21) —
+    // asking again is a step backwards, and the two answers drifting apart is
+    // worse than either.
     return this.create(
       orgId,
       {
         title: dto.title ?? booking.title,
-        description: dto.description,
+        description: dto.description ?? booking.description ?? undefined,
         startTime: booking.startTime.toISOString(),
         endTime: booking.endTime.toISOString(),
         roomId: booking.roomId,
-        visibility: dto.visibility ?? 'MEMBERS_ONLY',
-        capacity: dto.capacity ?? booking.room.capacity ?? undefined,
-        category: dto.category,
+        visibility: dto.visibility ?? booking.visibility,
+        // The member's own estimate before the room's capacity: they know who
+        // they invited, and the room's number is an upper bound rather than a
+        // guess at attendance.
+        capacity:
+          dto.capacity ?? booking.expectedAttendance ?? booking.room.capacity ?? undefined,
+        category: dto.category ?? booking.categories[0],
+        tags: booking.categories,
       } as CreateEventDto,
       userId,
-      { bookingId: booking.id, publish: dto.publish ?? true },
+      {
+        bookingId: booking.id,
+        publish: dto.publish ?? true,
+        hasCost: booking.hasCost,
+      },
     );
   }
 
@@ -164,7 +178,7 @@ export class EventsService {
     orgId: string,
     dto: CreateEventDto,
     userId: string,
-    options: { bookingId?: string; publish?: boolean } = {},
+    options: { bookingId?: string; publish?: boolean; hasCost?: boolean } = {},
   ) {
     const slug = toSlug(dto.title, dto.startTime);
 
@@ -206,6 +220,7 @@ export class EventsService {
         waitlistEnabled: dto.waitlistEnabled,
         category: dto.category,
         tags: dto.tags,
+        hasCost: options.hasCost ?? dto.hasCost ?? false,
       },
     });
   }
