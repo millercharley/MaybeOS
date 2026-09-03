@@ -6,6 +6,7 @@ import { CreditCard, ExternalLink, Loader2, AlertCircle, CheckCircle2 } from 'lu
 import { useAuthStore } from '@/lib/auth-store';
 import { usePublicApi } from '@/hooks/use-api';
 import { api, MembershipTier, ApiError } from '@/lib/api';
+import { PageHeader } from '@/components/layout/page-header';
 
 /** Cents → "$12" or "$12.50", never "$12.00". */
 function money(cents: number): string {
@@ -109,11 +110,11 @@ export default function MemberBillingPage() {
 
   if (!membership) {
     return (
-      <div className="card max-w-lg">
-        <h1 className="font-display text-xl">No membership found</h1>
-        <p className="mt-2 text-[var(--text-secondary)]">
-          You&apos;re not currently a member of an organization, so there are no dues to manage.
-        </p>
+      <div className="card">
+        <PageHeader
+          title="No membership found"
+          description="You&apos;re not currently a member of an organization, so there are no dues to manage."
+        />
       </div>
     );
   }
@@ -134,9 +135,9 @@ export default function MemberBillingPage() {
       <p className="data mb-2 text-xs uppercase tracking-wider text-[var(--text-tertiary)]">
         {membership.org?.name}
       </p>
-      <h1 className="font-display text-2xl leading-tight">Dues &amp; billing</h1>
-
-      {justReturned === 'success' && (
+      <PageHeader
+        title="Dues &amp; billing"
+      />{justReturned === 'success' && (
         <div className="card mt-6 flex gap-3 border-[var(--success)]">
           <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-[var(--success)]" />
           <div>

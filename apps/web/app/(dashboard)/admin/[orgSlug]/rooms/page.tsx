@@ -11,6 +11,7 @@ import { RoomHours } from '@/components/rooms/room-hours';
 import { ClosureEditor } from '@/components/rooms/closure-editor';
 import { HostDuties } from '@/components/rooms/host-duties';
 import { calendarNotice } from '@/lib/room-calendar';
+import { PageHeader } from '@/components/layout/page-header';
 
 type Draft = {
   name: string;
@@ -193,10 +194,10 @@ export default function AdminRoomsPage() {
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl leading-tight">Rooms &amp; spaces</h1>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">
-            What members can book, and on what terms.
-          </p>
+          <PageHeader
+            title="Rooms &amp; spaces"
+            description="What members can book, and on what terms."
+          />
         </div>
         {!showForm && (
           <button onClick={startCreate} className="btn-primary inline-flex items-center gap-2">

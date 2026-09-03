@@ -9,6 +9,7 @@ import { api, ApiError, ImpactReport, ReportPurchaseStatus, ReportSummary } from
 import { downloadAuthenticated } from '@/lib/download';
 import { WRITTEN_REPORT_PRICE_CENTS, money } from '@/lib/fees';
 import { ReportBody } from '@/components/impact/report-body';
+import { PageHeader } from '@/components/layout/page-header';
 
 /**
  * Writing, editing and publishing the year-end report (IMP-22).
@@ -208,7 +209,7 @@ export default function ReportsPage() {
         <div className={`rounded-xl border p-4 ${published ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-white'}`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h1 className="text-lg font-semibold text-gray-900">{open.title}</h1>
+              <h1 className="font-display text-2xl leading-tight text-ink">{open.title}</h1>
               <p className="mt-0.5 text-sm text-gray-500">
                 {published ? 'Published — anyone with the link can read it.' : 'Draft — only organisers can see it.'}
                 {/* G4, computed rather than claimed. */}
@@ -419,11 +420,10 @@ export default function ReportsPage() {
 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Impact reports</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            What your members told you, written up — to send to a funder, a board, or your
-            membership.
-          </p>
+          <PageHeader
+            title="Impact reports"
+            description="What your members told you, written up — to send to a funder, a board, or your membership."
+          />
           <p className="mt-1 text-sm text-gray-500">
             The basic report is free, always. The full one is the same figures with the writing
             done for you; it is {money(WRITTEN_REPORT_PRICE_CENTS)} to publish, once per reporting

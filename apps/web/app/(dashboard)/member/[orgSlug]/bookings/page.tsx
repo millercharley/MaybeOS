@@ -9,6 +9,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { api, Booking, ApiError } from '@/lib/api';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
 import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
+import { PageHeader } from '@/components/layout/page-header';
 
 /**
  * Times are shown in the reader's own timezone, unlike the booking emails,
@@ -176,10 +177,10 @@ export default function MemberBookingsPage() {
 
   return (
     <div>
-      <h1 className="font-display text-2xl leading-tight">My bookings</h1>
-      <p className="mt-1 text-sm text-[var(--text-secondary)]">
-        Rooms you&apos;ve booked, and anything still waiting on an organiser.
-      </p>
+      <PageHeader
+        title="My bookings"
+        description="Rooms you&apos;ve booked, and anything still waiting on an organiser."
+      />
 
       {orgId && <TouchpointAsk orgId={orgId} touchpoint="BOOKING" />}
 

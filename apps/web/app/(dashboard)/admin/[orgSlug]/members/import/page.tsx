@@ -6,6 +6,7 @@ import { ArrowLeft, Upload, AlertTriangle, Check, Users, Image as ImageIcon } fr
 import { useAuthStore } from '@/lib/auth-store';
 import { api, ImportResult } from '@/lib/api';
 import { parseCsv } from '@/lib/csv';
+import { PageHeader } from '@/components/layout/page-header';
 import {
   IMPORT_FIELDS,
   guessMapping,
@@ -162,7 +163,9 @@ export default function ImportMembersPage(props: { params: Promise<{ orgSlug: st
       </Link>
 
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Import members</h1>
+        <PageHeader
+          title="Import members"
+        />
         <p className="mt-1 text-sm text-gray-500">
           From a .csv exported by whatever your community uses now. Nothing is sent until you
           have seen what it will do, and <b>no one is emailed</b>.

@@ -16,6 +16,7 @@ import { api, Article, ArticleCompliance, ArticleSummary } from '@/lib/api';
 import { RichComposer } from '@/components/composer/rich-composer';
 import { ImageUploader } from '@/components/ui/image-uploader';
 import { timeAgo } from '@/lib/relative-time';
+import { PageHeader } from '@/components/layout/page-header';
 
 /**
  * Writing the Knowledge Center (PRD §6.1, §6.3).
@@ -123,7 +124,7 @@ export default function AdminWelcomePage() {
         </button>
 
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{compliance.article.title}</h1>
+          <h1 className="font-display text-2xl leading-tight text-ink">{compliance.article.title}</h1>
           <p className="mt-1 text-sm text-gray-500">
             Version {compliance.article.version}
             {compliance.article.requiredSince &&
@@ -329,10 +330,10 @@ export default function AdminWelcomePage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Welcoming</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            How this community works, in your own words and your own order.
-          </p>
+          <PageHeader
+            title="Welcoming"
+            description="How this community works, in your own words and your own order."
+          />
         </div>
         <button
           disabled={busy}

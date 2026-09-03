@@ -14,6 +14,7 @@ import { RichComposer, composerValue } from '@/components/composer/rich-composer
 import { uploadAttachments } from '@/lib/attachments';
 import { AttachmentList } from '@/components/composer/attachment-list';
 import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
+import { PageHeader } from '@/components/layout/page-header';
 
 type Tab = 'channels' | 'library' | 'proposals';
 
@@ -25,16 +26,19 @@ export default function PortalCommonsPage() {
     return (
       <div className="py-12 text-center">
         <MessageSquare className="mx-auto h-10 w-10 text-gray-300" />
-        <h1 className="mt-4 text-2xl font-bold text-gray-900">Commons</h1>
-        <p className="mt-2 text-sm text-gray-500">Sign in to participate in discussions and proposals.</p>
+        <PageHeader
+          title="Commons"
+          description="Sign in to participate in discussions and proposals."
+        />
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Commons</h1>
-
+      <PageHeader
+        title="Commons"
+      />
       <div className="flex gap-1 border-b border-gray-200">
         <button
           onClick={() => setTab('channels')}

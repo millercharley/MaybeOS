@@ -5,6 +5,7 @@ import { Check, Loader2, Undo2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, HostPayoutPreview } from '@/lib/api';
 import { money } from '@/lib/fees';
+import { PageHeader } from '@/components/layout/page-header';
 
 /**
  * Paying members who hosted events and sold tickets (EVT-15).
@@ -79,7 +80,9 @@ export default function PayoutsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Host payouts</h1>
+        <PageHeader
+          title="Host payouts"
+        />
         <p className="mt-1 text-sm text-gray-500">
           {/* Said plainly: the button records, it does not send. */}
           What each member who hosted an event is owed from its ticket sales. MaybeOS works out

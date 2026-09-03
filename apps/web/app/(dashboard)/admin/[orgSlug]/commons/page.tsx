@@ -23,6 +23,7 @@ import { api, Comment as CommentT, Post, PaginatedResponse, CollectionPage, Dire
 import { sanitizeWikiHtml } from '@/lib/wiki-html';
 import { renderBodyHtml, isBlankBody } from '@/lib/rich-text';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
+import { PageHeader } from '@/components/layout/page-header';
 
 type View =
   | { type: 'channel'; id: string }
@@ -295,9 +296,9 @@ export default function CommonsPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-bold text-gray-900">Commons</h1>
-
-      {/* Stacked below `lg`, side by side above it (UI-01). A 240px rail
+      <PageHeader
+        title="Commons"
+      />{/* Stacked below `lg`, side by side above it (UI-01). A 240px rail
           beside the feed left 111px for the conversation on a 375px phone,
           and the composer ran off the screen. */}
       <div className="flex flex-col gap-6 lg:flex-row">

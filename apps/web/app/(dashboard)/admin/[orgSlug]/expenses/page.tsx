@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Receipt, Trash2, AlertCircle } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Expense, ExpenseSummary } from '@/lib/api';
+import { PageHeader } from '@/components/layout/page-header';
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -102,16 +103,13 @@ export default function AdminExpensesPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="flex items-center gap-2 text-xl font-semibold text-gray-900">
-          <Receipt className="h-5 w-5" />
-          Spending
-        </h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Enough to answer what your work costs and how much of your spending serves
-          your goals. Not an accounting system — your books stay where they are.
-        </p>
-      </header>
+      {/* The icon is gone with the hand-written heading: page titles are the
+          display serif and nothing else, or "sometimes with an icon" becomes
+          the next inconsistency (UI-02). */}
+      <PageHeader
+        title="Spending"
+        description="Enough to answer what your work costs and how much of your spending serves your goals. Not an accounting system — your books stay where they are."
+      />
 
       {error && (
         <p className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">

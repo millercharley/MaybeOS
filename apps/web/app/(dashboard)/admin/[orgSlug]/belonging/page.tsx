@@ -15,6 +15,7 @@ import {
 import { apiUrl } from '@/lib/api';
 import { timeAgo } from '@/lib/relative-time';
 import { downloadAuthenticated } from '@/lib/download';
+import { PageHeader } from '@/components/layout/page-header';
 
 type Tab = 'settings' | 'pairs' | 'invitations' | 'members' | 'suggestions' | 'emails';
 
@@ -104,10 +105,10 @@ export default function BelongingPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Belonging Support</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Making sure a new member knows one person by name, and knows what this place expects.
-        </p>
+        <PageHeader
+          title="Belonging Support"
+          description="Making sure a new member knows one person by name, and knows what this place expects."
+        />
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}

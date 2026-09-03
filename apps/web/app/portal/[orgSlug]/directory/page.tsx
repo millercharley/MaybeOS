@@ -6,6 +6,7 @@ import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Member } from '@/lib/api';
 import { safeProfileLinks, profileLinkLabel } from '@/lib/profile-links';
+import { PageHeader } from '@/components/layout/page-header';
 
 export default function PortalDirectoryPage() {
   const { org } = usePortal();
@@ -31,8 +32,10 @@ export default function PortalDirectoryPage() {
     return (
       <div className="py-12 text-center">
         <Users className="mx-auto h-10 w-10 text-gray-300" />
-        <h1 className="mt-4 text-2xl font-bold text-gray-900">Member Directory</h1>
-        <p className="mt-2 text-sm text-gray-500">Sign in to view the member directory.</p>
+        <PageHeader
+          title="Member Directory"
+          description="Sign in to view the member directory."
+        />
       </div>
     );
   }
@@ -64,7 +67,9 @@ export default function PortalDirectoryPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-gray-900">Member Directory</h1>
+        <PageHeader
+          title="Member Directory"
+        />
         <span className="text-sm text-gray-500">{members.length} members</span>
       </div>
 

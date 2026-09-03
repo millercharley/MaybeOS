@@ -8,6 +8,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { api, Article, OutstandingReading } from '@/lib/api';
 import { renderBodyHtml } from '@/lib/rich-text';
 import { timeUntil } from '@/lib/relative-time';
+import { PageHeader } from '@/components/layout/page-header';
 
 /**
  * Being walked through what a community asks of you (PRD §6.2).
@@ -75,15 +76,14 @@ export default function WelcomeStartPage() {
 
   if (!article) {
     return (
-      <div className="mx-auto max-w-lg py-16 text-center">
+      <div className="py-16 text-center">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-50">
           <Check className="h-6 w-6 text-green-600" />
         </div>
-        <h1 className="mt-5 text-2xl font-bold text-gray-900">That&rsquo;s everything</h1>
-        <p className="mt-3 text-gray-600">
-          Nothing else is asked of you. There is more in the Knowledge Center worth reading, and
-          none of it is compulsory.
-        </p>
+        <PageHeader
+          title="That&rsquo;s everything"
+          description="Nothing else is asked of you. There is more in the Knowledge Center worth reading, and none of it is compulsory."
+        />
         <Link href={`/portal/${org?.slug}/welcome`} className="btn-primary mt-6 inline-block text-sm">
           Have a look
         </Link>
@@ -118,7 +118,7 @@ export default function WelcomeStartPage() {
           <img src={article.coverImageUrl} alt="" className="max-h-72 w-full object-cover" />
         )}
         <div className="p-6">
-          <h1 className="text-2xl font-bold text-gray-900">{article.title}</h1>
+          <h1 className="font-display text-2xl leading-tight text-ink">{article.title}</h1>
           {article.author?.name && (
             <p className="mt-1 text-sm text-gray-500">by {article.author.name}</p>
           )}

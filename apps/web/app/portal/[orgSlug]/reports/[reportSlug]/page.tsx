@@ -3,6 +3,7 @@
 import { use, useEffect, useState } from 'react';
 import { api, PublicReport } from '@/lib/api';
 import { ReportBody } from '@/components/impact/report-body';
+import { PageHeader } from '@/components/layout/page-header';
 
 /**
  * A co-op's published impact report, to anybody with the link (IMP-22).
@@ -39,10 +40,10 @@ export default function PublicReportPage(props: {
   if (!data) {
     return (
       <div className="py-20 text-center">
-        <h1 className="text-xl font-semibold text-gray-900">Report not found</h1>
-        <p className="mt-2 text-sm text-gray-500">
-          It may not have been published, or the link may be wrong.
-        </p>
+        <PageHeader
+          title="Report not found"
+          description="It may not have been published, or the link may be wrong."
+        />
       </div>
     );
   }
@@ -53,7 +54,7 @@ export default function PublicReportPage(props: {
     <article className="py-8">
       <header className="border-b border-gray-200 pb-6">
         <p className="text-sm font-medium text-gray-500">{org.name}</p>
-        <h1 className="mt-1 text-3xl font-bold text-gray-900">{report.title}</h1>
+        <h1 className="mt-1 font-display text-2xl leading-tight text-ink">{report.title}</h1>
         <p className="mt-2 text-sm text-gray-500">
           {new Date(report.periodStart).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })} –{' '}
           {new Date(report.periodEnd).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}

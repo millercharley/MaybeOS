@@ -6,6 +6,7 @@ import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { RoomBooking } from '@/components/rooms/room-booking';
 import { api } from '@/lib/api';
+import { PageHeader } from '@/components/layout/page-header';
 
 export default function PortalRoomsPage() {
   const { org } = usePortal();
@@ -40,8 +41,10 @@ export default function PortalRoomsPage() {
     return (
       <div className="py-12 text-center">
         <DoorOpen className="mx-auto h-10 w-10 text-gray-300" />
-        <h1 className="mt-4 text-2xl font-bold text-gray-900">Rooms & Booking</h1>
-        <p className="mt-2 text-sm text-gray-500">Sign in to view and book rooms.</p>
+        <PageHeader
+          title="Rooms & Booking"
+          description="Sign in to view and book rooms."
+        />
       </div>
     );
   }
@@ -56,9 +59,9 @@ export default function PortalRoomsPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-bold text-gray-900">Rooms & Booking</h1>
-
-      {bookingResult && (
+      <PageHeader
+        title="Rooms & Booking"
+      />{bookingResult && (
         <div
           className={`rounded-lg p-3 text-sm ${bookingResult.includes('submitted') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}
         >

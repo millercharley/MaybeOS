@@ -8,6 +8,7 @@ import { api, MeasurementStatus, ServiceContribution, SignalsByGoal } from '@/li
 import { SignalsView, CATEGORY_LABEL } from '@/components/impact/signals';
 import { ContributionCard } from '@/components/impact/contribution';
 import { useParams } from 'next/navigation';
+import { PageHeader } from '@/components/layout/page-header';
 
 const TOUCHPOINT_LABEL: Record<string, string> = {
   TICKET_PURCHASE: 'After buying a ticket',
@@ -98,12 +99,10 @@ export default function AdminImpactPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Measuring impact</h1>
-        <p className="mt-1 max-w-2xl text-sm text-gray-500">
-          MaybeOS asks your members one short question at a time, at moments they are already
-          in — never more than one per member per month. Over a year that is about twelve
-          questions each, which is what a report is made of.
-        </p>
+        <PageHeader
+          title="Measuring impact"
+          description="MaybeOS asks your members one short question at a time, at moments they are already in — never more than one per member per month. Over a year that is about twelve questions each, which is what a report is made of."
+        />
       </div>
 
       {error && (

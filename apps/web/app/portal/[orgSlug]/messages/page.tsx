@@ -8,6 +8,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { api, DmConversation } from '@/lib/api';
 import { timeAgo } from '@/lib/relative-time';
 import { renderBodyHtml } from '@/lib/rich-text';
+import { PageHeader } from '@/components/layout/page-header';
 
 /**
  * Conversations (CMN-08).
@@ -53,9 +54,9 @@ export default function MessagesPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Messages</h1>
-
-      {conversations.length === 0 ? (
+      <PageHeader
+        title="Messages"
+      />{conversations.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 px-4 py-12 text-center">
           <MessageSquare className="mx-auto h-8 w-8 text-gray-300" />
           <p className="mt-3 text-sm text-gray-500">

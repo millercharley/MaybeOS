@@ -8,6 +8,7 @@ import { api, Article, ArticleSummary, OutstandingReading } from '@/lib/api';
 import { ArticleRow } from '@/components/belonging/article-row';
 import { ArticleModal } from '@/components/belonging/article-modal';
 import { timeUntil } from '@/lib/relative-time';
+import { PageHeader } from '@/components/layout/page-header';
 
 /**
  * The Knowledge Center as a member sees it (BEL, PRD §6.1).
@@ -77,10 +78,9 @@ export default function WelcomePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Welcome</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          What {org?.name ?? 'this community'} would like you to know.
-        </p>
+        <PageHeader
+          title="Welcome"
+        />
       </div>
 
       {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}

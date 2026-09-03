@@ -9,6 +9,7 @@ import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { HappeningNow } from '@/components/live/happening-now';
 import { WelcomeCard } from '@/components/live/welcome-card';
+import { PageHeader } from '@/components/layout/page-header';
 
 export default function PortalHomePage() {
   const { orgSlug } = useParams();
@@ -50,7 +51,7 @@ export default function PortalHomePage() {
       )}
 
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">{org?.name}</h1>
+        <h1 className="font-display text-2xl leading-tight text-ink">{org?.name}</h1>
         {org?.mission && (
           <p className="mt-3 max-w-2xl text-lg text-gray-600">{org.mission}</p>
         )}

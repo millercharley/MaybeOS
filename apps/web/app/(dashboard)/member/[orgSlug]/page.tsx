@@ -17,6 +17,7 @@ import {
 import { useAuthStore } from '@/lib/auth-store';
 import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
+import { PageHeader } from '@/components/layout/page-header';
 
 const quickLinksFor = (orgSlug: string) => [
   { label: 'My RSVPs', href: `/member/${orgSlug}/rsvps`, icon: Calendar },
@@ -69,8 +70,8 @@ export default function MemberPortalPage() {
     <div className="mx-auto max-w-container px-4 py-8 sm:px-6 lg:px-8">
       {/* Welcome Message */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">
-          Welcome back, {memberName}!
+        <h1 className="font-display text-2xl leading-tight text-ink">
+          Welcome back, {memberName}
         </h1>
         <p className="mt-1 text-gray-600">
           Here is an overview of your membership and upcoming activities.

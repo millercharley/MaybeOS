@@ -11,6 +11,7 @@ import { api } from '@/lib/api';
 import { CountUp } from '@/components/ui/count-up';
 import { deltaLabel } from '@/lib/count-up';
 import { HappeningNow } from '@/components/live/happening-now';
+import { PageHeader } from '@/components/layout/page-header';
 
 // "New Survey" used to sit here pointing at /admin/impact. It never created a
 // survey — the page it led to had no authoring UI, and authoring is a non-goal
@@ -74,10 +75,9 @@ export default function AdminDashboardPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Welcome back, {user?.name || 'Admin'}
-        </p>
+        <PageHeader
+          title="Dashboard"
+        />
       </div>
 
       {/* Above the counters, because "is anyone here right now" is a

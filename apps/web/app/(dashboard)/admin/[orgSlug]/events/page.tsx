@@ -10,6 +10,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { api, Event } from '@/lib/api';
 import { toUpdatePayload } from '@/lib/events';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
+import { PageHeader } from '@/components/layout/page-header';
 
 type FilterTab = 'all' | 'upcoming' | 'past' | 'draft';
 
@@ -120,8 +121,9 @@ export default function EventsPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold text-gray-900">Events</h1>
-        {/* This button has had no handler since the page was built (EVT-07),
+        <PageHeader
+          title="Events"
+        />{/* This button has had no handler since the page was built (EVT-07),
             so organisers — the people most likely to be programming events —
             were the only ones who could not make one. */}
         {!creating && (

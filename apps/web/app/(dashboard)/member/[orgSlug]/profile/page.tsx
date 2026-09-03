@@ -10,6 +10,7 @@ import { ChangePassword } from '@/components/member/change-password';
 import { useParams } from 'next/navigation';
 import { BuddySettings } from '@/components/belonging/buddy-settings';
 import { ForumMembership } from '@/components/member/forum-membership';
+import { PageHeader } from '@/components/layout/page-header';
 
 /**
  * "My Profile" (MEM-01).
@@ -137,10 +138,10 @@ export default function MyProfilePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-[var(--text-primary)]">My Profile</h1>
-        <p className="mt-1 text-sm text-[var(--text-secondary)]">
-          How you appear to the rest of your co-op.
-        </p>
+        <PageHeader
+          title="My Profile"
+          description="How you appear to the rest of your co-op."
+        />
       </div>
 
       {message && (
