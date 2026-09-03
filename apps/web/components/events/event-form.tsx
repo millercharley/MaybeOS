@@ -4,6 +4,7 @@ import { FormEvent, useState } from 'react';
 import { Globe, Lock, Users } from 'lucide-react';
 import { CreateEventData } from '@/lib/api';
 import { PLATFORM_FEE_CENTS } from '@/lib/fees';
+import { GATHERING_KINDS } from '@/components/rooms/booking-details';
 
 /**
  * The event form (EVT-05).
@@ -109,7 +110,13 @@ export function EventForm({
   const [price, setPrice] = useState(
     initial?.priceCents ? (initial.priceCents / 100).toFixed(2) : '',
   );
-  const [category, setCategory] = useState(initial?.category ?? '');
+  // The same fixed set the booking form asks, rather than free text
+  // (EVT-20). "Workshop", "workshop" and "Workshops" are three categories to
+  // a filter and one to a reader.
+  const [kinds, setKinds] = useState<string[]>(
+    initial?.tags?.length ? initial.tags : initial?.category ? [initial.category] : [],
+  );
+  const [hasCost, setHasCost] = useState(initial?.hasCost ?? false);
   const [hostId, setHostId] = useState(initial?.hostId ?? '');
   const [localError, setLocalError] = useState('');
 
@@ -149,7 +156,9 @@ export function EventForm({
       // Only meaningful alongside a limit — an event that cannot fill cannot
       // overflow — so it is never sent as true without one.
       waitlistEnabled: capacity ? waitlist : false,
-      category: category.trim() || undefined,
+      category: kinds[0],
+      tags: kinds,
+      hasCost,
       priceCents,
       ...(hosts && hostId ? { hostId } : {}),
       publish,
@@ -293,19 +302,62 @@ export function EventForm({
             className="input w-full"
           />
         </div>
-        <div>
-          <label htmlFor="event-category" className="mb-1 block text-sm font-medium text-gray-900">
-            Category
-          </label>
-          <input
-            id="event-category"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            placeholder="Workshop"
-            className="input w-full"
-          />
-        </div>
       </div>
+
+      <fieldset className="mt-4">
+        <legend className="mb-1 block text-sm font-medium text-gray-900">
+          What kind of gathering?
+        </legend>
+        <div className="flex flex-wrap gap-2">
+          {GATHERING_KINDS.map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              onClick={() =>
+                setKinds((current) =>
+                  current.includes(kind)
+                    ? current.filter((k) => k !== kind)
+                    : [...current, kind],
+                )
+              }
+              aria-pressed={kinds.includes(kind)}
+              className={[
+                'rounded-full border px-3 py-1 text-sm transition-colors',
+                kinds.includes(kind)
+                  ? 'border-gray-900 bg-gray-100 font-medium'
+                  : 'border-gray-200 hover:bg-gray-50',
+              ].join(' ')}
+            >
+              {kind}
+            </button>
+          ))}
+        </div>
+        <p className="mt-1 text-xs text-gray-500">
+          Decides the artwork when the event has no image of its own.
+        </p>
+      </fieldset>
+
+      {/*
+        A cost that is not a ticket. Most co-op events that charge take cash or
+        Venmo at the door, and an event page silent about money reads as free
+        (EVT-17).
+      */}
+      <label className="mt-4 flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={hasCost}
+          onChange={(e) => setHasCost(e.target.checked)}
+        />
+        <span>
+          <span className="font-medium text-gray-900">There&apos;s a cost to attend</span>
+          <br />
+          <span className="text-gray-500">
+            For something collected at the door. Selling tickets through MaybeOS is the price
+            field above.
+          </span>
+        </span>
+      </label>
 
       {/*
         The switch that was missing (EVT-02). The waitlist engine has worked
