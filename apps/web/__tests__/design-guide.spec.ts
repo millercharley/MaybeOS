@@ -20,6 +20,21 @@ import { join } from 'path';
  * viewport, so they have no 1280 column to fill and no breadcrumb above them.
  * DESIGN.md §1 names this exemption.
  */
+/**
+ * Public pages a member actually navigates to — a co-op's own page, the
+ * calendar, the legal pages. They live outside the app shell but they are
+ * *pages*, and the whole point of UI-02 is that "Enter Member Portal" must not
+ * change the typeface. Found on production: they were Archivo at 36, 48 and
+ * 64px while every app page was Young Serif at 36.
+ *
+ * The landing page is the one exception in this group: it is a marketing hero,
+ * already set in the display serif, and its size is part of that design.
+ */
+const PUBLIC_PAGES_WITH_TITLES = [
+  'app/(public)/calendar/page.tsx',
+  'app/(public)/orgs/[slug]/page.tsx',
+];
+
 const OUTSIDE_THE_SHELL = [
   'app/(auth)/',
   'app/(public)/',
@@ -95,6 +110,20 @@ describe('the design guide', () => {
             `\n\nThe style is: ${HEADING_STYLE}\nSee project-os/DESIGN.md §2.`,
         );
       }
+    });
+
+    it('public pages a member navigates to use the same heading', () => {
+      // Not the landing hero, which is a different job — but a co-op's public
+      // page, the calendar and the legal pages are pages, and clicking into
+      // the portal must not change the typeface.
+      for (const page of PUBLIC_PAGES_WITH_TITLES) {
+        expect(read(page)).toContain('font-display text-2xl leading-tight text-ink');
+      }
+      const legal = readFileSync(
+        join(ROOT, 'components/legal/legal-page.tsx'),
+        'utf8',
+      );
+      expect(legal).toContain('font-display text-2xl leading-tight text-ink');
     });
 
     it('every data-titled page uses the heading style verbatim', () => {

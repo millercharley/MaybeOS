@@ -69,7 +69,7 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
             <span className="text-3xl font-bold text-brand-700">{logoInitial}</span>
           )}
         </div>
-        <h1 className="mt-6 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
+        <h1 className="mt-6 font-display text-2xl leading-tight text-ink">
           {org.name}
         </h1>
         <div className="mt-3 flex items-center justify-center gap-4 text-sm text-gray-500">

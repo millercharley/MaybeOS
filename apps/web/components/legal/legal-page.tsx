@@ -35,7 +35,7 @@ export function LegalPage({
       </header>
 
       <main className="mx-auto max-w-3xl px-6 py-14">
-        <h1 className="text-3xl font-semibold tracking-tight text-ink">{title}</h1>
+        <h1 className="font-display text-2xl leading-tight text-ink">{title}</h1>
         <p className="data mt-2 text-xs text-ink-faint">Last updated {updated}</p>
         <p className="mt-6 border-l-2 border-ink pl-4 text-lg leading-relaxed text-ink">
           {summary}

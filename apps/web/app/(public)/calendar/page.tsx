@@ -86,7 +86,7 @@ export default function CalendarPage() {
       {/* Header */}
       <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Event Calendar</h1>
+          <h1 className="font-display text-2xl leading-tight text-ink">Event calendar</h1>
           <p className="mt-1 text-sm text-gray-500">
             Browse upcoming community events by date.
           </p>
