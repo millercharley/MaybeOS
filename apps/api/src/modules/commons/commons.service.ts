@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { CreatePostDto } from './dto/create-post.dto';
@@ -269,6 +274,32 @@ export class CommonsService {
     return this.prisma.post.update({
       where: { id: postId },
       data: { isFlagged: true },
+    });
+  }
+
+  /**
+   * Let an author rewrite what they said (CMN-09).
+   *
+   * Two checks, in this order and both required. `findCommentInOrg` scopes the
+   * row to this co-op (SEC-04) — without it, a comment id from another co-op
+   * would be editable by anybody who could guess one. Then authorship: a
+   * member of the right co-op is still not the person who wrote it.
+   *
+   * `editedAt` is stamped here and nowhere else, so the "edited" marker a
+   * thread shows means somebody changed their words rather than that any write
+   * touched the row.
+   */
+  async editComment(orgId: string, commentId: string, userId: string, body: string) {
+    const comment = await this.findCommentInOrg(orgId, commentId);
+
+    if (comment.authorId !== userId) {
+      throw new ForbiddenException('You can only edit your own comments');
+    }
+
+    return this.prisma.comment.update({
+      where: { id: commentId },
+      data: { body, editedAt: new Date() },
+      include: { author: { select: AUTHOR_SELECT } },
     });
   }
 

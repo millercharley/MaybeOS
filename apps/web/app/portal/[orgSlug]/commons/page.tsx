@@ -9,7 +9,7 @@ import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Channel, Post, Proposal, Collection, CollectionPage, Comment } from '@/lib/api';
 import { sanitizeWikiHtml } from '@/lib/wiki-html';
-import { renderBodyHtml, isBlankBody } from '@/lib/rich-text';
+import { renderBodyHtml, isBlankBody, asRichBody } from '@/lib/rich-text';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
 import { uploadAttachments } from '@/lib/attachments';
 import { AttachmentList } from '@/components/composer/attachment-list';
@@ -282,7 +282,10 @@ function PostCard({ post, orgId, token }: { post: Post; orgId: string; token: st
     setError('');
     try {
       const comment = await api.commons.addComment(orgId, post.id, {
-        body: composerValue(draft),
+        // `asRichBody` rather than `composerValue`: the composer hands back
+        // `a &lt; b` for the typed characters `a < b`, and a body with no
+        // formatting is read back as plain text and escaped a second time.
+        body: asRichBody(draft),
         ...(replyTo ? { parentId: replyTo } : {}),
       }, token);
 
@@ -303,6 +306,16 @@ function PostCard({ post, orgId, token }: { post: Post; orgId: string; token: st
     setBusy(false);
   }
 
+  /** Re-read the thread after somebody edits inside it. */
+  async function reloadThread() {
+    try {
+      const full = await api.commons.getPost(orgId, post.id, token);
+      setThread(full.comments ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not reload the replies');
+    }
+  }
+
   async function react() {
     setError('');
     try {
@@ -315,7 +328,7 @@ function PostCard({ post, orgId, token }: { post: Post; orgId: string; token: st
   }
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
+    <div className="card p-4">
       <div className="flex items-center gap-2">
         <div className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-100 text-xs font-medium text-brand-700">
           {post.author?.name?.charAt(0) || '?'}
@@ -360,7 +373,14 @@ function PostCard({ post, orgId, token }: { post: Post; orgId: string; token: st
           {loading && <p className="text-xs text-gray-400">Loading replies...</p>}
 
           {thread?.map((c) => (
-            <CommentNode key={c.id} comment={c} depth={0} onReply={setReplyTo} activeReply={replyTo} />
+            <CommentNode
+              key={c.id}
+              comment={c}
+              depth={0}
+              onReply={setReplyTo}
+              activeReply={replyTo}
+              onEdited={reloadThread}
+            />
           ))}
 
           <RichComposer
@@ -388,55 +408,147 @@ function PostCard({ post, orgId, token }: { post: Post; orgId: string; token: st
   );
 }
 
-/** Replies nest (CMN-02); indentation stops at two so a long thread stays readable. */
+/**
+ * Replies nest (CMN-02); indentation stops at two so a long thread stays
+ * readable.
+ *
+ * **No two bubbles touch** (Charley, 2026-09-04). Replies used to render
+ * immediately after their parent with no margin at all, so a reply's top edge
+ * sat flush against the bottom of the comment it answered and the two read as
+ * one block of text by two people. Sibling comments were spaced and nested
+ * ones were not, which is exactly backwards: the nested pair is the one whose
+ * boundary carries meaning.
+ */
 function CommentNode({
-  comment, depth, onReply, activeReply,
+  comment, depth, onReply, activeReply, onEdited,
 }: {
   comment: Comment;
   depth: number;
   onReply: (id: string | null) => void;
   activeReply: string | null;
+  onEdited: () => void;
 }) {
   // Its own rather than threaded through: this component is rendered
   // recursively for every reply, and passing the org and token down each level
   // is four props of ceremony for something both already know.
   const { org } = usePortal();
   const token = useAuthStore((state) => state.token);
+  const user = useAuthStore((state) => state.user);
+
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  // Authorship, not rank. The API refuses anybody else's comment whatever
+  // their role, and this is only whether to offer the button.
+  const isAuthor = Boolean(user?.id && comment.author?.id === user.id);
+
+  function startEditing() {
+    // Seeded with the rendered HTML rather than the raw column: a body written
+    // before the rich composer existed is plain text, and putting it into a
+    // contentEditable unescaped would let its own characters become markup.
+    setDraft(renderBodyHtml(comment.body));
+    setError('');
+    setEditing(true);
+  }
+
+  async function save() {
+    if (!org || !token || isBlankBody(draft)) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.commons.editComment(org.id, comment.id, asRichBody(draft), token);
+      setEditing(false);
+      onEdited();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save that edit');
+    }
+    setBusy(false);
+  }
 
   return (
     <div className={depth > 0 ? 'ml-4 border-l border-gray-100 pl-3' : ''}>
       <div className="rounded-lg bg-gray-50 px-3 py-2">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-gray-900">
             {comment.author?.name || 'Member'}
           </span>
           <span className="text-[11px] text-gray-400">
             {new Date(comment.createdAt).toLocaleDateString()}
           </span>
+          {/* Said plainly rather than hidden. People reply to what they read,
+              and a comment that has been rewritten since should say so. */}
+          {comment.editedAt && (
+            <span className="text-[11px] text-gray-400" title={new Date(comment.editedAt).toLocaleString()}>
+              · edited
+            </span>
+          )}
         </div>
-        <div
-          className="prose prose-sm mt-0.5 max-w-none whitespace-pre-wrap text-sm text-gray-700"
-          dangerouslySetInnerHTML={{ __html: renderBodyHtml(comment.body) }}
-        />
-        {org && token && (
-          <AttachmentList orgId={org.id} token={token} commentId={comment.id} />
+
+        {editing ? (
+          <div className="mt-2 space-y-2">
+            {error && <p className="text-[11px] text-red-600">{error}</p>}
+            <RichComposer
+              value={draft}
+              onChange={setDraft}
+              onSubmit={save}
+              placeholder="Edit your comment..."
+              submitLabel={busy ? 'Saving...' : 'Save'}
+              busy={busy}
+              rows={2}
+            />
+            <button
+              onClick={() => setEditing(false)}
+              className="text-[11px] text-gray-400 hover:text-gray-600"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <>
+            <div
+              className="prose prose-sm mt-0.5 max-w-none whitespace-pre-wrap text-sm text-gray-700"
+              dangerouslySetInnerHTML={{ __html: renderBodyHtml(comment.body) }}
+            />
+            {org && token && (
+              <AttachmentList orgId={org.id} token={token} commentId={comment.id} />
+            )}
+            <div className="mt-1 flex items-center gap-3">
+              <button
+                onClick={() => onReply(activeReply === comment.id ? null : comment.id)}
+                className="text-[11px] text-gray-400 hover:text-gray-600"
+              >
+                {activeReply === comment.id ? 'Replying' : 'Reply'}
+              </button>
+              {isAuthor && (
+                <button
+                  onClick={startEditing}
+                  className="text-[11px] text-gray-400 hover:text-gray-600"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+          </>
         )}
-        <button
-          onClick={() => onReply(activeReply === comment.id ? null : comment.id)}
-          className="mt-1 text-[11px] text-gray-400 hover:text-gray-600"
-        >
-          {activeReply === comment.id ? 'Replying' : 'Reply'}
-        </button>
       </div>
-      {comment.replies?.map((r) => (
-        <CommentNode
-          key={r.id}
-          comment={r}
-          depth={Math.min(depth + 1, 2)}
-          onReply={onReply}
-          activeReply={activeReply}
-        />
-      ))}
+
+      {/* The gap that stops a reply sitting flush against what it answers. */}
+      {comment.replies && comment.replies.length > 0 && (
+        <div className="mt-3 space-y-3">
+          {comment.replies.map((r) => (
+            <CommentNode
+              key={r.id}
+              comment={r}
+              depth={Math.min(depth + 1, 2)}
+              onReply={onReply}
+              activeReply={activeReply}
+              onEdited={onEdited}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -502,7 +614,7 @@ function LibrarySection() {
         >
           <ChevronLeft className="h-4 w-4" /> Back to the library
         </button>
-        <article className="rounded-xl border border-gray-200 bg-white p-6">
+        <article className="card p-6">
           <h2 className="text-xl font-bold text-gray-900">{page.title}</h2>
           <p className="mt-1 text-xs text-gray-400">
             Updated {new Date(page.updatedAt).toLocaleDateString()}
@@ -537,7 +649,7 @@ function LibrarySection() {
     <div className="space-y-4">
       {error && <ErrorNote message={error} />}
       {collections.map((c) => (
-        <section key={c.id} className="rounded-xl border border-gray-200 bg-white p-4">
+        <section key={c.id} className="card p-4">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
             <span aria-hidden>{c.emoji || '📄'}</span>
             {c.name}
@@ -705,7 +817,7 @@ function ProposalsSection() {
 
       {raising && (
         <form
-          className="space-y-3 rounded-xl border border-gray-200 bg-white p-5"
+          className="card space-y-3 p-5"
           onSubmit={(e) => {
             e.preventDefault();
             if (!org || !token || !draft.title.trim() || !draft.channelId) return;
@@ -860,7 +972,7 @@ function ProposalGroup({
             const yesPercent = total > 0 ? Math.round((yes / total) * 100) : 0;
 
             return (
-              <div key={proposal.id} className="rounded-xl border border-gray-200 bg-white p-5">
+              <div key={proposal.id} className="card p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h4 className="text-base font-semibold text-gray-900">{proposal.title}</h4>
