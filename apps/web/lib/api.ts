@@ -64,6 +64,15 @@ export function safePath(path: string): string {
   );
 }
 
+/**
+ * Fired after any successful non-GET request.
+ *
+ * Deliberately carries no payload beyond the route: it is a hint that server
+ * state moved, not a description of how. Anything listening re-reads what it
+ * cares about rather than trying to patch itself from the event.
+ */
+export const MUTATION_EVENT = 'maybeos:mutation';
+
 class ApiClient {
   private baseUrl: string;
 
@@ -143,6 +152,16 @@ class ApiClient {
       }
 
       throw apiError;
+    }
+
+    // Something on the server changed. The getting-started checklist derives
+    // every built-in step from real data (ONB-01), so it has to be told when
+    // that data moves — and the alternative was wiring a callback into every
+    // page a step can point at, which is a rule six places have to remember
+    // and the seventh forgets. One announcement here covers every save in the
+    // product, including ones written later.
+    if (method !== 'GET' && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(MUTATION_EVENT, { detail: { route } }));
     }
 
     if (response.status === 204) {
@@ -1681,6 +1700,68 @@ class ApiClient {
   eventSummary = (orgId: string, eventId: string, token: string) =>
     this.request<HostEventSummary>(`/orgs/${orgId}/events/${eventId}/summary`, { token });
 
+  // ── Getting started (ONB-01) ──
+  onboarding = {
+    /** My checklist, or null when there is none to show. */
+    mine: (orgId: string, token: string) =>
+      this.request<OnboardingState | null>(`/orgs/${orgId}/onboarding/me`, { token }),
+
+    /** Tick off a custom step. The API refuses any other kind. */
+    complete: (orgId: string, stepId: string, token: string) =>
+      this.request<OnboardingState | null>(
+        `/orgs/${orgId}/onboarding/me/steps/${stepId}/complete`,
+        { method: 'POST', token },
+      ),
+
+    uncomplete: (orgId: string, stepId: string, token: string) =>
+      this.request<OnboardingState | null>(
+        `/orgs/${orgId}/onboarding/me/steps/${stepId}/complete`,
+        { method: 'DELETE', token },
+      ),
+
+    /** Put the finished checklist away. Refused while anything is left. */
+    dismiss: (orgId: string, token: string) =>
+      this.request<null>(`/orgs/${orgId}/onboarding/me/dismiss`, { method: 'POST', token }),
+
+    // ── What an admin configures ──
+    config: (orgId: string, token: string) =>
+      this.request<OnboardingConfig>(`/orgs/${orgId}/onboarding`, { token }),
+
+    setEnabled: (orgId: string, enabled: boolean, token: string) =>
+      this.request<OnboardingConfig>(`/orgs/${orgId}/onboarding`, {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled }),
+        token,
+      }),
+
+    createStep: (orgId: string, data: Partial<OnboardingStep> & { title: string }, token: string) =>
+      this.request<OnboardingStep>(`/orgs/${orgId}/onboarding/steps`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    updateStep: (orgId: string, stepId: string, data: Partial<OnboardingStep>, token: string) =>
+      this.request<OnboardingStep>(`/orgs/${orgId}/onboarding/steps/${stepId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    deleteStep: (orgId: string, stepId: string, token: string) =>
+      this.request<{ deleted: string }>(`/orgs/${orgId}/onboarding/steps/${stepId}`, {
+        method: 'DELETE',
+        token,
+      }),
+
+    reorderSteps: (orgId: string, stepIds: string[], token: string) =>
+      this.request<OnboardingConfig>(`/orgs/${orgId}/onboarding/steps/reorder`, {
+        method: 'POST',
+        body: JSON.stringify({ stepIds }),
+        token,
+      }),
+  };
+
   // ── MaybeOS's own forum (FRM-01) ──
   forum = {
     status: (token: string) => this.request<ForumStatus>('/orgs/forum/me', { token }),
@@ -2647,6 +2728,56 @@ export interface Comment {
    */
   editedAt?: string | null;
   replies: Comment[];
+}
+
+/** How a getting-started step knows it is done (ONB-01). */
+export type OnboardingStepKind =
+  | 'PROFILE'
+  | 'HANDBOOK'
+  | 'COMMONS_POST'
+  | 'EVENT_RSVP'
+  | 'ROOM_BOOKING'
+  | 'SERVICE_CLAIM'
+  | 'CUSTOM';
+
+export interface OnboardingStep {
+  id: string;
+  kind: OnboardingStepKind;
+  title: string;
+  description?: string | null;
+  ctaLabel: string;
+  /** Null on a built-in kind, which resolves its own from the co-op's slug. */
+  href?: string | null;
+  position: number;
+  isActive: boolean;
+  /** Admin view only: where the button actually goes, built-in or not. */
+  resolvedHref?: string | null;
+}
+
+export interface OnboardingConfig {
+  enabled: boolean;
+  steps: OnboardingStep[];
+}
+
+/** One member's checklist, with completion already worked out server-side. */
+export interface OnboardingState {
+  slug: string;
+  steps: Array<{
+    id: string;
+    kind: OnboardingStepKind;
+    title: string;
+    description: string | null;
+    ctaLabel: string;
+    href: string | null;
+    done: boolean;
+    /** True only for CUSTOM — everything else is derived from what they did. */
+    selfMarked: boolean;
+  }>;
+  completed: number;
+  total: number;
+  /** The first thing not done. The one the accordion opens. */
+  activeStepId: string | null;
+  allDone: boolean;
 }
 
 export interface Reaction {

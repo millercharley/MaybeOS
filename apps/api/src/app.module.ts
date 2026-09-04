@@ -13,6 +13,7 @@ import { MemberModule } from './modules/member/member.module';
 import { EventsModule } from './modules/events/events.module';
 import { SpaceModule } from './modules/space/space.module';
 import { ServiceModule } from './modules/service/service.module';
+import { OnboardingModule } from './modules/onboarding/onboarding.module';
 import { CommonsModule } from './modules/commons/commons.module';
 import { ImpactModule } from './modules/impact/impact.module';
 import { SchedulerModule } from './modules/scheduler/scheduler.module';
@@ -126,6 +127,7 @@ import { HealthModule } from './modules/health/health.module';
     EventsModule,
     SpaceModule,
     ServiceModule,
+    OnboardingModule,
     CommonsModule,
     ImpactModule,
     StripeModule,
