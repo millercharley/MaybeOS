@@ -849,6 +849,14 @@ model Comment {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// When the author last rewrote this, or null if they never have (CMN-09).
+  ///
+  /// Deliberately not `updatedAt`, which moves for any write at all — flagging
+  /// a comment for moderation would mark it "edited" and quietly accuse
+  /// somebody of changing their words. This is set only by the author's own
+  /// edit, so the marker the thread shows is true.
+  editedAt DateTime?
+
   post        Post         @relation(fields: [postId], references: [id], onDelete: Cascade)
   author      User         @relation(fields: [authorId], references: [id])
   parent      Comment?     @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)

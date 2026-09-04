@@ -58,3 +58,23 @@ export function escapeHtml(text: string): string {
 export function isBlankBody(html: string): boolean {
   return sanitizeWikiHtml(html).replace(/<[^>]*>/g, '').replace(/&nbsp;|\s/g, '') === '';
 }
+
+/**
+ * What to store for a body the rich composer produced.
+ *
+ * `renderBodyHtml` decides how to read a body back by looking for a tag the
+ * composer emits — so a body with no formatting at all is read as plain text
+ * and *escaped* on the way out. That is right for the plain text already in
+ * the database and wrong for anything the composer just produced, because a
+ * contentEditable hands back `a &lt; b` for the typed characters `a < b`. Read
+ * back as plain text, that entity gets escaped again and the reader sees
+ * `a &lt; b` on screen.
+ *
+ * Wrapping unformatted output in a `<p>` settles it: the body is unambiguously
+ * HTML, is sanitised rather than escaped on the way out, and survives being
+ * edited and saved any number of times. Nothing already stored is touched.
+ */
+export function asRichBody(html: string): string {
+  const value = sanitizeWikiHtml(html).trim();
+  return looksLikeHtml(value) ? value : `<p>${value}</p>`;
+}

@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Delete,
+  Patch,
   Body,
   Param,
   Query,
@@ -21,6 +22,7 @@ import { CreateChannelDto } from './dto/create-channel.dto';
 import { CreatePostDto } from './dto/create-post.dto';
 import { CreateProposalDto } from './dto/create-proposal.dto';
 import { AddCommentDto } from './dto/add-comment.dto';
+import { EditCommentDto } from './dto/edit-comment.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { CreateCollectionDto, UpdateCollectionDto } from './dto/create-collection.dto';
 import { CreatePageDto, UpdatePageDto } from './dto/page.dto';
@@ -109,6 +111,23 @@ export class CommonsController {
     @Body() dto: AddCommentDto,
   ) {
     return this.commonsService.addComment(orgId, postId, user.userId, dto.body, dto.parentId);
+  }
+
+  /**
+   * Rewrite your own comment (CMN-09).
+   *
+   * No `@Roles`: this is not a rank, it is authorship, and the service is what
+   * checks it. An organiser editing somebody else's words in a members'
+   * discussion would be a different feature with a different name.
+   */
+  @Patch('comments/:commentId')
+  editComment(
+    @Param('orgId') orgId: string,
+    @Param('commentId') commentId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: EditCommentDto,
+  ) {
+    return this.commonsService.editComment(orgId, commentId, user.userId, dto.body);
   }
 
   @Post('comments/:commentId/flag')

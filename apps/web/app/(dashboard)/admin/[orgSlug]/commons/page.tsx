@@ -21,7 +21,7 @@ import { useApi } from '@/hooks/use-api';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Comment as CommentT, Post, PaginatedResponse, CollectionPage, DirectMessage } from '@/lib/api';
 import { sanitizeWikiHtml } from '@/lib/wiki-html';
-import { renderBodyHtml, isBlankBody } from '@/lib/rich-text';
+import { renderBodyHtml, isBlankBody, asRichBody } from '@/lib/rich-text';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
 import { PageHeader } from '@/components/layout/page-header';
 
@@ -40,13 +40,40 @@ function CommentThread({
   comment,
   depth,
   onReply,
+  onEdit,
+  viewerId,
 }: {
   comment: CommentT;
   depth: number;
   onReply: (parentId: string, body: string) => void;
+  onEdit: (commentId: string, body: string) => Promise<void>;
+  /** Who is reading, so the edit is offered only on their own words. */
+  viewerId?: string;
 }) {
   const [replying, setReplying] = useState(false);
   const [draft, setDraft] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState('');
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  // Authorship, not rank — an organiser gets no edit on somebody else's
+  // comment here either. The API refuses it regardless of role; this is only
+  // whether to offer the button.
+  const isAuthor = Boolean(viewerId && comment.author?.id === viewerId);
+
+  async function saveEdit() {
+    if (isBlankBody(editDraft)) return;
+    setEditBusy(true);
+    setEditError('');
+    try {
+      await onEdit(comment.id, asRichBody(editDraft));
+      setEditing(false);
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'Could not save that edit');
+    }
+    setEditBusy(false);
+  }
 
   return (
     <div style={{ marginLeft: depth > 0 ? 24 : 0 }} className="mt-3">
@@ -59,18 +86,71 @@ function CommentThread({
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-gray-900">{comment.author.name ?? 'Unknown'}</span>
               <span className="text-[11px] text-gray-400">{timeAgo(comment.createdAt)}</span>
+              {comment.editedAt && (
+                <span
+                  className="text-[11px] text-gray-400"
+                  title={new Date(comment.editedAt).toLocaleString()}
+                >
+                  · edited
+                </span>
+              )}
             </div>
-            <div
-              className="prose prose-sm mt-0.5 max-w-none whitespace-pre-wrap text-sm text-gray-700"
-              dangerouslySetInnerHTML={{ __html: renderBodyHtml(comment.body) }}
-            />
+            {editing ? (
+              <div className="mt-1 space-y-2">
+                {editError && <p className="text-[11px] text-red-600">{editError}</p>}
+                {/* The same composer the portal edits with. A plain textarea
+                    here would have stripped the formatting off any comment
+                    written on the other page — an edit that silently throws
+                    away part of what somebody wrote. */}
+                <RichComposer
+                  value={editDraft}
+                  onChange={setEditDraft}
+                  onSubmit={saveEdit}
+                  placeholder="Edit your comment..."
+                  submitLabel={editBusy ? 'Saving...' : 'Save'}
+                  busy={editBusy}
+                  rows={2}
+                />
+                <button
+                  onClick={() => setEditing(false)}
+                  className="text-xs text-gray-400 hover:text-gray-600"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div
+                className="prose prose-sm mt-0.5 max-w-none whitespace-pre-wrap text-sm text-gray-700"
+                dangerouslySetInnerHTML={{ __html: renderBodyHtml(comment.body) }}
+              />
+            )}
           </div>
-          <button
-            onClick={() => setReplying((r) => !r)}
-            className="mt-1 text-xs font-medium text-gray-400 hover:text-brand-600"
-          >
-            Reply
-          </button>
+          {!editing && (
+            <div className="mt-1 flex items-center gap-3">
+              <button
+                onClick={() => setReplying((r) => !r)}
+                className="text-xs font-medium text-gray-400 hover:text-brand-600"
+              >
+                Reply
+              </button>
+              {isAuthor && (
+                <button
+                  onClick={() => {
+                    // The rendered HTML, not the raw column: a body written
+                    // before the rich composer existed is plain text, and
+                    // putting it into a contentEditable unescaped would let
+                    // its own characters become markup.
+                    setEditDraft(renderBodyHtml(comment.body));
+                    setEditError('');
+                    setEditing(true);
+                  }}
+                  className="text-xs font-medium text-gray-400 hover:text-brand-600"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+          )}
 
           {replying && (
             <div className="mt-2 flex gap-2">
@@ -104,7 +184,14 @@ function CommentThread({
           )}
 
           {comment.replies?.map((reply) => (
-            <CommentThread key={reply.id} comment={reply} depth={depth + 1} onReply={onReply} />
+            <CommentThread
+              key={reply.id}
+              comment={reply}
+              depth={depth + 1}
+              onReply={onReply}
+              onEdit={onEdit}
+              viewerId={viewerId}
+            />
           ))}
         </div>
       </div>
@@ -261,6 +348,11 @@ export default function CommonsPage() {
     await api.commons.addReaction(currentOrgId!, postId, emoji, token!);
     refetchPosts();
     if (expandedPostId === postId) refetchExpandedPost();
+  }
+
+  async function handleEditComment(commentId: string, body: string) {
+    await api.commons.editComment(currentOrgId!, commentId, body, token!);
+    refetchExpandedPost();
   }
 
   async function handleReply(postId: string, parentId: string | undefined, body: string) {
@@ -777,6 +869,8 @@ export default function CommonsPage() {
                                     comment={comment}
                                     depth={0}
                                     onReply={(parentId, body) => handleReply(post.id, parentId, body)}
+                                    onEdit={handleEditComment}
+                                    viewerId={user?.id}
                                   />
                                 ))}
                                 <div className="mt-3">

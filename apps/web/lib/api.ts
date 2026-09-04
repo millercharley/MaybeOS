@@ -1277,6 +1277,17 @@ class ApiClient {
         token,
       }),
 
+    /**
+     * Rewrite your own comment (CMN-09). The API refuses anybody else's,
+     * whatever their role — editing is authorship, not rank.
+     */
+    editComment: (orgId: string, commentId: string, body: string, token: string) =>
+      this.request<Comment>(`/orgs/${orgId}/comments/${commentId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ body }),
+        token,
+      }),
+
     addReaction: (orgId: string, postId: string, emoji: string, token: string) =>
       this.request(`/orgs/${orgId}/posts/${postId}/reactions`, {
         method: 'POST',
@@ -2582,6 +2593,12 @@ export interface Comment {
   parentId?: string | null;
   author: { id: string; name?: string; avatarUrl?: string };
   createdAt: string;
+  /**
+   * When the author last rewrote it, null if they never have (CMN-09).
+   * Deliberately not `updatedAt`: flagging a comment moves that, and marking a
+   * moderated comment "edited" would accuse somebody of changing their words.
+   */
+  editedAt?: string | null;
   replies: Comment[];
 }
 

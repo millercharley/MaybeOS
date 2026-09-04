@@ -69,6 +69,7 @@ describe('CommonsService — tenant isolation (CMN-07)', () => {
     ['getPost', () => service.getPost(OTHER, 'post-1')],
     ['addComment', () => service.addComment(OTHER, 'post-1', 'u1', 'hello')],
     ['flagComment', () => service.flagComment(OTHER, 'comment-1')],
+    ['editComment', () => service.editComment(OTHER, 'comment-1', 'u1', 'rewritten')],
     ['addReaction', () => service.addReaction(OTHER, 'post-1', 'u1', '👍')],
     ['removeReaction', () => service.removeReaction(OTHER, 'post-1', 'u1', '👍')],
     ['flagPost', () => service.flagPost(OTHER, 'post-1')],
