@@ -2736,7 +2736,7 @@ export interface DaySchedule {
   bookings: Array<{
     id: string;
     title: string;
-    /** Null when withheld — see `descriptionWithheld` — or simply not written. */
+    /** Null only when the host wrote none. Nothing is redacted from a member. */
     description: string | null;
     visibility: 'PUBLIC' | 'MEMBERS_ONLY' | 'PRIVATE';
     status: 'APPROVED' | 'PENDING';
@@ -2746,12 +2746,6 @@ export interface DaySchedule {
     categories: string[];
     room: { id: string; name: string };
     user: { id: string; name?: string | null; avatarUrl?: string | null };
-    /**
-     * True when there is a description and this viewer is not being shown it.
-     * A booking marked "just my guests" keeps its detail; the time, room, host
-     * and title still show, because that is the building's shared schedule.
-     */
-    descriptionWithheld: boolean;
   }>;
 }
 

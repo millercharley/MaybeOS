@@ -1052,15 +1052,18 @@ export class SpaceService {
    * included and says so, because a room awaiting approval is genuinely
    * different from a free one.
    *
-   * **What is withheld, and why.** `visibility` on a booking answers "who is
-   * invited", not "who may know this exists" — the form's own words are "Just
-   * my guests. Nobody else is invited." So the time, the room, the host and the
-   * title are shown for everything: that is a shared building's schedule, and
-   * knowing who has the studio is how you find out who to ask. The
-   * **description** is withheld on a PRIVATE booking, because it is the field
-   * somebody writes detail into, and a member who ticked "just my guests" did
-   * not agree to publish it to the whole co-op. Organisers see everything, as
-   * they do everywhere else.
+   * **Nothing is withheld from a member.** The first version held back the
+   * description of a PRIVATE booking, on the reasoning that it is the field
+   * somebody writes detail into. Charley decided otherwise on 2026-09-05, and
+   * it is his co-op's call: `visibility` answers "who is invited" — the form's
+   * own words are "Just my guests. Nobody else is invited." — and a shared
+   * building's schedule is something its members can read. So every member sees
+   * what every other member wrote about their booking.
+   *
+   * Worth knowing if this is ever revisited: PRIVATE is the *default*, so this
+   * is not a setting people opt into. Anything a member types into a booking
+   * description is readable by the whole co-op, and the booking form should say
+   * so if it does not already.
    */
   async dayBookings(orgId: string, date: string, viewer: ContactViewer) {
     const org = await this.prisma.organization.findUnique({
@@ -1108,18 +1111,7 @@ export class SpaceService {
       orderBy: [{ startTime: 'asc' }],
     });
 
-    return {
-      date,
-      timezone: org.timezone,
-      bookings: bookings.map((b) => ({
-        ...b,
-        description:
-          b.visibility === 'PRIVATE' && !viewer.privileged ? null : b.description,
-        /** True when a description exists but is being withheld. */
-        descriptionWithheld:
-          b.visibility === 'PRIVATE' && !viewer.privileged && Boolean(b.description),
-      })),
-    };
+    return { date, timezone: org.timezone, bookings };
   }
 
   async listBookings(

@@ -21,7 +21,6 @@ describe('SpaceService — the day view', () => {
 
   const ORG = 'org-1';
   const member = { userId: 'u1', orgId: ORG, privileged: false };
-  const organiser = { userId: 'u2', orgId: ORG, privileged: true };
 
   const booking = (over: Record<string, unknown> = {}) => ({
     id: 'b1',
@@ -112,46 +111,35 @@ describe('SpaceService — the day view', () => {
       const { bookings } = await service.dayBookings(ORG, '2026-09-05', member as never);
 
       expect(bookings[0].description).toBe('We are reading Jane Jacobs.');
-      expect(bookings[0].descriptionWithheld).toBe(false);
     });
 
-    it('withholds the description of a private booking, and says it did', async () => {
-      // The form's words are "Just my guests. Nobody else is invited." That is
-      // about invitations, so the time, room, host and title still show — a
-      // shared building's schedule. The description is where somebody writes
-      // detail they did not agree to publish.
+    it('shows the description of a private booking too', async () => {
+      // An earlier version withheld this. Charley's call, 2026-09-05: a shared
+      // building's schedule is something its members can read, and
+      // `visibility` answers who is *invited* rather than who may look.
+      //
+      // The consequence worth remembering is that PRIVATE is the default, so
+      // this is not a setting anybody opts into — whatever a member types into
+      // a booking description is readable by the whole co-op.
       prisma.booking.findMany.mockResolvedValue([
         booking({ visibility: 'PRIVATE' }),
       ] as never);
 
       const { bookings } = await service.dayBookings(ORG, '2026-09-05', member as never);
 
-      expect(bookings[0].description).toBeNull();
-      expect(bookings[0].descriptionWithheld).toBe(true);
-      // Still says who has the room and when — that is the point of the view.
+      expect(bookings[0].description).toBe('We are reading Jane Jacobs.');
       expect(bookings[0].title).toBe('Book club');
       expect(bookings[0].user.name).toBe('Alex');
       expect(bookings[0].room.name).toBe('Main Hall');
     });
 
-    it('does not claim to withhold a description that does not exist', async () => {
+    it('leaves a booking with no description alone', async () => {
       prisma.booking.findMany.mockResolvedValue([
         booking({ visibility: 'PRIVATE', description: null }),
       ] as never);
 
       const { bookings } = await service.dayBookings(ORG, '2026-09-05', member as never);
-      expect(bookings[0].descriptionWithheld).toBe(false);
-    });
-
-    it('shows an organiser everything', async () => {
-      prisma.booking.findMany.mockResolvedValue([
-        booking({ visibility: 'PRIVATE' }),
-      ] as never);
-
-      const { bookings } = await service.dayBookings(ORG, '2026-09-05', organiser as never);
-
-      expect(bookings[0].description).toBe('We are reading Jane Jacobs.');
-      expect(bookings[0].descriptionWithheld).toBe(false);
+      expect(bookings[0].description).toBeNull();
     });
 
     it('never hands a member somebody else’s email address', async () => {
