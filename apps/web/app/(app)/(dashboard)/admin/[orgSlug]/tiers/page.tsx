@@ -5,6 +5,7 @@ import { Plus, Loader2, AlertCircle, CheckCircle2, Users, EyeOff, Eye } from 'lu
 import { useAuthStore } from '@/lib/auth-store';
 import { api, AdminTier, TierInput, ServicePeriod, ApiError } from '@/lib/api';
 import { PageHeader } from '@/components/layout/page-header';
+import { useReveal } from '@/hooks/use-reveal';
 
 const money = (cents: number) =>
   cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`;
@@ -183,6 +184,10 @@ export default function AdminTiersPage() {
     }
   }
 
+  // Same shape as Rooms: the form is above the list of tiers (UI-04).
+  // Up here with the other hooks — below is past an early return.
+  const formRef = useReveal<HTMLDivElement>(creating ? 'new' : editingId);
+
   if (!orgId) {
     return <p className="text-[var(--text-secondary)]">No organization selected.</p>;
   }
@@ -220,7 +225,7 @@ export default function AdminTiersPage() {
       )}
 
       {showForm && (
-        <div className="card mt-6">
+        <div ref={formRef} tabIndex={-1} className="card mt-6 focus:outline-none">
           <h2 className="font-display text-lg">{creating ? 'New tier' : `Edit ${editing?.name}`}</h2>
 
           <div className="mt-4 grid gap-4">

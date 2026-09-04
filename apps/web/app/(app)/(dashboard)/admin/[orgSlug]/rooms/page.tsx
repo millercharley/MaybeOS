@@ -12,6 +12,7 @@ import { ClosureEditor } from '@/components/rooms/closure-editor';
 import { HostDuties } from '@/components/rooms/host-duties';
 import { calendarNotice } from '@/lib/room-calendar';
 import { PageHeader } from '@/components/layout/page-header';
+import { useReveal } from '@/hooks/use-reveal';
 
 type Draft = {
   name: string;
@@ -184,6 +185,11 @@ export default function AdminRoomsPage() {
     }
   }
 
+  // The form sits above the room list, so pressing Edit on the eighth room
+  // changes something the person cannot see (UI-04). Declared up here with the
+  // other hooks: everything below `if (!orgId)` is past an early return.
+  const formRef = useReveal<HTMLDivElement>(creating ? 'new' : editingId);
+
   if (!orgId) {
     return <p className="text-[var(--text-secondary)]">No organization selected.</p>;
   }
@@ -221,7 +227,7 @@ export default function AdminRoomsPage() {
       )}
 
       {showForm && (
-        <div className="card mt-6">
+        <div ref={formRef} tabIndex={-1} className="card mt-6 focus:outline-none">
           <h2 className="font-display text-lg">
             {creating ? 'Add a room' : `Edit ${rooms?.find((r) => r.id === editingId)?.name ?? ''}`}
           </h2>

@@ -7,6 +7,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { RoomBooking } from '@/components/rooms/room-booking';
 import { api } from '@/lib/api';
 import { PageHeader } from '@/components/layout/page-header';
+import { useReveal } from '@/hooks/use-reveal';
 
 export default function PortalRoomsPage() {
   const { org } = usePortal();
@@ -19,6 +20,9 @@ export default function PortalRoomsPage() {
 
   const orgId = org?.id;
   const selected = rooms.find((r) => r.id === selectedRoom) ?? null;
+  // The booking panel opens below the list of rooms, so choosing one changed
+  // the page somewhere off the bottom of the screen (UI-04).
+  const bookingRef = useReveal<HTMLDivElement>(selectedRoom);
 
   useEffect(() => {
     if (!org || !token) {
@@ -155,12 +159,14 @@ export default function PortalRoomsPage() {
         (SPC-15).
       */}
       {selected && token && orgId && (
+        <div ref={bookingRef} tabIndex={-1} className="focus:outline-none">
         <RoomBooking
           room={selected}
           orgId={orgId}
           token={token}
           onBooked={() => setBookingResult('Booked.')}
         />
+        </div>
       )}
 
     </div>
