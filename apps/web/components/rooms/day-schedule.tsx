@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Lock, Loader2, Users } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Users } from 'lucide-react';
 import { api, type DaySchedule as DayScheduleData } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 
@@ -13,6 +13,11 @@ import { useAuthStore } from '@/lib/auth-store';
  * building has one obvious question every morning — what is happening and who
  * is in which room — and answering it meant opening each room's calendar in
  * turn.
+ *
+ * Every member sees every booking in full, including the description of one
+ * marked "just my guests" (Charley, 2026-09-05). An earlier version withheld
+ * that; the decision is that a shared building's schedule is something its
+ * members can read, and `visibility` answers who is *invited*.
  *
  * Grouped by room rather than laid out as a timetable grid. A grid is the
  * prettier answer and the wrong one here: it needs a fixed pixel-per-minute
@@ -177,16 +182,6 @@ export function DaySchedule({ orgId, initialDate }: { orgId: string; initialDate
                         </p>
                       )}
 
-                      {/* Said, rather than left as a gap. A member who sees
-                          nothing under a title cannot tell whether the host
-                          wrote nothing or whether something is being kept
-                          from them. */}
-                      {b.descriptionWithheld && (
-                        <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-gray-400">
-                          <Lock className="h-3 w-3" />
-                          Details are private to this booking&rsquo;s guests.
-                        </p>
-                      )}
 
                       {b.categories.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1.5">
