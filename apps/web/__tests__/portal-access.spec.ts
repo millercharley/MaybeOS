@@ -16,7 +16,7 @@ describe('who the portal lets in', () => {
     expect(portalRequiresAuth('/portal/maybeitsfate/directory')).toBe(true);
     expect(portalRequiresAuth('/portal/maybeitsfate/messages/abc')).toBe(true);
     expect(portalRequiresAuth('/portal/maybeitsfate/serve')).toBe(true);
-    expect(portalRequiresAuth('/portal/maybeitsfate/welcome')).toBe(true);
+    expect(portalRequiresAuth('/portal/maybeitsfate/handbook')).toBe(true);
   });
 
   it('closes the co-op’s own front page too', () => {

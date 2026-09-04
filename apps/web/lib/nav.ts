@@ -78,7 +78,7 @@ const adminNav = (slug: string): NavItem[] => [
   // rather than under Members: it is a thing the co-op needs doing, not a
   // fact about a person.
   { href: `/admin/${slug}/serving`, label: 'Serving', icon: ListChecks },
-  { href: `/admin/${slug}/welcome`, label: 'Welcoming', icon: BookOpen },
+  { href: `/admin/${slug}/handbook`, label: 'Handbook', icon: BookOpen },
   { href: `/admin/${slug}/belonging`, label: 'Belonging', icon: HeartHandshake },
   { href: `/admin/${slug}/settings`, label: 'Settings', icon: Settings },
 ];
@@ -115,7 +115,11 @@ const coopNav = (slug: string): NavItem[] => [
   // First, deliberately. It is what a co-op wants a new member to read before
   // they read anything else, and burying it under the things regulars use
   // would mean only regulars ever found it.
-  { href: `/portal/${slug}/welcome`, label: 'Welcome', icon: BookOpen },
+  //
+  // Called "Handbook" since 2026-09-04, and it now holds everything the
+  // Commons Library used to: one place for a co-op's written knowledge rather
+  // than two that each looked like the other's overflow (CMN-11).
+  { href: `/portal/${slug}/handbook`, label: 'Handbook', icon: BookOpen },
   { href: `/portal/${slug}/commons`, label: 'Commons', icon: MessageSquare },
   { href: `/portal/${slug}/messages`, label: 'Messages', icon: Mail },
   { href: `/portal/${slug}/directory`, label: 'Directory', icon: Users },

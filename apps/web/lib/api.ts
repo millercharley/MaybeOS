@@ -392,6 +392,20 @@ class ApiClient {
         body: JSON.stringify(data),
         token,
       }),
+
+    /**
+     * Your own photo, replacing the letter in the circle (MEM-11). Both return
+     * the whole profile, so the caller refreshes from one response.
+     */
+    uploadAvatar: (data: string, mimeType: string, token: string) =>
+      this.request<UserProfile>('/auth/profile/avatar', {
+        method: 'POST',
+        body: JSON.stringify({ data, mimeType }),
+        token,
+      }),
+
+    removeAvatar: (token: string) =>
+      this.request<UserProfile>('/auth/profile/avatar', { method: 'DELETE', token }),
   };
 
   // ── Orgs ─────────────────────────────────────────
@@ -1256,6 +1270,34 @@ class ApiClient {
 
     pinChannel: (orgId: string, channelId: string, pinned: boolean, token: string) =>
       this.request<Channel>(`/orgs/${orgId}/channels/${channelId}/pin`, { method: pinned ? 'POST' : 'DELETE', token }),
+
+    /** Rename a channel or change what it says it is for (CMN-10). */
+    updateChannel: (
+      orgId: string,
+      channelId: string,
+      data: { name?: string; description?: string | null; isPublic?: boolean },
+      token: string,
+    ) =>
+      this.request<Channel>(`/orgs/${orgId}/channels/${channelId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    /** The whole order in one write. Returns the list as it now stands. */
+    reorderChannels: (orgId: string, channelIds: string[], token: string) =>
+      this.request<Channel[]>(`/orgs/${orgId}/channels/reorder`, {
+        method: 'POST',
+        body: JSON.stringify({ channelIds }),
+        token,
+      }),
+
+    /** Takes the posts in it too — the UI says so in numbers first. */
+    deleteChannel: (orgId: string, channelId: string, token: string) =>
+      this.request<{ deleted: string }>(`/orgs/${orgId}/channels/${channelId}`, {
+        method: 'DELETE',
+        token,
+      }),
 
     listPosts: (orgId: string, channelId: string, token: string) =>
       this.request<PaginatedResponse<Post>>(`/orgs/${orgId}/channels/${channelId}/posts`, { token }),
@@ -2582,9 +2624,14 @@ export interface Channel {
   id: string;
   name: string;
   slug: string;
-  description?: string;
+  description?: string | null;
   isDefault: boolean;
   isPinned: boolean;
+  isPublic?: boolean;
+  /** The order an admin put them in (CMN-10). */
+  position?: number;
+  /** How much is written in it. Deleting a channel takes its posts with it. */
+  _count?: { posts: number };
 }
 
 export interface Comment {

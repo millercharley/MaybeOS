@@ -7,6 +7,7 @@ import {
   UseGuards,
   Request,
   Patch,
+  Delete,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -17,6 +18,7 @@ import { MagicLinkDto } from './dto/magic-link.dto';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UploadAvatarDto } from './dto/upload-avatar.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 
@@ -85,6 +87,31 @@ export class AuthController {
     @Body() dto: UpdateProfileDto,
   ) {
     return this.authService.updateProfile(user.userId, dto);
+  }
+
+  /**
+   * Replace the letter in the circle with a photo of yourself (MEM-11).
+   *
+   * Keyed on the caller's own id, never one from the URL or the body, so there
+   * is no shape of this request that sets somebody else's picture.
+   */
+  @Post('profile/avatar')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upload your own profile photo' })
+  async uploadAvatar(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: UploadAvatarDto,
+  ) {
+    return this.authService.setAvatar(user.userId, dto.data, dto.mimeType);
+  }
+
+  @Delete('profile/avatar')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Remove your profile photo' })
+  async removeAvatar(@CurrentUser() user: RequestUser) {
+    return this.authService.removeAvatar(user.userId);
   }
 
   /**

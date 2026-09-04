@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, FormEvent } from 'react';
-import { Save, Mail, ShieldCheck } from 'lucide-react';
+import { Save, Mail, ShieldCheck, Camera, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
@@ -51,6 +51,68 @@ export default function MyProfilePage() {
   const orgSlug = useParams<{ orgSlug: string }>().orgSlug;
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+
+  // A photo of yourself, in place of the letter (MEM-11).
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
+
+  // Checked here as well as on the server, so somebody picking a 40 MB photo
+  // off their phone is told before it crosses the network. The server does not
+  // trust this — it sniffs the bytes rather than believing the type.
+  const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
+  const AVATAR_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+
+  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // so the same file can be picked again after an error
+    if (!file || !token) return;
+
+    if (!AVATAR_TYPES.includes(file.type)) {
+      setAvatarError('Use a PNG, JPEG, WebP or GIF image.');
+      return;
+    }
+    if (file.size > AVATAR_MAX_BYTES) {
+      setAvatarError(
+        `That photo is ${(file.size / 1024 / 1024).toFixed(1)} MB. The limit is 5 MB.`,
+      );
+      return;
+    }
+
+    setAvatarBusy(true);
+    setAvatarError('');
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('Could not read that file.'));
+        reader.readAsDataURL(file);
+      });
+      await api.auth_profile.uploadAvatar(dataUrl, file.type, token);
+      refetch();
+      // The sidebar and every comment they have written read the face off the
+      // session, so it stays stale until the profile in the store is reloaded.
+      loadProfile();
+    } catch (err: unknown) {
+      setAvatarError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
+  async function handleAvatarRemove() {
+    if (!token) return;
+    setAvatarBusy(true);
+    setAvatarError('');
+    try {
+      await api.auth_profile.removeAvatar(token);
+      refetch();
+      loadProfile();
+    } catch (err: unknown) {
+      setAvatarError(err instanceof Error ? err.message : 'Could not remove that photo');
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (profile) setName(profile.name || '');
@@ -155,15 +217,38 @@ export default function MyProfilePage() {
       )}
 
       <form onSubmit={handleSave} className="card space-y-6">
-        <div className="flex items-center gap-4">
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-100">
+        <div className="flex flex-wrap items-center gap-4">
+          {/* The picture is the control. Clicking the circle is what everybody
+              tries first, so the label wraps it rather than sitting beside it
+              as a separate "Upload" button (MEM-11). */}
+          <label
+            className={`group relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-brand-100 ${
+              avatarBusy ? 'pointer-events-none opacity-70' : 'cursor-pointer'
+            }`}
+            title={profile.avatarUrl ? 'Change your photo' : 'Add a photo'}
+          >
             {profile.avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={profile.avatarUrl} alt="" className="h-full w-full object-cover" />
             ) : (
               <span className="text-xl font-bold text-brand-700">{initial}</span>
             )}
-          </div>
+            <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+              {avatarBusy ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Camera className="h-5 w-5" />
+              )}
+            </span>
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              onChange={handleAvatarChange}
+              disabled={avatarBusy}
+              className="sr-only"
+              aria-label={profile.avatarUrl ? 'Change your photo' : 'Add a photo'}
+            />
+          </label>
           <div className="min-w-0">
             <p className="font-medium text-[var(--text-primary)]">
               {profile.name || 'No name set'}
@@ -177,8 +262,22 @@ export default function MyProfilePage() {
                 </span>
               )}
             </p>
+            {profile.avatarUrl && (
+              <button
+                type="button"
+                onClick={handleAvatarRemove}
+                disabled={avatarBusy}
+                className="mt-1 text-xs text-[var(--text-tertiary)] underline hover:text-[var(--text-secondary)]"
+              >
+                Remove photo
+              </button>
+            )}
           </div>
         </div>
+
+        {avatarError && (
+          <p className="-mt-2 text-sm text-red-600">{avatarError}</p>
+        )}
 
         <div>
           <label className="mb-1 block text-sm font-medium text-[var(--text-primary)]">

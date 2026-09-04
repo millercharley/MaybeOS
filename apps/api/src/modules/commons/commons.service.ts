@@ -111,26 +111,69 @@ export class CommonsService {
   // ─── Channels ───────────────────────────────────────────────
 
   async createChannel(orgId: string, dto: CreateChannelDto) {
-    const slug = dto.name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '');
+    const slug = await this.freeChannelSlug(orgId, dto.name);
+
+    // Appended, not inserted. A new channel goes to the end of whatever order
+    // the co-op has arranged rather than jumping to the top.
+    const last = await this.prisma.channel.findFirst({
+      where: { orgId },
+      orderBy: { position: 'desc' },
+      select: { position: true },
+    });
 
     return this.prisma.channel.create({
       data: {
         orgId,
-        name: dto.name,
+        name: dto.name.trim(),
         slug,
         description: dto.description,
         isPublic: dto.isPublic ?? true,
+        position: (last?.position ?? 0) + 1,
       },
     });
+  }
+
+  /**
+   * A slug nothing else in this co-op is using (CMN-10).
+   *
+   * `(orgId, slug)` is unique, and the slug was derived from the name with no
+   * check at all — so a co-op creating a second "General", or any two names
+   * that flatten to the same thing ("Q&A" and "Q A"), got a Prisma unique
+   * violation surfaced as a 500. Now that an admin creates channels from a
+   * form rather than a seed script, that is a thing people will actually do.
+   *
+   * A name of nothing but punctuation flattens to an empty string, which is
+   * a legal-looking slug that then collides with the next one. `channel` is
+   * the fallback so the suffix loop has something to number.
+   */
+  private async freeChannelSlug(orgId: string, name: string, exceptId?: string) {
+    const base =
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '') || 'channel';
+
+    for (let suffix = 0; suffix < 100; suffix += 1) {
+      const slug = suffix === 0 ? base : `${base}-${suffix + 1}`;
+      const clash = await this.prisma.channel.findFirst({
+        where: { orgId, slug, ...(exceptId ? { id: { not: exceptId } } : {}) },
+        select: { id: true },
+      });
+      if (!clash) return slug;
+    }
+
+    throw new BadRequestException(
+      'There are already too many channels with that name. Try a different one.',
+    );
   }
 
   async listChannels(orgId: string) {
     return this.prisma.channel.findMany({
       where: { orgId },
-      orderBy: [{ isPinned: 'desc' }, { createdAt: 'asc' }],
+      // Position first, creation date as the tie-break — so a co-op that has
+      // never reordered anything keeps exactly the order it had (CMN-10).
+      orderBy: [{ isPinned: 'desc' }, { position: 'asc' }, { createdAt: 'asc' }],
+      include: { _count: { select: { posts: true } } },
     });
   }
 
@@ -141,6 +184,88 @@ export class CommonsService {
       where: { id: channelId },
       data: { isPinned },
     });
+  }
+
+  /**
+   * Rename a channel, or change what it says it is for (CMN-10).
+   *
+   * The slug follows the name, and is re-derived rather than frozen: a channel
+   * renamed from "Random" to "Announcements" whose address still said `random`
+   * would be a small lie in every link to it. Nothing addresses a channel by
+   * slug yet — the UI uses ids — so this costs nothing today and keeps the two
+   * honest if anything ever does.
+   */
+  async updateChannel(
+    orgId: string,
+    channelId: string,
+    dto: { name?: string; description?: string | null; isPublic?: boolean },
+  ) {
+    await this.findChannelInOrg(orgId, channelId);
+
+    const name = dto.name?.trim();
+    if (dto.name !== undefined && !name) {
+      throw new BadRequestException('A channel needs a name.');
+    }
+
+    return this.prisma.channel.update({
+      where: { id: channelId },
+      data: {
+        ...(name ? { name, slug: await this.freeChannelSlug(orgId, name, channelId) } : {}),
+        ...(dto.description !== undefined && { description: dto.description }),
+        ...(dto.isPublic !== undefined && { isPublic: dto.isPublic }),
+      },
+    });
+  }
+
+  /**
+   * Put the channels in the order an admin dragged them into (CMN-10).
+   *
+   * Takes the whole list rather than one channel and a target index: a
+   * move-this-one endpoint has to renumber its neighbours anyway, and doing
+   * that from two clients at once is how a list ends up with two channels
+   * claiming the same position. One write of the whole order cannot disagree
+   * with itself.
+   *
+   * Ids from another co-op are filtered out by the scoped `updateMany` rather
+   * than trusted — a doctored list must not renumber somebody else's Commons.
+   */
+  async reorderChannels(orgId: string, channelIds: string[]) {
+    await this.prisma.$transaction(
+      channelIds.map((id, index) =>
+        this.prisma.channel.updateMany({
+          where: { id, orgId },
+          data: { position: index },
+        }),
+      ),
+    );
+
+    return this.listChannels(orgId);
+  }
+
+  /**
+   * Delete a channel, and everything written in it.
+   *
+   * `Post.channel` cascades, so this takes the posts, their comments and their
+   * reactions with it. That is the honest behaviour — a channel is where the
+   * conversation lives, not a label on it — but it means the UI has to say so
+   * in numbers before anybody clicks, which is why `listChannels` carries a
+   * post count.
+   *
+   * The default channel is refused. It is where a co-op's first post lands and
+   * where anything without a home goes; deleting it leaves the Commons with no
+   * floor to stand on.
+   */
+  async deleteChannel(orgId: string, channelId: string) {
+    const channel = await this.findChannelInOrg(orgId, channelId);
+
+    if (channel.isDefault) {
+      throw new BadRequestException(
+        'This is the co-op’s default channel and cannot be deleted. Rename it instead.',
+      );
+    }
+
+    await this.prisma.channel.delete({ where: { id: channelId } });
+    return { deleted: channelId };
   }
 
   // ─── Posts ──────────────────────────────────────────────────

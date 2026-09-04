@@ -296,6 +296,101 @@ export class StorageService {
   }
 
   /**
+   * Store a member's own photo of themselves, and return its path (MEM-11).
+   *
+   * The same private bucket as an imported avatar, for the same reason (D-029):
+   * a face is not a co-op's public identity the way its logo is, so this is a
+   * path signed per request rather than a permanent link anybody could pass
+   * around. That is also Charley's standing rule — material inside MaybeOS
+   * needs auth to reach.
+   *
+   * A fresh key every time, never an overwrite. The signed URL for the old
+   * object is already in browsers and in this session's memory; writing over
+   * the key would serve the previous photo from cache and, worse, would make
+   * a failed upload replace a good picture with nothing.
+   */
+  async uploadAvatar(userId: string, body: Buffer, mimeType: string): Promise<string> {
+    if (!this.isConfigured) {
+      throw new ServiceUnavailableException(
+        'Photo uploads are not configured on this server (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).',
+      );
+    }
+
+    // Sniffed rather than trusted. `mimeType` is whatever the browser put in
+    // the JSON body, and the bucket enforces its own allowlist — so a header
+    // that disagrees with the bytes is rejected here with something a person
+    // can act on, instead of by Storage with something they cannot.
+    const sniffed = this.sniffImageMime(body);
+    if (!sniffed) {
+      throw new BadRequestException(
+        'That file does not look like an image. Use a PNG, JPEG, WebP or GIF.',
+      );
+    }
+    if (!(AVATAR_MIME_TYPES as readonly string[]).includes(sniffed)) {
+      throw new BadRequestException(
+        `${sniffed} is not a supported image type. Use PNG, JPEG, WebP or GIF.`,
+      );
+    }
+    if (body.length === 0) {
+      throw new BadRequestException('The uploaded file is empty.');
+    }
+    if (body.length > AVATAR_MAX_BYTES) {
+      const mb = (body.length / 1024 / 1024).toFixed(1);
+      throw new BadRequestException(`That image is ${mb} MB. The limit is 5 MB.`);
+    }
+
+    const path = `${userId}/${randomUUID()}.${EXTENSION[sniffed] ?? 'jpg'}`;
+    const response = await fetch(`${this.url}/storage/v1/object/${AVATAR_BUCKET}/${path}`, {
+      method: 'POST',
+      headers: { ...this.headers, 'Content-Type': sniffed },
+      body: new Uint8Array(body),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      this.logger.error(
+        `Avatar upload failed for user ${userId}: ${response.status} ${detail.slice(0, 200)}`,
+      );
+      throw new ServiceUnavailableException(
+        response.status === 400 || response.status === 401 || response.status === 403
+          ? 'File storage is not accepting uploads right now. This is a MaybeOS problem, not yours — we have been notified.'
+          : 'Could not store that photo. Try again.',
+      );
+    }
+
+    return path;
+  }
+
+  /**
+   * Remove a stored avatar object.
+   *
+   * Best-effort, and always called *after* the row stops pointing at it: a
+   * failure here leaves an orphaned file rather than a member with no face.
+   * Scoped to the member's own folder, so a doctored path cannot delete
+   * somebody else's photo.
+   */
+  async deleteAvatar(userId: string, path: string | null): Promise<void> {
+    if (!path || !this.isConfigured) return;
+
+    if (!path.startsWith(`${userId}/`)) {
+      this.logger.warn(`Refusing to delete "${path}": outside user ${userId}`);
+      return;
+    }
+
+    try {
+      const response = await fetch(`${this.url}/storage/v1/object/${AVATAR_BUCKET}/${path}`, {
+        method: 'DELETE',
+        headers: this.headers,
+      });
+      if (!response.ok) {
+        this.logger.warn(`Could not delete old avatar ${path}: ${response.status}`);
+      }
+    } catch (error) {
+      this.logger.warn(`Could not delete old avatar ${path}: ${(error as Error).message}`);
+    }
+  }
+
+  /**
    * Short-lived readable URLs for many avatars at once.
    *
    * One request rather than one per member: a directory of 300 people would
