@@ -690,6 +690,14 @@ class ApiClient {
     listTiersForAdmin: (orgId: string, token: string) =>
       this.request<AdminTier[]>(`/orgs/${orgId}/tiers/manage`, { token }),
 
+    /** Put the tiers in the order an admin chose (MEM-13). ADMIN only. */
+    reorderTiers: (orgId: string, tierIds: string[], token: string) =>
+      this.request<AdminTier[]>(`/orgs/${orgId}/tiers/reorder`, {
+        method: 'POST',
+        body: JSON.stringify({ tierIds }),
+        token,
+      }),
+
     createTier: (orgId: string, data: TierInput, token: string) =>
       this.request<MembershipTier>(`/orgs/${orgId}/tiers`, {
         method: 'POST',
@@ -2368,6 +2376,8 @@ export interface MembershipTier {
   /** Both null, and usually are, meaning the tier asks for money only. */
   serviceMinutes?: number | null;
   servicePeriod?: ServicePeriod | null;
+  /** Null means unlimited, which is the usual case. */
+  maxMembers?: number | null;
 }
 
 /** One row of an export, in MaybeOS's own field names (MEM-06). */

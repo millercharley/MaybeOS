@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Loader2, AlertCircle, CheckCircle2, Users, EyeOff, Eye } from 'lucide-react';
+import { Plus, Loader2, AlertCircle, CheckCircle2, Users, EyeOff, Eye, ArrowUp, ArrowDown } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, AdminTier, TierInput, ServicePeriod, ApiError } from '@/lib/api';
 import { PageHeader } from '@/components/layout/page-header';
@@ -111,6 +111,33 @@ export default function AdminTiersPage() {
     setCreating(true);
     setNotice(null);
     setError(null);
+  }
+
+  /**
+   * Move a tier, by sending the whole order (MEM-13).
+   *
+   * The list on screen is already in the order the API sorts by, so moving an
+   * item here and posting the result is the order the server will compute —
+   * no second sort to disagree with the first.
+   */
+  async function move(tierId: string, direction: -1 | 1) {
+    const ids = (tiers ?? []).map((t) => t.id);
+    const index = ids.indexOf(tierId);
+    const target = index + direction;
+    if (index === -1 || target < 0 || target >= ids.length) return;
+
+    [ids[index], ids[target]] = [ids[target], ids[index]];
+
+    setBusy(true);
+    setError(null);
+    try {
+      await api.members.reorderTiers(orgId!, ids, token!);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not reorder the tiers');
+    } finally {
+      setBusy(false);
+    }
   }
 
   function startEdit(t: AdminTier) {
@@ -401,7 +428,7 @@ export default function AdminTiersPage() {
           </p>
         )}
 
-        {tiers?.map((t) => (
+        {tiers?.map((t, index) => (
           <div key={t.id} className={`card ${t.isActive ? '' : 'opacity-60'}`}>
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0">
@@ -424,6 +451,31 @@ export default function AdminTiersPage() {
               <div className="flex items-center gap-3 whitespace-nowrap">
                 <span className="data text-lg font-semibold">
                   {t.isPayWhatYouCan ? `${money(t.minPrice ?? 0)}+` : money(t.priceMonthly)}
+                </span>
+                {/* The order members see them in (MEM-13). `sortOrder` has
+                    always driven the dues page and nothing could set it, so a
+                    co-op's tiers appeared in the order somebody added them. */}
+                <span className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => move(t.id, -1)}
+                    disabled={busy || index === 0}
+                    className="btn-ghost px-1.5 disabled:opacity-30"
+                    aria-label={`Move ${t.name} up`}
+                    title="Move up"
+                  >
+                    <ArrowUp size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => move(t.id, 1)}
+                    disabled={busy || index === (tiers?.length ?? 0) - 1}
+                    className="btn-ghost px-1.5 disabled:opacity-30"
+                    aria-label={`Move ${t.name} down`}
+                    title="Move down"
+                  >
+                    <ArrowDown size={16} />
+                  </button>
                 </span>
                 <button onClick={() => startEdit(t)} disabled={busy} className="btn-secondary">
                   Edit

@@ -25,6 +25,7 @@ import { CreateTierDto } from './dto/create-tier.dto';
 import { ImportMembersDto, ImportAvatarsDto } from './dto/import-members.dto';
 import { UpdateMemberRoleDto } from './dto/update-role.dto';
 import { UpdateTierDto } from './dto/update-tier.dto';
+import { ReorderTiersDto } from './dto/reorder-tiers.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 
 @ApiTags('members')
@@ -232,6 +233,15 @@ export class MemberController {
   })
   listTiersForAdmin(@Param('orgId') orgId: string) {
     return this.memberService.listTiersForAdmin(orgId);
+  }
+
+  @Post('tiers/reorder')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Put the membership tiers in an order' })
+  reorderTiers(@Param('orgId') orgId: string, @Body() dto: ReorderTiersDto) {
+    return this.memberService.reorderTiers(orgId, dto.tierIds);
   }
 
   @Patch('tiers/:tierId')
