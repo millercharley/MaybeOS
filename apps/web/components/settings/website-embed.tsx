@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { Org } from '@/lib/api';
-import { DEFAULT_ACCENT, embedSnippet, normaliseHex } from '@/lib/embed-snippet';
+import { DEFAULT_ACCENT, EmbedShow, embedSnippet, normaliseHex } from '@/lib/embed-snippet';
 
 /**
  * The co-op's events, on the co-op's own website.
@@ -16,8 +16,14 @@ import { DEFAULT_ACCENT, embedSnippet, normaliseHex } from '@/lib/embed-snippet'
  * The snippet is a single script tag on purpose. Site builders offer an
  * "embed" block that accepts a script, and fight anything more elaborate —
  * and one line is something an organiser can paste without a developer.
+ *
+ * Two of these now (PUB-01): the events list, and the membership tiers with
+ * Join buttons that land on `/join`. Same card, same preview, same script —
+ * only the copy and one attribute differ, and a co-op that wants both pastes
+ * both tags.
  */
-export function WebsiteEmbed({ org }: { org: Org }) {
+export function WebsiteEmbed({ org, show = 'events' }: { org: Org; show?: EmbedShow }) {
+  const membership = show === 'membership';
   const [copied, setCopied] = useState(false);
   const [accentInput, setAccentInput] = useState(DEFAULT_ACCENT);
 
@@ -28,7 +34,7 @@ export function WebsiteEmbed({ org }: { org: Org }) {
   // production snippet.
   const origin = typeof window === 'undefined' ? 'https://maybeos.org' : window.location.origin;
 
-  const snippet = embedSnippet(origin, org.slug, accentInput);
+  const snippet = embedSnippet(origin, org.slug, accentInput, show);
 
   async function copy() {
     try {
@@ -44,11 +50,13 @@ export function WebsiteEmbed({ org }: { org: Org }) {
   return (
     <section className="card space-y-4">
       <div>
-        <h2 className="text-base font-semibold text-gray-900">Your events on your website</h2>
+        <h2 className="text-base font-semibold text-gray-900">
+          {membership ? 'Membership on your website' : 'Your events on your website'}
+        </h2>
         <p className="mt-1 text-sm text-gray-500">
-          Paste this into an embed or custom-code block on your own site. Your public events
-          for the next 30 days appear there and stay in step on their own — there is nothing
-          to update when you add an event.
+          {membership
+            ? 'Paste this into an embed or custom-code block on your own site. Your tiers appear there with a Join button on each one, and stay in step on their own — change a price here and the website follows.'
+            : 'Paste this into an embed or custom-code block on your own site. Your public events for the next 30 days appear there and stay in step on their own — there is nothing to update when you add an event.'}
         </p>
       </div>
 
@@ -85,7 +93,9 @@ export function WebsiteEmbed({ org }: { org: Org }) {
         <span className="mt-1 block text-xs text-gray-500">
           {invalid
             ? 'That is not a color yet — use a hex like #b03030.'
-            : 'Used for event dates and ticket prices in the embed. Match your own site.'}
+            : membership
+              ? 'Used for prices and the Join buttons. Match your own site.'
+              : 'Used for event dates and ticket prices in the embed. Match your own site.'}
         </span>
       </label>
 
@@ -103,14 +113,22 @@ export function WebsiteEmbed({ org }: { org: Org }) {
         {copied ? 'Copied' : 'Copy embed code'}
       </button>
 
-      <EmbedPreview origin={origin} slug={org.slug} accent={accent ?? DEFAULT_ACCENT} />
+      <EmbedPreview origin={origin} slug={org.slug} accent={accent ?? DEFAULT_ACCENT} show={show} />
 
       <div className="border-t border-gray-100 pt-3 text-xs text-gray-500">
-        <p>
-          <span className="font-medium text-gray-700">Only public events appear.</span> Anything
-          members-only or private stays off your website, and a draft stays off until you publish
-          it.
-        </p>
+        {membership ? (
+          <p>
+            <span className="font-medium text-gray-700">Joining opens on MaybeOS.</span> The
+            buttons open your join page in a new tab, so your visitor keeps your site — and
+            payment happens on Stripe, never on your website. Deactivated tiers never appear.
+          </p>
+        ) : (
+          <p>
+            <span className="font-medium text-gray-700">Only public events appear.</span> Anything
+            members-only or private stays off your website, and a draft stays off until you
+            publish it.
+          </p>
+        )}
       </div>
     </section>
   );
@@ -132,10 +150,12 @@ function EmbedPreview({
   origin,
   slug,
   accent,
+  show,
 }: {
   origin: string;
   slug: string;
   accent: string;
+  show: EmbedShow;
 }) {
   const holder = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
@@ -151,17 +171,19 @@ function EmbedPreview({
     script.src = `${origin}/embed.js`;
     script.setAttribute('data-org', slug);
     script.setAttribute('data-accent', accent);
+    if (show === 'membership') script.setAttribute('data-show', 'membership');
     script.onerror = () => setFailed(true);
     node.appendChild(script);
 
     return () => node.replaceChildren();
-  }, [origin, slug, accent]);
+  }, [origin, slug, accent, show]);
 
   return (
     <div>
       <p className="text-sm font-medium text-gray-700">What it will show</p>
       <p className="mt-0.5 text-xs text-gray-500">
-        This is the embed itself, running against your live events — not a picture of it.
+        This is the embed itself, running against your live{' '}
+        {show === 'membership' ? 'tiers' : 'events'} — not a picture of it.
       </p>
       <div className="mt-2 rounded-lg border border-dashed border-gray-300 bg-white p-4">
         {failed ? (

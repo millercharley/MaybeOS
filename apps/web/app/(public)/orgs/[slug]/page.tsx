@@ -81,10 +81,26 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
         <p className="mx-auto mt-6 max-w-3xl text-lg text-gray-600 leading-relaxed">
           {org.mission || org.description || 'Welcome to our community.'}
         </p>
-        <div className="mt-6">
+        {/*
+          A stranger's button first (PUB-01). The only call to action here used
+          to be "Enter Member Portal" — a members-only door, offered to the one
+          audience this page exists for: people who are not members yet. The
+          portal link stays, quieter, for the member who arrived by the front
+          door; joining leads.
+        */}
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+          {org.allowPublicJoin && displayTiers.length > 0 && (
+            <a href="#membership" className="btn-primary inline-flex items-center gap-2">
+              Become a member
+            </a>
+          )}
           <Link
             href={`/portal/${slug}`}
-            className="btn-primary inline-flex items-center gap-2"
+            className={
+              org.allowPublicJoin && displayTiers.length > 0
+                ? 'btn-secondary inline-flex items-center gap-2'
+                : 'btn-primary inline-flex items-center gap-2'
+            }
           >
             Enter Member Portal
           </Link>
@@ -93,7 +109,7 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
 
       {/* Membership Tiers */}
       {displayTiers.length > 0 && (
-        <section className="mt-16">
+        <section id="membership" className="mt-16 scroll-mt-8">
           <h2 className="text-center text-2xl font-bold text-gray-900">Membership Tiers</h2>
           <p className="mt-2 text-center text-gray-600">
             {org.allowPublicJoin
