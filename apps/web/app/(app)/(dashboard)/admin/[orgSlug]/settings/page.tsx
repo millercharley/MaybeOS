@@ -49,7 +49,11 @@ export default function SettingsPage() {
   // that now shows what they bought.
   const [justSubscribed, setJustSubscribed] = useState(false);
   useEffect(() => {
-    setJustSubscribed(new URLSearchParams(window.location.search).get('subscribed') === '1');
+    const subscribed = new URLSearchParams(window.location.search).get('subscribed') === '1';
+    setJustSubscribed(subscribed);
+    // The plan lives on Billing now, so land there — the banner says "below"
+    // and General would not have shown them anything they had just bought.
+    if (subscribed) setActiveTab('billing');
   }, []);
 
   const { data: org, loading, refetch } = useApi(
@@ -336,9 +340,6 @@ export default function SettingsPage() {
       {activeTab === 'general' && org && <TicketPayouts org={org} onSaved={refetch} />}
       {activeTab === 'general' && org && <ServiceValue org={org} onSaved={refetch} />}
       {activeTab === 'general' && org && <Locations orgId={org.id} />}
-      {activeTab === 'general' && org && (
-        <MaybeOsPlan org={org} memberCount={billableMembers} />
-      )}
       {activeTab === 'general' && org && <Support orgName={org.name} />}
       {activeTab === 'general' && org && <WebsiteEmbed org={org} />}
 
@@ -510,34 +511,18 @@ export default function SettingsPage() {
         <Integrations onGoToGeneral={() => setActiveTab('general')} />
       )}
 
-      {activeTab === 'billing' && (
-        <div className="card">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">Plan</h2>
-          <div className="rounded-lg border border-gray-200 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-gray-900">Free Plan</p>
-                <p className="text-xs text-gray-500">All features included during beta</p>
-              </div>
-              <span className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">
-                Active
-              </span>
-            </div>
-            <div className="mt-4 flex items-baseline gap-1">
-              <span className="text-3xl font-bold text-gray-900">$0</span>
-              <span className="text-sm text-gray-500">/month</span>
-            </div>
-          </div>
-
-          <div className="mt-6 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4">
-            <p className="text-sm font-medium text-gray-900">Community Plan — $49/month</p>
-            <p className="mt-1 text-xs text-gray-500">
-              Priority support and advanced features. Available after beta.
-            </p>
-            <button disabled className="btn-secondary mt-3 text-sm opacity-50">
-              Upgrade (coming soon)
-            </button>
-          </div>
+      {/* The real plan, not a hand-written one (Charley, 2026-09-04). This tab
+          used to describe a "Free Plan — all features included during beta" and
+          an unreleased "$49/month Community Plan", neither of which exists: the
+          plans are Free, Plus and Unlimited, sold through Stripe. An admin
+          reading the Billing tab was being told the wrong price for their own
+          co-op. Moved here from General, which is where it had been hiding. */}
+      {activeTab === 'billing' && org && (
+        <MaybeOsPlan org={org} memberCount={billableMembers} />
+      )}
+      {activeTab === 'billing' && !org && (
+        <div className="flex items-center justify-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
         </div>
       )}
     </div>

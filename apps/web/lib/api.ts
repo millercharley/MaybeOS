@@ -728,8 +728,8 @@ class ApiClient {
      * asked to pay, which is how invitations and the public join page ended
      * up charging two different prices for the same co-op.
      */
-    accept: (inviteToken: string, authToken: string) =>
-      this.request<{ status: string; orgId: string; tierId: string | null }>(`/invites/accept?token=${inviteToken}`, {
+    accept: (inviteToken: string, authToken: string, tierId?: string) =>
+      this.request<{ status: string; orgId: string; tierId: string | null }>(`/invites/accept?token=${inviteToken}${tierId ? `&tier=${encodeURIComponent(tierId)}` : ''}`, {
         method: 'POST',
         token: authToken,
       }),
