@@ -8,6 +8,7 @@ import { LogOut, ChevronDown, Check } from 'lucide-react';
 import { sidebarSections, openSectionLabel, activeNavHref } from '@/lib/nav';
 import { useAuthStore } from '@/lib/auth-store';
 import { Wordmark } from '@/components/brand/wordmark';
+import { GettingStarted } from '@/components/onboarding/getting-started';
 
 /**
  * The one navigation, on every screen.
@@ -202,6 +203,13 @@ export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: stri
           );
         })}
       </nav>
+
+      {/* Between the nav and the account footer, deliberately outside the
+          scrolling area (ONB-01). An organiser's navigation is twenty links,
+          and a checklist that scrolls away with them is one somebody meets
+          once. It renders nothing at all when the co-op has not switched it
+          on, has no steps, or this member has already finished with it. */}
+      {signedIn && <GettingStarted />}
 
       <div className="shrink-0 border-t border-white/15 p-4">
         {signedIn ? (

@@ -12,6 +12,7 @@ import { Locations } from '@/components/settings/locations';
 import { Support } from '@/components/settings/support';
 import { WebsiteEmbed } from '@/components/settings/website-embed';
 import { MemberDashboard } from '@/components/settings/member-dashboard';
+import { GettingStartedSettings } from '@/components/settings/getting-started-settings';
 import { PageHeader } from '@/components/layout/page-header';
 
 type SettingsTab = 'general' | 'branding' | 'integrations' | 'billing';
@@ -493,6 +494,11 @@ export default function SettingsPage() {
 
       {/* What a co-op puts on its members' dashboard (DSH-01). */}
       {activeTab === 'branding' && org && <MemberDashboard org={org} onSaved={refetch} />}
+
+      {/* The checklist in every member's sidebar (ONB-01). Under General
+          rather than Branding: it is how a co-op brings people in, not how it
+          looks. */}
+      {activeTab === 'general' && <GettingStartedSettings />}
 
       {activeTab === 'integrations' && (
         <div className="space-y-4">

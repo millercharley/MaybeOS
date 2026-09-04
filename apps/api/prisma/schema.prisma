@@ -65,11 +65,16 @@ model Organization {
   /// has no banner.
   bannerUrl String?
 
-  settings                Json    @default("{}")
+  /// Whether the co-op shows its members a getting-started checklist in the
+  /// sidebar (ONB-01). Off by default — a checklist a co-op has not written is
+  /// a nag with nothing behind it.
+  onboardingEnabled Boolean @default(false)
+
+  settings             Json    @default("{}")
   // Stripe Billing Portal configuration for this org's members. The portal
   // only offers plan switching when it is given an explicit product list,
   // so each org needs its own configuration naming its own tiers.
-  stripePortalConfigId    String?
+  stripePortalConfigId String?
 
   // Off by default: a housing co-op or members' club must not be joinable by
   // anyone with a card. Each org opts in. See D-020.
@@ -150,22 +155,23 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  locations      Location[]
-  users          UserOrg[]
-  directMessages DirectMessage[]
-  tiers          MembershipTier[]
-  events         Event[]
-  rooms          Room[]
-  closures       OrgClosure[]
-  duties         Duty[]
-  hostDuties     HostDuty[]
-  hostBriefings  HostBriefing[]
-  channels       Channel[]
-  collections    Collection[]
-  surveys        Survey[]
-  invitations    Invitation[]
-  auditLogs      AuditLog[]
-  emailTemplates EmailTemplate[]
+  locations       Location[]
+  users           UserOrg[]
+  directMessages  DirectMessage[]
+  tiers           MembershipTier[]
+  events          Event[]
+  rooms           Room[]
+  closures        OrgClosure[]
+  duties          Duty[]
+  onboardingSteps OnboardingStep[]
+  hostDuties      HostDuty[]
+  hostBriefings   HostBriefing[]
+  channels        Channel[]
+  collections     Collection[]
+  surveys         Survey[]
+  invitations     Invitation[]
+  auditLogs       AuditLog[]
+  emailTemplates  EmailTemplate[]
 
   expenses                Expense[]
   attachments             Attachment[]
@@ -279,39 +285,44 @@ model User {
 }
 
 model UserOrg {
-  id                   String             @id @default(uuid())
-  userId               String
-  orgId                String
-  role                 OrgRole            @default(MEMBER)
-  tierId               String?
-  stripeCustomerId     String?
-  stripeSubscriptionId String?
-  subscriptionStatus   SubscriptionStatus @default(NONE)
-  memberSince          DateTime           @default(now())
-  bio                  String?
+  id                    String             @id @default(uuid())
+  userId                String
+  orgId                 String
+  role                  OrgRole            @default(MEMBER)
+  tierId                String?
+  stripeCustomerId      String?
+  stripeSubscriptionId  String?
+  subscriptionStatus    SubscriptionStatus @default(NONE)
+  memberSince           DateTime           @default(now())
+  bio                   String?
   /// One line under a member's name — what they do, what to ask them about.
-  headline             String?
+  headline              String?
   /// Free text as the member wrote it ("Butchertown, KY"), not a resolved
   /// place. Nothing geocodes it and nothing should assume it parses.
-  location             String?
+  location              String?
   /// Three-valued on purpose: true opted in, false opted out, null never
   /// asked. A default would either record a refusal nobody made or
   /// manufacture consent, and consent is the one thing a default must not
   /// invent.
-  emailOptIn           Boolean?
-  tags                 String[]           @default([])
+  emailOptIn            Boolean?
+  /// When this member put the getting-started checklist away (ONB-01). Only
+  /// offered once every step is done, so this is "I have finished with it"
+  /// rather than "stop bothering me" — but it is per member and permanent,
+  /// because a checklist that comes back is a checklist nobody trusts.
+  onboardingDismissedAt DateTime?
+  tags                  String[]           @default([])
   /// Links a member chooses to show on their profile. On the membership, not
   /// the account: what somebody publishes to one co-op is not consent to
   /// publish it in another. Only http and https are accepted — these are
   /// rendered as links on a page other members read.
-  links                String[]           @default([])
-  isPublic             Boolean            @default(true)
+  links                 String[]           @default([])
+  isPublic              Boolean            @default(true)
   /// Member-owned demographic profile (IMP-17, PRD §6.4). Collected once here
   /// and never inside an impact micro-survey. Scoped to the membership rather
   /// than the user: orgs are firewalled (D-020), and what somebody is willing
   /// to tell one co-op is not consent to tell another. Null means never
   /// answered; an absent key means that field was skipped.
-  demographics         Json?
+  demographics          Json?
 
   /// The fatigue budget (D-021, PRD §6.2), which that decision calls the
   /// load-bearing constraint of the whole product: one micro-question per
@@ -344,11 +355,83 @@ model UserOrg {
   articleAcknowledgments ArticleAcknowledgment[]
   articleLikes           ArticleLike[]
   articleComments        ArticleComment[]
+  onboardingCompletions  OnboardingCompletion[]
 
   @@unique([userId, orgId])
   @@index([orgId])
   @@index([orgId, role])
   @@map("user_orgs")
+}
+
+/// How a getting-started step knows it is done (ONB-01).
+///
+/// Every kind but CUSTOM is **derived from what the member has actually done**
+/// rather than from a box they ticked. That is the whole difference between a
+/// checklist and a to-do list: a co-op asking somebody to fill in their
+/// profile wants the profile filled in, not a claim that it was. It also means
+/// a member who did the thing before the checklist existed arrives with it
+/// already complete, which is the honest state.
+///
+/// CUSTOM is the escape hatch, and it is deliberately the only one a member
+/// marks themselves — an admin can point at anything at all, including
+/// something outside MaybeOS, and nothing here can verify it.
+enum OnboardingStepKind {
+  PROFILE
+  HANDBOOK
+  COMMONS_POST
+  EVENT_RSVP
+  ROOM_BOOKING
+  SERVICE_CLAIM
+  CUSTOM
+}
+
+/// One line of a co-op's getting-started checklist (ONB-01).
+///
+/// The words are always the co-op's. `kind` decides only how completion is
+/// detected and where "Do it now" points by default — the title, the
+/// description and the button label are written by the admin, because a
+/// housing co-op and a maker space ask for the same thing in different words.
+model OnboardingStep {
+  id          String             @id @default(uuid())
+  orgId       String
+  kind        OnboardingStepKind @default(CUSTOM)
+  title       String
+  /// Shown only while this is the active step — the accordion keeps everything
+  /// else to a single line.
+  description String?
+  ctaLabel    String             @default("Do it now")
+  /// Where the button goes. Null for a built-in kind, which resolves its own
+  /// destination from the co-op's slug; required in practice for CUSTOM.
+  href        String?
+  position    Int                @default(0)
+  isActive    Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  org         Organization           @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  completions OnboardingCompletion[]
+
+  @@index([orgId, position])
+  @@map("onboarding_steps")
+}
+
+/// A member ticking off a CUSTOM step (ONB-01).
+///
+/// Only ever written for CUSTOM steps. The rest are computed on read, so there
+/// is no second copy of the truth to drift from the first — and no way for a
+/// stored "done" to outlive the thing it claimed.
+model OnboardingCompletion {
+  id          String   @id @default(uuid())
+  stepId      String
+  memberId    String
+  completedAt DateTime @default(now())
+
+  step   OnboardingStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  member UserOrg        @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([stepId, memberId])
+  @@index([memberId])
+  @@map("onboarding_completions")
 }
 
 /// Which MaybeOS plan a co-op is on (D-013). Drives the per-transaction fee
