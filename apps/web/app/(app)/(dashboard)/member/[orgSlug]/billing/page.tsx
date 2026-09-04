@@ -2,14 +2,27 @@
 
 import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { CreditCard, ExternalLink, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Check, ChevronDown, CreditCard, ExternalLink, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
+import { formatMinutes } from '@/lib/service-rota';
 import { usePublicApi } from '@/hooks/use-api';
-import { api, MembershipTier, ApiError } from '@/lib/api';
+import { api, MembershipTier, ApiError, type ServicePeriod } from '@/lib/api';
 import { PageHeader } from '@/components/layout/page-header';
 import { Panel } from '@/components/layout/panel';
 
 /** Cents → "$12" or "$12.50", never "$12.00". */
+/**
+ * "2h a month", for a tier's service expectation (SRV-01).
+ *
+ * Reuses `formatMinutes` rather than restating it: a duty is measured in
+ * minutes and an expectation is compared against duties, so the two have to
+ * read in the same units or a member cannot tell whether they have met it.
+ */
+function serviceAsk(minutes: number, period: ServicePeriod): string {
+  const per = period === 'WEEK' ? 'a week' : period === 'MONTH' ? 'a month' : 'a year';
+  return `${formatMinutes(minutes)} ${per}`;
+}
+
 function money(cents: number): string {
   return cents % 100 === 0
     ? `$${cents / 100}`
@@ -47,6 +60,9 @@ export default function MemberBillingPage() {
   // Amount entered for a pay-what-you-can tier, keyed by tier id, held as the
   // raw string so a half-typed "1." doesn't get clobbered mid-keystroke.
   const [amounts, setAmounts] = useState<Record<string, string>>({});
+  // Which tier's detail is open (MEM-13). One at a time: this is a choice
+  // between tiers, and four expanded cards is a wall rather than a comparison.
+  const [openTier, setOpenTier] = useState<string | null>(null);
   const [pendingTierId, setPendingTierId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -233,6 +249,77 @@ export default function MemberBillingPage() {
                   </div>
                   {tier.description && (
                     <p className="mt-1 text-sm text-[var(--text-secondary)]">{tier.description}</p>
+                  )}
+
+                  {/* What the tier actually includes (MEM-13). All of this has
+                      been on the record and reaching the browser since tiers
+                      were built; nothing rendered it, so a member choosing
+                      between four tiers was choosing between four prices. */}
+                  {(tier.benefits.length > 0 ||
+                    tier.serviceMinutes ||
+                    tier.priceYearly ||
+                    tier.maxMembers) && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenTier((current) => (current === tier.id ? null : tier.id))
+                        }
+                        aria-expanded={openTier === tier.id}
+                        aria-controls={`tier-detail-${tier.id}`}
+                        className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:text-brand-700"
+                      >
+                        {openTier === tier.id ? 'Hide details' : "What's included"}
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform ${
+                            openTier === tier.id ? 'rotate-180' : ''
+                          }`}
+                        />
+                      </button>
+
+                      {openTier === tier.id && (
+                        <div id={`tier-detail-${tier.id}`} className="mt-3 space-y-3">
+                          {tier.benefits.length > 0 && (
+                            <ul className="space-y-1.5">
+                              {tier.benefits.map((benefit) => (
+                                <li
+                                  key={benefit}
+                                  className="flex items-start gap-2 text-sm text-[var(--text-secondary)]"
+                                >
+                                  <Check className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
+                                  <span>{benefit}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+
+                          {/* Said plainly, because it is a commitment and not
+                              a perk — a member should read it before they
+                              choose the tier, not discover it afterwards. */}
+                          {tier.serviceMinutes && tier.servicePeriod && (
+                            <p className="text-sm text-[var(--text-secondary)]">
+                              Asks for{' '}
+                              <strong className="font-medium text-[var(--text-primary)]">
+                                {serviceAsk(tier.serviceMinutes, tier.servicePeriod)}
+                              </strong>{' '}
+                              of service.
+                            </p>
+                          )}
+
+                          {tier.priceYearly ? (
+                            <p className="text-sm text-[var(--text-secondary)]">
+                              Or {money(tier.priceYearly)} a year.
+                            </p>
+                          ) : null}
+
+                          {tier.maxMembers ? (
+                            <p className="text-sm text-[var(--text-tertiary)]">
+                              Limited to {tier.maxMembers} members.
+                            </p>
+                          ) : null}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 

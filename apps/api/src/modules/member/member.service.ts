@@ -587,6 +587,34 @@ export class MemberService {
   }
 
   /**
+   * Put the tiers in the order an admin chose (MEM-13).
+   *
+   * `sortOrder` has been on this model since it was drawn and every list has
+   * read it — but nothing could ever *write* it except tier creation, which
+   * appends. So a co-op's dues page showed its tiers in the order somebody
+   * happened to add them, with the $19.50 tier above the $4 one and the free
+   * one at the bottom, and there was no way to say otherwise.
+   *
+   * The whole order in one transaction, as with channels, onboarding steps and
+   * links: moving one tier renumbers its neighbours anyway, and two admins
+   * doing that at once leaves two tiers claiming one position. Ids belonging
+   * to another co-op are filtered out by the scoped `updateMany` rather than
+   * trusted.
+   */
+  async reorderTiers(orgId: string, tierIds: string[]) {
+    await this.prisma.$transaction(
+      tierIds.map((id, index) =>
+        this.prisma.membershipTier.updateMany({
+          where: { id, orgId },
+          data: { sortOrder: index },
+        }),
+      ),
+    );
+
+    return this.listTiersForAdmin(orgId);
+  }
+
+  /**
    * Tiers for the admin dashboard: includes deactivated ones, and the number
    * of members currently paying for each.
    *
