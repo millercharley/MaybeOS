@@ -45,9 +45,9 @@ export function RequiredReadingBanner() {
 
   // Already reading the thing, or already walking through them. Repeating
   // the instruction on the page that carries it out is nagging.
-  if (pathname.startsWith(`/portal/${org.slug}/welcome`)) return null;
+  if (pathname.startsWith(`/portal/${org.slug}/handbook`)) return null;
 
-  const href = `/portal/${org.slug}/welcome/start`;
+  const href = `/portal/${org.slug}/handbook/start`;
 
   if (blocking > 0) {
     return (

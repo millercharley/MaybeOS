@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useCallback, FormEvent } from 'react';
 import {
-  MessageSquare, Pin, BookOpen, ChevronLeft,
+  MessageSquare, Pin,
 } from 'lucide-react';
 import { WelcomeCard } from '@/components/live/welcome-card';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
-import { api, Channel, Post, Proposal, Collection, CollectionPage, Comment } from '@/lib/api';
-import { sanitizeWikiHtml } from '@/lib/wiki-html';
+import { api, Channel, Post, Proposal, Comment } from '@/lib/api';
 import { renderBodyHtml, isBlankBody, asRichBody } from '@/lib/rich-text';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
 import { uploadAttachments } from '@/lib/attachments';
@@ -16,7 +15,7 @@ import { AttachmentList } from '@/components/composer/attachment-list';
 import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 import { PageHeader } from '@/components/layout/page-header';
 
-type Tab = 'channels' | 'library' | 'proposals';
+type Tab = 'channels' | 'proposals';
 
 export default function PortalCommonsPage() {
   const token = useAuthStore((s) => s.token);
@@ -49,14 +48,6 @@ export default function PortalCommonsPage() {
           Channels
         </button>
         <button
-          onClick={() => setTab('library')}
-          className={`px-4 py-2 text-sm font-medium transition-colors ${
-            tab === 'library' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Library
-        </button>
-        <button
           onClick={() => setTab('proposals')}
           className={`px-4 py-2 text-sm font-medium transition-colors ${
             tab === 'proposals' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-500 hover:text-gray-700'
@@ -67,7 +58,6 @@ export default function PortalCommonsPage() {
       </div>
 
       {tab === 'channels' && <ChannelsSection />}
-      {tab === 'library' && <LibrarySection />}
       {tab === 'proposals' && <ProposalsSection />}
     </div>
   );
@@ -556,126 +546,6 @@ function CommentNode({
 /** Comments arrive nested, so a flat length would only count the top level. */
 function countThread(comments: Comment[]): number {
   return comments.reduce((n, c) => n + 1 + countThread(c.replies ?? []), 0);
-}
-
-/**
- * The wiki, which the portal did not have at all (CMN-06).
- *
- * Collections and pages shipped with CMN-01 and only organisers could reach
- * them — so a co-op's handbook, bylaws and how-to pages were written for
- * members and visible only to admins. Read-only here on purpose: authoring is
- * an ADMIN route, and offering an edit box that the API refuses is worse than
- * offering none.
- */
-function LibrarySection() {
-  const { org } = usePortal();
-  const token = useAuthStore((s) => s.token);
-  const [collections, setCollections] = useState<Collection[]>([]);
-  const [page, setPage] = useState<CollectionPage | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    if (!org || !token) { setLoading(false); return; }
-    api.commons
-      .listCollections(org.id, token)
-      .then(setCollections)
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : 'Could not load the library'),
-      )
-      .finally(() => setLoading(false));
-  }, [org, token]);
-
-  async function openPage(pageId: string) {
-    if (!org || !token) return;
-    setError('');
-    try {
-      setPage(await api.commons.getPage(org.id, pageId, token));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not open that page');
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <div className="h-6 w-6 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
-      </div>
-    );
-  }
-
-  if (page) {
-    return (
-      <div className="space-y-4">
-        {error && <ErrorNote message={error} />}
-        <button
-          onClick={() => setPage(null)}
-          className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800"
-        >
-          <ChevronLeft className="h-4 w-4" /> Back to the library
-        </button>
-        <article className="card p-6">
-          <h2 className="text-xl font-bold text-gray-900">{page.title}</h2>
-          <p className="mt-1 text-xs text-gray-400">
-            Updated {new Date(page.updatedAt).toLocaleDateString()}
-            {page.author?.name ? ` by ${page.author.name}` : ''}
-          </p>
-          {/*
-            Page bodies are HTML. Rendered as text they show `<p>` tags;
-            rendered raw they run whoever wrote them in every member's
-            browser. Sanitised is the only option that is neither.
-          */}
-          <div
-            className="prose prose-sm mt-4 max-w-none text-sm leading-relaxed text-gray-700"
-            dangerouslySetInnerHTML={{ __html: sanitizeWikiHtml(page.body) }}
-          />
-        </article>
-      </div>
-    );
-  }
-
-  if (collections.length === 0) {
-    return (
-      <>
-        {error && <ErrorNote message={error} />}
-        <p className="py-8 text-center text-sm text-gray-500">
-          Nothing in the library yet.
-        </p>
-      </>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {error && <ErrorNote message={error} />}
-      {collections.map((c) => (
-        <section key={c.id} className="card p-4">
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
-            <span aria-hidden>{c.emoji || '📄'}</span>
-            {c.name}
-          </h2>
-          {c.description && <p className="mt-0.5 text-xs text-gray-500">{c.description}</p>}
-          {c.pages?.length ? (
-            <ul className="mt-3 space-y-1">
-              {c.pages.map((pg) => (
-                <li key={pg.id}>
-                  <button
-                    onClick={() => openPage(pg.id)}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-gray-700 hover:bg-gray-50"
-                  >
-                    <BookOpen className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                    {pg.title}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-2 text-xs text-gray-400">No pages in here yet.</p>
-          )}
-        </section>
-      ))}
-    </div>
-  );
 }
 
 /** One place the whole page reports a failure, rather than three silences. */

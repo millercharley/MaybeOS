@@ -6,6 +6,7 @@ import * as bcrypt from 'bcrypt';
 import { AuthService } from '../auth.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { EmailService } from '../../email/email.service';
+import { StorageService } from '../../storage/storage.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -61,6 +62,7 @@ describe('AuthService', () => {
           provide: EmailService,
           useValue: { sendMagicLink: jest.fn() },
         },
+        { provide: StorageService, useValue: { uploadAvatar: jest.fn(), deleteAvatar: jest.fn() } },
       ],
     }).compile();
 

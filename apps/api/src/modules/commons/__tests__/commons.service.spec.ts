@@ -31,7 +31,7 @@ describe('CommonsService — tenant isolation (CMN-07)', () => {
         {
           provide: PrismaService,
           useValue: {
-            channel: { findFirst: jest.fn(), update: jest.fn(), findMany: jest.fn() },
+            channel: { findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn(), findMany: jest.fn(), create: jest.fn(), delete: jest.fn() },
             post: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), findMany: jest.fn(), count: jest.fn() },
             comment: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
             reaction: { upsert: jest.fn(), deleteMany: jest.fn() },
@@ -64,6 +64,8 @@ describe('CommonsService — tenant isolation (CMN-07)', () => {
   // Each entry: a method reached with an id belonging to another org.
   const crossOrgCalls: Array<[string, () => Promise<unknown>]> = [
     ['pinChannel', () => service.pinChannel(OTHER, 'channel-1', true)],
+    ['updateChannel', () => service.updateChannel(OTHER, 'channel-1', { name: 'renamed' })],
+    ['deleteChannel', () => service.deleteChannel(OTHER, 'channel-1')],
     ['createPost', () => service.createPost(OTHER, 'channel-1', 'u1', { body: 'x' } as never)],
     ['listPosts', () => service.listPosts(OTHER, 'channel-1', 1, 20)],
     ['getPost', () => service.getPost(OTHER, 'post-1')],
@@ -96,6 +98,8 @@ describe('CommonsService — tenant isolation (CMN-07)', () => {
   it('writes nothing when a cross-org call is refused', async () => {
     await Promise.allSettled(crossOrgCalls.map(([, call]) => call()));
 
+    expect(prisma.channel.update).not.toHaveBeenCalled();
+    expect(prisma.channel.delete).not.toHaveBeenCalled();
     expect(prisma.post.create).not.toHaveBeenCalled();
     expect(prisma.post.update).not.toHaveBeenCalled();
     expect(prisma.comment.create).not.toHaveBeenCalled();

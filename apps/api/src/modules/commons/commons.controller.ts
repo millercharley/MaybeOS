@@ -19,6 +19,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { CommonsService } from './commons.service';
 import { CreateChannelDto } from './dto/create-channel.dto';
+import { UpdateChannelDto, ReorderChannelsDto } from './dto/update-channel.dto';
 import { CreatePostDto } from './dto/create-post.dto';
 import { CreateProposalDto } from './dto/create-proposal.dto';
 import { AddCommentDto } from './dto/add-comment.dto';
@@ -49,6 +50,40 @@ export class CommonsController {
   @Get('channels')
   listChannels(@Param('orgId') orgId: string) {
     return this.commonsService.listChannels(orgId);
+  }
+
+  /**
+   * Rename a channel or change what it is for (CMN-10). ADMIN, like creating
+   * one — this is the shape of the co-op's Commons, not a post in it.
+   */
+  @Patch('channels/:channelId')
+  @Roles('ADMIN')
+  updateChannel(
+    @Param('orgId') orgId: string,
+    @Param('channelId') channelId: string,
+    @Body() dto: UpdateChannelDto,
+  ) {
+    return this.commonsService.updateChannel(orgId, channelId, dto);
+  }
+
+  /**
+   * The whole order in one write, not one move at a time — see the service.
+   * `POST` rather than `PATCH` because it is not a partial update of anything.
+   */
+  @Post('channels/reorder')
+  @Roles('ADMIN')
+  reorderChannels(@Param('orgId') orgId: string, @Body() dto: ReorderChannelsDto) {
+    return this.commonsService.reorderChannels(orgId, dto.channelIds);
+  }
+
+  /** Deletes the posts in it too. The UI says so in numbers first. */
+  @Delete('channels/:channelId')
+  @Roles('ADMIN')
+  deleteChannel(
+    @Param('orgId') orgId: string,
+    @Param('channelId') channelId: string,
+  ) {
+    return this.commonsService.deleteChannel(orgId, channelId);
   }
 
   @Post('channels/:channelId/pin')

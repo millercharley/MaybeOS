@@ -12,6 +12,7 @@ import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../config/prisma.service';
 import { EmailService } from '../email/email.service';
+import { StorageService } from '../storage/storage.service';
 
 @Injectable()
 export class AuthService {
@@ -22,6 +23,7 @@ export class AuthService {
     private jwtService: JwtService,
     private configService: ConfigService,
     private email: EmailService,
+    private storage: StorageService,
   ) {}
 
   /**
@@ -313,6 +315,71 @@ export class AuthService {
     });
 
     return { changed: true };
+  }
+
+  /**
+   * A member's own photo of themselves (MEM-11).
+   *
+   * Charley: let somebody replace the letter in the circle. Until now the only
+   * way a face got into MaybeOS was a member *import*, which copies one from
+   * whatever platform a co-op is leaving — so anybody who joined directly had
+   * an initial and no way to change it.
+   *
+   * Order matters, as with the org logo: upload to a fresh key, point the row
+   * at it, delete the previous object last. A failure anywhere leaves the
+   * member with the photo they had rather than a broken image on every post
+   * they have ever written.
+   *
+   * `avatarUrl` is cleared deliberately. It holds the *external* link an
+   * import copied from, and it is the fallback the interceptor leaves in place
+   * when signing fails — so leaving it set would mean a member who uploads a
+   * new photo still shows their old one from the platform they left, on any
+   * request where signing hiccups.
+   */
+  async setAvatar(userId: string, data: string, mimeType: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, avatarPath: true },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Accepts either a bare base64 string or the data: URL a browser's
+    // FileReader hands back.
+    const base64 = data.includes(',') ? data.slice(data.indexOf(',') + 1) : data;
+    const bytes = Buffer.from(base64.replace(/\s/g, ''), 'base64');
+
+    const avatarPath = await this.storage.uploadAvatar(userId, bytes, mimeType);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { avatarPath, avatarUrl: null },
+    });
+
+    await this.storage.deleteAvatar(userId, user.avatarPath);
+
+    return this.getProfile(userId);
+  }
+
+  /** Go back to the letter in the circle. */
+  async removeAvatar(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, avatarPath: true },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { avatarPath: null, avatarUrl: null },
+    });
+
+    await this.storage.deleteAvatar(userId, user.avatarPath);
+
+    return this.getProfile(userId);
   }
 
   async updateProfile(userId: string, dto: { name?: string; avatarUrl?: string | null }) {

@@ -6,6 +6,7 @@ import * as bcrypt from 'bcrypt';
 import { AuthService } from '../auth.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { EmailService } from '../../email/email.service';
+import { StorageService } from '../../storage/storage.service';
 
 /**
  * Changing your own password (AUTH-03).
@@ -42,6 +43,7 @@ describe('AuthService — changePassword', () => {
         { provide: JwtService, useValue: { sign: jest.fn() } },
         { provide: ConfigService, useValue: { get: () => 'x' } },
         { provide: EmailService, useValue: { sendMagicLink: jest.fn() } },
+        { provide: StorageService, useValue: { uploadAvatar: jest.fn(), deleteAvatar: jest.fn() } },
       ],
     }).compile();
 

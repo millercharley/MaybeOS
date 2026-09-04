@@ -66,7 +66,7 @@ describe('which nav section is open', () => {
       signedIn: true,
     });
     expect(awkward.find((s) => s.id === 'community')?.items[0].href).toBe(
-      '/portal/org/welcome',
+      '/portal/org/handbook',
     );
     expect(openSectionLabel(awkward, '/admin/org')).toBe('Organising');
   });

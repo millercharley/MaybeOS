@@ -11,23 +11,18 @@ import {
   Minus,
   Pin,
   PinOff,
-  BookOpen,
-  ChevronDown,
-  ChevronRight,
   Send,
   Users,
 } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
 import { useAuthStore } from '@/lib/auth-store';
-import { api, Comment as CommentT, Post, PaginatedResponse, CollectionPage, DirectMessage } from '@/lib/api';
-import { sanitizeWikiHtml } from '@/lib/wiki-html';
+import { api, Comment as CommentT, Post, PaginatedResponse, DirectMessage } from '@/lib/api';
 import { renderBodyHtml, isBlankBody, asRichBody } from '@/lib/rich-text';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
 import { PageHeader } from '@/components/layout/page-header';
 
 type View =
   | { type: 'channel'; id: string }
-  | { type: 'page'; id: string }
   | { type: 'dm'; userId: string; name?: string };
 
 const QUICK_EMOJIS = ['👍', '❤️', '🎉', '😂'];
@@ -210,60 +205,19 @@ export default function CommonsPage() {
 
   useEffect(() => {
     const channelId = searchParams.get('channel');
-    const pageId = searchParams.get('page');
     if (channelId) setView({ type: 'channel', id: channelId });
-    else if (pageId) setView({ type: 'page', id: pageId });
      
   }, [searchParams]);
-  const [openCollections, setOpenCollections] = useState<Record<string, boolean>>({});
+  // Arranging the Commons (CMN-10). Up here with the rest of the page's
+  // state, because everything below `if (!token) return null` is past an
+  // early return and a hook cannot live there.
+  const [managing, setManaging] = useState(false);
+  const [newChannelName, setNewChannelName] = useState('');
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [channelBusy, setChannelBusy] = useState(false);
+  const [channelError, setChannelError] = useState('');
 
-  // ── Writing the Library (CMN-09) ────────────────────────────────
-  //
-  // The API for this has existed since the wiki was built — create, update,
-  // delete, for collections and pages alike — and nothing in the product
-  // called it, so a co-op could read a library it had no way to write. Charley
-  // found it looking for where MaybeItsFate's Member Handbook would live.
-  const [newCollection, setNewCollection] = useState<{ name: string; emoji: string } | null>(null);
-  const [newPageIn, setNewPageIn] = useState<string | null>(null);
-  const [pageDraft, setPageDraft] = useState({ title: '', body: '' });
-  const [editingPage, setEditingPage] = useState(false);
-  const [libraryBusy, setLibraryBusy] = useState(false);
-  const [libraryError, setLibraryError] = useState('');
-
-  async function withLibrary(work: () => Promise<unknown>) {
-    setLibraryBusy(true);
-    setLibraryError('');
-    try {
-      await work();
-      await refetchCollections();
-    } catch (err) {
-      setLibraryError(err instanceof Error ? err.message : 'That did not save');
-    } finally {
-      setLibraryBusy(false);
-    }
-  }
-
-  /**
-   * Move a page within its collection.
-   *
-   * Swaps the two `sortOrder` values rather than renumbering the list: a
-   * handbook is a sequence somebody curated, and rewriting every row to move
-   * one item is how a concurrent edit loses the rest of the order.
-   */
-  async function movePage(collectionId: string, pageId: string, direction: -1 | 1) {
-    const collection = (collections ?? []).find((c) => c.id === collectionId);
-    if (!collection || !token || !currentOrgId) return;
-
-    const pages = [...collection.pages].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-    const index = pages.findIndex((p) => p.id === pageId);
-    const swapWith = pages[index + direction];
-    if (index === -1 || !swapWith) return;
-
-    await withLibrary(async () => {
-      await api.commons.updatePage(currentOrgId, pageId, { sortOrder: swapWith.sortOrder ?? 0 }, token);
-      await api.commons.updatePage(currentOrgId, swapWith.id, { sortOrder: pages[index].sortOrder ?? 0 }, token);
-    });
-  }
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
   const [newPostBody, setNewPostBody] = useState('');
   const [dmDraft, setDmDraft] = useState('');
@@ -271,11 +225,6 @@ export default function CommonsPage() {
 
   const { data: channels, loading: channelsLoading, error: channelsError, refetch: refetchChannels } = useApi(
     (token, orgId) => api.commons.listChannels(orgId, token),
-    [],
-  );
-
-  const { data: collections, refetch: refetchCollections } = useApi(
-    (token, orgId) => api.commons.listCollections(orgId, token),
     [],
   );
 
@@ -312,14 +261,6 @@ export default function CommonsPage() {
       return api.commons.getPost(orgId, expandedPostId, token);
     },
     [expandedPostId],
-  );
-
-  const { data: pageContent, loading: pageLoading, refetch: refetchPage } = useApi<CollectionPage | null>(
-    (token, orgId) => {
-      if (view?.type !== 'page') return Promise.resolve(null);
-      return api.commons.getPage(orgId, view.id, token);
-    },
-    [view?.type === 'page' ? view.id : null],
   );
 
   const { data: dmMessages, refetch: refetchDm } = useApi<DirectMessage[]>(
@@ -361,6 +302,78 @@ export default function CommonsPage() {
     refetchPosts();
   }
 
+  // ── Arranging the Commons (CMN-10) ──────────────────────────────
+  //
+  // Creating a channel has been an ADMIN endpoint since CommonsOS was built
+  // and nothing in the product ever called it — so every co-op had exactly the
+  // channels its seed gave it, and no way to add, rename, order or remove one.
+  async function withChannels(work: () => Promise<unknown>) {
+    setChannelBusy(true);
+    setChannelError('');
+    try {
+      await work();
+      await refetchChannels();
+    } catch (err) {
+      setChannelError(err instanceof Error ? err.message : 'That did not save');
+    } finally {
+      setChannelBusy(false);
+    }
+  }
+
+  async function handleCreateChannel() {
+    const name = newChannelName.trim();
+    if (!name) return;
+    await withChannels(async () => {
+      await api.commons.createChannel(currentOrgId!, { name }, token!);
+      setNewChannelName('');
+    });
+  }
+
+  async function handleRenameChannel(channelId: string) {
+    const name = renameDraft.trim();
+    if (!name) return;
+    await withChannels(async () => {
+      await api.commons.updateChannel(currentOrgId!, channelId, { name }, token!);
+      setRenaming(null);
+    });
+  }
+
+  /**
+   * Move one channel, by sending the whole order.
+   *
+   * The list on screen is already sorted the way the API sorts it, so moving
+   * an item here and posting the result is the same order the server will
+   * compute — no second sort to disagree with the first.
+   *
+   * Pinned channels sort above unpinned ones regardless of position, so this
+   * reorders within the list as displayed and lets the server's pin rule win.
+   * Dragging a pinned channel below an unpinned one and watching it spring
+   * back would be confusing, which is why pinning is its own visible control.
+   */
+  async function handleMoveChannel(channelId: string, direction: -1 | 1) {
+    const ids = channelList.map((c) => c.id);
+    const index = ids.indexOf(channelId);
+    const target = index + direction;
+    if (index === -1 || target < 0 || target >= ids.length) return;
+
+    [ids[index], ids[target]] = [ids[target], ids[index]];
+    await withChannels(() => api.commons.reorderChannels(currentOrgId!, ids, token!));
+  }
+
+  async function handleDeleteChannel(channelId: string, name: string, posts: number) {
+    // Said in numbers, because a channel is where the conversation lives and
+    // deleting it takes every post and comment in it.
+    const warning = posts
+      ? `Delete #${name} and the ${posts} ${posts === 1 ? 'post' : 'posts'} in it? This cannot be undone.`
+      : `Delete #${name}? This cannot be undone.`;
+    if (!window.confirm(warning)) return;
+
+    await withChannels(async () => {
+      await api.commons.deleteChannel(currentOrgId!, channelId, token!);
+      setView(null);
+    });
+  }
+
   async function handleTogglePin(channelId: string, isPinned: boolean) {
     await api.commons.pinChannel(currentOrgId!, channelId, !isPinned, token!);
     refetchChannels();
@@ -394,209 +407,167 @@ export default function CommonsPage() {
           beside the feed left 111px for the conversation on a 375px phone,
           and the composer ran off the screen. */}
       <div className="flex flex-col gap-6 lg:flex-row">
-        {/* Left rail: Collections, Channels, People */}
+        {/* Left rail: Channels, People */}
         <div className="w-full shrink-0 space-y-4 lg:w-60">
-          {/* Collections */}
+          {/* Channels */}
           <div className="card">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500">Collections</h2>
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500">Channels</h2>
+              {/* One toggle rather than five controls on every row. The rail is
+                  240px wide and is navigation most of the time; arranging the
+                  Commons is a thing an admin does occasionally and deliberately
+                  (CMN-10). */}
               {isAdmin && (
                 <button
                   type="button"
-                  onClick={() => setNewCollection(newCollection ? null : { name: '', emoji: '📘' })}
+                  onClick={() => {
+                    setManaging((m) => !m);
+                    setRenaming(null);
+                    setChannelError('');
+                  }}
                   className="text-xs font-medium text-brand-600 hover:underline"
                 >
-                  {newCollection ? 'Cancel' : 'New'}
+                  {managing ? 'Done' : 'Manage'}
                 </button>
               )}
             </div>
 
-            {libraryError && (
-              <p className="mb-2 text-xs text-red-600" role="alert">{libraryError}</p>
-            )}
-
-            {newCollection && (
-              <form
-                className="mb-3 space-y-2 rounded-md border border-gray-200 p-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!token || !currentOrgId || !newCollection.name.trim()) return;
-                  withLibrary(async () => {
-                    await api.commons.createCollection(
-                      currentOrgId,
-                      { name: newCollection.name.trim(), emoji: newCollection.emoji || '📘' },
-                      token,
-                    );
-                    setNewCollection(null);
-                  });
-                }}
-              >
-                <div className="flex gap-2">
-                  <input
-                    value={newCollection.emoji}
-                    onChange={(e) => setNewCollection({ ...newCollection, emoji: e.target.value })}
-                    className="input w-14 text-center"
-                    aria-label="Emoji"
-                    maxLength={4}
-                  />
-                  <input
-                    value={newCollection.name}
-                    onChange={(e) => setNewCollection({ ...newCollection, name: e.target.value })}
-                    placeholder="Member Handbook"
-                    className="input flex-1 text-sm"
-                    aria-label="Collection name"
-                    autoFocus
-                  />
-                </div>
-                <button type="submit" disabled={libraryBusy} className="btn-primary w-full text-xs">
-                  {libraryBusy ? 'Adding...' : 'Add collection'}
-                </button>
-              </form>
+            {channelError && (
+              <p className="mb-2 text-xs text-red-600" role="alert">{channelError}</p>
             )}
 
             <ul className="space-y-1">
-              {(collections ?? []).map((collection) => {
-                const isOpen = openCollections[collection.id] ?? false;
-                return (
-                  <li key={collection.id}>
-                    <button
-                      onClick={() => setOpenCollections((s) => ({ ...s, [collection.id]: !isOpen }))}
-                      className="flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-100"
+              {channelList.map((channel, index) => (
+                <li key={channel.id} className="group">
+                  {renaming === channel.id ? (
+                    <form
+                      className="flex gap-1"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        handleRenameChannel(channel.id);
+                      }}
                     >
-                      {isOpen ? <ChevronDown className="h-3.5 w-3.5 text-gray-400" /> : <ChevronRight className="h-3.5 w-3.5 text-gray-400" />}
-                      <span>{collection.emoji}</span>
-                      <span className="truncate">{collection.name}</span>
-                    </button>
-                    {isOpen && (
-                      <ul className="ml-6 space-y-0.5">
-                        {collection.pages.map((page, pageIndex) => (
-                          <li key={page.id}>
-                            <button
-                              onClick={() => setView({ type: 'page', id: page.id })}
-                              className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm ${
-                                view?.type === 'page' && view.id === page.id
-                                  ? 'bg-brand-50 text-brand-700 font-medium'
-                                  : 'text-gray-600 hover:bg-gray-100'
-                              }`}
-                            >
-                              <BookOpen className="h-3.5 w-3.5 shrink-0" />
-                              <span className="truncate">{page.title}</span>
-                            </button>
-                            {isAdmin && (
-                              <div className="ml-6 flex gap-2 pb-1">
-                                {/* Order is the point of a handbook: "0. You
-                                    BELONG" before "1. Code of Conduct". */}
-                                <button
-                                  type="button"
-                                  onClick={() => movePage(collection.id, page.id, -1)}
-                                  disabled={libraryBusy || pageIndex === 0}
-                                  className="text-[11px] text-gray-400 hover:text-gray-700 disabled:opacity-40"
-                                >
-                                  Move up
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => movePage(collection.id, page.id, 1)}
-                                  disabled={libraryBusy || pageIndex === collection.pages.length - 1}
-                                  className="text-[11px] text-gray-400 hover:text-gray-700 disabled:opacity-40"
-                                >
-                                  Move down
-                                </button>
-                              </div>
-                            )}
-                          </li>
-                        ))}
+                      <input
+                        autoFocus
+                        value={renameDraft}
+                        onChange={(e) => setRenameDraft(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Escape' && setRenaming(null)}
+                        className="input min-w-0 flex-1 text-sm"
+                        aria-label={`Rename ${channel.name}`}
+                      />
+                      <button type="submit" disabled={channelBusy} className="btn-primary px-2 text-xs">
+                        Save
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="flex items-center">
+                      <button
+                        onClick={() => setView({ type: 'channel', id: channel.id })}
+                        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
+                          view?.type === 'channel' && view.id === channel.id
+                            ? 'bg-brand-50 text-brand-700 font-medium'
+                            : (!view && channel.id === activeChannelId)
+                              ? 'bg-brand-50 text-brand-700 font-medium'
+                              : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        <Hash className="h-4 w-4 shrink-0" />
+                        <span className="truncate">{channel.name}</span>
+                        {channel.isPinned && <Pin className="h-3 w-3 shrink-0 text-gray-400" />}
+                      </button>
+                      {isAdmin && !managing && (
+                        <button
+                          onClick={() => handleTogglePin(channel.id, channel.isPinned)}
+                          className="ml-1 hidden shrink-0 text-gray-300 hover:text-gray-600 group-hover:block"
+                          title={channel.isPinned ? 'Unpin' : 'Pin'}
+                        >
+                          {channel.isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+                        </button>
+                      )}
+                    </div>
+                  )}
 
-                        {isAdmin && (
-                          <li className="pt-1">
-                            {newPageIn === collection.id ? (
-                              <form
-                                className="space-y-2 rounded-md border border-gray-200 p-2"
-                                onSubmit={(e) => {
-                                  e.preventDefault();
-                                  if (!token || !currentOrgId || !pageDraft.title.trim()) return;
-                                  withLibrary(async () => {
-                                    const created = await api.commons.createPage(
-                                      currentOrgId,
-                                      collection.id,
-                                      { title: pageDraft.title.trim(), body: pageDraft.body },
-                                      token,
-                                    );
-                                    setNewPageIn(null);
-                                    setPageDraft({ title: '', body: '' });
-                                    setView({ type: 'page', id: created.id });
-                                  });
-                                }}
-                              >
-                                <input
-                                  value={pageDraft.title}
-                                  onChange={(e) => setPageDraft({ ...pageDraft, title: e.target.value })}
-                                  placeholder="0. You BELONG"
-                                  className="input w-full text-sm"
-                                  aria-label="Page title"
-                                  autoFocus
-                                />
-                                <button type="submit" disabled={libraryBusy} className="btn-primary w-full text-xs">
-                                  {libraryBusy ? 'Adding...' : 'Add page'}
-                                </button>
-                              </form>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setNewPageIn(collection.id);
-                                  setPageDraft({ title: '', body: '' });
-                                }}
-                                className="px-2 text-xs font-medium text-brand-600 hover:underline"
-                              >
-                                + Add page
-                              </button>
-                            )}
-                          </li>
-                        )}
-                      </ul>
-                    )}
-                  </li>
-                );
-              })}
-              {(collections ?? []).length === 0 && (
-                <li className="px-2 py-1 text-xs text-gray-400">No collections yet.</li>
-              )}
-            </ul>
-          </div>
-
-          {/* Channels */}
-          <div className="card">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-500">Channels</h2>
-            <ul className="space-y-1">
-              {channelList.map((channel) => (
-                <li key={channel.id} className="group flex items-center">
-                  <button
-                    onClick={() => setView({ type: 'channel', id: channel.id })}
-                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
-                      view?.type === 'channel' && view.id === channel.id
-                        ? 'bg-brand-50 text-brand-700 font-medium'
-                        : (!view && channel.id === activeChannelId)
-                          ? 'bg-brand-50 text-brand-700 font-medium'
-                          : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    <Hash className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{channel.name}</span>
-                    {channel.isPinned && <Pin className="h-3 w-3 shrink-0 text-gray-400" />}
-                  </button>
-                  {isAdmin && (
-                    <button
-                      onClick={() => handleTogglePin(channel.id, channel.isPinned)}
-                      className="ml-1 hidden shrink-0 text-gray-300 hover:text-gray-600 group-hover:block"
-                      title={channel.isPinned ? 'Unpin' : 'Pin'}
-                    >
-                      {channel.isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-                    </button>
+                  {isAdmin && managing && renaming !== channel.id && (
+                    <div className="ml-2 flex flex-wrap items-center gap-2 pb-1 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => handleMoveChannel(channel.id, -1)}
+                        disabled={channelBusy || index === 0}
+                        className="text-[11px] text-gray-400 hover:text-gray-700 disabled:opacity-40"
+                      >
+                        Up
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveChannel(channel.id, 1)}
+                        disabled={channelBusy || index === channelList.length - 1}
+                        className="text-[11px] text-gray-400 hover:text-gray-700 disabled:opacity-40"
+                      >
+                        Down
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRenameDraft(channel.name);
+                          setRenaming(channel.id);
+                        }}
+                        className="text-[11px] text-gray-400 hover:text-gray-700"
+                      >
+                        Rename
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePin(channel.id, channel.isPinned)}
+                        disabled={channelBusy}
+                        className="text-[11px] text-gray-400 hover:text-gray-700 disabled:opacity-40"
+                      >
+                        {channel.isPinned ? 'Unpin' : 'Pin'}
+                      </button>
+                      {/* The default channel has no Delete, because the API
+                          refuses it — offering a button that always fails is
+                          worse than not offering one. */}
+                      {!channel.isDefault && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleDeleteChannel(channel.id, channel.name, channel._count?.posts ?? 0)
+                          }
+                          disabled={channelBusy}
+                          className="text-[11px] text-gray-400 hover:text-red-600 disabled:opacity-40"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
                   )}
                 </li>
               ))}
             </ul>
+
+            {isAdmin && managing && (
+              <form
+                className="mt-3 flex gap-1 border-t border-gray-100 pt-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleCreateChannel();
+                }}
+              >
+                <input
+                  value={newChannelName}
+                  onChange={(e) => setNewChannelName(e.target.value)}
+                  placeholder="New channel"
+                  className="input min-w-0 flex-1 text-sm"
+                  aria-label="New channel name"
+                />
+                <button
+                  type="submit"
+                  disabled={channelBusy || !newChannelName.trim()}
+                  className="btn-primary px-2 text-xs disabled:opacity-50"
+                >
+                  {channelBusy ? '...' : 'Add'}
+                </button>
+              </form>
+            )}
           </div>
 
           {/* People / DMs */}
@@ -656,108 +627,7 @@ export default function CommonsPage() {
 
         {/* Main pane */}
         <div className="flex-1 space-y-6 min-w-0">
-          {view?.type === 'page' ? (
-            pageLoading || !pageContent ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="h-6 w-6 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
-              </div>
-            ) : (
-              <div className="card">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <h2 className="text-xl font-semibold text-gray-900">{pageContent.title}</h2>
-                  {isAdmin && !editingPage && (
-                    <div className="flex shrink-0 gap-3 text-sm">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPageDraft({ title: pageContent.title, body: pageContent.body });
-                          setEditingPage(true);
-                        }}
-                        className="font-medium text-brand-600 hover:underline"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!token || !currentOrgId) return;
-                          // Deleting a handbook page removes something members
-                          // are pointed at on their first day, so it asks.
-                          if (!window.confirm(`Delete "${pageContent.title}"? This cannot be undone.`)) return;
-                          withLibrary(async () => {
-                            await api.commons.deletePage(currentOrgId, pageContent.id, token);
-                            setView(null);
-                          });
-                        }}
-                        className="text-gray-500 hover:text-red-600"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {editingPage ? (
-                  <form
-                    className="mt-4 space-y-3"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      if (!token || !currentOrgId) return;
-                      withLibrary(async () => {
-                        await api.commons.updatePage(
-                          currentOrgId,
-                          pageContent.id,
-                          { title: pageDraft.title.trim(), body: pageDraft.body },
-                          token,
-                        );
-                        setEditingPage(false);
-                        await refetchPage();
-                      });
-                    }}
-                  >
-                    <input
-                      value={pageDraft.title}
-                      onChange={(e) => setPageDraft({ ...pageDraft, title: e.target.value })}
-                      className="input w-full"
-                      aria-label="Page title"
-                    />
-                    <textarea
-                      value={pageDraft.body}
-                      onChange={(e) => setPageDraft({ ...pageDraft, body: e.target.value })}
-                      rows={18}
-                      className="input w-full font-mono text-sm"
-                      aria-label="Page body"
-                    />
-                    {/* Said plainly, because the field takes HTML and the
-                        renderer sanitises it — a co-op pasting a stray tag
-                        should know why it vanished rather than think the save
-                        failed. */}
-                    <p className="text-xs text-gray-500">
-                      Basic HTML is allowed — headings, paragraphs, lists, links and emphasis. Anything
-                      else is stripped when the page is shown.
-                    </p>
-                    <div className="flex gap-3">
-                      <button type="submit" disabled={libraryBusy} className="btn-primary text-sm">
-                        {libraryBusy ? 'Saving...' : 'Save page'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditingPage(false)}
-                        className="text-sm text-gray-500 hover:text-gray-900"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <div
-                    className="prose prose-sm mt-4 max-w-none text-gray-700"
-                    dangerouslySetInnerHTML={{ __html: sanitizeWikiHtml(pageContent.body) }}
-                  />
-                )}
-              </div>
-            )
-          ) : view?.type === 'dm' ? (
+          {view?.type === 'dm' ? (
             <div className="card flex h-[32rem] flex-col">
               <h2 className="border-b border-gray-100 pb-3 text-lg font-semibold text-gray-900">{view.name ?? 'Conversation'}</h2>
               <div className="flex-1 space-y-3 overflow-y-auto py-4">

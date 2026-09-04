@@ -805,6 +805,12 @@ model Channel {
   isDefault   Boolean  @default(false)
   isPublic    Boolean  @default(true)
   isPinned    Boolean  @default(false)
+  /// The order an admin put the channels in (CMN-10).
+  ///
+  /// Zero for every channel that existed before this, which is deliberate: a
+  /// co-op that has never reordered anything keeps the order it had, because
+  /// the list falls back to creation date within a position.
+  position    Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -814,6 +820,7 @@ model Channel {
 
   @@unique([orgId, slug])
   @@index([orgId])
+  @@index([orgId, position])
   @@map("channels")
 }
 

@@ -206,10 +206,18 @@ export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: stri
       <div className="shrink-0 border-t border-white/15 p-4">
         {signedIn ? (
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10">
-              <span className="text-xs font-semibold text-paper">
-                {user?.name?.charAt(0) || user?.email?.charAt(0) || '?'}
-              </span>
+            {/* The photo, once a member has uploaded one (MEM-11). This was
+                the initial for everybody, which made the profile page the only
+                place in the product where somebody's own face appeared. */}
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/10">
+              {user?.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <span className="text-xs font-semibold text-paper">
+                  {user?.name?.charAt(0) || user?.email?.charAt(0) || '?'}
+                </span>
+              )}
             </div>
             {/* The name was a bare span for a long time: the most obvious thing
                 to click did nothing. */}

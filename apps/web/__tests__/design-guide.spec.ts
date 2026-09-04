@@ -54,13 +54,13 @@ const OUTSIDE_THE_SHELL = [
  */
 const DATA_TITLED = [
   'app/(dashboard)/admin/[orgSlug]/impact/reports/page.tsx',
-  'app/(dashboard)/admin/[orgSlug]/welcome/page.tsx',
+  'app/(dashboard)/admin/[orgSlug]/handbook/page.tsx',
   'app/(dashboard)/member/[orgSlug]/page.tsx',
   'app/portal/[orgSlug]/page.tsx',
   'app/portal/[orgSlug]/events/[eventSlug]/page.tsx',
   'app/portal/[orgSlug]/messages/[userId]/page.tsx',
   'app/portal/[orgSlug]/reports/[reportSlug]/page.tsx',
-  'app/portal/[orgSlug]/welcome/start/page.tsx',
+  'app/portal/[orgSlug]/handbook/start/page.tsx',
 ];
 
 const HEADING_STYLE = 'font-display text-2xl leading-tight text-ink';

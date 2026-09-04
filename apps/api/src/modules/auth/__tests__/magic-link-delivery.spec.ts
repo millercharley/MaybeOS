@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { AuthService } from '../auth.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { EmailService } from '../../email/email.service';
+import { StorageService } from '../../storage/storage.service';
 
 /**
  * The magic link actually gets emailed (AUTH-02).
@@ -48,6 +49,7 @@ describe('AuthService — magic link delivery', () => {
           useValue: { get: (k: string) => (k === 'WEB_URL' ? webUrl : undefined) },
         },
         { provide: EmailService, useValue: email },
+        { provide: StorageService, useValue: { uploadAvatar: jest.fn(), deleteAvatar: jest.fn() } },
       ],
     }).compile();
 
