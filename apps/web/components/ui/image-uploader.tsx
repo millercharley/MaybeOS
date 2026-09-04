@@ -2,9 +2,21 @@
 
 import { useRef, useState } from 'react';
 import { ImagePlus, Loader2, Trash2 } from 'lucide-react';
+import { ImageCropper } from '@/components/ui/image-cropper';
 
-/** Kept in step with the API, which is the one that actually enforces it. */
-const MAX_BYTES = 8 * 1024 * 1024;
+/**
+ * What this will attempt to open, not what the API stores.
+ *
+ * These two used to be the same number, and since SPC-17 they are different
+ * questions. What lands on the server is the *cropped* image, capped at 1600px
+ * on its long edge and re-encoded — a few hundred kilobytes whatever came in.
+ * So the only thing this limit protects is the browser: decoding a very large
+ * photograph into a canvas is memory a phone may not have.
+ *
+ * Generous, therefore. Rejecting a 12 MB photo straight off a camera would
+ * defeat the point of shrinking it.
+ */
+const MAX_BYTES = 25 * 1024 * 1024;
 const ACCEPTED = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
 /**
@@ -28,6 +40,7 @@ export function ImageUploader({
   imageUrl,
   what = 'Images',
   addLabel = 'Add an image',
+  aspect = 3 / 2,
   onUpload,
   onRemove,
 }: {
@@ -36,12 +49,20 @@ export function ImageUploader({
   what?: string;
   /** The empty-state button. Says what this particular image is. */
   addLabel?: string;
+  /**
+   * The shape the image is shown in, and so the shape it is cropped to
+   * (SPC-17). Matching the two is the point: what the co-op crops is what
+   * members see, rather than a centre-crop of it made later by CSS.
+   */
+  aspect?: number;
   onUpload: (data: string, mimeType: string) => Promise<void>;
   onRemove: () => Promise<void>;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
+  // The file waiting to be cropped. Nothing is uploaded until it is.
+  const [cropping, setCropping] = useState<File | null>(null);
 
   const choose = async (file: File) => {
     setProblem('');
@@ -53,32 +74,43 @@ export function ImageUploader({
     if (file.size > MAX_BYTES) {
       // Named in the units somebody's photo library uses, not in bytes.
       setProblem(
-        `That is ${(file.size / 1024 / 1024).toFixed(1)} MB. ${what} have to be under ${
-          MAX_BYTES / 1024 / 1024
-        } MB.`,
+        `That is ${(file.size / 1024 / 1024).toFixed(1)} MB, which is too large to open here. ` +
+          `${what} have to be under ${MAX_BYTES / 1024 / 1024} MB.`,
       );
       return;
     }
 
-    setBusy(true);
-    try {
-      const data = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error('Could not read that file'));
-        reader.readAsDataURL(file);
-      });
-      await onUpload(data, file.type);
-    } catch (err) {
-      setProblem(err instanceof Error ? err.message : 'That did not upload');
-    } finally {
-      setBusy(false);
-      if (input.current) input.current.value = '';
-    }
+    // Straight to the cropper rather than to the network. The upload happens
+    // on the way out of it, from a picture that has been cropped and shrunk
+    // (SPC-17) — which also keeps a phone photograph under the request limit
+    // the base64 body would otherwise blow through.
+    setCropping(file);
+    if (input.current) input.current.value = '';
   };
 
   return (
     <div>
+      {cropping && (
+        <ImageCropper
+          file={cropping}
+          aspect={aspect}
+          onCancel={() => setCropping(null)}
+          onDone={async ({ dataUrl, mimeType }) => {
+            setBusy(true);
+            setProblem('');
+            try {
+              await onUpload(dataUrl, mimeType);
+              setCropping(null);
+            } catch (err) {
+              setProblem(err instanceof Error ? err.message : 'That did not upload');
+              setCropping(null);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+      )}
+
       <input
         ref={input}
         type="file"

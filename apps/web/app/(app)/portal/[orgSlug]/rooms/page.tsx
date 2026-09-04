@@ -91,7 +91,10 @@ export default function PortalRoomsPage() {
                 <img
                   src={room.imageUrl}
                   alt=""
-                  className="mb-3 h-32 w-full rounded-lg object-cover"
+                  // 3:2, the shape the cropper offers (SPC-17). A fixed
+                  // pixel height would centre-crop the crop, so what a co-op
+                  // framed is not what a member sees.
+                  className="mb-3 aspect-[3/2] w-full rounded-lg object-cover"
                 />
               )}
               <div className="flex flex-wrap items-start justify-between gap-3">
