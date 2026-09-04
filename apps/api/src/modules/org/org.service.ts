@@ -213,6 +213,40 @@ export class OrgService {
   }
 
   /**
+   * What a co-op publishes to its own website's membership embed (PUB-01).
+   *
+   * The second route in MaybeOS that answers to any origin, and deliberately
+   * narrower than the page it mirrors: the co-op's name, whether its doors are
+   * open, and the same public tier columns the join page renders. Nothing here
+   * is not already on `/orgs/<slug>`.
+   *
+   * `allowPublicJoin` travels because the embed has to decide between a Join
+   * button and "invitation only" — an embed offering to sign somebody up for a
+   * co-op that will refuse them is worse than one that says so.
+   */
+  async embedMembership(slug: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { slug },
+      select: {
+        name: true,
+        slug: true,
+        allowPublicJoin: true,
+        tiers: {
+          where: { isActive: true },
+          orderBy: { sortOrder: 'asc' },
+          select: PUBLIC_TIER_SELECT,
+        },
+      },
+    });
+
+    if (!org) {
+      throw new NotFoundException(`Organization with slug "${slug}" not found`);
+    }
+
+    return org;
+  }
+
+  /**
    * Find an organization by its ID.
    */
   async findById(id: string) {

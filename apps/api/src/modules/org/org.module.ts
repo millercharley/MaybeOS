@@ -4,11 +4,12 @@ import { DashboardService } from './dashboard.service';
 import { ForumModule } from './forum.module';
 import { PlatformModule } from '../platform/platform.module';
 import { OrgController } from './org.controller';
+import { EmbedController } from './embed.controller';
 import { StorageModule } from '../storage/storage.module';
 
 @Module({
   imports: [ForumModule, StorageModule, PlatformModule],
-  controllers: [OrgController],
+  controllers: [OrgController, EmbedController],
   providers: [OrgService, DashboardService],
   exports: [OrgService],
 })

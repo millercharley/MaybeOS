@@ -11,12 +11,13 @@ import { MaybeOsPlan } from '@/components/settings/maybeos-plan';
 import { Locations } from '@/components/settings/locations';
 import { Support } from '@/components/settings/support';
 import { WebsiteEmbed } from '@/components/settings/website-embed';
+import { JoinPage } from '@/components/settings/join-page';
 import { MemberDashboard } from '@/components/settings/member-dashboard';
 import { GettingStartedSettings } from '@/components/settings/getting-started-settings';
 import { Integrations } from '@/components/settings/integrations';
 import { PageHeader } from '@/components/layout/page-header';
 
-type SettingsTab = 'general' | 'branding' | 'onboarding' | 'integrations' | 'billing';
+type SettingsTab = 'general' | 'branding' | 'website' | 'onboarding' | 'integrations' | 'billing';
 
 const tabs: { key: SettingsTab; label: string }[] = [
   { key: 'general', label: 'General' },
@@ -27,6 +28,12 @@ const tabs: { key: SettingsTab; label: string }[] = [
   // rules, support address and website embed, so anything appended to it is
   // several screens down. A thing an admin sets up once needs to be findable
   // once.
+  // Everything about the co-op's presence off MaybeOS, in one place (PUB-01):
+  // the join page's address, who is allowed through it, and the two embeds.
+  // These were scattered — the embed at the foot of General, the joining rules
+  // below it, the join page mentioned nowhere at all — which is how a landing
+  // page that had existed since the beginning came to be reported missing.
+  { key: 'website', label: 'Join page & embeds' },
   { key: 'onboarding', label: 'Getting started' },
   { key: 'integrations', label: 'Integrations' },
   { key: 'billing', label: 'Billing' },
@@ -341,9 +348,12 @@ export default function SettingsPage() {
       {activeTab === 'general' && org && <ServiceValue org={org} onSaved={refetch} />}
       {activeTab === 'general' && org && <Locations orgId={org.id} />}
       {activeTab === 'general' && org && <Support orgName={org.name} />}
-      {activeTab === 'general' && org && <WebsiteEmbed org={org} />}
 
-      {activeTab === 'general' && (
+      {activeTab === 'website' && org && (
+        <JoinPage org={org} allowPublicJoin={allowPublicJoin} />
+      )}
+
+      {activeTab === 'website' && (
         <section className="card space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-6">
             <div>
@@ -416,6 +426,9 @@ export default function SettingsPage() {
           )}
         </section>
       )}
+
+      {activeTab === 'website' && org && <WebsiteEmbed org={org} show="membership" />}
+      {activeTab === 'website' && org && <WebsiteEmbed org={org} show="events" />}
 
       {activeTab === 'branding' && (
         <section className="card space-y-4">

@@ -49,6 +49,29 @@ describe('the snippet', () => {
     expect(snippetFor(origin, 'maybeitsfate', '#b0')).not.toContain('data-accent');
   });
 
+  /**
+   * A second embed shares the file (PUB-01), so the events snippet has to keep
+   * being byte-for-byte what it was: the tag is already pasted on real
+   * websites, and `data-show` absent means events there.
+   */
+  it('says nothing about what to show, for events', () => {
+    expect(snippetFor(origin, 'maybeitsfate', DEFAULT_ACCENT)).toBe(
+      '<script src="https://maybeos.org/embed.js" data-org="maybeitsfate" defer></script>',
+    );
+  });
+
+  it('asks for membership when that is what the admin copied', () => {
+    const s = snippetFor(origin, 'maybeitsfate', DEFAULT_ACCENT, 'membership');
+    expect(s).toContain('data-show="membership"');
+    expect(s.match(/<script/g)).toHaveLength(1);
+  });
+
+  it('carries the accent onto the membership tag too', () => {
+    expect(snippetFor(origin, 'maybeitsfate', '#1a2b3c', 'membership')).toContain(
+      'data-accent="#1a2b3c"',
+    );
+  });
+
   it('points at the host it was generated from, not a hardcoded one', () => {
     // So a staging copy never hands out a production snippet.
     expect(snippetFor('https://staging.example', 'x', DEFAULT_ACCENT)).toContain(
