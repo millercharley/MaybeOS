@@ -178,6 +178,72 @@ export class MemberService {
   }
 
   /**
+   * One member, at random, to introduce to another (MEM-12).
+   *
+   * Charley: feature a member on the dashboard, a different one every visit,
+   * as a way of introducing members to each other. A co-op of forty people
+   * where everybody knows six of them is the problem this is aimed at.
+   *
+   * Four rules, and each one is a way the obvious version gets it wrong:
+   *
+   * - **Never the viewer.** Being introduced to yourself is not an
+   *   introduction, and "send them a message" would open a conversation with
+   *   yourself.
+   * - **`isPublic` is honoured for everybody, organisers included.** The
+   *   directory lets organisers see hidden members because running a co-op
+   *   means knowing who is in it. This is not that: it is a "meet this
+   *   person" card, and putting somebody who hid themselves on the front of
+   *   another member's dashboard is the exact thing they opted out of. Role
+   *   does not change it.
+   * - **Members, not guests.** The same three roles the membership count
+   *   uses, so the co-op the spotlight draws from is the co-op the dashboard
+   *   says exists.
+   * - **Uniform, not weighted.** It would be easy to prefer members who have
+   *   written a headline, and it would quietly bury everybody who has not —
+   *   who are exactly the people nobody has met yet.
+   *
+   * Counted and offset rather than `ORDER BY random()`: it stays inside
+   * Prisma, uses the org index, and a co-op is tens or hundreds of rows, not
+   * millions. If somebody leaves between the count and the read the offset can
+   * fall off the end, which returns null and shows no card — a missing card is
+   * a fine outcome for a race that resolves itself on the next page load.
+   */
+  async spotlight(orgId: string, viewerUserId: string) {
+    const where = {
+      orgId,
+      isPublic: true,
+      role: { in: ['ADMIN', 'STAFF', 'MEMBER'] as OrgRole[] },
+      userId: { not: viewerUserId },
+    };
+
+    const eligible = await this.prisma.userOrg.count({ where });
+    if (eligible === 0) return null;
+
+    const member = await this.prisma.userOrg.findFirst({
+      where,
+      skip: Math.floor(Math.random() * eligible),
+      // A stable order under the random offset. Without one Postgres may
+      // return rows in whatever order it likes, which would make the offset
+      // pick from a shuffled deck — not wrong, but not evenly random either.
+      orderBy: { memberSince: 'asc' },
+      select: {
+        id: true,
+        userId: true,
+        headline: true,
+        bio: true,
+        location: true,
+        tags: true,
+        memberSince: true,
+        // Deliberately no email: members do not get each other's contact
+        // details, and a spotlight is the last place to start.
+        user: { select: { id: true, name: true, avatarUrl: true, avatarPath: true } },
+      },
+    });
+
+    return member;
+  }
+
+  /**
    * Get a single member's detail within an org.
    */
   async getMember(orgId: string, userId: string, viewer: ContactViewer) {

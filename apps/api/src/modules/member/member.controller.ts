@@ -57,6 +57,18 @@ export class MemberController {
     );
   }
 
+  /**
+   * Somebody to meet (MEM-12). Before `:userId`, or "spotlight" would be read
+   * as a user id and answer 404 for everyone.
+   */
+  @Get('members/spotlight')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'A random other member, to introduce' })
+  spotlight(@Param('orgId') orgId: string, @CurrentUser() user: RequestUser) {
+    return this.memberService.spotlight(orgId, user.userId);
+  }
+
   @Get('members/:userId')
   @UseGuards(JwtAuthGuard, OrgMembershipGuard)
   @ApiBearerAuth()
