@@ -15,11 +15,18 @@ import { MemberDashboard } from '@/components/settings/member-dashboard';
 import { GettingStartedSettings } from '@/components/settings/getting-started-settings';
 import { PageHeader } from '@/components/layout/page-header';
 
-type SettingsTab = 'general' | 'branding' | 'integrations' | 'billing';
+type SettingsTab = 'general' | 'branding' | 'onboarding' | 'integrations' | 'billing';
 
 const tabs: { key: SettingsTab; label: string }[] = [
   { key: 'general', label: 'General' },
   { key: 'branding', label: 'Branding' },
+  // Its own tab rather than the foot of General (Charley, 2026-09-04). It went
+  // in under General first and was effectively invisible: that tab is already
+  // the co-op's name, slug, description, mission, timezone, locations, joining
+  // rules, support address and website embed, so anything appended to it is
+  // several screens down. A thing an admin sets up once needs to be findable
+  // once.
+  { key: 'onboarding', label: 'Getting started' },
   { key: 'integrations', label: 'Integrations' },
   { key: 'billing', label: 'Billing' },
 ];
@@ -495,10 +502,8 @@ export default function SettingsPage() {
       {/* What a co-op puts on its members' dashboard (DSH-01). */}
       {activeTab === 'branding' && org && <MemberDashboard org={org} onSaved={refetch} />}
 
-      {/* The checklist in every member's sidebar (ONB-01). Under General
-          rather than Branding: it is how a co-op brings people in, not how it
-          looks. */}
-      {activeTab === 'general' && <GettingStartedSettings />}
+      {/* The checklist in every member's sidebar (ONB-01). */}
+      {activeTab === 'onboarding' && <GettingStartedSettings />}
 
       {activeTab === 'integrations' && (
         <div className="space-y-4">
