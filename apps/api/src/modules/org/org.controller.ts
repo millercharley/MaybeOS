@@ -23,6 +23,9 @@ import { AuditService } from '../platform/audit.service';
 import { CreateOrgDto } from './dto/create-org.dto';
 import { UpdateOrgDto } from './dto/update-org.dto';
 import { UploadLogoDto } from './dto/upload-logo.dto';
+import {
+  CreateOrgLinkDto, UpdateOrgLinkDto, ReorderOrgLinksDto,
+} from './dto/org-link.dto';
 
 @ApiTags('orgs')
 @Controller('orgs')
@@ -147,6 +150,63 @@ export class OrgController {
   @ApiOperation({ summary: "Remove the organization's dashboard banner" })
   deleteBanner(@Param('orgId') orgId: string) {
     return this.orgService.removeBanner(orgId);
+  }
+
+  // ─── Links to things off MaybeOS (NAV-02) ───────────────────
+
+  /**
+   * Members only, deliberately.
+   *
+   * These read like harmless signage, but a co-op will put a shared Drive or a
+   * members' Discord in here, and a list of those URLs behind no auth at all
+   * is the sort of leak nobody notices until it matters.
+   */
+  @Get(':orgId/links')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "The co-op's links to things outside MaybeOS" })
+  listLinks(@Param('orgId') orgId: string) {
+    return this.orgService.listLinks(orgId);
+  }
+
+  @Post(':orgId/links')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add a link' })
+  createLink(@Param('orgId') orgId: string, @Body() dto: CreateOrgLinkDto) {
+    return this.orgService.createLink(orgId, dto);
+  }
+
+  @Post(':orgId/links/reorder')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Put the links in an order' })
+  reorderLinks(@Param('orgId') orgId: string, @Body() dto: ReorderOrgLinksDto) {
+    return this.orgService.reorderLinks(orgId, dto.linkIds);
+  }
+
+  @Patch(':orgId/links/:linkId')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Rename a link or point it somewhere else' })
+  updateLink(
+    @Param('orgId') orgId: string,
+    @Param('linkId') linkId: string,
+    @Body() dto: UpdateOrgLinkDto,
+  ) {
+    return this.orgService.updateLink(orgId, linkId, dto);
+  }
+
+  @Delete(':orgId/links/:linkId')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Remove a link' })
+  deleteLink(@Param('orgId') orgId: string, @Param('linkId') linkId: string) {
+    return this.orgService.deleteLink(orgId, linkId);
   }
 
   @Get(':orgId/settings')

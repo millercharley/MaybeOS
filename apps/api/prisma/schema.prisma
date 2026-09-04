@@ -164,6 +164,7 @@ model Organization {
   closures        OrgClosure[]
   duties          Duty[]
   onboardingSteps OnboardingStep[]
+  links           OrgLink[]
   hostDuties      HostDuty[]
   hostBriefings   HostBriefing[]
   channels        Channel[]
@@ -432,6 +433,38 @@ model OnboardingCompletion {
   @@unique([stepId, memberId])
   @@index([memberId])
   @@map("onboarding_completions")
+}
+
+/// Somewhere off MaybeOS that a co-op wants its members to be able to reach
+/// (NAV-02).
+///
+/// A co-op's life does not all live in one product: the store is on Shopify,
+/// the white paper is a PDF, the app is in the App Store, and the Instagram is
+/// where half the community actually talks. Members were expected to find
+/// those on their own, or to have been told once.
+///
+/// Members-only rather than public. It reads like harmless signage, but a
+/// co-op will put a shared Drive or a members' Discord in here, and a list of
+/// those URLs on a page anybody can load is the sort of leak nobody notices
+/// until it matters. A co-op that wants a link public already has a public
+/// page to put it on.
+model OrgLink {
+  id    String @id @default(uuid())
+  orgId String
+  label String
+  /// http and https only, enforced when it is written. These are rendered as
+  /// links members click, so `javascript:` here is script execution in
+  /// somebody else's session, not a formatting quirk.
+  url   String
+
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, position])
+  @@map("org_links")
 }
 
 /// Which MaybeOS plan a co-op is on (D-013). Drives the per-transaction fee

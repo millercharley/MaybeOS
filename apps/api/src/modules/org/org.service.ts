@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { CreateLocationDto, UpdateLocationDto } from './dto/location.dto';
 import { StorageService } from '../storage/storage.service';
@@ -216,6 +221,112 @@ export class OrgService {
     }
 
     return org;
+  }
+
+  // ─── Links to things off MaybeOS (NAV-02) ───────────────────
+
+  /**
+   * A URL safe to render as a link members click.
+   *
+   * http and https only. `javascript:` and `data:` are not a formatting quirk
+   * here — these are written by one person and clicked by everybody else in
+   * the co-op, so a scheme that executes is script execution in somebody
+   * else's session. The web app filters again at render time; this stops the
+   * bad one being stored at all.
+   *
+   * A bare "instagram.com/maybeitsfate" is given `https://` rather than
+   * refused. Somebody typing a link into a sidebar is not thinking about
+   * schemes, and rejecting them over a missing prefix is a worse product than
+   * assuming the one every other link on the page uses.
+   */
+  private safeLinkUrl(raw: string): string {
+    const value = raw.trim();
+    if (!value) throw new BadRequestException('A link needs a web address.');
+
+    const candidate = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value) ? value : `https://${value}`;
+
+    let parsed: URL;
+    try {
+      parsed = new URL(candidate);
+    } catch {
+      throw new BadRequestException(`"${raw}" does not look like a web address.`);
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new BadRequestException('Links must start with http:// or https://');
+    }
+    return parsed.toString();
+  }
+
+  private async findLinkInOrg(orgId: string, linkId: string) {
+    const link = await this.prisma.orgLink.findFirst({ where: { id: linkId, orgId } });
+    if (!link) throw new NotFoundException('Link not found');
+    return link;
+  }
+
+  listLinks(orgId: string) {
+    return this.prisma.orgLink.findMany({
+      where: { orgId },
+      orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+    });
+  }
+
+  async createLink(orgId: string, dto: { label: string; url: string }) {
+    const label = dto.label.trim();
+    if (!label) throw new BadRequestException('A link needs a name.');
+
+    const url = this.safeLinkUrl(dto.url);
+
+    // Appended. A new link goes to the end of the list rather than jumping
+    // above the ones a co-op deliberately put first.
+    const last = await this.prisma.orgLink.findFirst({
+      where: { orgId },
+      orderBy: { position: 'desc' },
+      select: { position: true },
+    });
+
+    return this.prisma.orgLink.create({
+      data: { orgId, label, url, position: (last?.position ?? -1) + 1 },
+    });
+  }
+
+  async updateLink(orgId: string, linkId: string, dto: { label?: string; url?: string }) {
+    await this.findLinkInOrg(orgId, linkId);
+
+    const label = dto.label?.trim();
+    if (dto.label !== undefined && !label) {
+      throw new BadRequestException('A link needs a name.');
+    }
+
+    return this.prisma.orgLink.update({
+      where: { id: linkId },
+      data: {
+        ...(label && { label }),
+        ...(dto.url !== undefined && { url: this.safeLinkUrl(dto.url) }),
+      },
+    });
+  }
+
+  async deleteLink(orgId: string, linkId: string) {
+    await this.findLinkInOrg(orgId, linkId);
+    await this.prisma.orgLink.delete({ where: { id: linkId } });
+    return { deleted: linkId };
+  }
+
+  /**
+   * The whole order in one write, scoped per row.
+   *
+   * Same reasoning as the Commons channels and the onboarding steps: moving
+   * one item renumbers its neighbours anyway, and two admins doing that at
+   * once leaves two links claiming one position. Ids from another co-op are
+   * filtered out by the scoped `updateMany` rather than trusted.
+   */
+  async reorderLinks(orgId: string, linkIds: string[]) {
+    await this.prisma.$transaction(
+      linkIds.map((id, index) =>
+        this.prisma.orgLink.updateMany({ where: { id, orgId }, data: { position: index } }),
+      ),
+    );
+    return this.listLinks(orgId);
   }
 
   /**

@@ -538,6 +538,37 @@ class ApiClient {
     removeLogo: (orgId: string, token: string) =>
       this.request<Org>(`/orgs/${orgId}/logo`, { method: 'DELETE', token }),
 
+    // ── Links to things off MaybeOS (NAV-02) ──
+    listLinks: (orgId: string, token: string) =>
+      this.request<OrgLink[]>(`/orgs/${orgId}/links`, { token }),
+
+    createLink: (orgId: string, data: { label: string; url: string }, token: string) =>
+      this.request<OrgLink>(`/orgs/${orgId}/links`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    updateLink: (orgId: string, linkId: string, data: { label?: string; url?: string }, token: string) =>
+      this.request<OrgLink>(`/orgs/${orgId}/links/${linkId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    deleteLink: (orgId: string, linkId: string, token: string) =>
+      this.request<{ deleted: string }>(`/orgs/${orgId}/links/${linkId}`, {
+        method: 'DELETE',
+        token,
+      }),
+
+    reorderLinks: (orgId: string, linkIds: string[], token: string) =>
+      this.request<OrgLink[]>(`/orgs/${orgId}/links/reorder`, {
+        method: 'POST',
+        body: JSON.stringify({ linkIds }),
+        token,
+      }),
+
     /** The wide image across the top of the member dashboard (DSH-01). */
     uploadBanner: (orgId: string, data: string, mimeType: string, token: string) =>
       this.request<Org>(`/orgs/${orgId}/banner`, {
@@ -2728,6 +2759,20 @@ export interface Comment {
    */
   editedAt?: string | null;
   replies: Comment[];
+}
+
+/**
+ * Somewhere off MaybeOS a co-op wants its members to reach (NAV-02).
+ *
+ * Members-only: these read like signage, but a co-op will put a shared Drive
+ * or a members' Discord in here.
+ */
+export interface OrgLink {
+  id: string;
+  label: string;
+  /** Always http or https — the API refuses anything else. */
+  url: string;
+  position: number;
 }
 
 /** How a getting-started step knows it is done (ONB-01). */
