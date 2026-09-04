@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { PUBLIC_TIER_SELECT } from '../member/tier-view';
+import { PUBLIC_ORG_SELECT } from './org-view';
 import { CreateLocationDto, UpdateLocationDto } from './dto/location.dto';
 import { StorageService } from '../storage/storage.service';
 import { CreateOrgDto } from './dto/create-org.dto';
@@ -188,13 +189,22 @@ export class OrgService {
   }
 
   /**
-   * Find an organization by its URL slug, including locations and tiers.
+   * Find an organization by its URL slug — public, and selected accordingly.
+   *
+   * `include` used to sit here, which returns every column: this handed out
+   * the co-op's Stripe account and subscription ids, its billing waiver and
+   * the reason for it, and its suspension notes to anyone who asked (SEC-11).
+   * The select says what a stranger may read, and `PUBLIC_ORG_SELECT` explains
+   * why each field is on it.
+   *
+   * Locations came off with the same change: nothing reads them from here, and
+   * a co-op's addresses are not something to publish by accident.
    */
   async findBySlug(slug: string) {
     const org = await this.prisma.organization.findUnique({
       where: { slug },
-      include: {
-        locations: true,
+      select: {
+        ...PUBLIC_ORG_SELECT,
         // The same columns the public tier list returns, from the same
         // constant, so the two public paths cannot drift (MEM-14).
         tiers: {
