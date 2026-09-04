@@ -191,20 +191,32 @@ export function RoomBooking({
           )}
         </div>
 
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+        {/* One line, always (SPC-18).
+            This was `justify-between` with `flex-wrap`, and on a narrow column
+            the forward arrow dropped to a line of its own under the month —
+            three controls that only make sense side by side, stacked. Wrapping
+            is the right default for a title beside its buttons and the wrong
+            one here, so the label takes the middle instead. It wraps within
+            itself rather than truncating — this column is narrow enough that
+            `truncate` turned "September 2026" into "September 2…", and two
+            lines of a month reads better than an ellipsis on one. */}
+        <div className="mt-6 flex items-center gap-2">
           <button
             onClick={() => setMonth(shiftMonth(month, -1))}
-            className="btn-ghost"
+            className="btn-ghost shrink-0"
             aria-label="Previous month"
           >
             <ChevronLeft size={18} aria-hidden="true" />
           </button>
-          <span className="text-lg font-semibold" aria-live="polite">
+          <span
+            className="min-w-0 flex-1 text-center text-lg font-semibold"
+            aria-live="polite"
+          >
             {monthLabel(month)}
           </span>
           <button
             onClick={() => setMonth(shiftMonth(month, 1))}
-            className="btn-ghost"
+            className="btn-ghost shrink-0"
             aria-label="Next month"
           >
             <ChevronRight size={18} aria-hidden="true" />

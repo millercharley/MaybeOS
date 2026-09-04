@@ -5,6 +5,7 @@ import { DoorOpen, Users, Check } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { RoomBooking } from '@/components/rooms/room-booking';
+import { DaySchedule } from '@/components/rooms/day-schedule';
 import { api } from '@/lib/api';
 import { PageHeader } from '@/components/layout/page-header';
 import { useReveal } from '@/hooks/use-reveal';
@@ -23,6 +24,12 @@ export default function PortalRoomsPage() {
   // The booking panel opens below the list of rooms, so choosing one changed
   // the page somewhere off the bottom of the screen (UI-04).
   const bookingRef = useReveal<HTMLDivElement>(selectedRoom);
+
+  // Book a room, or see what is already on across all of them (SPC-18).
+  const [view, setView] = useState<'book' | 'day'>('book');
+  // Today in the co-op's timezone is resolved by the API; this is only the
+  // starting date, and the browser's own today is the right guess for it.
+  const today = new Date().toLocaleDateString('en-CA');
 
   useEffect(() => {
     if (!org || !token) {
@@ -65,7 +72,31 @@ export default function PortalRoomsPage() {
     <div className="space-y-8">
       <PageHeader
         title="Rooms & Booking"
-      />{bookingResult && (
+      />
+
+      {/* Two ways to use this page: book something, or find out what is
+          already happening. The second was only answerable by opening each
+          room's calendar in turn (SPC-18). */}
+      <div className="flex gap-1 border-b border-gray-200">
+        {([['book', 'Book a room'], ['day', "What's on"]] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setView(key)}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${
+              view === key
+                ? 'border-b-2 border-brand-600 text-brand-600'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'day' && orgId && <DaySchedule orgId={orgId} initialDate={today} />}
+
+      {view === 'book' && bookingResult && (
         <div
           className={`rounded-lg p-3 text-sm ${bookingResult.includes('submitted') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}
         >
@@ -73,7 +104,7 @@ export default function PortalRoomsPage() {
         </div>
       )}
 
-      {rooms.length === 0 ? (
+      {view === 'book' && (rooms.length === 0 ? (
         <p className="py-12 text-center text-sm text-gray-500">No rooms available yet.</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
@@ -149,7 +180,7 @@ export default function PortalRoomsPage() {
             </button>
           ))}
         </div>
-      )}
+      ))}
 
       {/*
         The date-and-two-times form this replaced could only refuse after the
