@@ -20,6 +20,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
 import { Panel } from '@/components/layout/panel';
+import { MemberSpotlight } from '@/components/member/member-spotlight';
 import { happeningToday, whenLabel, startsIn } from '@/lib/event-list';
 
 const quickLinksFor = (orgSlug: string) => [
@@ -366,6 +367,11 @@ export default function MemberPortalPage() {
         </div>
 
         <div className="space-y-6">
+          {/* Somebody to meet, above the count (MEM-12). A number tells you how
+              big the co-op is; a face tells you who is in it, and only one of
+              those leads anywhere. Renders nothing when there is nobody else. */}
+          <MemberSpotlight orgSlug={orgSlug} />
+
           {/* How many of us there are — and, only if the co-op said so, how
               many it is aiming for. */}
           <Panel title="Our community">

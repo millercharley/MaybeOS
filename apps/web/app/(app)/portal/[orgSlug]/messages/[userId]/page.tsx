@@ -39,10 +39,20 @@ export default function ThreadPage() {
   const [error, setError] = useState('');
   const bottom = useRef<HTMLDivElement>(null);
 
+  /**
+   * Who this is with.
+   *
+   * Read off the messages when there are any, which costs nothing. An empty
+   * thread has no message to read it from, and that is not a rare case — it is
+   * exactly what the dashboard's "Say hello" opens (MEM-12), so the page
+   * somebody lands on after choosing a person by name was headed
+   * "Conversation".
+   */
+  const [introduced, setIntroduced] = useState<{ name?: string } | null>(null);
   const other =
     messages.find((m) => m.sender.id === otherUserId)?.sender ??
     messages.find((m) => m.receiver.id === otherUserId)?.receiver ??
-    null;
+    introduced;
 
   const load = useCallback(async () => {
     if (!org || !token) {
@@ -60,6 +70,13 @@ export default function ThreadPage() {
       ]);
       setMessages(thread);
       setSuggestions(prompts.suggestions);
+
+      // Only when the thread cannot name them itself. One extra request, on
+      // the first message of a conversation and never again.
+      if (thread.length === 0) {
+        const member = await api.members.get(org.id, otherUserId, token).catch(() => null);
+        if (member?.user?.name) setIntroduced({ name: member.user.name });
+      }
       await api.commons.markConversationRead(org.id, otherUserId, token).catch(() => {});
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not open this conversation');

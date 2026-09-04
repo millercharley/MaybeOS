@@ -652,6 +652,13 @@ class ApiClient {
         token,
       }),
 
+    /**
+     * A random other member, to introduce (MEM-12). Null when there is nobody
+     * else to show — a co-op of one, or one where everybody else has hidden.
+     */
+    spotlight: (orgId: string, token: string) =>
+      this.request<SpotlightMember | null>(`/orgs/${orgId}/members/spotlight`, { token }),
+
     /** Copy imported avatars into MaybeOS storage, one batch per call. */
     importAvatars: (orgId: string, body: { after?: string; limit?: number }, token: string) =>
       this.request<AvatarImportResult>(`/orgs/${orgId}/members/import/avatars`, {
@@ -2408,6 +2415,23 @@ export interface HostPayoutPreview {
   ticketCount: number;
   refundedCount: number;
   payout: HostPayout | null;
+}
+
+/**
+ * The member on the dashboard's "someone to meet" card (MEM-12).
+ *
+ * Deliberately narrower than `Member`: no email, no billing, no role. It is an
+ * introduction, and an introduction is a name, a face and a line about them.
+ */
+export interface SpotlightMember {
+  id: string;
+  userId: string;
+  headline?: string | null;
+  bio?: string | null;
+  location?: string | null;
+  tags: string[];
+  memberSince: string;
+  user: { id: string; name?: string | null; avatarUrl?: string | null };
 }
 
 export interface Member {
