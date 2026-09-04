@@ -9,6 +9,7 @@ import { sidebarSections, openSectionLabel, activeNavHref } from '@/lib/nav';
 import { useAuthStore } from '@/lib/auth-store';
 import { Wordmark } from '@/components/brand/wordmark';
 import { GettingStarted } from '@/components/onboarding/getting-started';
+import { OrgLinks } from '@/components/layout/org-links';
 
 /**
  * The one navigation, on every screen.
@@ -62,6 +63,9 @@ export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: stri
   const orgs = user?.orgs ?? [];
   const membership = orgs.find((o) => o.orgId === currentOrgId);
   const signedIn = Boolean(token && user);
+  // Only an ADMIN arranges the co-op's links (NAV-02) — same bar as creating
+  // a channel or writing the checklist. STAFF organise; ADMIN configures.
+  const isAdmin = membership?.role === 'ADMIN';
 
   const sections = sidebarSections({
     membership,
@@ -202,6 +206,11 @@ export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: stri
             </div>
           );
         })}
+
+        {/* Things the co-op keeps outside MaybeOS (NAV-02). Inside the
+            scrolling area and last, because they lead away from the product:
+            everything above this is somewhere you can go without leaving. */}
+        {signedIn && <OrgLinks isAdmin={isAdmin} />}
       </nav>
 
       {/* Between the nav and the account footer, deliberately outside the
