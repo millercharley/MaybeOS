@@ -238,7 +238,9 @@ export class AuthService {
             memberSince: true,
             // `brandColor` and `logoUrl` so a member's own pages can carry
             // their co-op's colours without a second request on every
-            // navigation (BRD-01).
+            // navigation (BRD-01); `bannerUrl` and `memberGoal` for the same
+            // reason on the member dashboard (DSH-01). All four are the co-op's
+            // public identity — none of it is anybody's private data.
             org: {
               select: {
                 id: true,
@@ -246,6 +248,12 @@ export class AuthService {
                 slug: true,
                 logoUrl: true,
                 brandColor: true,
+                bannerUrl: true,
+                memberGoal: true,
+                // What "today" means at this co-op. The member dashboard heads
+                // its list with today's events, and a member reading it from
+                // another timezone is asking what is on at the *space*.
+                timezone: true,
               },
             },
           },
