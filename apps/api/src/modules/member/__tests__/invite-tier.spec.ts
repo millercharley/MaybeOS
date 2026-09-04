@@ -94,6 +94,70 @@ describe('MemberService — invitations with a tier', () => {
       expect(result.tierId).toBeNull();
     });
 
+    /**
+     * "Let the person decide" (MEM-15). The invite dropdown's default no longer
+     * means "no dues" — it means the admin handed the choice to the invitee,
+     * who picks a tier on the invitation page and sends it back with accept.
+     */
+    describe('when the admin left the choice to the invitee', () => {
+      beforeEach(() => {
+        prisma.invitation.findUnique.mockResolvedValue(invitation({ tierId: null }));
+      });
+
+      it('joins them on the tier they chose', async () => {
+        prisma.membershipTier.findFirst.mockResolvedValue({ id: 'tier-9' });
+
+        const result = await service.acceptInvite('tok', 'user-1', 'tier-9');
+
+        expect(membershipCreated().tierId).toBe('tier-9');
+        expect(result.tierId).toBe('tier-9');
+      });
+
+      it('only accepts a tier from the co-op that invited them', async () => {
+        // Scoped to the invitation's org (SEC-04), so a tier id lifted from
+        // another co-op's public page cannot be joined here.
+        await service.acceptInvite('tok', 'user-1', 'tier-9');
+
+        expect(prisma.membershipTier.findFirst).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.objectContaining({ id: 'tier-9', orgId: 'org-1', isActive: true }),
+          }),
+        );
+      });
+
+      it('refuses a tier that is not theirs to pick, and creates nothing', async () => {
+        prisma.membershipTier.findFirst.mockResolvedValue(null);
+
+        await expect(service.acceptInvite('tok', 'user-1', 'tier-elsewhere')).rejects.toThrow();
+        expect(prisma.userOrg.create).not.toHaveBeenCalled();
+      });
+
+      it('still joins with no dues when they decide later', async () => {
+        const result = await service.acceptInvite('tok', 'user-1');
+
+        expect(membershipCreated().tierId).toBeNull();
+        expect(result.tierId).toBeNull();
+      });
+    });
+
+    it('ignores a tier the invitee sends when the invitation already named one', async () => {
+      // The admin picked Sustainer; the invitee does not get to send $0 Member
+      // instead. Otherwise "assign a tier" would only ever be a suggestion.
+      const result = await service.acceptInvite('tok', 'user-1', 'tier-cheaper');
+
+      expect(membershipCreated().tierId).toBe('tier-1');
+      expect(result.tierId).toBe('tier-1');
+    });
+
+    it('refuses dues on a staff invitation', async () => {
+      // Staff and guests do not pay; a tier arriving on one is a malformed
+      // request rather than a silent upgrade.
+      prisma.invitation.findUnique.mockResolvedValue(invitation({ tierId: null, role: 'STAFF' }));
+
+      await expect(service.acceptInvite('tok', 'user-1', 'tier-9')).rejects.toThrow();
+      expect(prisma.userOrg.create).not.toHaveBeenCalled();
+    });
+
     it('still refuses an invitation that was already accepted', async () => {
       prisma.invitation.findUnique.mockResolvedValue(invitation({ acceptedAt: new Date() }));
 

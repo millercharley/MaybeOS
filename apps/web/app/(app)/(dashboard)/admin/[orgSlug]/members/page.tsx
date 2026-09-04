@@ -207,6 +207,11 @@ export default function MembersPage() {
             membership with no tier, so an invited member joined free while
             somebody arriving through the public page paid — one co-op, two
             prices, decided by which door you came through.
+
+            The default hands the choice to the invitee rather than assigning
+            nothing (MEM-15): "No dues" was doing double duty as both "this
+            person doesn't pay" and "I haven't decided", and the second one
+            silently became the first. Now the invitation asks them.
           */}
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
@@ -217,7 +222,7 @@ export default function MembersPage() {
               onChange={(e) => setInviteTierId(e.target.value)}
               className="input w-full"
             >
-              <option value="">No dues</option>
+              <option value="">Let the person decide</option>
               {(tiers ?? []).map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
@@ -226,8 +231,10 @@ export default function MembersPage() {
               ))}
             </select>
             <p className="mt-1 text-xs text-gray-500">
-              They&apos;ll be taken to payment after accepting. Leave as “No dues” for
-              staff, or if your co-op doesn&apos;t charge.
+              Pick a tier and they&apos;ll be taken to payment after accepting. Leave it
+              as “Let the person decide” and they choose from your tiers on the
+              invitation itself — staff and guests are never asked, since they don&apos;t
+              pay dues.
             </p>
           </div>
           {inviteResult && (

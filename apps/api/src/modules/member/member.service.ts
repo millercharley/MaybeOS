@@ -894,7 +894,16 @@ export class MemberService {
     };
   }
 
-  async acceptInvite(token: string, userId: string) {
+  /**
+   * Accept an invitation, optionally with the tier the invitee chose (MEM-15).
+   *
+   * `chosenTierId` is only honoured when the invitation named no tier — an
+   * admin who picked Sustainer picked Sustainer, and letting the invitee send
+   * a different id would turn "assign a tier" into "suggest a tier". So the
+   * admin's choice always wins, and the invitee only chooses when the admin
+   * left it to them.
+   */
+  async acceptInvite(token: string, userId: string, chosenTierId?: string) {
     const invitation = await this.prisma.invitation.findUnique({
       where: { token },
     });
@@ -902,6 +911,21 @@ export class MemberService {
     if (!invitation) throw new NotFoundException('Invitation not found');
     if (invitation.acceptedAt) throw new BadRequestException('This invitation has already been accepted');
     if (invitation.expiresAt < new Date()) throw new BadRequestException('This invitation has expired');
+
+    // Resolved before anything is written, so an invitee who sends a tier id
+    // from another co-op is refused rather than quietly joined tier-less.
+    let tierId = invitation.tierId;
+    if (!tierId && chosenTierId) {
+      if (invitation.role !== 'MEMBER') {
+        throw new BadRequestException('Only member invitations carry dues');
+      }
+      const tier = await this.prisma.membershipTier.findFirst({
+        where: { id: chosenTierId, orgId: invitation.orgId, isActive: true },
+        select: { id: true },
+      });
+      if (!tier) throw new NotFoundException('That membership tier is not available');
+      tierId = tier.id;
+    }
 
     const existing = await this.prisma.userOrg.findUnique({
       where: { userId_orgId: { userId, orgId: invitation.orgId } },
@@ -920,11 +944,12 @@ export class MemberService {
           userId,
           orgId: invitation.orgId,
           role: invitation.role,
-          // The tier the invitation named (MEM-04). Without this an invited
-          // member joined with no tier and no dues, while somebody arriving
-          // through the public page paid — one co-op, two prices, decided by
-          // which door you came through.
-          tierId: invitation.tierId,
+          // The tier the invitation named, or the one the invitee chose when
+          // the admin left it to them (MEM-04, MEM-15). Without this an
+          // invited member joined with no tier and no dues, while somebody
+          // arriving through the public page paid — one co-op, two prices,
+          // decided by which door you came through.
+          tierId,
         },
       }),
       this.prisma.invitation.update({
@@ -945,7 +970,7 @@ export class MemberService {
     return {
       status: 'accepted',
       orgId: invitation.orgId,
-      tierId: invitation.tierId,
+      tierId,
     };
   }
 

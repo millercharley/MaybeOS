@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CheckCircle, AlertCircle } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
-import { api, InviteInfo } from '@/lib/api';
+import { api, InviteInfo, MembershipTier } from '@/lib/api';
 
 function InviteContent() {
   const searchParams = useSearchParams();
@@ -20,6 +20,10 @@ function InviteContent() {
   const [error, setError] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
   const [accepted, setAccepted] = useState(false);
+  // The tiers to choose from when the admin left the choice to the invitee
+  // (MEM-15). Null until fetched; empty when the co-op charges nothing.
+  const [tiers, setTiers] = useState<MembershipTier[] | null>(null);
+  const [chosenTierId, setChosenTierId] = useState<string>('');
 
   useEffect(() => {
     if (!inviteToken) {
@@ -35,11 +39,28 @@ function InviteContent() {
       .finally(() => setLoading(false));
   }, [inviteToken]);
 
+  // "Let the person decide" is only true if the person is actually asked
+  // (MEM-15). An invitation with no tier used to drop a new member straight
+  // onto the dashboard, joined and never once shown what the co-op costs —
+  // which made "no tier" and "their choice" the same silent outcome. Only
+  // member invitations: staff, organizers and guests don't pay dues.
+  const decideYourself = !!invite && !invite.tier && invite.role === 'MEMBER';
+
+  useEffect(() => {
+    if (!decideYourself || !invite) return;
+    let live = true;
+    api.orgs
+      .listTiers(invite.org.id)
+      .then((t) => { if (live) setTiers(t); })
+      .catch(() => { if (live) setTiers([]); });
+    return () => { live = false; };
+  }, [decideYourself, invite]);
+
   async function handleAccept() {
     if (!inviteToken || !token) return;
     setAccepting(true);
     try {
-      const result = await api.invites.accept(inviteToken, token);
+      const result = await api.invites.accept(inviteToken, token, chosenTierId || undefined);
       setAccepted(true);
       // The org the invitation was for, not whichever one happened to be
       // selected. The result used to be discarded entirely.
@@ -146,6 +167,74 @@ function InviteContent() {
               You&apos;ll be asked to set this up after joining.
             </span>
           </div>
+        )}
+
+        {/* The choice the admin handed over (MEM-15). Rendered before the
+            accept button rather than after joining: dues are part of what
+            you're agreeing to, and a co-op that asks for money should say so
+            on the page where you say yes. */}
+        {decideYourself && tiers && tiers.length > 0 && (
+          <fieldset className="mt-4">
+            <legend className="text-sm font-medium text-gray-700">
+              Choose your membership
+            </legend>
+            <p className="mb-2 mt-0.5 text-xs text-gray-500">
+              {invite?.org.name} left this up to you. You can change it later.
+            </p>
+            <div className="space-y-2">
+              {tiers.map((t) => (
+                <label
+                  key={t.id}
+                  className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm transition-colors ${
+                    chosenTierId === t.id
+                      ? 'border-brand-600 bg-brand-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="tier"
+                    value={t.id}
+                    checked={chosenTierId === t.id}
+                    onChange={() => setChosenTierId(t.id)}
+                    className="mt-0.5 h-4 w-4 text-brand-600"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-baseline justify-between gap-x-2">
+                      <span className="font-medium text-gray-900">{t.name}</span>
+                      <span className="text-gray-600">
+                        {t.isPayWhatYouCan
+                          ? 'Pay what you can'
+                          : t.priceMonthly > 0
+                            ? `$${(t.priceMonthly / 100).toFixed(2)}/month`
+                            : 'Free'}
+                      </span>
+                    </span>
+                    {t.description && (
+                      <span className="mt-0.5 block text-xs text-gray-500">{t.description}</span>
+                    )}
+                  </span>
+                </label>
+              ))}
+              <label
+                className={`flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm transition-colors ${
+                  chosenTierId === ''
+                    ? 'border-brand-600 bg-brand-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="tier"
+                  value=""
+                  checked={chosenTierId === ''}
+                  onChange={() => setChosenTierId('')}
+                  className="h-4 w-4 text-brand-600"
+                />
+                <span className="text-gray-700">I&apos;ll decide later</span>
+              </label>
+            </div>
+          </fieldset>
         )}
 
         <div className="mt-6">

@@ -21,10 +21,18 @@ export class InviteController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Accept an invitation (authenticated)' })
   @ApiQuery({ name: 'token', required: true, type: String })
+  @ApiQuery({
+    name: 'tier',
+    required: false,
+    type: String,
+    description:
+      'Tier the invitee chose, when the invitation left the choice to them (MEM-15). Ignored if the invitation already names a tier.',
+  })
   acceptInvite(
     @Query('token') token: string,
     @CurrentUser() user: RequestUser,
+    @Query('tier') tier?: string,
   ) {
-    return this.memberService.acceptInvite(token, user.userId);
+    return this.memberService.acceptInvite(token, user.userId, tier);
   }
 }
