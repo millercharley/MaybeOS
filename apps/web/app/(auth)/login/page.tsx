@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
+import { safeRedirect } from '@/lib/safe-redirect';
 import { landingPathFor } from '@/lib/landing';
 
 function LoginForm() {
@@ -12,7 +13,9 @@ function LoginForm() {
   const searchParams = useSearchParams();
   // Only an explicit ?redirect is honoured here; where a bare sign-in lands
   // depends on who signed in, which is not known until the profile loads.
-  const redirectTo = searchParams.get('redirect');
+  // Only a path inside this app: the value goes to `router.push`, which will
+  // leave the site for an absolute or protocol-relative URL (AUTH-08).
+  const redirectTo = safeRedirect(searchParams.get('redirect'), '');
   const setToken = useAuthStore((s) => s.setToken);
 
   // Prefilled when an invitation sent them here (MEM-04), so somebody
@@ -39,7 +42,7 @@ function LoginForm() {
 
         // Defaulted to /admin for everyone, so members signed in and were told
         // the page was for organisers.
-        let destination = redirectTo ?? '/member';
+        let destination = redirectTo || '/member';
         if (!redirectTo) {
           try {
             const user = await api.auth.profile(result.accessToken);

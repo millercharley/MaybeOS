@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
+import { safeRedirect } from '@/lib/safe-redirect';
 import { landingPathFor } from '@/lib/landing';
 
 function RegisterForm() {
@@ -14,7 +15,9 @@ function RegisterForm() {
   // depends on who registered. This defaulted to /admin, so somebody who had
   // just created an account was shown "This page is for organisers" — the same
   // bug fixed on the login page, left behind here.
-  const redirectTo = searchParams.get('redirect');
+  // Only a path inside this app: the value goes to `router.push`, which will
+  // leave the site for an absolute or protocol-relative URL (AUTH-08).
+  const redirectTo = safeRedirect(searchParams.get('redirect'), '');
   const setToken = useAuthStore((s) => s.setToken);
 
   const [name, setName] = useState('');
@@ -34,7 +37,7 @@ function RegisterForm() {
     try {
       const result = await api.auth.register({ name, email, password });
       setToken(result.accessToken);
-      let destination = redirectTo ?? '/member';
+      let destination = redirectTo || '/member';
       if (!redirectTo) {
         try {
           const user = await api.auth.profile(result.accessToken);
