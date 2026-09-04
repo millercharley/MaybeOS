@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
+import { PUBLIC_TIER_SELECT } from '../member/tier-view';
 import { CreateLocationDto, UpdateLocationDto } from './dto/location.dto';
 import { StorageService } from '../storage/storage.service';
 import { CreateOrgDto } from './dto/create-org.dto';
@@ -194,9 +195,12 @@ export class OrgService {
       where: { slug },
       include: {
         locations: true,
+        // The same columns the public tier list returns, from the same
+        // constant, so the two public paths cannot drift (MEM-14).
         tiers: {
           where: { isActive: true },
           orderBy: { sortOrder: 'asc' },
+          select: PUBLIC_TIER_SELECT,
         },
       },
     });

@@ -9,6 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { OrgRole } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
+import { PUBLIC_TIER_SELECT } from './tier-view';
 import { EmailService } from '../email/email.service';
 import { StripeService } from '../stripe/stripe.service';
 import { StorageService } from '../storage/storage.service';
@@ -577,12 +578,17 @@ export class MemberService {
   }
 
   /**
-   * List active tiers for an org, sorted by sortOrder.
+   * Active tiers for an org, in the order the admin put them (MEM-13).
+   *
+   * Public and unauthenticated: a co-op's join page renders for strangers.
+   * That is why the columns are chosen rather than the row returned whole —
+   * see `PUBLIC_TIER_SELECT`.
    */
   async listTiers(orgId: string) {
     return this.prisma.membershipTier.findMany({
       where: { orgId, isActive: true },
       orderBy: { sortOrder: 'asc' },
+      select: PUBLIC_TIER_SELECT,
     });
   }
 
