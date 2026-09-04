@@ -11,6 +11,7 @@ import { api, Event } from '@/lib/api';
 import { toUpdatePayload } from '@/lib/events';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
 import { PageHeader } from '@/components/layout/page-header';
+import { useReveal } from '@/hooks/use-reveal';
 
 type FilterTab = 'all' | 'upcoming' | 'past' | 'draft';
 
@@ -29,6 +30,9 @@ export default function EventsPage() {
   // route off this page was the door list, so an event created with the wrong
   // date, price or visibility could never be corrected — only cancelled.
   const [editing, setEditing] = useState<Event | null>(null);
+  // The form sits above the event list, so Edit on a later event changes
+  // something off the top of the screen (UI-04).
+  const eventFormRef = useReveal<HTMLElement>(creating ? 'new' : (editing?.id ?? null));
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
   const token = useAuthStore((s) => s.token);
@@ -138,7 +142,7 @@ export default function EventsPage() {
       </div>
 
       {(creating || editing) && (
-        <section className="card">
+        <section ref={eventFormRef} tabIndex={-1} className="card focus:outline-none">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-semibold text-gray-900">
               {editing ? `Edit ${editing.title}` : 'New event'}
