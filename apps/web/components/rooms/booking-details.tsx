@@ -89,7 +89,8 @@ export function BookingDetailsForm({
           onChange={(e) => setTitle(e.target.value)}
         />
         <span className="mt-1 block text-xs text-[var(--text-tertiary)]">
-          This is what the room&apos;s calendar will show.
+          Shown on the room&apos;s calendar and on the day&apos;s schedule, which any
+          member can open.
         </span>
       </label>
 
@@ -103,14 +104,21 @@ export function BookingDetailsForm({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
         />
+        {/* Said here rather than only in the visibility group below, because
+            this is the field somebody types something personal into and the
+            warning has to arrive before they do it, not after (SPC-18). */}
+        <span className="mt-1 block text-xs text-[var(--text-tertiary)]">
+          Any member can read this — it appears beside your booking on the
+          day&apos;s schedule.
+        </span>
       </label>
 
       <fieldset className="mt-4">
-        <legend className="text-sm font-medium">Who is it open to?</legend>
+        <legend className="text-sm font-medium">Who is invited?</legend>
         <div className="mt-2 space-y-2">
           {(
             [
-              ['PRIVATE', 'Just my guests', 'Nobody else is invited.'],
+              ['PRIVATE', 'Just my guests', 'Nobody else is invited to join.'],
               ['MEMBERS_ONLY', 'Any member', 'Other members are welcome to join.'],
               ['PUBLIC', 'Anyone', 'Open to people outside the co-op too.'],
             ] as const
@@ -131,6 +139,14 @@ export function BookingDetailsForm({
             </label>
           ))}
         </div>
+        {/* The honest footnote. This field sets who may *come*; it has never
+            hidden the booking, and since the day schedule shipped every member
+            can read all of it. "Just my guests" was easy to read as "nobody
+            else will know", which it does not mean (SPC-18). */}
+        <p className="mt-2 text-xs text-[var(--text-tertiary)]">
+          This sets who may come. Either way, every member can see that the room
+          is booked, by whom, and what you wrote above.
+        </p>
       </fieldset>
 
       <div className="mt-4 flex flex-wrap items-end gap-4">
