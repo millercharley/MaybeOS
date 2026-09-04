@@ -253,7 +253,7 @@ function MemberProfile({ member, onClose }: { member: Member; onClose: () => voi
               {member.user.email}
             </a>
             <p className="mt-1 text-xs text-gray-400">
-              Visible to organisers so they can contact members — not to the whole co-op.
+              Visible to organizers so they can contact members — not to the whole co-op.
             </p>
           </div>
         )}

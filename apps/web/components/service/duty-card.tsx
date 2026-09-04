@@ -56,7 +56,7 @@ export function DutyCard({
             {occurrence.requiresApproval && (
               <span className="inline-flex items-center gap-1">
                 <ShieldCheck size={13} aria-hidden="true" />
-                An organiser confirms this one
+                An organizer confirms this one
               </span>
             )}
           </p>

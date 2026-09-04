@@ -105,7 +105,7 @@ export default function PortalEventPage(props: {
       const { url } = await api.events.buyTicket(
         org.id,
         event.id,
-        { successUrl: `${here}?purchased=1`, cancelUrl: `${here}?purchase=cancelled` },
+        { successUrl: `${here}?purchased=1`, cancelUrl: `${here}?purchase=canceled` },
         token ?? undefined,
       );
       window.location.assign(url);

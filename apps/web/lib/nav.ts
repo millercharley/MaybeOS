@@ -34,7 +34,7 @@ export interface NavItem {
  * that needs to find it — the default open section, below — would otherwise
  * have to match on a string that changes per co-op.
  */
-export type NavSectionId = 'community' | 'organising' | 'membership' | 'platform';
+export type NavSectionId = 'community' | 'organizing' | 'membership' | 'platform';
 
 export interface NavSection {
   label?: string;
@@ -192,12 +192,18 @@ export function sidebarSections({
     sections.push({ label: name, id: 'community', items: coopNav(slug) });
   }
 
-  if (signedIn && isOrganiser && slug) {
-    sections.push({ label: 'Organising', id: 'organising', items: admin.slice(1) });
-  }
-
   if (signedIn && slug) {
     sections.push({ label: 'My membership', id: 'membership', items: member.slice(1) });
+  }
+
+  // Below My membership (Charley, 2026-09-04). Organizing is a long section —
+  // thirteen links — and putting it above the four personal ones pushed a
+  // member's own things off the bottom of a laptop screen for every organiser.
+  // It also reads in the right order: you are a member of the co-op first and
+  // an organiser of it second, which is the same argument that put the
+  // community section at the top.
+  if (signedIn && isOrganiser && slug) {
+    sections.push({ label: 'Organizing', id: 'organizing', items: admin.slice(1) });
   }
 
   // Last, and labelled as MaybeOS rather than as part of the co-op — because

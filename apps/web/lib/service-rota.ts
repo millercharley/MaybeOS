@@ -85,7 +85,7 @@ export function coverage(
   // Done comes first: a turn already served said "You're on this", which reads
   // as something still owed and is the one status a member might act on twice.
   if (mine?.status === 'DONE') return { label: 'Done', tone: 'mine' };
-  if (mine?.status === 'CLAIMED') return { label: 'Waiting on an organiser', tone: 'pending' };
+  if (mine?.status === 'CLAIMED') return { label: 'Waiting on an organizer', tone: 'pending' };
   if (mine) return { label: "You're on this", tone: 'mine' };
 
   if (occurrence.remaining <= 0) {

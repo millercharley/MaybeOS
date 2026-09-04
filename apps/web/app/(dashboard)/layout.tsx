@@ -292,7 +292,7 @@ function NotYourCoop({ slug }: { slug: string }) {
       </h1>
       <p className="mt-2 text-sm text-gray-500">
         This address belongs to a co-op you don&apos;t belong to. If you think you should,
-        ask one of its organisers for an invitation.
+        ask one of its organizers for an invitation.
       </p>
       <Link href="/member" className="btn-primary mt-6 inline-block text-sm">
         Go to your own co-op
@@ -306,7 +306,7 @@ function OrganiserOnly() {
     <div className="mx-auto max-w-md py-16 text-center">
       <Lock className="mx-auto h-10 w-10 text-gray-300" />
       <h1 className="mt-4 text-lg font-semibold text-gray-900">
-        This page is for organisers
+        This page is for organizers
       </h1>
       <p className="mt-2 text-sm text-gray-500">
         Your co-op&apos;s admins and staff manage this. If you think you should

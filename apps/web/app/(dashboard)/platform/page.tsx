@@ -62,7 +62,7 @@ export default function PlatformPage() {
 
   async function suspend(org: PlatformOrg) {
     const reason = window.prompt(
-      `Suspend ${org.name}? Its members lose access immediately.\n\nThe reason is shown to its organisers in their own audit log:`,
+      `Suspend ${org.name}? Its members lose access immediately.\n\nThe reason is shown to its organizers in their own audit log:`,
     );
     if (!reason?.trim()) return;
     await run(org.id, () => api.platform.suspend(org.id, reason.trim(), token!));
@@ -183,7 +183,7 @@ export default function PlatformPage() {
                       {org.contact.name ?? org.contact.email}
                     </a>
                   ) : (
-                    <span className="text-amber-700">no organiser</span>
+                    <span className="text-amber-700">no organizer</span>
                   )}
                 </p>
               </div>
@@ -216,7 +216,7 @@ export default function PlatformPage() {
                 {org.hasNoAdmin && (
                   <p className="flex items-start gap-1.5 text-sm text-amber-700">
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    No organiser — nobody can reach its settings, billing or member list.
+                    No organizer — nobody can reach its settings, billing or member list.
                   </p>
                 )}
               </div>

@@ -103,7 +103,7 @@ export default function MyImpactPage() {
         {/* Stated to the person it is a promise to, not only in a privacy
             policy: §10 is the reason the totals above are the only thing
             anybody else can see. */}
-        Organisers only ever see totals — never your individual answers, and never figures drawn
+        Organizers only ever see totals — never your individual answers, and never figures drawn
         from too few people to keep those answers private.
       </p>
     </div>

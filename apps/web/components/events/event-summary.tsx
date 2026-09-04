@@ -101,8 +101,8 @@ export function EventSummary({ orgId, eventId }: { orgId: string; eventId: strin
             {m.status === 'PAID' && m.paidAt
               ? `Paid on ${new Date(m.paidAt).toLocaleDateString()}.`
               : m.status === 'CANCELLED'
-                ? 'This payout was cancelled.'
-                : 'Not paid out yet — an organiser settles these.'}
+                ? 'This payout was canceled.'
+                : 'Not paid out yet — an organizer settles these.'}
           </p>
         </dl>
       )}

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ListChecks, Loader2, Plus, Trash2 } from 'lucide-react';
 import { api, OnboardingConfig, OnboardingStep, OnboardingStepKind } from '@/lib/api';
+import { Toggle } from '@/components/ui/toggle';
 import { useAuthStore } from '@/lib/auth-store';
 
 /**
@@ -24,7 +25,7 @@ const KINDS: Array<{ value: OnboardingStepKind; label: string; detects: string }
   { value: 'PROFILE', label: 'Complete a profile', detects: 'Ticks when they have a name and a headline or bio.' },
   { value: 'HANDBOOK', label: 'Read the handbook', detects: 'Ticks when they acknowledge a handbook article.' },
   { value: 'COMMONS_POST', label: 'Post in the Commons', detects: 'Ticks on their first post or comment.' },
-  { value: 'EVENT_RSVP', label: 'RSVP to an event', detects: 'Ticks on their first RSVP that is not cancelled.' },
+  { value: 'EVENT_RSVP', label: 'RSVP to an event', detects: 'Ticks on their first RSVP that is not canceled.' },
   { value: 'ROOM_BOOKING', label: 'Book a room', detects: 'Ticks on their first booking.' },
   { value: 'SERVICE_CLAIM', label: 'Take a turn at something', detects: 'Ticks when they claim a duty and keep it.' },
   { value: 'CUSTOM', label: 'Something else', detects: 'The member marks this one done themselves.' },
@@ -103,16 +104,15 @@ export function GettingStartedSettings() {
           </div>
         </div>
 
-        <label className="flex shrink-0 items-center gap-2 text-sm">
-          <input
-            type="checkbox"
+        <div className="shrink-0">
+          <Toggle
+            id="onboarding-enabled"
             checked={config.enabled}
             disabled={busy}
-            onChange={(e) => run(() => api.onboarding.setEnabled(orgId!, e.target.checked, token!))}
-            className="h-4 w-4 rounded border-gray-300"
+            onChange={(next) => run(() => api.onboarding.setEnabled(orgId!, next, token!))}
+            label={config.enabled ? 'Showing to members' : 'Not showing'}
           />
-          <span className="font-medium text-gray-700">{config.enabled ? 'On' : 'Off'}</span>
-        </label>
+        </div>
       </div>
 
       {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}

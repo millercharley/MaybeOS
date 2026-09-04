@@ -286,7 +286,7 @@ function EventRow({
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
           <VisibilityBadge visibility={event.visibility} />
           {canceled ? (
-            <Badge tone="red">Cancelled</Badge>
+            <Badge tone="red">Canceled</Badge>
           ) : event.isPublished ? (
             <Badge tone="green">Live</Badge>
           ) : (

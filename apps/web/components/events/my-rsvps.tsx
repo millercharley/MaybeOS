@@ -61,7 +61,7 @@ export function MyRsvps() {
       ) : (
         <>
           <Section title="Upcoming" rsvps={upcoming} emptyNote="Nothing coming up." />
-          {past.length > 0 && <Section title="Past and cancelled" rsvps={past} muted />}
+          {past.length > 0 && <Section title="Past and canceled" rsvps={past} muted />}
         </>
       )}
     </div>
@@ -170,10 +170,10 @@ function RsvpCard({ rsvp }: { rsvp: MyRsvp }) {
  */
 function StatusBadge({ rsvp }: { rsvp: MyRsvp }) {
   if (rsvp.eventCanceled) {
-    return <Badge tone="red">Event cancelled</Badge>;
+    return <Badge tone="red">Event canceled</Badge>;
   }
   if (rsvp.status === 'CANCELED') {
-    return <Badge tone="grey">You cancelled</Badge>;
+    return <Badge tone="grey">You canceled</Badge>;
   }
   if (rsvp.status === 'WAITLISTED') {
     return <Badge tone="amber">On the waitlist</Badge>;

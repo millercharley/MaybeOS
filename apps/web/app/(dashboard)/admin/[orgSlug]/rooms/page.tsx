@@ -376,7 +376,7 @@ export default function AdminRoomsPage() {
                   </span>
                   <span className="mt-0.5 block text-xs text-[var(--text-tertiary)]">
                     {canCharge
-                      ? 'Off by default. Members pay when they book, and are refunded automatically if the booking is rejected or cancelled.'
+                      ? 'Off by default. Members pay when they book, and are refunded automatically if the booking is rejected or canceled.'
                       : 'Finish setting up payments in Settings → Ticket sales before you can charge for rooms.'}
                   </span>
                 </span>

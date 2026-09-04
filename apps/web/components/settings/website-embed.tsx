@@ -53,13 +53,13 @@ export function WebsiteEmbed({ org }: { org: Org }) {
       </div>
 
       <label className="block">
-        <span className="text-sm font-medium text-gray-700">Accent colour</span>
+        <span className="text-sm font-medium text-gray-700">Accent color</span>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           {/* Two ways in, one value: the picker for people who want to see the
               colour, the text field for people who have a brand hex to paste. */}
           <input
             type="color"
-            aria-label="Pick an accent colour"
+            aria-label="Pick an accent color"
             className="h-9 w-12 cursor-pointer rounded border border-gray-200 bg-white p-1"
             value={accent ?? DEFAULT_ACCENT}
             onChange={(e) => setAccentInput(e.target.value)}
@@ -84,7 +84,7 @@ export function WebsiteEmbed({ org }: { org: Org }) {
         </div>
         <span className="mt-1 block text-xs text-gray-500">
           {invalid
-            ? 'That is not a colour yet — use a hex like #b03030.'
+            ? 'That is not a color yet — use a hex like #b03030.'
             : 'Used for event dates and ticket prices in the embed. Match your own site.'}
         </span>
       </label>

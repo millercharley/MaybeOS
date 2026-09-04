@@ -98,7 +98,7 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
           <p className="mt-2 text-center text-gray-600">
             {org.allowPublicJoin
               ? 'Choose the membership level that works for you.'
-              : `${org.name} is invitation only. These are the membership levels — ask an organiser for an invite.`}
+              : `${org.name} is invitation only. These are the membership levels — ask an organizer for an invite.`}
           </p>
 
           <div className="mt-10 grid gap-8 lg:grid-cols-3">

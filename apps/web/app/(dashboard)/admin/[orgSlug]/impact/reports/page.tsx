@@ -211,7 +211,7 @@ export default function ReportsPage() {
             <div>
               <h1 className="font-display text-2xl leading-tight text-ink">{open.title}</h1>
               <p className="mt-0.5 text-sm text-gray-500">
-                {published ? 'Published — anyone with the link can read it.' : 'Draft — only organisers can see it.'}
+                {published ? 'Published — anyone with the link can read it.' : 'Draft — only organizers can see it.'}
                 {/* G4, computed rather than claimed. */}
                 {open.editedShare > 0 &&
                   ` You rewrote ${Math.round(open.editedShare * 100)}% of it.`}

@@ -112,7 +112,7 @@ export default function ServePage() {
           <HandHelping className="mx-auto h-8 w-8 text-[var(--text-tertiary)]" />
           <p className="mt-3 font-medium">Nothing on the rota yet.</p>
           <p className="mt-1 text-sm text-[var(--text-secondary)]">
-            An organiser has not named anything that needs doing. When they do, it turns
+            An organizer has not named anything that needs doing. When they do, it turns
             up here.
           </p>
         </div>
