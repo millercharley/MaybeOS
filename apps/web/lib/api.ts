@@ -473,6 +473,11 @@ class ApiClient {
         /** The co-op's own fee per ticket, in cents (D-013 ticketing). */
         ticketFeeCents?: number;
         /**
+         * The membership number the co-op is working toward (DSH-01).
+         * Explicit null clears it; omitting the field leaves it alone.
+         */
+        memberGoal?: number | null;
+        /**
          * What the co-op says an hour of service is worth, in cents (SRV-02).
          * Explicit null clears it; omitting the field leaves it alone.
          */
@@ -499,6 +504,17 @@ class ApiClient {
 
     removeLogo: (orgId: string, token: string) =>
       this.request<Org>(`/orgs/${orgId}/logo`, { method: 'DELETE', token }),
+
+    /** The wide image across the top of the member dashboard (DSH-01). */
+    uploadBanner: (orgId: string, data: string, mimeType: string, token: string) =>
+      this.request<Org>(`/orgs/${orgId}/banner`, {
+        method: 'POST',
+        body: JSON.stringify({ data, mimeType }),
+        token,
+      }),
+
+    removeBanner: (orgId: string, token: string) =>
+      this.request<Org>(`/orgs/${orgId}/banner`, { method: 'DELETE', token }),
   };
 
   // ── Members ──────────────────────────────────────
@@ -1960,7 +1976,22 @@ export interface UserProfile {
     /** Non-null in the database with a NONE default, so always present. */
     subscriptionStatus: string;
     memberSince?: string;
-    org?: { id: string; name: string; slug: string; logoUrl?: string | null; brandColor?: string | null };
+    /**
+     * The co-op's public identity, carried on the session so a member's pages
+     * do not fetch it again on every navigation. `bannerUrl` and `memberGoal`
+     * are what the member dashboard shows at the top (DSH-01).
+     */
+    org?: {
+      id: string;
+      name: string;
+      slug: string;
+      logoUrl?: string | null;
+      brandColor?: string | null;
+      bannerUrl?: string | null;
+      memberGoal?: number | null;
+      /** What "today" means at this co-op, for the dashboard's event list. */
+      timezone?: string;
+    };
   }>;
 }
 
@@ -1996,6 +2027,18 @@ export interface Org {
   mission?: string;
   logoUrl?: string;
   brandColor: string;
+  /**
+   * A wide image across the top of the member dashboard (DSH-01). Absent
+   * unless an admin has uploaded one, and then the dashboard has no banner —
+   * not a placeholder.
+   */
+  bannerUrl?: string | null;
+  /**
+   * A membership number the co-op is working toward (DSH-01). Absent unless an
+   * admin has set one. "47 members" is a fact; "47 of 100" is a claim about
+   * what the co-op is for, and only the co-op gets to make it.
+   */
+  memberGoal?: number | null;
   timezone: string;
   /**
    * Whether a stranger can join from the public page. Off by default: a

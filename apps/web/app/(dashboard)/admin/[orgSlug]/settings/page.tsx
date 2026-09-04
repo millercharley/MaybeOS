@@ -11,6 +11,7 @@ import { MaybeOsPlan } from '@/components/settings/maybeos-plan';
 import { Locations } from '@/components/settings/locations';
 import { Support } from '@/components/settings/support';
 import { WebsiteEmbed } from '@/components/settings/website-embed';
+import { MemberDashboard } from '@/components/settings/member-dashboard';
 import { PageHeader } from '@/components/layout/page-header';
 
 type SettingsTab = 'general' | 'branding' | 'integrations' | 'billing';
@@ -489,6 +490,9 @@ export default function SettingsPage() {
           </div>
         </form>
       )}
+
+      {/* What a co-op puts on its members' dashboard (DSH-01). */}
+      {activeTab === 'branding' && org && <MemberDashboard org={org} onSaved={refetch} />}
 
       {activeTab === 'integrations' && (
         <div className="space-y-4">

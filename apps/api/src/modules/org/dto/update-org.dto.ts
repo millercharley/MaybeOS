@@ -52,4 +52,19 @@ export class UpdateOrgDto extends PartialType(CreateOrgDto) {
   @Min(0)
   @Max(50000)
   volunteerHourValueCents?: number | null;
+
+  /**
+   * A membership number the co-op is working toward (DSH-01). Null clears it,
+   * and null is the default — no goal, no progress bar.
+   *
+   * Capped at a million, which no co-op is, but a goal field with no ceiling
+   * is a typo away from a progress bar that reads 0% forever.
+   */
+  @ApiPropertyOptional({ example: 100, minimum: 1, maximum: 1000000, nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsInt()
+  @Min(1)
+  @Max(1000000)
+  memberGoal?: number | null;
 }

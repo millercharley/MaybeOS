@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, usePathname } from 'next/navigation';
+import { useParams, usePathname, useRouter } from 'next/navigation';
 import { Menu } from 'lucide-react';
 import { PortalProvider, usePortal } from '@/contexts/portal-context';
+import { useAuthStore } from '@/lib/auth-store';
+import { portalRequiresAuth } from '@/lib/portal-access';
 import { Sidebar } from '@/components/layout/sidebar';
 import { RequiredReadingBanner } from '@/components/belonging/required-reading-banner';
 import { OrgMark } from '@/components/layout/org-mark';
@@ -12,6 +14,36 @@ import { brandStyle, brandTheme } from '@/lib/brand';
 function PortalShell({ children }: { children: React.ReactNode }) {
   const { org, orgSlug, loading, error } = usePortal();
   const pathname = usePathname();
+  const router = useRouter();
+
+  /**
+   * The portal is a co-op's inside, and you have to be signed in to be in it
+   * (Charley, 2026-09-04).
+   *
+   * It was built public — `/orgs/:slug` is fetched without a token, so the
+   * shell rendered for anybody, and signing out left you sitting on
+   * `/portal/maybeitsfate/rooms` with the co-op's name in the sidebar. The
+   * pages underneath asked the API for real data and got 401s, so what a
+   * signed-out visitor actually saw was a co-op's private space with
+   * everything in it failing — which reads as a broken product rather than a
+   * closed door. The API was never fooled; the shell was.
+   *
+   * Not every portal address though — `portalRequiresAuth` holds the two
+   * exceptions, a public event's page and a published impact report, both of
+   * which exist to be opened by somebody who is not a member.
+   *
+   * `redirect` carries the address they were trying to reach, so signing in
+   * finishes the trip rather than dropping them on a dashboard.
+   */
+  const token = useAuthStore((s) => s.token);
+  const authLoading = useAuthStore((s) => s.isLoading);
+  const signedOut = !authLoading && !token && portalRequiresAuth(pathname);
+
+  useEffect(() => {
+    if (!signedOut) return;
+    const target = pathname ?? `/portal/${orgSlug}`;
+    router.replace(`/login?redirect=${encodeURIComponent(target)}`);
+  }, [signedOut, pathname, orgSlug, router]);
 
   // The same drawer as the dashboard (UI-01). The portal used to show a
   // second, horizontal navigation below `lg` — a different set of links in a
@@ -26,7 +58,10 @@ function PortalShell({ children }: { children: React.ReactNode }) {
   // it has not set one, and then nothing here changes.
   const theme = brandTheme(org?.brandColor);
 
-  if (loading) {
+  // Nothing of the co-op is drawn before the session is known, and nothing at
+  // all once it is known to be absent — otherwise the shell flashes on screen
+  // for the length of a redirect.
+  if (loading || authLoading || signedOut) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
@@ -108,10 +143,6 @@ function PortalShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1 overflow-auto">
           <div className="page-shell">{children}</div>
         </main>
-
-        <footer className="border-t border-gray-200 bg-white py-6 text-center text-sm text-gray-400">
-          Powered by MaybeOS
-        </footer>
       </div>
     </div>
   );

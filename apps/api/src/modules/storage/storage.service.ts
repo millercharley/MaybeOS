@@ -507,20 +507,50 @@ export class StorageService {
    * existing logo. It also sidesteps the CDN — the public URL is cached, so
    * reusing a key would serve a stale image after a replacement.
    */
+  /**
+   * Store an org banner and return its public URL (DSH-01).
+   *
+   * The same public bucket as the logo, and for the same reason: both are the
+   * co-op's outward identity, and both are shown to whoever can see the page.
+   * Nothing about a wide image makes it more private than a small one.
+   *
+   * The key is prefixed `banner-` inside the org's own folder, which keeps the
+   * two apart for anybody reading the bucket and leaves the deleter's
+   * folder check — the thing that stops a doctored URL deleting another
+   * co-op's file — working unchanged.
+   */
+  async uploadOrgBanner(
+    orgId: string,
+    body: Buffer,
+    mimeType: string,
+  ): Promise<string> {
+    return this.uploadOrgImage(orgId, body, mimeType, 'banner-');
+  }
+
   async uploadOrgLogo(
     orgId: string,
     body: Buffer,
     mimeType: string,
   ): Promise<string> {
+    return this.uploadOrgImage(orgId, body, mimeType, '');
+  }
+
+  /** What both of the above actually do. */
+  private async uploadOrgImage(
+    orgId: string,
+    body: Buffer,
+    mimeType: string,
+    prefix: string,
+  ): Promise<string> {
     if (!this.isConfigured) {
       throw new ServiceUnavailableException(
-        'Logo uploads are not configured on this server (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).',
+        'Image uploads are not configured on this server (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).',
       );
     }
 
     this.assertAcceptable(body, mimeType);
 
-    const path = `${orgId}/${randomUUID()}.${EXTENSION[mimeType]}`;
+    const path = `${orgId}/${prefix}${randomUUID()}.${EXTENSION[mimeType]}`;
     const response = await fetch(
       `${this.url}/storage/v1/object/${LOGO_BUCKET}/${path}`,
       {
@@ -533,7 +563,7 @@ export class StorageService {
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
       this.logger.error(
-        `Logo upload failed for org ${orgId}: ${response.status} ${detail.slice(0, 200)}`,
+        `Image upload failed for org ${orgId}: ${response.status} ${detail.slice(0, 200)}`,
       );
       // The bucket enforces its own limits too, so a rejection here is a real
       // failure rather than something to paper over with a partial success.
@@ -543,7 +573,7 @@ export class StorageService {
       throw new ServiceUnavailableException(
         response.status === 400 || response.status === 401 || response.status === 403
           ? 'File storage is not accepting uploads right now. This is a MaybeOS problem, not yours — we have been notified.'
-          : 'Could not store the logo. Try again.',
+          : 'Could not store the image. Try again.',
       );
     }
 
@@ -558,6 +588,10 @@ export class StorageService {
    * than an org with no logo. Never let cleanup break the operation that
    * succeeded.
    */
+  async deleteOrgBanner(orgId: string, publicUrl: string | null): Promise<void> {
+    return this.deleteOrgLogo(orgId, publicUrl);
+  }
+
   async deleteOrgLogo(orgId: string, publicUrl: string | null): Promise<void> {
     if (!publicUrl || !this.isConfigured) return;
 

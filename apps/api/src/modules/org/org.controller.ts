@@ -131,6 +131,24 @@ export class OrgController {
     return this.orgService.removeLogo(orgId);
   }
 
+  @Post(':orgId/banner')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Replace the organization's dashboard banner" })
+  uploadBanner(@Param('orgId') orgId: string, @Body() dto: UploadLogoDto) {
+    return this.orgService.replaceBanner(orgId, dto.data, dto.mimeType);
+  }
+
+  @Delete(':orgId/banner')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Remove the organization's dashboard banner" })
+  deleteBanner(@Param('orgId') orgId: string) {
+    return this.orgService.removeBanner(orgId);
+  }
+
   @Get(':orgId/settings')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')

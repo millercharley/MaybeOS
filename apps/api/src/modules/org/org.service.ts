@@ -51,6 +51,58 @@ export class OrgService {
     return updated;
   }
 
+  /**
+   * Replace an org's banner (DSH-01).
+   *
+   * Same order as the logo, for the same reason: upload to a fresh key, write
+   * the column only once the object exists, delete the old file last. A
+   * failure anywhere leaves the co-op with the banner it had rather than a
+   * broken image across the top of every member's dashboard.
+   */
+  async replaceBanner(orgId: string, data: string, mimeType: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { id: true, bannerUrl: true },
+    });
+    if (!org) {
+      throw new NotFoundException(`Organization "${orgId}" not found`);
+    }
+
+    const base64 = data.includes(',') ? data.slice(data.indexOf(',') + 1) : data;
+    const bytes = Buffer.from(base64.replace(/\s/g, ''), 'base64');
+
+    const bannerUrl = await this.storage.uploadOrgBanner(orgId, bytes, mimeType);
+
+    const updated = await this.prisma.organization.update({
+      where: { id: orgId },
+      data: { bannerUrl },
+    });
+
+    await this.storage.deleteOrgBanner(orgId, org.bannerUrl);
+
+    return updated;
+  }
+
+  /** Remove the banner. The dashboard then simply has no banner. */
+  async removeBanner(orgId: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { id: true, bannerUrl: true },
+    });
+    if (!org) {
+      throw new NotFoundException(`Organization "${orgId}" not found`);
+    }
+
+    const updated = await this.prisma.organization.update({
+      where: { id: orgId },
+      data: { bannerUrl: null },
+    });
+
+    await this.storage.deleteOrgBanner(orgId, org.bannerUrl);
+
+    return updated;
+  }
+
   /** Remove the logo entirely, falling back to the initial-letter mark. */
   async removeLogo(orgId: string) {
     const org = await this.prisma.organization.findUnique({

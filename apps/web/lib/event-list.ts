@@ -106,3 +106,49 @@ export function whenLabel(startIso: string, endIso: string, timeZone: string): s
         timeZone,
       }).format(end)}, ${time(end, true)}`;
 }
+
+/** The calendar day an instant falls on, in a given timezone. "2026-09-04". */
+function dayIn(iso: string | Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date(iso));
+}
+
+export interface Datable {
+  id: string;
+  startTime: string;
+  endTime: string;
+}
+
+/**
+ * What is on at the co-op today (DSH-01).
+ *
+ * Charley: the top of the member dashboard should headline what is going on at
+ * the community in general, showing today's events.
+ *
+ * Three decisions, and each one is the difference between a useful line and a
+ * misleading one:
+ *
+ * - **Today is the co-op's today**, not the reader's. A member reading this in
+ *   another timezone is asking what is happening at the space, and at 10pm in
+ *   California "tonight in New York" is already tomorrow.
+ * - **Something already over is not on today.** A dashboard opened at 8pm
+ *   listing this morning's meeting as what is going on is answering a question
+ *   nobody asked.
+ * - **Something running now counts even if it started yesterday.** An event
+ *   that began at 10pm and runs past midnight is happening; excluding it
+ *   because its start date reads as yesterday would hide the one thing on.
+ */
+export function happeningToday<T extends Datable>(
+  events: T[],
+  timeZone: string,
+  now: Date,
+): T[] {
+  const today = dayIn(now, timeZone);
+
+  return events
+    .filter((e) => {
+      const ends = new Date(e.endTime).getTime();
+      if (ends <= now.getTime()) return false; // already over
+      return dayIn(e.startTime, timeZone) === today || new Date(e.startTime) <= now;
+    })
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+}

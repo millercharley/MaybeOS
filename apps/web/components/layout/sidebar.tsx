@@ -228,7 +228,8 @@ export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: stri
             </button>
           </div>
         ) : (
-          /* The portal is public, so this column renders for visitors too. */
+          /* Still reachable signed out on the two public portal pages — a
+             shared event link and a published report (`portal-access.ts`). */
           <Link
             href="/login"
             className="block rounded-md bg-brand-600 px-3 py-2 text-center text-sm font-medium text-white transition-colors hover:bg-brand-700"

@@ -49,6 +49,22 @@ model Organization {
   /// choosing it. Until this is set, ImpactOS reports hours only, which needs
   /// no assumption to be true.
   volunteerHourValueCents Int?
+
+  /// A membership number the co-op is working toward, shown on the member
+  /// dashboard beside the real one (Charley, 2026-09-04).
+  ///
+  /// Null unless an admin sets it, and null by default. A co-op that has not
+  /// named a target does not get a progress bar against a number MaybeOS
+  /// invented — and "47 members" is a fact, while "47 of 100" is a claim about
+  /// what the co-op is for.
+  memberGoal Int?
+
+  /// A wide image across the top of the member dashboard (Charley,
+  /// 2026-09-04). Public identity like the logo, and stored in the same public
+  /// bucket. Null unless an admin uploads one, and then the dashboard simply
+  /// has no banner.
+  bannerUrl String?
+
   settings                Json    @default("{}")
   // Stripe Billing Portal configuration for this org's members. The portal
   // only offers plan switching when it is given an explicit product list,
