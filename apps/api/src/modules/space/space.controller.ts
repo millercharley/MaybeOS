@@ -292,6 +292,23 @@ export class SpaceController {
     return this.spaceService.createBooking(orgId, roomId, user.userId, dto);
   }
 
+  /**
+   * What is on across the whole building today (SPC-18). Any member.
+   *
+   * Before `rooms/:roomId/bookings` in the file only for readability — the two
+   * do not collide, since this one names no room.
+   */
+  @Get('bookings/day')
+  @ApiOperation({ summary: "Every room's bookings for one day" })
+  @ApiQuery({ name: 'date', required: true, description: 'YYYY-MM-DD in the co-op’s timezone' })
+  dayBookings(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Query('date') date: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.spaceService.dayBookings(orgId, date, viewerFor(user, orgId));
+  }
+
   @Get('rooms/:roomId/bookings')
   @ApiOperation({ summary: 'List bookings for a room within a date range' })
   listBookings(

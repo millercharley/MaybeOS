@@ -1095,6 +1095,15 @@ class ApiClient {
         { token },
       ),
 
+    /**
+     * Every room's bookings for one day (SPC-18). Any member.
+     *
+     * `date` is YYYY-MM-DD in the co-op's own timezone — the server resolves
+     * it, so the caller never has to know what "today" means at the building.
+     */
+    day: (orgId: string, date: string, token: string) =>
+      this.request<DaySchedule>(`/orgs/${orgId}/bookings/day?date=${date}`, { token }),
+
     myBookings: (orgId: string, token: string) =>
       this.request<Booking[]>(`/orgs/${orgId}/my-bookings`, { token }),
 
@@ -2717,6 +2726,33 @@ export interface CreateRoomData {
   maxBookingMinutes?: number | null;
   /** Cents per hour. Charged when `chargeForBooking` is on (SPC-06). */
   hourlyRate?: number;
+}
+
+/** One day across every room, for the schedule view (SPC-18). */
+export interface DaySchedule {
+  date: string;
+  /** The co-op's timezone, so the page renders times the way the room does. */
+  timezone: string;
+  bookings: Array<{
+    id: string;
+    title: string;
+    /** Null when withheld — see `descriptionWithheld` — or simply not written. */
+    description: string | null;
+    visibility: 'PUBLIC' | 'MEMBERS_ONLY' | 'PRIVATE';
+    status: 'APPROVED' | 'PENDING';
+    startTime: string;
+    endTime: string;
+    expectedAttendance?: number | null;
+    categories: string[];
+    room: { id: string; name: string };
+    user: { id: string; name?: string | null; avatarUrl?: string | null };
+    /**
+     * True when there is a description and this viewer is not being shown it.
+     * A booking marked "just my guests" keeps its detail; the time, room, host
+     * and title still show, because that is the building's shared schedule.
+     */
+    descriptionWithheld: boolean;
+  }>;
 }
 
 export interface Booking {

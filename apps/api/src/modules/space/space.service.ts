@@ -1034,6 +1034,94 @@ export class SpaceService {
     return canceled;
   }
 
+  /**
+   * Every room's bookings for one day, for any member (SPC-18).
+   *
+   * Charley: a view of the whole day across all the rooms, with the host, the
+   * title and what it is. A co-op sharing a building has one obvious question
+   * every morning — what is on today and who is in which room — and until now
+   * the only way to answer it was to open each room's calendar in turn.
+   *
+   * **The day is the co-op's day.** `date` is a plain `YYYY-MM-DD` resolved in
+   * the org's own timezone, not the server's and not the reader's. A member
+   * checking from another city is asking what is happening at the building.
+   *
+   * **Cancelled and rejected bookings are not "on".** A held slot mid-checkout
+   * (`PENDING_PAYMENT`) is also excluded — it is a hold, not a plan, and it
+   * disappears on its own if the payment is abandoned. A `PENDING` one is
+   * included and says so, because a room awaiting approval is genuinely
+   * different from a free one.
+   *
+   * **What is withheld, and why.** `visibility` on a booking answers "who is
+   * invited", not "who may know this exists" — the form's own words are "Just
+   * my guests. Nobody else is invited." So the time, the room, the host and the
+   * title are shown for everything: that is a shared building's schedule, and
+   * knowing who has the studio is how you find out who to ask. The
+   * **description** is withheld on a PRIVATE booking, because it is the field
+   * somebody writes detail into, and a member who ticked "just my guests" did
+   * not agree to publish it to the whole co-op. Organisers see everything, as
+   * they do everywhere else.
+   */
+  async dayBookings(orgId: string, date: string, viewer: ContactViewer) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { timezone: true },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    const from = instantAt(date, 0, org.timezone);
+    const to = instantAt(date, 24 * 60, org.timezone);
+
+    const bookings = await this.prisma.booking.findMany({
+      where: {
+        room: { orgId },
+        status: { in: ['APPROVED', 'PENDING'] },
+        // Overlapping the day rather than contained by it, so a booking that
+        // runs from 10pm to 1am shows on both days it touches — which is what
+        // somebody looking at either day needs to know.
+        startTime: { lt: to },
+        endTime: { gt: from },
+      },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        visibility: true,
+        status: true,
+        startTime: true,
+        endTime: true,
+        expectedAttendance: true,
+        categories: true,
+        room: { select: { id: true, name: true } },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            avatarUrl: true,
+            avatarPath: true,
+            // Same rule as the per-room list: seeing who booked the studio is
+            // the point, being handed their address is not.
+            email: viewer.privileged,
+          },
+        },
+      },
+      orderBy: [{ startTime: 'asc' }],
+    });
+
+    return {
+      date,
+      timezone: org.timezone,
+      bookings: bookings.map((b) => ({
+        ...b,
+        description:
+          b.visibility === 'PRIVATE' && !viewer.privileged ? null : b.description,
+        /** True when a description exists but is being withheld. */
+        descriptionWithheld:
+          b.visibility === 'PRIVATE' && !viewer.privileged && Boolean(b.description),
+      })),
+    };
+  }
+
   async listBookings(
     orgId: string,
     roomId: string,
