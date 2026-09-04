@@ -313,7 +313,7 @@ export function RoomBooking({
               </p>
             ) : slots.length === 0 ? (
               <p className="mt-4 text-sm text-[var(--text-secondary)]">
-                This room has no bookable hours yet. An organiser needs to set its
+                This room has no bookable hours yet. An organizer needs to set its
                 availability, or mark it as always available.
               </p>
             ) : (

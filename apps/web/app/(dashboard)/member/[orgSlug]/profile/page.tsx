@@ -429,7 +429,7 @@ export default function MyProfilePage() {
             className="w-full cursor-not-allowed rounded-lg border border-[var(--border)] bg-[var(--surface-sunken)] px-3 py-2 text-sm text-[var(--text-secondary)]"
           />
           <p className="mt-1 text-xs text-[var(--text-tertiary)]">
-            You sign in with this. Ask an organiser if it needs changing.
+            You sign in with this. Ask an organizer if it needs changing.
           </p>
         </div>
 
@@ -472,7 +472,7 @@ export default function MyProfilePage() {
             ))}
           </ul>
           <p className="mt-3 text-xs text-[var(--text-tertiary)]">
-            Your role is set by your co-op&apos;s organisers.
+            Your role is set by your co-op&apos;s organizers.
           </p>
         </section>
       )}

@@ -239,7 +239,7 @@ export default function AdminImpactPage() {
           <h2 className="mb-4 text-sm font-semibold text-gray-900">What your members told you</h2>
           <SignalsView signals={signals} />
           <p className="mt-4 border-t border-gray-100 pt-4 text-xs text-gray-500">
-            Totals only. Individual answers are never shown to organisers, including yours.
+            Totals only. Individual answers are never shown to organizers, including yours.
           </p>
         </section>
       )}
@@ -272,7 +272,7 @@ export default function AdminImpactPage() {
             that this is not one. */}
         These questions ship with MaybeOS and are the same for every co-op, so results can be
         read the same way everywhere. Questions written for your own goals come later, with the
-        measurement plan. Individual answers are never shown to organisers — only totals, and
+        measurement plan. Individual answers are never shown to organizers — only totals, and
         only where enough people answered to keep anyone from being identifiable.
       </p>
     </div>

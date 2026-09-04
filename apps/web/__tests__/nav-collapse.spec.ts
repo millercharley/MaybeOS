@@ -21,7 +21,7 @@ describe('which nav section is open', () => {
   const sections = sidebarSections({ membership: organiser, signedIn: true });
 
   it('opens Organising on Host payouts, and nothing else', () => {
-    expect(openSectionLabel(sections, '/admin/maybeitsfate/payouts')).toBe('Organising');
+    expect(openSectionLabel(sections, '/admin/maybeitsfate/payouts')).toBe('Organizing');
   });
 
   it('opens My membership on a member page', () => {
@@ -34,7 +34,7 @@ describe('which nav section is open', () => {
 
   it('follows a page nested under an item', () => {
     // `/admin/<slug>/members/import` is Members, not the dashboard.
-    expect(openSectionLabel(sections, '/admin/maybeitsfate/members/import')).toBe('Organising');
+    expect(openSectionLabel(sections, '/admin/maybeitsfate/members/import')).toBe('Organizing');
   });
 
   it('opens the co-op on the dashboard, where everybody lands', () => {
@@ -62,13 +62,13 @@ describe('which nav section is open', () => {
     // co-op, so there is no string to look for. Even a co-op that calls itself
     // after one of the fixed sections gets its own.
     const awkward = sidebarSections({
-      membership: { role: 'ADMIN', org: { name: 'Organising', slug: 'org' } },
+      membership: { role: 'ADMIN', org: { name: 'Organizing', slug: 'org' } },
       signedIn: true,
     });
     expect(awkward.find((s) => s.id === 'community')?.items[0].href).toBe(
       '/portal/org/handbook',
     );
-    expect(openSectionLabel(awkward, '/admin/org')).toBe('Organising');
+    expect(openSectionLabel(awkward, '/admin/org')).toBe('Organizing');
   });
 });
 

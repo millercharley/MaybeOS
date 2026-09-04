@@ -51,7 +51,7 @@ export default function PrivacyPage() {
             product-analytics SDK. Not configured off — not present.
           </li>
           <li>
-            <strong>No selling or sharing.</strong> We do not sell, rent, licence or
+            <strong>No selling or sharing.</strong> We do not sell, rent, license or
             trade member data, and we do not share it with anyone for their own
             purposes.
           </li>
@@ -76,9 +76,9 @@ export default function PrivacyPage() {
 
       <Section heading="What your co-op can see">
         <p>
-          MaybeOS is software your co-op runs. Its organisers can see what they need
+          MaybeOS is software your co-op runs. Its organizers can see what they need
           to run it: who is a member, what people have booked and signed up for,
-          what is owed. That is the ordinary business of a membership organisation.
+          what is owed. That is the ordinary business of a membership organization.
         </p>
         <p>
           <strong>Other members see far less.</strong> A member cannot see another
@@ -107,7 +107,7 @@ export default function PrivacyPage() {
             profile at any time and the figures recompute without it.
           </li>
           <li>
-            <strong>Organisers never see individual answers.</strong> They see
+            <strong>Organizers never see individual answers.</strong> They see
             aggregates only — and any group smaller than five people is suppressed
             automatically, so a small category cannot be narrowed down to a person.
             That suppression is not a setting anyone can switch off.
@@ -161,7 +161,7 @@ export default function PrivacyPage() {
 
       <Section heading="If you would rather not take our word for it">
         <p>
-          MaybeOS is open source under the Apache 2.0 licence. You can read exactly
+          MaybeOS is open source under the Apache 2.0 license. You can read exactly
           what it does with your data, and a co-op that wants to can host it itself,
           on its own infrastructure, with no involvement from us at all. A privacy
           promise you can verify is worth more than one you cannot.

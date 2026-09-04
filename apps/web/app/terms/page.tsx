@@ -32,7 +32,7 @@ export default function TermsPage() {
           the software and the service at maybeos.org.
         </p>
         <p>
-          A <strong>co-op</strong> — any community, club, collective or organisation
+          A <strong>co-op</strong> — any community, club, collective or organization
           that creates a space here — agrees to these terms when it does so. Its
           <strong> members</strong> agree to them when they join or use that space.
           Members also have a relationship with their own co-op, governed by that
@@ -60,7 +60,7 @@ export default function TermsPage() {
           </li>
           <li>
             <strong>You must have the right to charge what you charge</strong> and to
-            run what you run, including any licences or permissions your activities
+            run what you run, including any licenses or permissions your activities
             need. We do not check this, and cannot.
           </li>
           <li>
@@ -80,7 +80,7 @@ export default function TermsPage() {
           </li>
           <li>
             <strong>Your account is yours.</strong> Keep your sign-in details to
-            yourself. Tell us or your organisers if you think someone else has them.
+            yourself. Tell us or your organizers if you think someone else has them.
           </li>
           <li>
             <strong>What you post is yours</strong>, and you are responsible for it.
@@ -118,7 +118,7 @@ export default function TermsPage() {
         </p>
         <p>
           You can also run MaybeOS yourself, on your own servers, for nothing —
-          it is open source under the Apache 2.0 licence.
+          it is open source under the Apache 2.0 license.
         </p>
       </Section>
 

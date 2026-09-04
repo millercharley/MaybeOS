@@ -130,7 +130,7 @@ export default function MyServicePage() {
                     <p className="mt-1 text-xs text-[var(--text-secondary)]">
                       {shortDate(claim.occursAt.slice(0, 10))} ·{' '}
                       {timeOf(claim.occursAt, data!.timezone)}
-                      {claim.status === 'CLAIMED' && ' · waiting on an organiser'}
+                      {claim.status === 'CLAIMED' && ' · waiting on an organizer'}
                     </p>
                   </div>
 

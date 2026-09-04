@@ -576,7 +576,7 @@ const PROPOSAL_STATES: Record<string, { label: string; tone: string; note?: stri
   DRAFT: {
     label: 'Raised',
     tone: 'bg-amber-50 text-amber-700',
-    note: 'Waiting for an organiser to open voting.',
+    note: 'Waiting for an organizer to open voting.',
   },
   PASSED: { label: 'Adopted', tone: 'bg-green-50 text-green-800' },
   FAILED: { label: 'Lacked support', tone: 'bg-gray-100 text-gray-600' },
@@ -668,7 +668,7 @@ function ProposalsSection() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-gray-500">
-          Anyone can raise a proposal. An organiser opens it for voting, and closing it records what
+          Anyone can raise a proposal. An organizer opens it for voting, and closing it records what
           the co-op decided.
         </p>
         {channels.length > 0 && (
@@ -760,7 +760,7 @@ function ProposalsSection() {
             </label>
           </div>
           <p className="text-xs text-gray-500">
-            Raising it does not start the vote — an organiser opens it when the co-op is ready.
+            Raising it does not start the vote — an organizer opens it when the co-op is ready.
           </p>
           <button type="submit" disabled={busy} className="btn-primary text-sm">
             {busy ? 'Raising...' : 'Raise proposal'}

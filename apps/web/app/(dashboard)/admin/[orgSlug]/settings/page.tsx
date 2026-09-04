@@ -13,6 +13,7 @@ import { Support } from '@/components/settings/support';
 import { WebsiteEmbed } from '@/components/settings/website-embed';
 import { MemberDashboard } from '@/components/settings/member-dashboard';
 import { GettingStartedSettings } from '@/components/settings/getting-started-settings';
+import { Integrations } from '@/components/settings/integrations';
 import { PageHeader } from '@/components/layout/page-header';
 
 type SettingsTab = 'general' | 'branding' | 'onboarding' | 'integrations' | 'billing';
@@ -506,29 +507,7 @@ export default function SettingsPage() {
       {activeTab === 'onboarding' && <GettingStartedSettings />}
 
       {activeTab === 'integrations' && (
-        <div className="space-y-4">
-          <div className="card flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900">Stripe</h3>
-              <p className="mt-1 text-sm text-gray-500">Payment processing for memberships and events</p>
-            </div>
-            <span className="text-xs text-gray-400">Coming soon</span>
-          </div>
-          <div className="card flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900">Google Calendar</h3>
-              <p className="mt-1 text-sm text-gray-500">Sync events with Google Calendar</p>
-            </div>
-            <span className="text-xs text-gray-400">Coming soon</span>
-          </div>
-          <div className="card flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900">Email Provider</h3>
-              <p className="mt-1 text-sm text-gray-500">Transactional emails for notifications and invites</p>
-            </div>
-            <span className="text-xs text-gray-400">Coming soon</span>
-          </div>
-        </div>
+        <Integrations onGoToGeneral={() => setActiveTab('general')} />
       )}
 
       {activeTab === 'billing' && (

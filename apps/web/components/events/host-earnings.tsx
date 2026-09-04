@@ -78,7 +78,7 @@ export function HostEarnings({ orgId, token }: { orgId: string; token: string })
             is sending it. */}
         This is your ticket price — MaybeOS&apos;s fee and any venue fee were added on top for the
         buyer and never came out of your share. Your co-op pays it after the event; ask an
-        organiser if it hasn&apos;t arrived.
+        organizer if it hasn&apos;t arrived.
       </p>
     </section>
   );

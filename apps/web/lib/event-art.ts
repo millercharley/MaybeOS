@@ -31,6 +31,9 @@ function hash(seed: string): number {
  */
 const PALETTES: Record<string, [string, string]> = {
   'Art or expression': ['#c2410c', '#f59e0b'],
+  'Organizing or meetings': ['#1e3a5f', '#3b82f6'],
+  // The British spelling this option used to carry, kept as an alias so a
+  // booking saved before the rename keeps the art it was given.
   'Organising or meetings': ['#1e3a5f', '#3b82f6'],
   Social: ['#7c2d55', '#ec4899'],
   Learning: ['#166534', '#65a30d'],

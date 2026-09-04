@@ -102,8 +102,17 @@ describe('the sidebar', () => {
 
     it('separates the three with named sections', () => {
       expect(labels(sections())).toEqual(
-        expect.arrayContaining(['MaybeItsFate', 'Organising', 'My membership']),
+        expect.arrayContaining(['MaybeItsFate', 'Organizing', 'My membership']),
       );
+    });
+
+    it('puts their own membership above the organizing tools', () => {
+      // Charley, 2026-09-04. Organizing is thirteen links; above the four
+      // personal ones it pushed a member's own things off the bottom of a
+      // laptop screen for every organiser. It also reads in the right order —
+      // you are a member of the co-op first and an organiser of it second.
+      const named = labels(sections()).filter(Boolean) as string[];
+      expect(named.indexOf('My membership')).toBeLessThan(named.indexOf('Organizing'));
     });
   });
 
@@ -215,7 +224,7 @@ describe('the sidebar', () => {
 
       expect(sectionOf('/portal/maybeitsfate/serve')).toBe('community');
       expect(sectionOf('/member/maybeitsfate/service')).toBe('membership');
-      expect(sectionOf('/admin/maybeitsfate/serving')).toBe('organising');
+      expect(sectionOf('/admin/maybeitsfate/serving')).toBe('organizing');
     });
   });
 });

@@ -17,7 +17,7 @@ import { ArrowLeft } from 'lucide-react';
  */
 export const GATHERING_KINDS = [
   'Art or expression',
-  'Organising or meetings',
+  'Organizing or meetings',
   'Social',
   'Learning',
   'Rehearsal or practice',

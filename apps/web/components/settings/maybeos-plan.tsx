@@ -64,7 +64,7 @@ export function MaybeOsPlan({
             Billed for <b>{memberCount}</b> {memberCount === 1 ? 'member' : 'members'}.
           </p>
           <p className="mt-1 text-gray-500">
-            Organisers, staff and members — <b>guests aren&apos;t counted</b>. The number is taken
+            Organizers, staff and members — <b>guests aren&apos;t counted</b>. The number is taken
             when your plan renews, so joiners and leavers in between don&apos;t change the bill
             you&apos;re looking at.
           </p>

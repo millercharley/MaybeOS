@@ -84,7 +84,7 @@ function BuddyAnswer() {
   }
 
   return (
-    <Panel title="We don’t recognise this link">
+    <Panel title="We don’t recognize this link">
       It may have been used already, or copied incompletely from the email. Nothing has been
       recorded either way.
     </Panel>

@@ -45,7 +45,7 @@ const STATUS: Record<string, { label: string; tone: string }> = {
   PENDING: { label: 'Awaiting approval', tone: 'badge-warning' },
   APPROVED: { label: 'Confirmed', tone: 'badge-success' },
   REJECTED: { label: 'Not confirmed', tone: 'badge-danger' },
-  CANCELED: { label: 'Cancelled', tone: 'badge-neutral' },
+  CANCELED: { label: 'Canceled', tone: 'badge-neutral' },
 };
 
 export default function MemberBookingsPage() {
@@ -140,7 +140,7 @@ export default function MemberBookingsPage() {
       );
       setNotice(
         res.status === 'PENDING'
-          ? 'Moved. Because the time changed, an organiser needs to confirm it again.'
+          ? 'Moved. Because the time changed, an organizer needs to confirm it again.'
           : 'Booking moved.',
       );
       setMovingId(null);
@@ -159,7 +159,7 @@ export default function MemberBookingsPage() {
     setNotice(null);
     try {
       await api.rooms.cancelBooking(orgId, b.id, token);
-      setNotice('Booking cancelled. The room is free for someone else.');
+      setNotice('Booking canceled. The room is free for someone else.');
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not cancel that booking.');
@@ -179,7 +179,7 @@ export default function MemberBookingsPage() {
     <div>
       <PageHeader
         title="My bookings"
-        description="Rooms you&apos;ve booked, and anything still waiting on an organiser."
+        description="Rooms you&apos;ve booked, and anything still waiting on an organizer."
       />
 
       {orgId && <TouchpointAsk orgId={orgId} touchpoint="BOOKING" />}
@@ -337,7 +337,7 @@ export default function MemberBookingsPage() {
 
       {past.length > 0 && (
         <>
-          <h2 className="mt-10 font-display text-lg">Past &amp; cancelled</h2>
+          <h2 className="mt-10 font-display text-lg">Past &amp; canceled</h2>
           <div className="mt-3 grid gap-2">
             {past.map((b) => {
               const s = STATUS[b.status] ?? STATUS.CANCELED;

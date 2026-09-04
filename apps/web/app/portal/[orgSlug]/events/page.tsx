@@ -56,7 +56,11 @@ export default function PortalEventsPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('purchased') === '1') setReturned('purchased');
-    else if (params.get('purchase') === 'cancelled') setReturned('cancelled');
+    // Both spellings: a Stripe session created before the address was
+    // Americanised still carries `cancelled` in its cancel_url, and a buyer
+    // coming back from one should still be told they were not charged.
+    else if (['canceled', 'cancelled'].includes(params.get('purchase') ?? ''))
+      setReturned('cancelled');
   }, []);
 
   const [buyingId, setBuyingId] = useState<string | null>(null);
@@ -80,7 +84,7 @@ export default function PortalEventsPage() {
       const { url } = await api.events.buyTicket(
         org.id,
         eventId,
-        { successUrl: `${here}?purchased=1`, cancelUrl: `${here}?purchase=cancelled` },
+        { successUrl: `${here}?purchased=1`, cancelUrl: `${here}?purchase=canceled` },
         token ?? undefined,
       );
       window.location.assign(url);
@@ -151,7 +155,7 @@ export default function PortalEventsPage() {
           <p className="text-sm font-medium text-green-800">Payment received — thank you.</p>
           <p className="mt-1 text-sm text-green-700">
             Your ticket is confirmed and a receipt is on its way from Stripe. If it does not
-            appear in your RSVPs within a minute or two, tell an organiser — your payment
+            appear in your RSVPs within a minute or two, tell an organizer — your payment
             went through either way.
           </p>
         </div>
@@ -169,7 +173,7 @@ export default function PortalEventsPage() {
       {returned === 'cancelled' && (
         <div className="rounded-xl border border-gray-200 bg-white p-4" role="status">
           <p className="text-sm text-gray-600">
-            Checkout cancelled — you have not been charged.
+            Checkout canceled — you have not been charged.
           </p>
         </div>
       )}
