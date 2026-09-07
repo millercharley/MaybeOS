@@ -1,4 +1,4 @@
-import { isSealed, open, seal, unseal } from '../secret-box';
+import { isSealed, needsResealing, open, seal, unseal } from '../secret-box';
 
 /**
  * Encryption at rest for a secret that has to stay usable (SEC-15).
@@ -144,5 +144,96 @@ describe('reading a column that may hold either shape', () => {
     expect(isSealed({ access_token: 'x' })).toBe(false);
     expect(isSealed({ v: 2, iv: 'x', tag: 'y', ct: 'z' })).toBe(false);
     expect(isSealed(null)).toBe(false);
+  });
+});
+
+/**
+ * Moving onto a dedicated key without breaking what is already sealed
+ * (SEC-16).
+ *
+ * The danger is specific and total: eight production rooms were sealed under
+ * the key derived from `JWT_SECRET`. Setting `SECRET_BOX_KEY` and reading with
+ * it alone would make every one of them unreadable — eight co-op calendars
+ * silently disconnected, recoverable only by re-authorising each with Google.
+ *
+ * So the key is *added*, not swapped: each sealed value records which key
+ * sealed it, both stay readable, and the boot sweep moves rows across.
+ */
+describe('adding a dedicated key', () => {
+  const TOKENS = { refresh_token: '1//zzz' };
+  const DEDICATED = Buffer.alloc(32, 4).toString('base64');
+
+  beforeEach(() => {
+    delete process.env.SECRET_BOX_KEY;
+    process.env.JWT_SECRET = 'the-jwt-secret';
+  });
+  afterEach(() => {
+    delete process.env.SECRET_BOX_KEY;
+    delete process.env.JWT_SECRET;
+  });
+
+  it('still opens everything sealed before the key existed', () => {
+    // The one that matters. This is the eight rooms.
+    const before = seal(TOKENS);
+    process.env.SECRET_BOX_KEY = DEDICATED;
+
+    expect(open(before)).toEqual(TOKENS);
+  });
+
+  it('opens a row from before the label was recorded at all', () => {
+    // SEC-15 wrote `{v, iv, tag, ct}` with no `k`. Absent means derived.
+    const { k, ...withoutLabel } = seal(TOKENS);
+    expect(k).toBe('j');
+    process.env.SECRET_BOX_KEY = DEDICATED;
+
+    expect(open(withoutLabel as never)).toEqual(TOKENS);
+    expect(isSealed(withoutLabel)).toBe(true);
+  });
+
+  it('seals new values under the dedicated key once it is set', () => {
+    process.env.SECRET_BOX_KEY = DEDICATED;
+    expect(seal(TOKENS).k).toBe('d');
+  });
+
+  it('marks the old rows for re-sealing and leaves the new ones alone', () => {
+    const old = seal(TOKENS);
+    process.env.SECRET_BOX_KEY = DEDICATED;
+
+    expect(needsResealing(old)).toBe(true);
+    expect(needsResealing(seal(TOKENS))).toBe(false);
+    // Plaintext always needs it; an empty column never does.
+    expect(needsResealing({ access_token: 'legacy' })).toBe(true);
+    expect(needsResealing(null)).toBe(false);
+  });
+
+  it('survives the round trip the sweep actually performs', () => {
+    const old = seal(TOKENS);
+    process.env.SECRET_BOX_KEY = DEDICATED;
+
+    const resealed = seal(unseal(old));
+
+    expect(resealed.k).toBe('d');
+    expect(open(resealed)).toEqual(TOKENS);
+    expect(needsResealing(resealed)).toBe(false);
+  });
+
+  it('no longer depends on the JWT secret once a row has moved', () => {
+    // The whole point of the exercise: rotating JWT_SECRET must stop being
+    // able to orphan a calendar.
+    process.env.SECRET_BOX_KEY = DEDICATED;
+    const sealed = seal(TOKENS);
+
+    process.env.JWT_SECRET = 'rotated-to-something-else';
+    expect(open(sealed)).toEqual(TOKENS);
+  });
+
+  it('says plainly when a dedicated-key row meets a server without the key', () => {
+    // The failure mode of removing the variable later. A clear message,
+    // because the recovery is "restore the key", not "reconnect the calendar".
+    process.env.SECRET_BOX_KEY = DEDICATED;
+    const sealed = seal(TOKENS);
+
+    delete process.env.SECRET_BOX_KEY;
+    expect(() => open(sealed)).toThrow(/SECRET_BOX_KEY/);
   });
 });
