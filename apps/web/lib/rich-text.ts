@@ -21,7 +21,7 @@ import { sanitizeWikiHtml } from './wiki-html';
  * "a < b" in a plain message must not have it treated as markup — that is how
  * a legitimate message ends up half-swallowed by a sanitiser.
  */
-const RICH_TAG = /<(p|br|strong|b|em|i|u|s|a|blockquote|ul|ol|li|h[1-6]|code|pre)\b[^>]*>/i;
+const RICH_TAG = /<(p|div|br|strong|b|em|i|u|s|a|blockquote|ul|ol|li|h[1-6]|code|pre)\b[^>]*>/i;
 
 export function looksLikeHtml(body: string): boolean {
   return RICH_TAG.test(body);
@@ -35,7 +35,67 @@ export function looksLikeHtml(body: string): boolean {
  * b" survives intact and newlines are preserved by the caller's CSS.
  */
 export function renderBodyHtml(body: string): string {
-  return looksLikeHtml(body) ? sanitizeWikiHtml(body) : escapeHtml(body);
+  if (!looksLikeHtml(body)) return escapeHtml(body);
+  return numberedIndent(dropEmptyBlocks(sanitizeWikiHtml(divsToParagraphs(body))));
+}
+
+/**
+ * `<div>` is what a contentEditable actually produces (CNT-01).
+ *
+ * A browser wraps each line of a contentEditable in a `<div>`, and `div` is
+ * not on the sanitiser's allowlist — DOMPurify keeps a disallowed element's
+ * children, so `<div>a</div><div>b</div>` was rendered as `ab`. The Code of
+ * Conduct read "…risk expulsion from the cooperative.1. We are all in this
+ * together…", with the paragraph break simply gone.
+ *
+ * It only showed on *some* paragraphs, which is what made it look arbitrary:
+ * where the spacer line was `<div><br></div>` the `<br>` survived and produced
+ * a line break, and where it was `<div>&zwj;</div>` — what pasting from
+ * another editor leaves behind — nothing survived at all.
+ *
+ * Converting rather than allowing `div`: a paragraph is what these are, the
+ * CSS already spaces paragraphs, and nested divs flatten on their own here
+ * because an HTML parser closes an open `<p>` when another one starts.
+ */
+function divsToParagraphs(html: string): string {
+  return html.replace(/<div\b[^>]*>/gi, '<p>').replace(/<\/div>/gi, '</p>');
+}
+
+/**
+ * Drop the blank lines somebody typed between paragraphs.
+ *
+ * They were doing the spacing by hand, in an editor that gave them none. The
+ * reader adds a paragraph's worth of margin, so keeping the empty block too
+ * would double every gap. An image or a rule is not blank.
+ */
+function dropEmptyBlocks(html: string): string {
+  return html.replace(/<p>([\s\S]*?)<\/p>/gi, (whole, inner: string) => {
+    if (/<(img|hr)\b/i.test(inner)) return whole;
+    const text = inner
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;|&#160;/gi, '')
+      .replace(/[\s\u200b-\u200d\ufeff]/g, '');
+    return text === '' ? '' : whole;
+  });
+}
+
+/**
+ * Hang the indent on a paragraph the author numbered themselves (CNT-01).
+ *
+ * Charley, pointing at Circle: numbered items should indent, so a wrapped line
+ * sits under the words rather than under the number. MaybeOS deliberately does
+ * not convert "1." into a real `<ol>` — the editor promises not to renumber
+ * anything you wrote, and an `<ol>` renumbers by definition. So the numbers
+ * stay exactly as typed and only the indent is ours.
+ *
+ * Applied after sanitising, because `class` is not an allowed attribute — the
+ * value is a constant here, never anything the author wrote.
+ */
+function numberedIndent(html: string): string {
+  return html.replace(
+    /<p>(\s*(?:<(?:strong|b|em|i|u|s)>\s*)*)(\d{1,3}[.)])(\s|&nbsp;)/gi,
+    '<p class="rich-num">$1$2$3',
+  );
 }
 
 /** Minimal escaping for text that was never markup. */

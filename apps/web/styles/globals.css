@@ -253,6 +253,19 @@
   .rich-body li + li {
     margin-top: 0.25rem;
   }
+  /*
+   * A paragraph the author numbered themselves (CNT-01). Charley, pointing at
+   * Circle: the number sits in the margin and the text block hangs off it, so
+   * a wrapped line lines up under the words rather than under the digit.
+   *
+   * Not an `<ol>`: the editor promises not to renumber anything anyone wrote,
+   * and an ordered list renumbers by definition. The numbers stay as typed and
+   * only the indent is ours.
+   */
+  .rich-body .rich-num {
+    padding-left: 2rem;
+    text-indent: -2rem;
+  }
   .rich-body a {
     color: var(--brand-600, #6366f1);
     text-decoration: underline;
