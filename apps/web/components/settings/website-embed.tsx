@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { Org } from '@/lib/api';
-import { DEFAULT_ACCENT, EmbedShow, embedSnippet, normaliseHex } from '@/lib/embed-snippet';
+import { EmbedShow, embedSnippet, normaliseHex, resolveAccent } from '@/lib/embed-snippet';
 
 /**
  * The co-op's events, on the co-op's own website.
@@ -25,7 +25,19 @@ import { DEFAULT_ACCENT, EmbedShow, embedSnippet, normaliseHex } from '@/lib/emb
 export function WebsiteEmbed({ org, show = 'events' }: { org: Org; show?: EmbedShow }) {
   const membership = show === 'membership';
   const [copied, setCopied] = useState(false);
-  const [accentInput, setAccentInput] = useState(DEFAULT_ACCENT);
+  // Seeded from Branding, not from MaybeOS's red (BRD-03). This field used to
+  // open on #b03030, so a co-op that had already chosen a colour had to type
+  // it again here — twice, once this card became two — and the value they saw
+  // on their own website was ours until they did.
+  const brandAccent = resolveAccent(org.brandColor);
+  const [accentInput, setAccentInput] = useState(brandAccent);
+
+  // Follow Branding when it changes. The accent is not stored anywhere — it
+  // only shapes the snippet on screen — so there is no override worth keeping
+  // across an edit to the colour it is supposed to inherit.
+  useEffect(() => {
+    setAccentInput(brandAccent);
+  }, [brandAccent]);
 
   const accent = normaliseHex(accentInput);
   const invalid = accentInput.trim() !== '' && accent === null;
@@ -69,33 +81,31 @@ export function WebsiteEmbed({ org, show = 'events' }: { org: Org; show?: EmbedS
             type="color"
             aria-label="Pick an accent color"
             className="h-9 w-12 cursor-pointer rounded border border-gray-200 bg-white p-1"
-            value={accent ?? DEFAULT_ACCENT}
+            value={accent ?? brandAccent}
             onChange={(e) => setAccentInput(e.target.value)}
           />
           <input
             type="text"
             className="input w-36 font-mono"
             spellCheck={false}
-            placeholder={DEFAULT_ACCENT}
+            placeholder={brandAccent}
             value={accentInput}
             onChange={(e) => setAccentInput(e.target.value)}
           />
-          {accentInput.trim() !== DEFAULT_ACCENT && (
+          {accentInput.trim() !== brandAccent && (
             <button
               type="button"
-              onClick={() => setAccentInput(DEFAULT_ACCENT)}
+              onClick={() => setAccentInput(brandAccent)}
               className="btn-ghost text-xs"
             >
-              Reset
+              Use brand color
             </button>
           )}
         </div>
         <span className="mt-1 block text-xs text-gray-500">
           {invalid
             ? 'That is not a color yet — use a hex like #b03030.'
-            : membership
-              ? 'Used for prices and the Join buttons. Match your own site.'
-              : 'Used for event dates and ticket prices in the embed. Match your own site.'}
+            : 'Starts from your brand color, set in Branding. Change it here only if this embed should look different from the rest of your co-op.'}
         </span>
       </label>
 
@@ -113,7 +123,7 @@ export function WebsiteEmbed({ org, show = 'events' }: { org: Org; show?: EmbedS
         {copied ? 'Copied' : 'Copy embed code'}
       </button>
 
-      <EmbedPreview origin={origin} slug={org.slug} accent={accent ?? DEFAULT_ACCENT} show={show} />
+      <EmbedPreview origin={origin} slug={org.slug} accent={accent ?? brandAccent} show={show} />
 
       <div className="border-t border-gray-100 pt-3 text-xs text-gray-500">
         {membership ? (

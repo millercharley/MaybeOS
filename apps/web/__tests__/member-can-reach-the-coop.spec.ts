@@ -102,17 +102,17 @@ describe('the sidebar', () => {
 
     it('separates the three with named sections', () => {
       expect(labels(sections())).toEqual(
-        expect.arrayContaining(['MaybeItsFate', 'Organizing', 'My membership']),
+        expect.arrayContaining(['MaybeItsFate', 'Administration', 'My membership']),
       );
     });
 
     it('puts their own membership above the organizing tools', () => {
-      // Charley, 2026-09-04. Organizing is thirteen links; above the four
+      // Charley, 2026-09-04. Administration is thirteen links; above the four
       // personal ones it pushed a member's own things off the bottom of a
       // laptop screen for every organiser. It also reads in the right order —
       // you are a member of the co-op first and an organiser of it second.
       const named = labels(sections()).filter(Boolean) as string[];
-      expect(named.indexOf('My membership')).toBeLessThan(named.indexOf('Organizing'));
+      expect(named.indexOf('My membership')).toBeLessThan(named.indexOf('Administration'));
     });
   });
 

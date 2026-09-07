@@ -1,4 +1,4 @@
-import { DEFAULT_ACCENT, embedSnippet, normaliseHex } from '@/lib/embed-snippet';
+import { DEFAULT_ACCENT, embedSnippet, normaliseHex, resolveAccent } from '@/lib/embed-snippet';
 
 /**
  * The snippet an organiser copies (EVT-21).
@@ -23,6 +23,38 @@ describe('the accent colour', () => {
     expect(normaliseHex('red')).toBeNull();
     expect(normaliseHex('#gggggg')).toBeNull();
     expect(normaliseHex('')).toBeNull();
+  });
+});
+
+/**
+ * Where a colour field starts (BRD-03).
+ *
+ * Charley: "There are a lot of places in the admin to set an accent color.
+ * Make sure the Brand Color setting inside Branding is the core place to set
+ * this." Before this, every embed card opened on MaybeOS's own red, so a co-op
+ * that had already chosen a colour had to type it again in each one — and
+ * whatever they had not retyped went onto their website in our colour.
+ */
+describe('the colour a field starts on', () => {
+  it('is the co-op’s brand colour', () => {
+    expect(resolveAccent('#afd2e9')).toBe('#afd2e9');
+    expect(resolveAccent('AFD2E9')).toBe('#afd2e9');
+  });
+
+  it('falls back to the script’s own default when there is nothing to inherit', () => {
+    // A co-op with no colour set, and the case where somebody has stored
+    // something that is not a colour at all.
+    expect(resolveAccent(null)).toBe(DEFAULT_ACCENT);
+    expect(resolveAccent('')).toBe(DEFAULT_ACCENT);
+    expect(resolveAccent('cornflower')).toBe(DEFAULT_ACCENT);
+  });
+
+  it('still writes the attribute for a brand colour that is not the default', () => {
+    // The snippet omits data-accent only when the colour equals what embed.js
+    // paints with unattributed. Seeding from the brand colour must therefore
+    // put the attribute back, or a co-op's website would render in our red.
+    const s = snippetFor('https://maybeos.org', 'x', resolveAccent('#afd2e9'));
+    expect(s).toContain('data-accent="#afd2e9"');
   });
 });
 

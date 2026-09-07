@@ -500,8 +500,12 @@ export default function SettingsPage() {
                 className="w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
             </div>
-            <p className="mt-1 text-xs text-gray-400">
-              This color will be used across your community portal
+            {/* Named as the source it is (BRD-03). Every other colour field
+                in the admin now starts from this one, so it is worth saying
+                here rather than leaving an admin to discover it. */}
+            <p className="mt-1 text-xs text-gray-500">
+              Used across your community portal, and it is where every other color field in
+              MaybeOS starts — your website embeds included. Change it here and they follow.
             </p>
           </div>
 
