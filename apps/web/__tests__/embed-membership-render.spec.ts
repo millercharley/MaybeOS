@@ -164,6 +164,43 @@ describe('the membership embed', () => {
     expect(css).toContain("background: #afd2e9; color: #1a1a1a");
   });
 
+  it('darkens a pale accent where it is used as text', async () => {
+    // The price is the most important text on the card, and #afd2e9 at 14px
+    // on white is a decoration rather than a number. The hue is kept — the
+    // point of inheriting the co-op's colour — and taken down until it passes
+    // 4.5:1 against white.
+    const { shadow } = render(
+      { 'data-org': 'sunrise', 'data-show': 'membership', 'data-accent': '#afd2e9' },
+      MEMBERSHIP,
+    );
+    await settle();
+
+    const css = shadow().querySelector('style')!.textContent!;
+    const priceColor = /\.tier-price \{[^}]*color: (#[0-9a-f]{6})/.exec(css)![1];
+    expect(priceColor).not.toBe('#afd2e9');
+
+    // Still blue, and now readable.
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(priceColor.slice(i, i + 2), 16));
+    expect(b).toBeGreaterThan(r);
+    const lin = (v: number) => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    const l = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+    expect(1.05 / (l + 0.05)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('leaves a dark accent alone as text', async () => {
+    const { shadow } = render(
+      { 'data-org': 'sunrise', 'data-show': 'membership', 'data-accent': '#b03030' },
+      MEMBERSHIP,
+    );
+    await settle();
+
+    const css = shadow().querySelector('style')!.textContent!;
+    expect(/\.tier-price \{[^}]*color: (#[0-9a-f]{6})/.exec(css)![1]).toBe('#b03030');
+  });
+
   it('keeps white text on a dark accent', async () => {
     const { shadow } = render(
       { 'data-org': 'sunrise', 'data-show': 'membership', 'data-accent': '#b03030' },
