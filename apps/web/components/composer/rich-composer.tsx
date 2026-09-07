@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bold, Italic, Strikethrough, Underline, Quote, Link2, Smile, ImagePlus, Paperclip, X } from 'lucide-react';
 import { sanitizeWikiHtml } from '@/lib/wiki-html';
-import { isBlankBody } from '@/lib/rich-text';
+import { isBlankBody, linkHtml } from '@/lib/rich-text';
 import { ATTACHMENT_ACCEPT, ATTACHMENT_MAX_BYTES, formatBytes, isImage } from '@/lib/attachments';
 
 /**
@@ -123,7 +123,31 @@ export function RichComposer({
     publish();
   }
 
+  /**
+   * Turn the selected words into a link (CNT-02).
+   *
+   * The selection has to be saved before the prompt and put back after it.
+   * `window.prompt` moves focus out of the editor and collapses the range, so
+   * by the time `createLink` ran there was nothing selected to wrap — and a
+   * collapsed `createLink` does not fail, it drops a stray anchor at the caret
+   * with the URL as its own text. Reproduced in a browser: selecting
+   * "maybeitsfate.circle.so" and linking it left the words untouched and put
+   * `<a href="…">https://…</a>` at the very start of the article instead.
+   *
+   * The toolbar already knew about this class of bug one step earlier — it
+   * calls `preventDefault` on mousedown so clicking a button does not collapse
+   * the selection. The dialog is the same problem, unguarded.
+   */
   function addLink() {
+    const el = editor.current;
+    if (!el) return;
+
+    const selection = window.getSelection();
+    const saved =
+      selection && selection.rangeCount > 0 && el.contains(selection.anchorNode)
+        ? selection.getRangeAt(0).cloneRange()
+        : null;
+
     const href = window.prompt('Link to where?');
     if (!href) return;
     // Same rule as a member's profile links: an anchor a member writes is
@@ -133,7 +157,25 @@ export function RichComposer({
       window.alert('Links need to start with http:// or https://');
       return;
     }
-    format('createLink', href.trim());
+    const url = href.trim();
+
+    el.focus();
+    if (saved) {
+      const live = window.getSelection();
+      live?.removeAllRanges();
+      live?.addRange(saved);
+    }
+
+    if (!saved || saved.collapsed) {
+      // Nothing was selected. `createLink` would do nothing at all here, so the
+      // button would appear broken; every other editor inserts the address as
+      // its own link instead. Escaped because the href is about to be markup —
+      // the pattern above already refuses whitespace, but not a quote.
+      document.execCommand('insertHTML', false, linkHtml(url));
+    } else {
+      document.execCommand('createLink', false, url);
+    }
+    publish();
   }
 
   const tools = [
