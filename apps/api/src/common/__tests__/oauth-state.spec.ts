@@ -1,4 +1,4 @@
-import { encodeState, decodeState, STATE_TTL_MS } from '../connect-oauth';
+import { encodeState, decodeState, STATE_TTL_MS } from '../oauth-state';
 
 /**
  * The `state` parameter for Stripe Connect OAuth (PAY-05).

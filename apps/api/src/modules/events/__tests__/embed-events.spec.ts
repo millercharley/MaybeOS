@@ -23,7 +23,9 @@ describe('EventsService — the website embed', () => {
     const captured: Record<string, unknown>[] = [];
     const prisma = {
       organization: { findUnique: jest.fn().mockResolvedValue(org) },
-      $transaction: async (ops: unknown[]) => [await ops[0], 1],
+      // Interactive form as well as the array form (SEC-12).
+      $transaction: async (arg: any) =>
+        Array.isArray(arg) ? [await arg[0], 1] : arg(prisma),
       event: {
         findMany: (args: { where: Record<string, unknown> }) => {
           captured.push(args.where);

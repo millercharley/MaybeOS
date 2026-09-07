@@ -112,8 +112,8 @@ describe('EventsService — event host', () => {
       const listPrisma = prisma as unknown as { event: Record<string, jest.Mock> };
       listPrisma.event.findMany = jest.fn().mockResolvedValue([]);
       listPrisma.event.count = jest.fn().mockResolvedValue(0);
-      (prisma as unknown as { $transaction: jest.Mock }).$transaction = jest.fn((ops: unknown[]) =>
-        Promise.all(ops),
+      (prisma as unknown as { $transaction: jest.Mock }).$transaction = jest.fn((arg: any) =>
+        Array.isArray(arg) ? Promise.all(arg) : arg(prisma),
       );
 
       await service.listByOrg(ORG, {});
@@ -137,15 +137,23 @@ describe('EventsService — event host', () => {
       const listPrisma = prisma as unknown as { event: Record<string, jest.Mock> };
       listPrisma.event.findMany = jest.fn().mockResolvedValue([]);
       listPrisma.event.count = jest.fn().mockResolvedValue(0);
-      (prisma as unknown as { $transaction: jest.Mock }).$transaction = jest.fn((ops: unknown[]) =>
-        Promise.all(ops),
+      (prisma as unknown as { $transaction: jest.Mock }).$transaction = jest.fn((arg: any) =>
+        Array.isArray(arg) ? Promise.all(arg) : arg(prisma),
       );
 
       await service.listPublicEvents(ORG, {});
 
       // Publishing a member's name to anyone on the internet is the co-op's
       // decision, not something that should arrive with a schema change.
-      expect(listPrisma.event.findMany.mock.calls[0][0].include).not.toHaveProperty('host');
+      //
+      // The public list is a `select` now (SEC-12) rather than an `include`
+      // minus a relation, which is the stronger form of the same rule: the
+      // host is absent because it was never asked for, and so is `hostId` —
+      // which the old shape published while withholding the name.
+      const args = listPrisma.event.findMany.mock.calls[0][0];
+      expect(args.include).toBeUndefined();
+      expect(args.select).not.toHaveProperty('host');
+      expect(args.select).not.toHaveProperty('hostId');
     });
   });
 });

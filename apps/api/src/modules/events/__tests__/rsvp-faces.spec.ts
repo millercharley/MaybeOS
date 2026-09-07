@@ -22,7 +22,11 @@ describe('RSVP faces', () => {
   beforeEach(async () => {
     prisma = {
       event: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
-      $transaction: jest.fn(async (ops: any[]) => Promise.all(ops)),
+      // Both forms: the public listing runs an interactive transaction now
+      // (SEC-12), because its two branches return different shapes.
+      $transaction: jest.fn(async (arg: any) =>
+        Array.isArray(arg) ? Promise.all(arg) : arg(prisma),
+      ),
     };
     const module = await Test.createTestingModule({
       providers: [
@@ -48,8 +52,15 @@ describe('RSVP faces', () => {
   it('sends none to the public list', async () => {
     // The boundary. A stranger with the link can RSVP; they cannot learn who
     // else belongs here.
+    //
+    // The public branch asks by `select` now (SEC-12), so there is no
+    // `include` to inspect — and no `rsvps` in the select either. Both are
+    // asserted: the first would pass vacuously on its own if the shape ever
+    // went back to an include.
     await service.listPublicEvents('org1', {}, false);
-    expect(includeOf().rsvps).toBeUndefined();
+    const args = prisma.event.findMany.mock.calls[0][0];
+    expect(args.include).toBeUndefined();
+    expect(args.select.rsvps).toBeUndefined();
   });
 
   it('only shows people who are actually coming', async () => {
