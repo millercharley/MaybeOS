@@ -7,6 +7,7 @@ import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Article, OutstandingReading } from '@/lib/api';
 import { renderBodyHtml } from '@/lib/rich-text';
+import { HANDBOOK_COVER_ASPECT } from '@/lib/image-crop';
 import { timeUntil } from '@/lib/relative-time';
 import { PageHeader } from '@/components/layout/page-header';
 
@@ -114,8 +115,16 @@ export default function WelcomeStartPage() {
 
       <article className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
         {article.coverImageUrl && (
+          // The shape it was cropped to (BEL-11). A `max-h` cropped a wide
+          // banner a second time, in a place the admin never sees, so what
+          // they framed was not what a member got.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={article.coverImageUrl} alt="" className="max-h-72 w-full object-cover" />
+          <img
+            src={article.coverImageUrl}
+            alt=""
+            style={{ aspectRatio: String(HANDBOOK_COVER_ASPECT) }}
+            className="w-full object-cover"
+          />
         )}
         <div className="p-6">
           <h1 className="font-display text-2xl leading-tight text-ink">{article.title}</h1>
