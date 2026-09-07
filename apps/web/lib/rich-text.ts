@@ -98,6 +98,21 @@ function numberedIndent(html: string): string {
   );
 }
 
+/**
+ * The anchor to insert when somebody links with nothing selected (CNT-02).
+ *
+ * `createLink` on a collapsed selection does nothing at all, so the button
+ * looked broken; every other editor inserts the address as its own link.
+ *
+ * Escaped, because this is about to be markup. The composer already refuses
+ * anything that is not `http(s)://` with no whitespace — which does not
+ * exclude a quote, and a quote is all it takes to leave the href.
+ */
+export function linkHtml(url: string): string {
+  const safe = escapeHtml(url.trim());
+  return `<a href="${safe}">${safe}</a>`;
+}
+
 /** Minimal escaping for text that was never markup. */
 export function escapeHtml(text: string): string {
   return text
