@@ -37,20 +37,52 @@
   // the co-op's own brand colour, and a co-op whose colour is pale — a light
   // blue, say — got white text on a solid button of it, which is unreadable.
   // Relative luminance, the same rule the WCAG contrast ratio is built on.
-  var onAccent = (function () {
+  var rgb = (function () {
     var hex = accent.replace('#', '');
     if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
-    if (!/^[0-9a-fA-F]{6}$/.test(hex)) return '#fff';
-    var channel = function (v) {
-      v = parseInt(v, 16) / 255;
+    if (!/^[0-9a-fA-F]{6}$/.test(hex)) return null;
+    return [
+      parseInt(hex.slice(0, 2), 16),
+      parseInt(hex.slice(2, 4), 16),
+      parseInt(hex.slice(4, 6), 16),
+    ];
+  })();
+
+  var luminance = function (c) {
+    var ch = function (v) {
+      v = v / 255;
       return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
     };
-    var l =
-      0.2126 * channel(hex.slice(0, 2)) +
-      0.7152 * channel(hex.slice(2, 4)) +
-      0.0722 * channel(hex.slice(4, 6));
-    // 0.179 is where white and black are equally readable against a colour.
-    return l > 0.179 ? '#1a1a1a' : '#fff';
+    return 0.2126 * ch(c[0]) + 0.7152 * ch(c[1]) + 0.0722 * ch(c[2]);
+  };
+
+  // Text laid ON the accent. 0.179 is where white and black are equally
+  // readable against a colour.
+  var onAccent = !rgb ? '#fff' : luminance(rgb) > 0.179 ? '#1a1a1a' : '#fff';
+
+  // The accent used AS text, on the card's white ground — prices, dates,
+  // check marks. Same colour, darkened until it can be read: a pale brand
+  // colour at 14px on white is a decoration, not a price. Hue is kept, which
+  // is the point of inheriting the co-op's colour at all.
+  var accentText = (function () {
+    if (!rgb) return accent;
+    var hex2 = function (c) {
+      return (
+        '#' +
+        c
+          .map(function (v) {
+            var h = Math.round(v).toString(16);
+            return h.length === 1 ? '0' + h : h;
+          })
+          .join('')
+      );
+    };
+    for (var f = 1; f >= 0.1; f -= 0.05) {
+      var scaled = [rgb[0] * f, rgb[1] * f, rgb[2] * f];
+      // Contrast against white, the WCAG 4.5:1 threshold for body text.
+      if (1.05 / (luminance(scaled) + 0.05) >= 4.5) return hex2(scaled);
+    }
+    return '#1a1a1a';
   })();
 
   // `data-limit` is gone (EVT-21). The feed is the next 30 days and every
@@ -81,11 +113,11 @@
     // The accent carries the date as well as the price. It used to colour the
     // price alone, so a co-op whose events are free saw no change at all from
     // setting their brand colour (EVT-21).
-    '.when { flex: 0 0 7.5rem; font-size: 13px; color: ' + accent + '; font-variant-numeric: tabular-nums; font-weight: 600; }',
+    '.when { flex: 0 0 7.5rem; font-size: 13px; color: ' + accentText + '; font-variant-numeric: tabular-nums; font-weight: 600; }',
     '.body { min-width: 0; flex: 1; }',
     '.title { font-weight: 600; }',
     '.meta { margin-top: 2px; font-size: 13px; color: #666; }',
-    '.price { display: inline-block; margin-left: 8px; font-size: 12px; font-weight: 600; color: ' + accent + '; }',
+    '.price { display: inline-block; margin-left: 8px; font-size: 12px; font-weight: 600; color: ' + accentText + '; }',
     '.empty, .failed { padding: 24px 0; color: #666; font-size: 14px; }',
     '@media (max-width: 30rem) { .event { display: block; } .when { margin-bottom: 4px; } }',
     // Membership (PUB-01). Cards rather than rows: these are being compared,
@@ -93,12 +125,12 @@
     '.tiers { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }',
     '.tier { border: 1px solid #e2e2e2; border-radius: 10px; padding: 20px; display: flex; flex-direction: column; }',
     '.tier-name { font-weight: 600; font-size: 17px; }',
-    '.tier-price { margin-top: 4px; font-size: 22px; font-weight: 700; color: ' + accent + '; font-variant-numeric: tabular-nums; }',
+    '.tier-price { margin-top: 4px; font-size: 22px; font-weight: 700; color: ' + accentText + '; font-variant-numeric: tabular-nums; }',
     '.tier-per { font-size: 13px; font-weight: 500; color: #666; }',
     '.tier-desc { margin-top: 8px; font-size: 14px; color: #444; }',
     '.tier-benefits { margin: 12px 0 0; padding: 0; list-style: none; font-size: 14px; color: #444; }',
     '.tier-benefits li { padding-left: 18px; position: relative; margin-top: 6px; }',
-    '.tier-benefits li::before { content: "✓"; position: absolute; left: 0; color: ' + accent + '; }',
+    '.tier-benefits li::before { content: "✓"; position: absolute; left: 0; color: ' + accentText + '; }',
     // Pushed to the bottom so buttons line up across cards of different heights.
     '.join { margin-top: auto; padding-top: 16px; }',
     '.join a { display: inline-block; width: 100%; text-align: center; text-decoration: none; padding: 10px 16px; border-radius: 8px; background: ' + accent + '; color: ' + onAccent + '; font-weight: 600; font-size: 14px; }',
