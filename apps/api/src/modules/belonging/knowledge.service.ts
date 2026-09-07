@@ -99,6 +99,11 @@ export class KnowledgeService {
         state: a.state,
         position: a.position,
         coverImageUrl: a.coverImagePath ? (coverUrls.get(a.coverImagePath) ?? null) : null,
+        // Which part of that banner the index shows as a square (BEL-12).
+        // Listed explicitly because this mapping is explicit — the single
+        // article spreads the row and gets it for free, which is exactly how
+        // the two shapes drifted over `author` once before.
+        coverFocusX: a.coverFocusX,
         requiresAcknowledgment: a.requiresAcknowledgment,
         version: a.version,
         author: a.author
@@ -217,6 +222,7 @@ export class KnowledgeService {
       title?: string;
       body?: string;
       coverImagePath?: string | null;
+      coverFocusX?: number;
       requiresAcknowledgment?: boolean;
       material?: boolean;
     },
@@ -244,6 +250,12 @@ export class KnowledgeService {
         ...(dto.title !== undefined && { title: dto.title.trim() }),
         ...(dto.body !== undefined && { body: dto.body }),
         ...(dto.coverImagePath !== undefined && { coverImagePath: dto.coverImagePath }),
+        // Not part of `changesContent` (BEL-12): moving the thumbnail is not a
+        // change to what anybody agreed to, so it must never be able to raise
+        // the material-edit question or bump the version.
+        ...(dto.coverFocusX !== undefined && {
+          coverFocusX: Math.min(100, Math.max(0, Math.round(dto.coverFocusX))),
+        }),
         ...(dto.requiresAcknowledgment !== undefined && {
           requiresAcknowledgment: dto.requiresAcknowledgment,
         }),

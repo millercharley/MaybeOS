@@ -67,6 +67,19 @@ export class UpdateArticleDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) title?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50000) body?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() coverImagePath?: string | null;
+
+  /**
+   * Which part of the banner the square thumbnail shows (BEL-12), as a
+   * percentage across its width. Clamped again in the service, because a
+   * validator can be bypassed by a caller that is not this app.
+   */
+  @ApiPropertyOptional({ minimum: 0, maximum: 100, example: 50 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  coverFocusX?: number;
+
   @ApiPropertyOptional() @IsOptional() @IsBoolean() requiresAcknowledgment?: boolean;
 
   /**

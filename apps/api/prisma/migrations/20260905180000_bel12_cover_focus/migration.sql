@@ -1,0 +1,16 @@
+-- BEL-12: which part of the banner the square thumbnail shows.
+--
+-- The Handbook index showed the author's face on every row, so eight articles
+-- by one admin were eight copies of the same portrait. The banner is the thing
+-- that tells them apart — but a 3:1 banner cropped to a square is a narrow
+-- vertical slice of it, and the middle is rarely the subject.
+--
+-- A percentage across the width, not a stored second image: one upload, one
+-- file, and an admin who changes their mind moves a slider instead of cropping
+-- again. Only X, because a 3:1 banner in a 1:1 frame uses the full height —
+-- there is no vertical choice to make.
+--
+-- Purely additive, and 50 is what CSS `object-position` already does by
+-- default, so every existing article keeps exactly the framing it would have
+-- had before an admin touches this.
+ALTER TABLE "knowledge_articles" ADD COLUMN "coverFocusX" INTEGER NOT NULL DEFAULT 50;

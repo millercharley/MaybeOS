@@ -1964,6 +1964,8 @@ class ApiClient {
         title?: string;
         body?: string;
         coverImagePath?: string | null;
+        /** Which part of the banner the square thumbnail shows (BEL-12). */
+        coverFocusX?: number;
         requiresAcknowledgment?: boolean;
         material?: boolean;
       },
@@ -3218,6 +3220,11 @@ export interface ArticleSummary {
   state: 'DRAFT' | 'PUBLISHED';
   position: number;
   coverImageUrl?: string | null;
+  /**
+   * Which part of the banner the square thumbnail shows (BEL-12), as a
+   * percentage across its width — the same number CSS `object-position` takes.
+   */
+  coverFocusX?: number;
   requiresAcknowledgment: boolean;
   version: number;
   author: ArticleAuthor | null;

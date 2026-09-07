@@ -34,7 +34,29 @@ export function ArticleRow({
   return (
     <div className="group flex items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-b-0 hover:bg-gray-50">
       <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-        {article.author?.avatarUrl ? (
+        {/*
+          The article's own banner, squared (BEL-12). This was the author's
+          avatar, and a Handbook written by one admin was eight rows of the
+          same face — a picture that told you nothing about which article you
+          were looking at. The banner is the thing that distinguishes them.
+
+          `objectPosition` is the admin's choice of which part of a wide banner
+          the square shows; 50% is the browser's own default, so an article
+          nobody has adjusted looks exactly as it would have.
+
+          The avatar stays as the fallback for an article with no cover — a
+          face is better than an empty box, and most articles have one author
+          anyway.
+        */}
+        {article.coverImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={article.coverImageUrl}
+            alt=""
+            style={{ objectPosition: `${article.coverFocusX ?? 50}% 50%` }}
+            className="h-11 w-11 shrink-0 rounded-lg object-cover"
+          />
+        ) : article.author?.avatarUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={article.author.avatarUrl}
