@@ -62,13 +62,25 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
     <div className="mx-auto max-w-container px-4 py-12 sm:px-6 lg:px-8">
       {/* Org Header */}
       <div className="text-center">
-        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-brand-100">
-          {org.logoUrl ? (
-            <img src={org.logoUrl} alt={org.name} className="h-20 w-20 rounded-2xl object-cover" />
-          ) : (
+        {/*
+          The logo at its own proportions (Charley, 2026-09-05). It was forced
+          into an 80×80 square with `object-cover`, which is a crop: a wordmark
+          — the common case for a co-op — lost its ends, and everything else
+          was shown small on the one page built to introduce the community.
+          Only the height is capped now; the width is whatever the mark is,
+          up to the column.
+        */}
+        {org.logoUrl ? (
+          <img
+            src={org.logoUrl}
+            alt={org.name}
+            className="mx-auto h-auto max-h-32 w-auto max-w-full object-contain"
+          />
+        ) : (
+          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-brand-100">
             <span className="text-3xl font-bold text-brand-700">{logoInitial}</span>
-          )}
-        </div>
+          </div>
+        )}
         <h1 className="mt-6 font-display text-2xl leading-tight text-ink">
           {org.name}
         </h1>
