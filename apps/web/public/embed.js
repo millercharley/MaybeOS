@@ -83,6 +83,11 @@
     '.join { margin-top: auto; padding-top: 16px; }',
     '.join a { display: inline-block; width: 100%; text-align: center; text-decoration: none; padding: 10px 16px; border-radius: 8px; background: ' + accent + '; color: #fff; font-weight: 600; font-size: 14px; }',
     '.closed { margin-top: 16px; font-size: 14px; color: #666; }',
+    // The admin's own badge (MEM-16). The card is offset so the pill can sit
+    // on its top border without the grid clipping it.
+    '.tier.featured { border-color: ' + accent + '; border-width: 2px; margin-top: 10px; }',
+    '.badge { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: ' + accent + '; color: #fff; border-radius: 999px; padding: 3px 12px; font-size: 12px; font-weight: 600; white-space: nowrap; }',
+    '.tier { position: relative; }',
   ].join('\n');
   root.appendChild(style);
 
@@ -154,6 +159,16 @@
   var card = function (tier, canJoin) {
     var el = document.createElement('div');
     el.className = 'tier';
+
+    // Whatever the co-op wrote, not a claim of ours (MEM-16).
+    var label = (tier.highlightLabel || '').trim();
+    if (label) {
+      el.className = 'tier featured';
+      var badge = document.createElement('div');
+      badge.className = 'badge';
+      badge.textContent = label;
+      el.appendChild(badge);
+    }
 
     var name = document.createElement('div');
     name.className = 'tier-name';

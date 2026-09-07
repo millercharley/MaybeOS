@@ -21,6 +21,8 @@ type Draft = {
   isPayWhatYouCan: boolean;
   minPrice: string;
   benefits: string;
+  /** The badge on this tier's card, blank for none (MEM-16). */
+  highlightLabel: string;
   /** Service asked of this tier, in hours. Blank means none (SRV-01). */
   serviceHours: string;
   servicePeriod: string;
@@ -33,6 +35,7 @@ const emptyDraft: Draft = {
   isPayWhatYouCan: false,
   minPrice: '',
   benefits: '',
+  highlightLabel: '',
   serviceHours: '',
   servicePeriod: 'MONTH',
 };
@@ -44,6 +47,7 @@ const draftFrom = (t: AdminTier): Draft => ({
   isPayWhatYouCan: t.isPayWhatYouCan,
   minPrice: t.minPrice ? toDollars(t.minPrice) : '',
   benefits: (t.benefits ?? []).join('\n'),
+  highlightLabel: t.highlightLabel ?? '',
   // Hours in the form, minutes on the wire: a co-op says "four hours a
   // month", and asking an organiser to type 240 invites a slip of a zero.
   serviceHours: t.serviceMinutes ? String(t.serviceMinutes / 60) : '',
@@ -57,6 +61,9 @@ const toInput = (d: Draft): TierInput => ({
   isPayWhatYouCan: d.isPayWhatYouCan,
   minPrice: d.isPayWhatYouCan ? toCents(d.minPrice) : undefined,
   benefits: d.benefits.split('\n').map((b) => b.trim()).filter(Boolean),
+  // Explicit null for the same reason as the service expectation: clearing
+  // the field has to remove the badge, not leave the old one standing.
+  highlightLabel: d.highlightLabel.trim() || null,
   // Explicit null rather than omitted, so clearing the field removes the
   // expectation instead of silently leaving the old one in place.
   serviceMinutes: d.serviceHours.trim()
@@ -328,6 +335,29 @@ export default function AdminTiersPage() {
                 onChange={(e) => setDraft({ ...draft, benefits: e.target.value })}
                 placeholder={'One per line\nAccess to events\nCommunity forum'}
               />
+            </label>
+
+            {/*
+              The badge on the join page (MEM-16). The page used to highlight
+              whichever tier happened to be second and label it "Most Popular"
+              — a claim MaybeOS made up, about a tier nobody had said anything
+              about. It is the co-op's claim to make, or not to.
+            */}
+            <label className="block">
+              <span className="text-sm font-medium">Highlight badge</span>
+              <input
+                type="text"
+                maxLength={40}
+                className="input mt-1 w-full"
+                value={draft.highlightLabel}
+                onChange={(e) => setDraft({ ...draft, highlightLabel: e.target.value })}
+                placeholder="e.g. 400 Needed to Sustain"
+              />
+              <span className="mt-1 block text-xs text-gray-500">
+                Shown on this tier&apos;s card on your join page and in your website embed, and
+                gives it the emphasized border. Leave blank for no badge. Only one tier can
+                carry it — setting this clears it from the others.
+              </span>
             </label>
 
             {/* Service asked of this tier (SRV-01). Blank is the default and

@@ -91,6 +91,35 @@ describe('the membership embed', () => {
     expect(links[0].rel).toBe('noopener');
   });
 
+  it('carries the badge the admin wrote, on the tier they chose', async () => {
+    // MEM-16. Not "Most Popular" unless a co-op said so: the join page used to
+    // assert that about whichever tier was second, and it was not true.
+    const { shadow } = render(
+      { 'data-org': 'sunrise', 'data-show': 'membership' },
+      {
+        ...MEMBERSHIP,
+        tiers: [
+          { ...MEMBERSHIP.tiers[0], highlightLabel: '400 Needed to Sustain' },
+          MEMBERSHIP.tiers[1],
+        ],
+      },
+    );
+    await settle();
+
+    const cards = shadow().querySelectorAll('.tier');
+    expect(cards[0].querySelector('.badge')?.textContent).toBe('400 Needed to Sustain');
+    expect(cards[0].className).toContain('featured');
+    expect(cards[1].querySelector('.badge')).toBeNull();
+  });
+
+  it('badges nothing when no tier has a label', async () => {
+    const { shadow } = render({ 'data-org': 'sunrise', 'data-show': 'membership' }, MEMBERSHIP);
+    await settle();
+
+    expect(shadow().querySelectorAll('.badge')).toHaveLength(0);
+    expect(shadow().querySelectorAll('.featured')).toHaveLength(0);
+  });
+
   it('offers no Join button for an invitation-only co-op, and says why', async () => {
     // A button that leads to a refusal is worse than no button. The prices
     // still show: it is the question the visitor came to answer.

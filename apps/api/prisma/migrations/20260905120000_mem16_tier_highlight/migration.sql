@@ -1,0 +1,16 @@
+-- MEM-16: an admin chooses which tier is highlighted, and what the badge says.
+--
+-- The public join page hardcoded the highlight to the second tier in the list
+-- and labelled it "Most Popular" — a claim MaybeOS invented on the co-op's
+-- behalf, about a tier nobody had said anything about. Charley wanted the
+-- Sustainer highlighted with "400 Needed to Sustain", which is a fact about
+-- their co-op rather than a marketing default.
+--
+-- One nullable column, not a boolean plus a label: a tier is highlighted
+-- exactly when it has something to say. Two fields would allow the state
+-- "highlighted, no text", which the badge cannot render.
+--
+-- Purely additive. Every existing tier is NULL, so the badge disappears until
+-- an admin asks for it — deliberately, since the claim it was making was not
+-- true anywhere.
+ALTER TABLE "membership_tiers" ADD COLUMN "highlightLabel" TEXT;

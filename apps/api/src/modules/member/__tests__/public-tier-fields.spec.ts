@@ -20,6 +20,7 @@ describe('the public shape of a membership tier', () => {
       [
         'benefits',
         'description',
+        'highlightLabel',
         'id',
         'isPayWhatYouCan',
         'maxMembers',

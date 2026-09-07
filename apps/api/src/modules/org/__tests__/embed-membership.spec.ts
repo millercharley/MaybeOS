@@ -74,6 +74,7 @@ describe('OrgService — the membership embed', () => {
     expect(tierFields).toEqual([
       'benefits',
       'description',
+      'highlightLabel',
       'id',
       'isPayWhatYouCan',
       'maxMembers',

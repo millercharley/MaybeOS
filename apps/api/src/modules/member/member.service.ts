@@ -515,9 +515,21 @@ export class MemberService {
         minPrice: dto.minPrice,
         benefits: dto.benefits ?? [],
         ...this.serviceExpectation(dto),
+        // The badge, if the form carried one (MEM-16). Whitelisted like every
+        // other field here rather than spread, so a new column is a decision
+        // rather than an accident.
+        highlightLabel: this.normalizeHighlight(dto),
         sortOrder: nextOrder,
       },
     });
+
+    // At most one highlighted tier per co-op, same as on edit.
+    if (tier.highlightLabel) {
+      await this.prisma.membershipTier.updateMany({
+        where: { orgId, id: { not: tier.id }, highlightLabel: { not: null } },
+        data: { highlightLabel: null },
+      });
+    }
 
     // Provision the matching Stripe Product and Price.
     //
@@ -712,6 +724,21 @@ export class MemberService {
     return { serviceMinutes: minutes, servicePeriod: period as never };
   }
 
+  /**
+   * Trim the badge to something renderable, in place (MEM-16).
+   *
+   * Returns the label when the write sets one, so the caller knows whether to
+   * clear the other tiers. An omitted field means "leave it alone" and must
+   * not be turned into an explicit null — the same distinction the service
+   * expectation makes above.
+   */
+  private normalizeHighlight(fields: { highlightLabel?: string | null }): string | null {
+    if (!('highlightLabel' in fields)) return null;
+    const trimmed = typeof fields.highlightLabel === 'string' ? fields.highlightLabel.trim() : '';
+    fields.highlightLabel = trimmed || null;
+    return fields.highlightLabel;
+  }
+
   async updateTier(
     orgId: string,
     tierId: string,
@@ -772,14 +799,38 @@ export class MemberService {
       });
     }
 
-    const updated = await this.prisma.membershipTier.update({
+    // The badge (MEM-16). Blank is not a badge: an admin who clears the text
+    // means "stop showing it", and storing "" would render an empty pill.
+    const highlight = this.normalizeHighlight(rest);
+
+    const write = {
       where: { id: tierId },
       data: {
         ...rest,
         ...expectation,
         ...(priceChanged ? { stripePriceIdMonthly } : {}),
       },
-    });
+    };
+
+    // At most one highlighted tier per co-op. The card grows, gains a border
+    // and carries a pill, which only reads as emphasis while one tier has it —
+    // and an admin who highlights the Sustainer means *instead of*, not *as
+    // well as*. Scoped to the org, like every write here (SEC-04).
+    //
+    // The transaction exists only for this pair: a set that lands without its
+    // clear leaves two tiers badged, which is the state the rule prevents. An
+    // ordinary edit is one write and takes the plain path.
+    const updated = highlight
+      ? (
+          await this.prisma.$transaction([
+            this.prisma.membershipTier.update(write),
+            this.prisma.membershipTier.updateMany({
+              where: { orgId, id: { not: tierId }, highlightLabel: { not: null } },
+              data: { highlightLabel: null },
+            }),
+          ])
+        )[0]
+      : await this.prisma.membershipTier.update(write);
 
     // Tell the caller what actually happened to people's money, so the admin
     // UI can say "12 members move to the new price at their next renewal"

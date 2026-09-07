@@ -130,8 +130,13 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
           </p>
 
           <div className="mt-10 grid gap-8 lg:grid-cols-3">
-            {displayTiers.map((tier, index) => {
-              const isFeatured = index === 1 && displayTiers.length >= 2;
+            {displayTiers.map((tier) => {
+              // The co-op's own badge, on the tier they chose (MEM-16). This
+              // used to be `index === 1` labelled "Most Popular" — a claim
+              // MaybeOS invented, about whichever tier happened to be second.
+              // On MaybeItsFate it sat on the $10 Member and was not true.
+              const badge = tier.highlightLabel?.trim() || null;
+              const isFeatured = !!badge;
               // toFixed(0) ROUNDED: a $19.50 tier advertised itself as "$20" on
               // the page that persuades someone to join, while Stripe charged
               // $19.50. Show whole dollars only when the price actually is whole.
@@ -156,7 +161,7 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                       <span className="inline-flex items-center gap-1 rounded-full bg-brand-600 px-3 py-1 text-xs font-semibold text-white">
                         <Star className="h-3 w-3" />
-                        Most Popular
+                        {badge}
                       </span>
                     </div>
                   )}
