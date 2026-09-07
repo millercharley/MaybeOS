@@ -14,7 +14,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { PrismaService } from '../../config/prisma.service';
 import { eventDescription, eventSummary } from './event-content';
 import { encodeState, decodeState } from '../../common/oauth-state';
-import { isSealed, seal, unseal } from '../../common/secret-box';
+import { currentKeyLabel, needsResealing, seal, unseal } from '../../common/secret-box';
 
 interface StoredTokens {
   access_token: string;
@@ -46,12 +46,17 @@ export class CalendarService implements OnModuleInit {
   }
 
   /**
-   * Seal any tokens still stored in the clear (SEC-15).
+   * Seal any tokens not sealed under the current key (SEC-15, SEC-16).
    *
-   * Eight of the nine rooms on production hold a Google refresh token written
-   * before sealing existed. Sealing new writes only would have left those
-   * eight in the clear indefinitely — a room whose calendar works is a room
-   * nobody edits.
+   * Two jobs, one sweep. It began as a backfill: eight of the nine rooms on
+   * production held a Google refresh token written before sealing existed, and
+   * sealing new writes only would have left those eight in the clear
+   * indefinitely — a room whose calendar works is a room nobody edits.
+   *
+   * It is now also how a key change lands. Configuring `SECRET_BOX_KEY` makes
+   * every existing row "sealed under the old key", and this moves them across
+   * on the next boot. Nothing is unreadable in between, because both keys stay
+   * available and each row records which one sealed it.
    *
    * Runs on boot rather than as a script or a one-off endpoint, because the
    * key lives in the environment the API already runs in and nobody has to
@@ -76,17 +81,20 @@ export class CalendarService implements OnModuleInit {
         take: 500,
       });
 
-      const inTheClear = rooms.filter((room) => room.googleTokens && !isSealed(room.googleTokens));
-      if (inTheClear.length === 0) return;
+      const stale = rooms.filter((room) => needsResealing(room.googleTokens));
+      if (stale.length === 0) return;
 
-      for (const room of inTheClear) {
+      for (const room of stale) {
+        // Opened with whichever key sealed it, re-sealed with the current one.
         await this.prisma.room.update({
           where: { id: room.id },
-          data: { googleTokens: seal(room.googleTokens) as any },
+          data: { googleTokens: seal(unseal(room.googleTokens)) as any },
         });
       }
 
-      this.logger.log(`Sealed Google tokens for ${inTheClear.length} room(s) (SEC-15)`);
+      this.logger.log(
+        `Sealed Google tokens for ${stale.length} room(s) under key '${currentKeyLabel()}'`,
+      );
     } catch (err) {
       this.logger.error(
         `Could not seal stored Google tokens: ${err instanceof Error ? err.message : String(err)}`,
