@@ -2346,6 +2346,13 @@ export interface TierInput {
    */
   serviceMinutes?: number | null;
   servicePeriod?: ServicePeriod | null;
+  /**
+   * The badge on this tier's card (MEM-16), or null for none.
+   *
+   * Explicit null clears it, same as the service expectation. At most one tier
+   * per co-op carries one — the API clears the others when this is set.
+   */
+  highlightLabel?: string | null;
 }
 
 export interface AdminTier extends MembershipTier {
@@ -2378,6 +2385,8 @@ export interface MembershipTier {
   servicePeriod?: ServicePeriod | null;
   /** Null means unlimited, which is the usual case. */
   maxMembers?: number | null;
+  /** The badge an admin chose for this tier (MEM-16), or null for none. */
+  highlightLabel?: string | null;
 }
 
 /** One row of an export, in MaybeOS's own field names (MEM-06). */

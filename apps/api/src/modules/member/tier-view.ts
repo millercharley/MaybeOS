@@ -36,4 +36,7 @@ export const PUBLIC_TIER_SELECT = {
   // chooses it, which is the whole point of it being here.
   serviceMinutes: true,
   servicePeriod: true,
+  // The badge an admin chose for this tier (MEM-16). Public by definition:
+  // it exists to be read by the person deciding which tier to join.
+  highlightLabel: true,
 } satisfies Prisma.MembershipTierSelect;

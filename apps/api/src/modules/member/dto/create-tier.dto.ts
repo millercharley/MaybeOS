@@ -8,6 +8,7 @@ import {
   IsIn,
   Min,
   Max,
+  MaxLength,
   ValidateIf,
 } from 'class-validator';
 
@@ -85,4 +86,23 @@ export class CreateTierDto {
   @ValidateIf((_, value) => value !== null)
   @IsIn(SERVICE_PERIODS as unknown as string[])
   servicePeriod?: string | null;
+
+  /**
+   * The badge on this tier's card (MEM-16), or null for no badge.
+   *
+   * Capped at 40 characters because it renders inside a pill on a card: this
+   * is a label, not a sentence, and a long one either wraps into the card's
+   * top border or pushes the layout out. "400 Needed to Sustain" is 21.
+   */
+  @ApiPropertyOptional({
+    example: '400 Needed to Sustain',
+    nullable: true,
+    maxLength: 40,
+    description: 'Badge shown on this tier. Null removes it. At most one tier per co-op.',
+  })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(40)
+  highlightLabel?: string | null;
 }

@@ -513,6 +513,15 @@ model MembershipTier {
   sortOrder            Int      @default(0)
   isActive             Boolean  @default(true)
 
+  /// The badge on this tier's card, chosen by the admin (MEM-16), or null for
+  /// no badge — which is every tier until somebody asks for one.
+  ///
+  /// One nullable column rather than a boolean and a label: a tier is
+  /// highlighted exactly when it has something to say, and the pair would
+  /// allow "highlighted, no text", which the badge cannot render. At most one
+  /// tier per co-op carries it; the service clears the others.
+  highlightLabel       String?
+
   /// What this tier asks of a member in service (SRV-01), as minutes over a
   /// period. Both null means no expectation, which is the default and the
   /// common case — most tiers ask for money and nothing else.
