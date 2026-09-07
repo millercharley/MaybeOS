@@ -150,6 +150,31 @@ describe('the membership embed', () => {
     expect(shadow().textContent).toContain('<img src=x onerror=alert(1)>');
   });
 
+  it('puts readable text on a pale accent', async () => {
+    // BRD-03: the accent now defaults to the co-op's own brand colour, and
+    // MaybeItsFate's is a light blue. White on it is unreadable, so the button
+    // text follows the accent's luminance rather than always being white.
+    const { shadow } = render(
+      { 'data-org': 'sunrise', 'data-show': 'membership', 'data-accent': '#afd2e9' },
+      MEMBERSHIP,
+    );
+    await settle();
+
+    const css = shadow().querySelector('style')!.textContent!;
+    expect(css).toContain("background: #afd2e9; color: #1a1a1a");
+  });
+
+  it('keeps white text on a dark accent', async () => {
+    const { shadow } = render(
+      { 'data-org': 'sunrise', 'data-show': 'membership', 'data-accent': '#b03030' },
+      MEMBERSHIP,
+    );
+    await settle();
+
+    const css = shadow().querySelector('style')!.textContent!;
+    expect(css).toContain("background: #b03030; color: #fff");
+  });
+
   it('says so quietly when the feed is unreachable', async () => {
     // No stack trace on a co-op's marketing site; the visitor can do nothing
     // with one, and a line of text is the whole of what is useful.

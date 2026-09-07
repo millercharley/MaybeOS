@@ -196,14 +196,18 @@ export function sidebarSections({
     sections.push({ label: 'My membership', id: 'membership', items: member.slice(1) });
   }
 
-  // Below My membership (Charley, 2026-09-04). Organizing is a long section —
+  // Below My membership (Charley, 2026-09-04). Administration is a long section —
   // thirteen links — and putting it above the four personal ones pushed a
   // member's own things off the bottom of a laptop screen for every organiser.
   // It also reads in the right order: you are a member of the co-op first and
   // an organiser of it second, which is the same argument that put the
   // community section at the top.
   if (signedIn && isOrganiser && slug) {
-    sections.push({ label: 'Organizing', id: 'organizing', items: admin.slice(1) });
+    // "Administration", renamed from "Organizing" (Charley, 2026-09-05). The
+    // id stays `organizing`: it is what the collapse state is stored under in
+    // a member's browser, so changing it would silently reopen every section
+    // an organiser had closed.
+    sections.push({ label: 'Administration', id: 'organizing', items: admin.slice(1) });
   }
 
   // Last, and labelled as MaybeOS rather than as part of the co-op — because

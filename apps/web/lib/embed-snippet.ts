@@ -6,6 +6,13 @@
  * the preview that is not in the code they copied — and a string is worth
  * testing directly rather than through a rendered card.
  */
+/**
+ * What `embed.js` paints with when the tag carries no `data-accent`.
+ *
+ * A constant of the script rather than a preference: the snippet omits the
+ * attribute exactly when the chosen colour equals this, so it is the fallback
+ * for a co-op that has set no colour at all.
+ */
 export const DEFAULT_ACCENT = '#b03030';
 
 /** `#abc` or `#aabbcc`, with or without the hash. Null if it is not a colour. */
@@ -13,6 +20,19 @@ export function normaliseHex(input: string): string | null {
   const value = input.trim().replace(/^#/, '');
   if (!/^([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value)) return null;
   return `#${value.toLowerCase()}`;
+}
+
+/**
+ * The colour a field asking for one should start on (BRD-03).
+ *
+ * Charley, 2026-09-05: "There are a lot of places in the admin to set an
+ * accent color. Make sure the Brand Color setting inside Branding is the core
+ * place to set this." Every colour field seeded through here inherits it, so
+ * the co-op's colour is typed once in Branding and an override stays a
+ * deliberate override rather than the only way to get their own colour.
+ */
+export function resolveAccent(brandColor?: string | null): string {
+  return normaliseHex(brandColor ?? '') ?? DEFAULT_ACCENT;
 }
 
 /** Which block the tag renders. Events is the default and the original. */
