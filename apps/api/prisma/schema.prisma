@@ -1921,6 +1921,14 @@ model KnowledgeArticle {
   /// members-only — so a permanent public URL would be a photo of a co-op's
   /// members reachable by anyone who ever got the link.
   coverImagePath         String?
+  /// Which part of the banner the square thumbnail shows (BEL-12), as a
+  /// percentage across its width — the same number CSS `object-position`
+  /// takes, so the default of 50 is exactly what the browser would have done
+  /// on its own.
+  ///
+  /// Only X: a 3:1 banner in a 1:1 frame uses the full height, so there is no
+  /// vertical choice to make.
+  coverFocusX            Int          @default(50)
   body                   String
   authorId               String?
   position               Int          @default(0)

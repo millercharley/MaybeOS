@@ -16,6 +16,7 @@ import { api, Article, ArticleCompliance, ArticleSummary } from '@/lib/api';
 import { RichComposer } from '@/components/composer/rich-composer';
 import { ImageUploader } from '@/components/ui/image-uploader';
 import { HANDBOOK_COVER_ASPECT } from '@/lib/image-crop';
+import { CoverFocus } from '@/components/belonging/cover-focus';
 import { timeAgo } from '@/lib/relative-time';
 import { PageHeader } from '@/components/layout/page-header';
 
@@ -84,6 +85,7 @@ export default function AdminHandbookPage() {
         {
           title: editing.title,
           body: editing.body,
+          coverFocusX: editing.coverFocusX,
           requiresAcknowledgment: editing.requiresAcknowledgment,
           ...(material !== undefined && { material }),
         },
@@ -237,6 +239,17 @@ export default function AdminHandbookPage() {
             await load();
           }}
         />
+
+        {/* Only once there is a banner to choose from (BEL-12). */}
+        {editing.coverImageUrl && (
+          <CoverFocus
+            imageUrl={editing.coverImageUrl}
+            value={editing.coverFocusX ?? 50}
+            onChange={(coverFocusX) =>
+              setEditing((current) => (current ? { ...current, coverFocusX } : current))
+            }
+          />
+        )}
 
         <input
           value={editing.title}

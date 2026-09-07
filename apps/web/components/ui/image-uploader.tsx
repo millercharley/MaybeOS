@@ -124,10 +124,10 @@ export function ImageUploader({
 
       {imageUrl ? (
         <div className="relative overflow-hidden rounded-xl border border-gray-200">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           {/* The shape it was cropped to, not a second crop of it (BEL-11).
-              `max-h-56` cropped a wide banner again in the preview, so an
-              admin could not see what they had framed. */}
+              A `max-h` cropped a wide banner again in the preview, so an admin
+              could not see what they had framed. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imageUrl}
             alt=""

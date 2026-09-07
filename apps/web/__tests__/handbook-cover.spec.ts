@@ -62,9 +62,51 @@ describe('uploading a cover', () => {
     expect(admin).toContain('coverImageUrl: saved.coverImageUrl');
   });
 
-  it('takes only the cover back from the server', () => {
-    // Both handlers merge into the current draft rather than replacing it.
-    const merges = admin.match(/setEditing\(\(current\)/g) ?? [];
-    expect(merges.length).toBe(2);
+  it('merges into the draft rather than replacing it', () => {
+    // Counting the merges was the first version of this, and adding an
+    // unrelated third one broke it — a test that fails on a correct change is
+    // asserting the wrong thing. What matters is that both cover handlers
+    // keep the current draft.
+    expect(admin).toContain('{ ...current, coverImageUrl: saved.coverImageUrl }');
+    expect(admin).toContain('{ ...current, coverImageUrl: null }');
+  });
+});
+
+/**
+ * The square beside each row (BEL-12).
+ *
+ * The index showed the author's avatar, so a Handbook written by one admin was
+ * eight rows of the same face — a picture that told you nothing about which
+ * article you were looking at.
+ */
+describe('the Handbook index thumbnail', () => {
+  const row = read('components', 'belonging', 'article-row.tsx');
+  const focus = read('components', 'belonging', 'cover-focus.tsx');
+
+  it('is the article’s own banner, squared', () => {
+    expect(row).toContain('article.coverImageUrl ?');
+    expect(row).toMatch(/h-11 w-11 shrink-0 rounded-lg object-cover/);
+  });
+
+  it('shows the part of the banner the admin chose', () => {
+    expect(row).toContain('objectPosition: `${article.coverFocusX ?? 50}% 50%`');
+  });
+
+  it('falls back to the author for an article with no banner', () => {
+    // A face is better than an empty box.
+    expect(row).toContain('article.author?.avatarUrl');
+  });
+
+  it('lets the admin see what they are choosing from and what they will get', () => {
+    // The banner with the square marked on it, and the square itself at the
+    // size the index renders it. Either alone leaves them guessing.
+    expect(focus).toContain('aspect-[3/1]');
+    expect(focus).toContain('h-11 w-11');
+  });
+
+  it('keeps the marquee inside the banner at both ends', () => {
+    // The square takes a third of a 3:1 strip, so 100% has to land its left
+    // edge at 2/3 — sliding it to a literal 100% would put it off the end.
+    expect(focus).toContain('(focus / 100) * (100 - 100 / 3)');
   });
 });
