@@ -11,6 +11,7 @@ import { google, calendar_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { PrismaService } from '../../config/prisma.service';
 import { eventDescription, eventSummary } from './event-content';
+import { encodeState, decodeState } from '../../common/oauth-state';
 
 interface StoredTokens {
   access_token: string;
@@ -71,7 +72,22 @@ export class CalendarService {
     return this.missingConfig.length === 0;
   }
 
-  getAuthUrl(orgId: string, roomId: string): string {
+  /**
+   * The Google consent URL for connecting one room's calendar (SEC-14).
+   *
+   * `state` used to be `JSON.stringify({ orgId, roomId })` — unsigned, and
+   * therefore anybody's to write. The client id is public, so an attacker
+   * could build this URL themselves, authorise with *their own* Google
+   * account, and name **another co-op's room** in the state. The callback
+   * would then store their tokens on that room, and every booking in it would
+   * sync into a calendar they control.
+   *
+   * Signed with the same HMAC state the Stripe Connect flow uses, and the room
+   * is checked against the org here as well as on the way back: a signature
+   * proves the state came from us, not that the room it names belongs to the
+   * co-op it names.
+   */
+  async getAuthUrl(orgId: string, roomId: string, userId: string): Promise<string> {
     // Without this, an unconfigured server answered 200 with a perfectly
     // shaped Google URL carrying `client_id=""` — so "Connect calendar"
     // succeeded, sent the admin to Google, and landed them on an invalid_client
@@ -87,7 +103,19 @@ export class CalendarService {
       );
     }
 
-    const state = JSON.stringify({ orgId, roomId });
+    // Scoped, like every other read of a tenant-owned record (SEC-04). An
+    // admin of one co-op naming another co-op's room id is refused here rather
+    // than at the callback, where the browser has already left for Google.
+    const room = await this.prisma.room.findFirst({
+      where: { id: roomId, orgId },
+      select: { id: true },
+    });
+    if (!room) throw new NotFoundException('Room not found');
+
+    const state = encodeState(
+      { orgId, roomId, userId, issuedAt: Date.now() },
+      this.configService.get<string>('JWT_SECRET') ?? '',
+    );
 
     return this.oauth2Client.generateAuthUrl({
       access_type: 'offline',
@@ -105,10 +133,24 @@ export class CalendarService {
     code: string,
     state: string,
   ): Promise<{ orgId: string; roomId: string }> {
-    const { orgId, roomId } = JSON.parse(state) as {
-      orgId: string;
-      roomId: string;
-    };
+    // Verified, not parsed (SEC-14). What arrives here is whatever was in the
+    // browser's address bar.
+    const decoded = decodeState(state, this.configService.get<string>('JWT_SECRET') ?? '');
+    if (!decoded?.roomId) {
+      throw new BadRequestException(
+        'That calendar connection link was invalid or has expired. Start again from Rooms.',
+      );
+    }
+    const { orgId, roomId } = { orgId: decoded.orgId, roomId: decoded.roomId };
+
+    // Checked again on the way back, because the room could have moved or been
+    // deleted between the two halves of the flow — and because a write to a
+    // tenant-owned row by bare id is the thing SEC-04 exists to stop.
+    const room = await this.prisma.room.findFirst({
+      where: { id: roomId, orgId },
+      select: { id: true },
+    });
+    if (!room) throw new NotFoundException('Room not found');
 
     const { tokens } = await this.oauth2Client.getToken(code);
 

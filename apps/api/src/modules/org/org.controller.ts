@@ -77,8 +77,26 @@ export class OrgController {
     return this.forum.rejoin(user.userId);
   }
 
+  /**
+   * The whole org row — for somebody who belongs to it (SEC-13).
+   *
+   * This was unauthenticated, and returned every column: the connected Stripe
+   * account id, the plan customer and subscription ids, the billing waiver
+   * and its reason, suspension notes, the revenue share, the `settings` blob.
+   * **Confirmed live on production before this guard**, including a real
+   * `cus_…` and `sub_…`.
+   *
+   * SEC-11 fixed the same leak on `by-slug` a day earlier by narrowing the
+   * columns. This route cannot be narrowed the same way — the admin's own
+   * settings screen reads it and genuinely needs the row — so the fix is the
+   * other one: require membership and keep the row. Every caller in the web
+   * app already sends a token and is a member; the anonymous paths use
+   * `by-slug`, which publishes eleven chosen columns.
+   */
   @Get(':orgId')
-  @ApiOperation({ summary: 'Get organization details' })
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get organization details (members only)' })
   findById(@Param('orgId') orgId: string) {
     return this.orgService.findById(orgId);
   }

@@ -19,7 +19,12 @@ describe('CalendarService — OAuth configuration gate', () => {
     const moduleRef = await Test.createTestingModule({
       providers: [
         CalendarService,
-        { provide: PrismaService, useValue: {} },
+        // The room is scoped to the org before a consent URL is issued
+        // (SEC-14), so the gate under test runs with a room that exists.
+        {
+          provide: PrismaService,
+          useValue: { room: { findFirst: jest.fn().mockResolvedValue({ id: 'room-1' }) } },
+        },
         { provide: ConfigService, useValue: { get: (k: string) => env[k] } },
       ],
     }).compile();
@@ -27,6 +32,8 @@ describe('CalendarService — OAuth configuration gate', () => {
   };
 
   const FULL = {
+    // The state is HMAC-signed now (SEC-14), and signing refuses without one.
+    JWT_SECRET: 'test-secret',
     GOOGLE_CLIENT_ID: 'id.apps.googleusercontent.com',
     GOOGLE_CLIENT_SECRET: 'secret',
     GOOGLE_REDIRECT_URI: 'https://maybeos.org/api/calendar/oauth/callback',
@@ -36,7 +43,7 @@ describe('CalendarService — OAuth configuration gate', () => {
     const service = await build(FULL);
 
     expect(service.isConfigured).toBe(true);
-    expect(service.getAuthUrl('org-1', 'room-1')).toContain(
+    expect(await service.getAuthUrl('org-1', 'room-1', 'user-1')).toContain(
       'client_id=id.apps.googleusercontent.com',
     );
   });
@@ -49,10 +56,10 @@ describe('CalendarService — OAuth configuration gate', () => {
     const service = await build({ ...FULL, [key]: '' });
 
     expect(service.isConfigured).toBe(false);
-    expect(() => service.getAuthUrl('org-1', 'room-1')).toThrow(
+    await expect(service.getAuthUrl('org-1', 'room-1', 'user-1')).rejects.toThrow(
       ServiceUnavailableException,
     );
-    expect(() => service.getAuthUrl('org-1', 'room-1')).toThrow(key);
+    await expect(service.getAuthUrl('org-1', 'room-1', 'user-1')).rejects.toThrow(key);
   });
 
   it('names only what is actually missing', async () => {
@@ -60,7 +67,7 @@ describe('CalendarService — OAuth configuration gate', () => {
 
     // An admin who has set the id and secret should not be sent back to
     // re-check the two settings that are already right.
-    expect(() => service.getAuthUrl('org-1', 'room-1')).toThrow(
+    await expect(service.getAuthUrl('org-1', 'room-1', 'user-1')).rejects.toThrow(
       'Google Calendar is not configured on this server (GOOGLE_REDIRECT_URI).',
     );
   });

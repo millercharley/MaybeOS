@@ -11,7 +11,7 @@ import { StripeAccountApi } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { priceTicket, priceBooking } from './ticket-pricing';
 import { CalendarService } from '../calendar/calendar.service';
-import { encodeState, decodeState } from './connect-oauth';
+import { encodeState, decodeState } from '../../common/oauth-state';
 
 /**
  * Stripe Connect: paying co-ops directly, and taking MaybeOS's cut (D-013).

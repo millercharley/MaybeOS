@@ -15,6 +15,7 @@ import { RsvpDto } from './dto/rsvp.dto';
 import { PublishBookingEventDto } from './dto/publish-booking-event.dto';
 import { ConnectService } from '../stripe/connect.service';
 import ical, { ICalCalendarMethod } from 'ical-generator';
+import { PUBLIC_EVENT_SELECT } from './event-view';
 
 /* ───────────────────────────── helpers ───────────────────────────── */
 
@@ -68,10 +69,14 @@ const RSVP_FACES = {
   },
 };
 
-function withRsvpFaces<T extends { rsvps?: Array<{ user: unknown }> }>(
+// `T extends object`, not a shape with an optional `rsvps`: a public event row
+// has no `rsvps` key at all (SEC-12), and an optional-only constraint rejects
+// an object sharing none of its properties. The tolerance below was always the
+// intent; this makes the signature say so.
+function withRsvpFaces<T extends object>(
   event: T,
 ): Omit<T, 'rsvps'> & { rsvpFaces: unknown[] } {
-  const { rsvps, ...rest } = event;
+  const { rsvps, ...rest } = event as T & { rsvps?: Array<{ user: unknown }> };
   // Tolerant of an absent relation on purpose. This is a mapper, not a
   // validator, and the failure it would otherwise cause is a whole event
   // list answering 500 because one optional field was not selected.
@@ -734,26 +739,40 @@ export class EventsService {
       if (filters.to) where.startTime.lte = new Date(filters.to);
     }
 
-    const [data, total] = await this.prisma.$transaction([
-      this.prisma.event.findMany({
-        where,
-        orderBy: { startTime: 'asc' },
-        skip,
-        take: perPage,
-        include: {
-          location: true,
-          room: true,
-          ...CONFIRMED_RSVP_COUNT,
-          // Faces for members, never for the public list. The rule is the
-          // same one that widens visibility above: an event link may be
-          // public so strangers can RSVP, but who is attending is not — a
-          // guest list on a public page tells anyone with the URL who belongs
-          // to this co-op.
-          ...(viewerIsMember ? RSVP_FACES : {}),
-        },
-      }),
-      this.prisma.event.count({ where }),
-    ]);
+    // Two shapes, because there are two audiences (SEC-12). A member is inside
+    // the tenant and gets the row; the open internet gets the chosen columns,
+    // which is what keeps a room's Google tokens off a public list. Faces
+    // likewise: an event link may be public so strangers can RSVP, but who is
+    // attending is not — a guest list on a public page tells anyone with the
+    // URL who belongs to this co-op.
+    //
+    // An interactive transaction rather than the array form: the two branches
+    // return different shapes, which the array form cannot type, and the count
+    // still has to be taken against the same snapshot as the page.
+    const [data, total] = await this.prisma.$transaction(async (tx) => {
+      const rows = viewerIsMember
+        ? await tx.event.findMany({
+            where,
+            orderBy: { startTime: 'asc' },
+            skip,
+            take: perPage,
+            include: {
+              location: true,
+              room: true,
+              ...CONFIRMED_RSVP_COUNT,
+              ...RSVP_FACES,
+            },
+          })
+        : await tx.event.findMany({
+            where,
+            orderBy: { startTime: 'asc' },
+            skip,
+            take: perPage,
+            select: PUBLIC_EVENT_SELECT,
+          });
+      const count = await tx.event.count({ where });
+      return [rows, count] as const;
+    });
 
     return {
       data: data.map((event) => withRsvpFaces(withRsvpCount(event))),
@@ -776,16 +795,18 @@ export class EventsService {
 
     const event = await this.prisma.event.findUnique({
       where: { orgId_slug: { orgId: org.id, slug: eventSlug } },
-      include: {
-        location: true,
-        room: true,
-        // No host here, deliberately. Who runs an event is half of why
-        // somebody comes, but this endpoint answers to the open internet and
-        // an admin ticking "public" agreed to publish the event, not to
-        // publish a member's name. Signed-in members read the host from the
-        // org-scoped endpoint instead.
+      // No host here, deliberately. Who runs an event is half of why somebody
+      // comes, but this endpoint answers to the open internet and an admin
+      // ticking "public" agreed to publish the event, not to publish a
+      // member's name. Signed-in members read the host from the org-scoped
+      // endpoint instead.
+      //
+      // That was the intent and `include` did not carry it out: the host's
+      // *name* was withheld while `hostId` went out in the row, along with
+      // every column of the room — `googleTokens` included (SEC-12).
+      select: {
+        ...PUBLIC_EVENT_SELECT,
         org: { select: { id: true, name: true, slug: true, logoUrl: true, brandColor: true } },
-        ...CONFIRMED_RSVP_COUNT,
       },
     });
 
@@ -1254,10 +1275,9 @@ export class EventsService {
         canceledAt: null,
       },
       orderBy: { startTime: 'asc' },
-      include: {
-        location: true,
-        room: true,
-      },
+      // The same public columns the other two anonymous routes return
+      // (SEC-12): a feed is as public as a page.
+      select: PUBLIC_EVENT_SELECT,
     });
 
     return events.map((event) => ({

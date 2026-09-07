@@ -1,7 +1,12 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 
 /**
- * The `state` parameter for Stripe Connect OAuth (PAY-05).
+ * The `state` parameter for an OAuth redirect that comes back with no session.
+ *
+ * Written for Stripe Connect (PAY-05) and now shared with Google Calendar,
+ * which had been sending `JSON.stringify({ orgId, roomId })` unsigned — see
+ * SEC-14. Moved out of the stripe module rather than copied: two signers is
+ * how one of them ends up weaker than the other.
  *
  * This is the security of the whole flow, so it is a separate, tested module
  * rather than three lines inside a service method.
@@ -32,6 +37,14 @@ export interface OAuthState {
   userId: string;
   /** Milliseconds since epoch. */
   issuedAt: number;
+  /**
+   * The room being connected, for the Google Calendar flow (SEC-14).
+   *
+   * Signed with the rest, and still checked against `orgId` before anything is
+   * written: a signature proves the state came from us, not that the room it
+   * names belongs to the co-op it names.
+   */
+  roomId?: string;
 }
 
 const base64url = (input: Buffer | string) =>

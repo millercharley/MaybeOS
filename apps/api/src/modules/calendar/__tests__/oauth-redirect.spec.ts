@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { CalendarController } from '../calendar.controller';
 import { CalendarService } from '../calendar.service';
 import { PrismaService } from '../../../config/prisma.service';
+import { encodeState } from '../../../common/oauth-state';
 
 /**
  * Google sends the admin back to a page that exists.
@@ -19,7 +20,13 @@ describe('CalendarController — where Google sends the admin back to', () => {
   let res: { redirect: jest.Mock };
   let service: { handleCallback: jest.Mock };
 
-  const STATE = JSON.stringify({ orgId: 'org-1', roomId: 'room-1' });
+  // Signed, because the callback no longer reads an unsigned one (SEC-14) —
+  // not even to decide where to send the admin back to.
+  const SECRET = 'test-secret';
+  const STATE = encodeState(
+    { orgId: 'org-1', roomId: 'room-1', userId: 'user-1', issuedAt: Date.now() },
+    SECRET,
+  );
 
   beforeEach(async () => {
     res = { redirect: jest.fn() };
@@ -42,7 +49,10 @@ describe('CalendarController — where Google sends the admin back to', () => {
         },
         {
           provide: ConfigService,
-          useValue: { get: (k: string) => (k === 'WEB_URL' ? 'https://maybeos.org' : undefined) },
+          useValue: {
+            get: (k: string) =>
+              k === 'WEB_URL' ? 'https://maybeos.org' : k === 'JWT_SECRET' ? SECRET : undefined,
+          },
         },
       ],
     }).compile();

@@ -19,8 +19,10 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { CalendarService } from './calendar.service';
 import { PrismaService } from '../../config/prisma.service';
+import { decodeState } from '../../common/oauth-state';
 import { SelectCalendarDto } from './dto/select-calendar.dto';
 
 @ApiTags('calendar')
@@ -43,11 +45,14 @@ export class CalendarController {
   @Roles('ADMIN')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get Google Calendar OAuth URL to connect a room' })
-  getOAuthUrl(
+  async getOAuthUrl(
     @Param('orgId') orgId: string,
     @Param('roomId') roomId: string,
+    @CurrentUser() user: RequestUser,
   ) {
-    const url = this.calendarService.getAuthUrl(orgId, roomId);
+    // The admin who started it travels in the signed state (SEC-14), so a
+    // callback cannot be replayed on behalf of somebody else.
+    const url = await this.calendarService.getAuthUrl(orgId, roomId, user.userId);
     return { url };
   }
 
@@ -107,10 +112,13 @@ export class CalendarController {
       .replace(/\/+$/, '');
 
     try {
-      const { orgId } = JSON.parse(state) as { orgId?: string };
-      const org = orgId
+      // Only to decide where to send the admin back to, and only from a state
+      // we signed (SEC-14). An unverified one is not worth reading even for a
+      // redirect target — that is how an open redirect starts.
+      const decoded = decodeState(state, this.configService.get<string>('JWT_SECRET') ?? '');
+      const org = decoded
         ? await this.prisma.organization.findUnique({
-            where: { id: orgId },
+            where: { id: decoded.orgId },
             select: { slug: true },
           })
         : null;

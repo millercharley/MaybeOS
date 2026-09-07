@@ -22,7 +22,8 @@ describe('EventsService — what the portal lists', () => {
     const prisma = {
       // The service runs findMany and count inside $transaction; both receive
       // the same `where`, which is the thing under test.
-      $transaction: async (ops: unknown[]) => [[], ops.length],
+      $transaction: async (arg: any) =>
+        Array.isArray(arg) ? [[], arg.length] : arg(prisma),
       event: {
         findMany: (args: { where: Record<string, unknown> }) => {
           captured.push(args.where);
