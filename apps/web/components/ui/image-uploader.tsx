@@ -125,7 +125,15 @@ export function ImageUploader({
       {imageUrl ? (
         <div className="relative overflow-hidden rounded-xl border border-gray-200">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={imageUrl} alt="" className="max-h-56 w-full object-cover" />
+          {/* The shape it was cropped to, not a second crop of it (BEL-11).
+              `max-h-56` cropped a wide banner again in the preview, so an
+              admin could not see what they had framed. */}
+          <img
+            src={imageUrl}
+            alt=""
+            style={{ aspectRatio: String(aspect) }}
+            className="w-full object-cover"
+          />
           <div className="absolute right-2 top-2 flex gap-2">
             <button
               onClick={() => input.current?.click()}

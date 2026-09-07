@@ -13,6 +13,21 @@
  * DOM: everything above `renderCrop` is arithmetic.
  */
 
+/**
+ * The shape of a Handbook cover (BEL-11).
+ *
+ * A banner, not a photograph. Charley, comparing a Handbook article with the
+ * same image on Circle: the source is 1080×340 and MaybeOS was showing a tight
+ * zoom of the middle of it, because every image chosen through `ImageUploader`
+ * was cropped to 3:2 — right for a room photo, wrong for a masthead.
+ *
+ * Exported rather than written in three places, because the crop, the admin's
+ * preview and what a member sees all have to be the same number or the whole
+ * argument for cropping up front (SPC-17) stops holding: what the co-op frames
+ * is what members see.
+ */
+export const HANDBOOK_COVER_ASPECT = 3;
+
 export interface Size {
   width: number;
   height: number;

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Check, Heart, Loader2, MessageCircle, Shield, X } from 'lucide-react';
 import { Article, ArticleComment } from '@/lib/api';
 import { renderBodyHtml } from '@/lib/rich-text';
+import { HANDBOOK_COVER_ASPECT } from '@/lib/image-crop';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
 import { timeAgo } from '@/lib/relative-time';
 
@@ -76,8 +77,16 @@ export function ArticleModal({
         </div>
 
         {article.coverImageUrl && (
+          // The shape it was cropped to (BEL-11). A `max-h` cropped a wide
+          // banner a second time, in a place the admin never sees, so what
+          // they framed was not what a member got.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={article.coverImageUrl} alt="" className="max-h-80 w-full object-cover" />
+          <img
+            src={article.coverImageUrl}
+            alt=""
+            style={{ aspectRatio: String(HANDBOOK_COVER_ASPECT) }}
+            className="w-full object-cover"
+          />
         )}
 
         <div className="px-6 py-5">

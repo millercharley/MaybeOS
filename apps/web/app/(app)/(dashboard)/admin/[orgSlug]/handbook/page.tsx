@@ -15,6 +15,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { api, Article, ArticleCompliance, ArticleSummary } from '@/lib/api';
 import { RichComposer } from '@/components/composer/rich-composer';
 import { ImageUploader } from '@/components/ui/image-uploader';
+import { HANDBOOK_COVER_ASPECT } from '@/lib/image-crop';
 import { timeAgo } from '@/lib/relative-time';
 import { PageHeader } from '@/components/layout/page-header';
 
@@ -208,18 +209,31 @@ export default function AdminHandbookPage() {
         <ImageUploader
           what="Cover images"
           addLabel="Add a cover image"
+          aspect={HANDBOOK_COVER_ASPECT}
           imageUrl={editing.coverImageUrl}
           onUpload={async (data, mimeType) => {
             if (!token || !orgId) return;
-            setEditing(
-              await api.belonging.uploadArticleCover(orgId, editing.id, { data, mimeType }, token),
+            const saved = await api.belonging.uploadArticleCover(
+              orgId,
+              editing.id,
+              { data, mimeType },
+              token,
+            );
+            // Only the cover (BEL-11). This used to take the whole article
+            // back from the server, and the server's copy is whatever was last
+            // *saved* — so adding a picture threw away the title and body the
+            // admin had just typed and not yet saved. The title vanished the
+            // moment the upload finished; the body survived on screen, in an
+            // uncontrolled editor, until Save wrote the empty one over it.
+            setEditing((current) =>
+              current ? { ...current, coverImageUrl: saved.coverImageUrl } : saved,
             );
             await load();
           }}
           onRemove={async () => {
             if (!token || !orgId) return;
             await api.belonging.removeArticleCover(orgId, editing.id, token);
-            setEditing({ ...editing, coverImageUrl: null });
+            setEditing((current) => (current ? { ...current, coverImageUrl: null } : current));
             await load();
           }}
         />
