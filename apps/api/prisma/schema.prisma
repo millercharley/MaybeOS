@@ -777,7 +777,15 @@ model Room {
   /// who connects the wrong account otherwise has no way to tell.
   googleAccountEmail String?
   googleConnectedAt  DateTime?
-  googleTokens       Json? // encrypted OAuth tokens
+  /// The room's Google OAuth tokens, **sealed** (SEC-15): AES-256-GCM, stored
+  /// as `{ v, iv, tag, ct }` rather than as the token object. Opened only by
+  /// `CalendarService`, which is also the only thing that opts back in to
+  /// reading the column at all — the Prisma client omits it everywhere else.
+  ///
+  /// This comment used to read "encrypted OAuth tokens" while the code stored
+  /// plain JSON. It is the reason the gap survived a month: a comment that
+  /// states an intention as a fact stops the next reader looking.
+  googleTokens       Json?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 

@@ -5,13 +5,16 @@ import {
   NotFoundException,
   InternalServerErrorException,
   ServiceUnavailableException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
 import { google, calendar_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { PrismaService } from '../../config/prisma.service';
 import { eventDescription, eventSummary } from './event-content';
 import { encodeState, decodeState } from '../../common/oauth-state';
+import { isSealed, seal, unseal } from '../../common/secret-box';
 
 interface StoredTokens {
   access_token: string;
@@ -22,7 +25,7 @@ interface StoredTokens {
 }
 
 @Injectable()
-export class CalendarService {
+export class CalendarService implements OnModuleInit {
   private readonly logger = new Logger(CalendarService.name);
   private readonly oauth2Client: OAuth2Client;
 
@@ -40,6 +43,55 @@ export class CalendarService {
       this.configService.get<string>('GOOGLE_CLIENT_SECRET'),
       this.configService.get<string>('GOOGLE_REDIRECT_URI'),
     );
+  }
+
+  /**
+   * Seal any tokens still stored in the clear (SEC-15).
+   *
+   * Eight of the nine rooms on production hold a Google refresh token written
+   * before sealing existed. Sealing new writes only would have left those
+   * eight in the clear indefinitely — a room whose calendar works is a room
+   * nobody edits.
+   *
+   * Runs on boot rather than as a script or a one-off endpoint, because the
+   * key lives in the environment the API already runs in and nobody has to
+   * handle it to make this happen. It is idempotent, it is bounded, and a
+   * failure is logged rather than thrown: a co-op's calendar must not stop
+   * working because a backfill could not run.
+   *
+   * The `where` cannot express "not sealed" — the column is Json and the
+   * shapes differ by their keys — so it reads the rows that have tokens at all
+   * and decides in JS. That is a handful of rows per co-op, on a table with
+   * one row per room, and it costs one small query per cold start once there
+   * is nothing left to seal.
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      const rooms = await this.prisma.room.findMany({
+        where: { googleTokens: { not: Prisma.JsonNull } },
+        // `select` and `omit` cannot be combined — and naming the column here
+        // *is* the explicit opt-in, the same greppable exception the rest of
+        // the module makes with `omit: { googleTokens: false }`.
+        select: { id: true, googleTokens: true },
+        take: 500,
+      });
+
+      const inTheClear = rooms.filter((room) => room.googleTokens && !isSealed(room.googleTokens));
+      if (inTheClear.length === 0) return;
+
+      for (const room of inTheClear) {
+        await this.prisma.room.update({
+          where: { id: room.id },
+          data: { googleTokens: seal(room.googleTokens) as any },
+        });
+      }
+
+      this.logger.log(`Sealed Google tokens for ${inTheClear.length} room(s) (SEC-15)`);
+    } catch (err) {
+      this.logger.error(
+        `Could not seal stored Google tokens: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   // ──────────────────────────────────────────────────────────────
@@ -161,14 +213,17 @@ export class CalendarService {
     // discovering it when bookings land somewhere nobody reads.
     const accountEmail = await this.accountEmail(tokens).catch(() => null);
 
-    // Store tokens on the room (as JSON; in production, encrypt at rest).
+    // Sealed before it is stored (SEC-15). This held a Google refresh token,
+    // which does not expire, as plain JSON — under a comment promising to
+    // encrypt it in production.
+    //
     // No calendar is chosen here: picking one is the admin's decision and
     // defaulting to 'primary' would point a room at somebody's personal diary
     // (SPC-13).
     await this.prisma.room.update({
       where: { id: roomId },
       data: {
-        googleTokens: tokens as any,
+        googleTokens: seal(tokens) as any,
         googleAccountEmail: accountEmail,
         googleConnectedAt: new Date(),
       },
@@ -216,18 +271,22 @@ export class CalendarService {
       );
     }
 
-    const tokens = room.googleTokens as StoredTokens;
+    // Either shape (SEC-15): rows written before sealing are plain objects and
+    // stay usable, because a change that made every connected calendar stop
+    // working would be worse than a few days of mixed storage.
+    const tokens = unseal<StoredTokens>(room.googleTokens) as StoredTokens;
     const client = this.newOAuthClient();
 
     client.setCredentials(tokens);
 
-    // Listen for token refresh and persist updated tokens
+    // Listen for token refresh and persist updated tokens — sealed, so a
+    // refresh also quietly upgrades a row that was still in the clear.
     client.on('tokens', async (newTokens) => {
       const merged = { ...tokens, ...newTokens };
 
       await this.prisma.room.update({
         where: { id: room.id },
-        data: { googleTokens: merged as any },
+        data: { googleTokens: seal(merged) as any },
       });
 
       this.logger.log(`Refreshed and stored new tokens for room ${room.id}`);
@@ -655,7 +714,7 @@ export class CalendarService {
 
     if (!room) throw new NotFoundException('Room not found');
 
-    const tokens = room.googleTokens as unknown as StoredTokens | null;
+    const tokens = unseal<StoredTokens>(room.googleTokens);
     if (tokens?.refresh_token || tokens?.access_token) {
       try {
         const client = this.newOAuthClient();
