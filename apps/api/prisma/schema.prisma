@@ -294,6 +294,15 @@ model UserOrg {
   stripeCustomerId      String?
   stripeSubscriptionId  String?
   subscriptionStatus    SubscriptionStatus @default(NONE)
+  /// Whether this membership is set to end when the paid period does (PLT-06).
+  ///
+  /// Stripe's portal cancels at period end, so `subscriptionStatus` stays
+  /// ACTIVE — correctly, the member paid for the month — and without this the
+  /// product cannot tell somebody who is leaving from somebody who is staying.
+  cancelAtPeriodEnd     Boolean            @default(false)
+  /// When the current paid period runs out, from Stripe. The date shown to a
+  /// member who has cancelled, and null for anyone who has never subscribed.
+  currentPeriodEnd      DateTime?
   memberSince           DateTime           @default(now())
   bio                   String?
   /// One line under a member's name — what they do, what to ask them about.

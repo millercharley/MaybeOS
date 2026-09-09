@@ -301,6 +301,10 @@ describe('StripeService', () => {
           stripeSubscriptionId: 'sub_123',
           subscriptionStatus: 'ACTIVE',
           tierId: 'tier-1',
+          // PLT-06. The fixture's subscription carries no period, which is
+          // the honest answer for it: no date rather than a guessed one.
+          cancelAtPeriodEnd: false,
+          currentPeriodEnd: null,
         },
       });
       expect(prisma.webhookEvent.create).toHaveBeenCalledWith({
@@ -327,7 +331,9 @@ describe('StripeService', () => {
       expect(result).toEqual({ received: true });
       expect(prisma.userOrg.update).toHaveBeenCalledWith({
         where: { id: 'uo-1' },
-        data: { subscriptionStatus: 'CANCELED' },
+        // `cancelAtPeriodEnd` cleared: it has ended, so nothing is pending
+        // any more (PLT-06).
+        data: { subscriptionStatus: 'CANCELED', cancelAtPeriodEnd: false },
       });
     });
 

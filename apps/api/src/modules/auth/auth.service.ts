@@ -237,6 +237,12 @@ export class AuthService {
             role: true,
             tierId: true,
             subscriptionStatus: true,
+            // Whether this membership is ending, and when (PLT-06). A
+            // cancellation through Stripe's portal leaves the status ACTIVE
+            // until the paid period runs out, so the status alone cannot tell
+            // a member who is leaving from one who is staying.
+            cancelAtPeriodEnd: true,
+            currentPeriodEnd: true,
             memberSince: true,
             // `brandColor` and `logoUrl` so a member's own pages can carry
             // their co-op's colours without a second request on every

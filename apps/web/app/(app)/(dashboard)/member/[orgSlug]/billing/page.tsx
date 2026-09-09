@@ -137,6 +137,32 @@ export default function MemberBillingPage() {
   }
 
   const status = STATUS_COPY[membership.subscriptionStatus] ?? STATUS_COPY.NONE;
+
+  /*
+    A membership that is ending says so (PLT-06).
+
+    Stripe's Billing Portal cancels at *period end*, so a member who has just
+    cancelled keeps `subscriptionStatus: ACTIVE` until the month they paid for
+    runs out — which is correct, and which meant this page told them "Active —
+    your dues are paid and up to date" fifteen minutes after they left. Found
+    by cancelling a real subscription; every status mapping in the code was
+    right, so nothing short of doing it would have shown this.
+
+    The same date answers the ordinary question too: a member who is staying
+    sees when their dues next come out, which nothing here said either.
+  */
+  const periodEnd = membership.currentPeriodEnd
+    ? new Date(membership.currentPeriodEnd)
+    : null;
+  const endsOn =
+    periodEnd && !Number.isNaN(periodEnd.getTime())
+      ? periodEnd.toLocaleDateString(undefined, {
+          day: 'numeric',
+          month: 'long',
+          year: periodEnd.getFullYear() === new Date().getFullYear() ? undefined : 'numeric',
+        })
+      : null;
+  const ending = membership.cancelAtPeriodEnd === true;
   const hasBillingAccount = membership.subscriptionStatus !== 'NONE';
 
   // A member with a live subscription changes tier through the Stripe Billing
@@ -186,9 +212,22 @@ export default function MemberBillingPage() {
             <div className="flex items-center gap-3">
               <CreditCard className="h-5 w-5 text-[var(--text-tertiary)]" />
               <span className="font-semibold">Current status</span>
-              <span className={status.tone}>{status.label}</span>
+              <span className={ending ? 'badge-warning' : status.tone}>
+                {ending ? 'Ending' : status.label}
+              </span>
             </div>
-            <p className="mt-2 text-sm text-[var(--text-secondary)]">{status.detail}</p>
+            <p className="mt-2 text-sm text-[var(--text-secondary)]">
+              {ending
+                ? endsOn
+                  ? `Your membership ends on ${endsOn}. Until then nothing changes, and you can start it again from Manage billing.`
+                  : 'Your membership is set to end when the period you have paid for runs out. Until then nothing changes.'
+                : status.detail}
+            </p>
+            {/* The same date, asked the other way round: somebody staying
+                wants to know when the money next goes out. */}
+            {!ending && endsOn && membership.subscriptionStatus === 'ACTIVE' && (
+              <p className="mt-1 text-sm text-[var(--text-tertiary)]">Renews on {endsOn}.</p>
+            )}
           </div>
 
           {hasBillingAccount && (
