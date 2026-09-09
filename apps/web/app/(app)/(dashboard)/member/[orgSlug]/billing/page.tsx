@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Check, ChevronDown, CreditCard, ExternalLink, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
@@ -45,6 +45,7 @@ const STATUS_COPY: Record<string, { label: string; tone: string; detail: string 
 export default function MemberBillingPage() {
   const searchParams = useSearchParams();
   const token = useAuthStore((s) => s.token);
+  const loadProfile = useAuthStore((s) => s.loadProfile);
   const user = useAuthStore((s) => s.user);
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const isLoading = useAuthStore((s) => s.isLoading);
@@ -67,6 +68,34 @@ export default function MemberBillingPage() {
   const [error, setError] = useState<string | null>(null);
 
   const justReturned = searchParams.get('checkout');
+  const backFromPortal = searchParams.get('billing') === 'updated';
+
+  /*
+    Back from the Billing Portal, so ask Stripe what changed (PLT-07).
+
+    The webhook is how this normally arrives, and it is usually here before the
+    member is — but "usually" is doing a lot of work, and the member is looking
+    at the answer *right now*. A cancellation that shows as "paid and up to
+    date" because an event is thirty seconds behind is the same wrong screen as
+    one caused by an event that never came.
+
+    Reconciling is idempotent, so a redundant call writes back what is already
+    there. Failure is silent on purpose: the page still renders what it has,
+    and the boot sweep catches anything left behind.
+  */
+  useEffect(() => {
+    if (!backFromPortal || !token || !orgId) return;
+    let live = true;
+    api.billing
+      .reconcile(orgId, token)
+      .then(() => {
+        if (live) loadProfile();
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [backFromPortal, token, orgId, loadProfile]);
 
   async function startCheckout(tier: MembershipTier) {
     if (!token || !orgId) return;
@@ -106,7 +135,14 @@ export default function MemberBillingPage() {
     try {
       const { url } = await api.stripe.createPortal(
         orgId,
-        { returnUrl: `${window.location.origin}/member/billing` },
+        // The slug, and a marker to reconcile on the way back (PLT-07). This
+        // returned to `/member/billing`, which is not this page — it is
+        // `/member/[orgSlug]` with the slug "billing", so a member who had
+        // just cancelled landed on a dashboard for a co-op that does not
+        // exist. Same shape as the calendar callback's `/admin/settings`.
+        {
+          returnUrl: `${window.location.origin}/member/${membership.org?.slug ?? ''}/billing?billing=updated`,
+        },
         token,
       );
       window.location.href = url;
