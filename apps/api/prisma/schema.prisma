@@ -755,6 +755,11 @@ model Room {
   /// `imageUrl` because it holds a storage key — the previous name is what led
   /// to article covers being published publicly the first time.
   imagePath          String?
+  /// Which part of the photo the square and circular crops show (SPC-19), as
+  /// a percentage across its width — the number CSS `object-position` takes,
+  /// so 50 is what the browser already did. Same pattern as a Handbook
+  /// cover's `coverFocusX`, applied where the problem was first noticed.
+  imageFocusX        Int      @default(50)
   isActive           Boolean   @default(true)
   requiresApproval   Boolean   @default(false)
   memberOnly         Boolean   @default(true)
@@ -2172,6 +2177,14 @@ model DutyAdoption {
   dutyId     String
   userId     String
   startedAt  DateTime  @default(now())
+  /// When an organiser last checked this arrangement still suits the person
+  /// holding it (SRV-04). Null means never — the flag then counts from
+  /// `startedAt`, so a duty adopted eight months ago is already overdue.
+  ///
+  /// Stored rather than derived from age alone, because a badge that cannot be
+  /// cleared is one nobody reads: reviewing clears it, and it returns six
+  /// months later.
+  reviewedAt DateTime?
   /// Null while it stands.
   releasedAt DateTime?
   createdAt  DateTime  @default(now())

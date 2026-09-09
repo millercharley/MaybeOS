@@ -93,4 +93,16 @@ export class CreateRoomDto {
   @IsOptional()
   @IsInt()
   hourlyRate?: number;
+
+  /**
+   * Which part of the photo the square and circular crops show (SPC-19), as a
+   * percentage across its width. Clamped again in the service, because a
+   * validator only constrains callers that are this app.
+   */
+  @ApiPropertyOptional({ minimum: 0, maximum: 100, example: 50 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  imageFocusX?: number;
 }

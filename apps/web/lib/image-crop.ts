@@ -28,6 +28,28 @@
  */
 export const HANDBOOK_COVER_ASPECT = 3;
 
+/**
+ * The marquee that marks which square a focus setting will take (BEL-12, SPC-19).
+ *
+ * Two numbers, both percentages of the source image's width: how wide one
+ * square's worth is, and where its left edge sits for a given focus. Pulled out
+ * of the component because the arithmetic is the thing that can be wrong — a
+ * marquee that slides off the end, or one whose width does not match the crop,
+ * is a control that lies about what it is about to do.
+ *
+ * At 3:1 a square is a third of the strip; at 3:2 it is two thirds. The offset
+ * spans only the room the marquee has left, so 0 and 100 land flush with the
+ * edges rather than hanging over them.
+ */
+export function focusWindowPct(aspect: number): number {
+  return 100 / aspect;
+}
+
+export function focusOffsetPct(focus: number, aspect: number): number {
+  const clamped = Math.min(100, Math.max(0, focus));
+  return (clamped / 100) * (100 - focusWindowPct(aspect));
+}
+
 export interface Size {
   width: number;
   height: number;

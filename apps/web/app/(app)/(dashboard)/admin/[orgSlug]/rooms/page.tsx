@@ -7,6 +7,7 @@ import { useApi } from '@/hooks/use-api';
 import { api, Room, CreateRoomData, ApiError } from '@/lib/api';
 import { RoomCalendar } from '@/components/rooms/room-calendar';
 import { ImageUploader } from '@/components/ui/image-uploader';
+import { CoverFocus } from '@/components/belonging/cover-focus';
 import { RoomHours } from '@/components/rooms/room-hours';
 import { ClosureEditor } from '@/components/rooms/closure-editor';
 import { HostDuties } from '@/components/rooms/host-duties';
@@ -479,6 +480,7 @@ export default function AdminRoomsPage() {
                 <img
                   src={r.imageUrl}
                   alt=""
+                  style={{ objectPosition: `${r.imageFocusX ?? 50}% 50%` }}
                   className="h-20 w-20 shrink-0 rounded-lg object-cover"
                 />
               )}
@@ -535,6 +537,30 @@ export default function AdminRoomsPage() {
                         await load();
                       }}
                     />
+                    {/*
+                      Which part of the photo the square crops take (SPC-19).
+                      The room card is 3:2 and matches what was framed; this
+                      list's square and the booking screen's circle both took
+                      the middle of it, which in a room photo is usually the
+                      floor. Same control as a Handbook cover (BEL-12), told
+                      the source is 3:2 rather than a 3:1 banner.
+                    */}
+                    {r.imageUrl && (
+                      <div className="mt-3">
+                        <CoverFocus
+                          imageUrl={r.imageUrl}
+                          aspect={3 / 2}
+                          preview="circle"
+                          label="Where the small crops look"
+                          hint="This room's photo is shown as a square in this list and a circle on the booking screen. Slide to choose which part of it they take."
+                          value={r.imageFocusX ?? 50}
+                          onChange={async (imageFocusX) => {
+                            await api.rooms.update(orgId, r.id, { imageFocusX }, token);
+                            await load();
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

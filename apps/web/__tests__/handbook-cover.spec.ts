@@ -1,4 +1,4 @@
-import { HANDBOOK_COVER_ASPECT } from '@/lib/image-crop';
+import { HANDBOOK_COVER_ASPECT, focusOffsetPct, focusWindowPct } from '@/lib/image-crop';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -98,15 +98,34 @@ describe('the Handbook index thumbnail', () => {
   });
 
   it('lets the admin see what they are choosing from and what they will get', () => {
-    // The banner with the square marked on it, and the square itself at the
-    // size the index renders it. Either alone leaves them guessing.
-    expect(focus).toContain('aspect-[3/1]');
+    // The image with the square marked on it, and the square itself at the
+    // size it renders. Either alone leaves them guessing.
+    expect(focus).toContain('aspectRatio: String(aspect)');
     expect(focus).toContain('h-11 w-11');
   });
 
-  it('keeps the marquee inside the banner at both ends', () => {
-    // The square takes a third of a 3:1 strip, so 100% has to land its left
-    // edge at 2/3 — sliding it to a literal 100% would put it off the end.
-    expect(focus).toContain('(focus / 100) * (100 - 100 / 3)');
+  /*
+    The marquee arithmetic used to be asserted by matching the literal
+    expression in the source, which broke the moment the component was
+    generalised for room photos (SPC-19) — behaviour unchanged, test red. It
+    is a pure function now, so this tests what it computes.
+  */
+  it('marks a window the size of the crop it will take', () => {
+    // A square is a third of a 3:1 banner and two thirds of a 3:2 photo.
+    expect(focusWindowPct(3)).toBeCloseTo(33.333, 2);
+    expect(focusWindowPct(3 / 2)).toBeCloseTo(66.667, 2);
+  });
+
+  it('keeps the marquee inside the image at both ends', () => {
+    // Sliding to a literal 100% would hang it off the end.
+    expect(focusOffsetPct(0, 3)).toBe(0);
+    expect(focusOffsetPct(100, 3)).toBeCloseTo(66.667, 2);
+    expect(focusOffsetPct(100, 3) + focusWindowPct(3)).toBeCloseTo(100, 6);
+    expect(focusOffsetPct(50, 3) + focusWindowPct(3) / 2).toBeCloseTo(50, 6);
+  });
+
+  it('clamps a focus outside the range rather than sliding off', () => {
+    expect(focusOffsetPct(-20, 3)).toBe(0);
+    expect(focusOffsetPct(140, 3)).toBeCloseTo(66.667, 2);
   });
 });

@@ -1,0 +1,12 @@
+-- SPC-19: which part of a room photo the square crops show.
+--
+-- Room images are cropped to 3:2 and the room card matches, but two other
+-- places take the middle of that: the admin list's 80×80 square and the
+-- booking screen's 96×96 circle. The middle of a room photo is usually the
+-- floor. BEL-12 built the answer for Handbook covers — one number, a slider,
+-- and CSS `object-position` — and this is the same answer applied where the
+-- problem was first noticed.
+--
+-- Only X, and 50 is what `object-position` already does, so every existing
+-- room looks exactly as it did until somebody moves the slider.
+ALTER TABLE "rooms" ADD COLUMN "imageFocusX" INTEGER NOT NULL DEFAULT 50;
