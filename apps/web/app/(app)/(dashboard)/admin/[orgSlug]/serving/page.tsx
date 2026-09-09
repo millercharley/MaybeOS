@@ -258,6 +258,29 @@ export default function ServingPage() {
                           {shortDate(held.startedAt.slice(0, 10))}
                         </span>
                       )}
+                      {/*
+                        Six months without anybody checking (SRV-04). The
+                        failure mode of a standing arrangement is not somebody
+                        dropping it — that shows up the week it happens — but
+                        it quietly ceasing to suit them while nobody asks.
+                      */}
+                      {held?.needsReview && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800">
+                          Worth checking in
+                          <button
+                            onClick={() =>
+                              act(id, () =>
+                                api.service.reviewAdoption(orgId!, held.id, token!),
+                              )
+                            }
+                            disabled={busyId === id}
+                            className="underline underline-offset-2 hover:no-underline"
+                            title="Records that you have checked this still suits them. Asks again in six months."
+                          >
+                            Checked
+                          </button>
+                        </span>
+                      )}
                     </p>
                   </div>
                   <button

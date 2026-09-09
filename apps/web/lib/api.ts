@@ -1322,6 +1322,13 @@ class ApiClient {
     adoptions: (orgId: string, token: string) =>
       this.request<StandingDuty[]>(`/orgs/${orgId}/service/adoptions`, { token }),
 
+    /** "We have checked, it still suits" — clears the review flag (SRV-04). */
+    reviewAdoption: (orgId: string, adoptionId: string, token: string) =>
+      this.request<StandingDuty>(
+        `/orgs/${orgId}/service/adoptions/${adoptionId}/reviewed`,
+        { method: 'POST', token },
+      ),
+
     confirmClaim: (orgId: string, claimId: string, token: string) =>
       this.request<DutyClaim>(`/orgs/${orgId}/service/claims/${claimId}/confirm`, {
         method: 'POST',
@@ -2686,6 +2693,11 @@ export interface Room {
   /** A signed URL for the room's photo, when it has one (SPC-16). */
   imageUrl?: string | null;
   imagePath?: string | null;
+  /**
+   * Which part of the photo the square and circular crops show (SPC-19), as a
+   * percentage across its width — the number CSS `object-position` takes.
+   */
+  imageFocusX?: number;
   /** Longest single booking, in minutes. Null means no cap (SPC-15). */
   maxBookingMinutes?: number | null;
   /** When the room is open. Empty with alwaysAvailable off means unbookable. */
@@ -2761,6 +2773,8 @@ export interface CreateRoomData {
   maxBookingMinutes?: number | null;
   /** Cents per hour. Charged when `chargeForBooking` is on (SPC-06). */
   hourlyRate?: number;
+  /** Which part of the photo the square and circular crops show (SPC-19). */
+  imageFocusX?: number;
 }
 
 /** One day across every room, for the schedule view (SPC-18). */
@@ -3793,4 +3807,13 @@ export interface HostBriefingInput {
 export interface StandingDuty extends DutyAdoption {
   duty: Pick<Duty, 'id' | 'title' | 'recurrence'>;
   user: { id: string; name?: string | null; avatarUrl?: string | null };
+  /**
+   * Whether nobody has checked this arrangement in six months (SRV-04).
+   * Derived on the server from the last review, or from adoption if there has
+   * never been one.
+   */
+  needsReview?: boolean;
+  /** When it next falls due. ISO 8601. */
+  reviewDueAt?: string;
+  reviewedAt?: string | null;
 }

@@ -1,0 +1,12 @@
+-- SRV-04: a standing duty nobody has looked at in six months says so.
+--
+-- Serving showed who holds each standing duty and since when, and nothing
+-- more. The failure mode of a standing arrangement is not that somebody drops
+-- it — that is visible — but that it quietly stops suiting them and nobody
+-- asks. Charley set the threshold at six months.
+--
+-- `reviewedAt` rather than flagging on `startedAt` alone. Age by itself makes
+-- a badge that can never be cleared, so every long-held duty wears it
+-- permanently and the flag becomes furniture. Reviewing is the act that
+-- clears it, and the flag returns six months later.
+ALTER TABLE "duty_adoptions" ADD COLUMN "reviewedAt" TIMESTAMP(3);

@@ -177,6 +177,9 @@ export function RoomBooking({
             <img
               src={room.imageUrl}
               alt=""
+              // The part of the photo an organiser chose (SPC-19). This circle
+              // took the middle of a 3:2 photo, which is usually the floor.
+              style={{ objectPosition: `${room.imageFocusX ?? 50}% 50%` }}
               className="mx-auto h-24 w-24 rounded-full border-2 border-[var(--surface)] object-cover"
             />
           ) : (

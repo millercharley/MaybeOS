@@ -12,6 +12,7 @@ import { standingFor, currentWindow, ServicePeriod } from './expectation';
 import { zonedParts } from '../space/availability/zoned-time';
 import { CreateDutyDto, UpdateDutyDto } from './dto/duty.dto';
 import { ClaimDutyDto, CompleteClaimDto } from './dto/claim.dto';
+import { needsReview, reviewDueAt } from './standing-review';
 
 /** How far ahead an adoption keeps claims materialised. */
 const ADOPTION_HORIZON_DAYS = 120;
@@ -681,13 +682,43 @@ export class ServiceService {
 
   /** Standing arrangements, and how long they have stood. */
   async standingDuties(orgId: string) {
-    return this.prisma.dutyAdoption.findMany({
+    const adoptions = await this.prisma.dutyAdoption.findMany({
       where: { releasedAt: null, duty: { orgId } },
       include: {
         duty: { select: { id: true, title: true, recurrence: true } },
         user: { select: { id: true, name: true, avatarUrl: true } },
       },
       orderBy: { startedAt: 'asc' },
+    });
+
+    // Whether each one is due a look (SRV-04), computed rather than stored: a
+    // duty becomes stale by time passing, not by anything writing to its row,
+    // and a stored flag would need a job to keep it true.
+    const now = new Date();
+    return adoptions.map((adoption) => ({
+      ...adoption,
+      needsReview: needsReview(adoption, now),
+      reviewDueAt: reviewDueAt(adoption),
+    }));
+  }
+
+  /**
+   * Record that somebody has checked this arrangement still suits (SRV-04).
+   *
+   * Scoped through the duty's org, like every other write here (SEC-04) — the
+   * role guard proves the caller is an organiser somewhere, not that the
+   * adoption is theirs to touch.
+   */
+  async reviewStandingDuty(orgId: string, adoptionId: string) {
+    const adoption = await this.prisma.dutyAdoption.findFirst({
+      where: { id: adoptionId, releasedAt: null, duty: { orgId } },
+      select: { id: true },
+    });
+    if (!adoption) throw new NotFoundException('Standing duty not found');
+
+    return this.prisma.dutyAdoption.update({
+      where: { id: adoption.id },
+      data: { reviewedAt: new Date() },
     });
   }
 

@@ -118,6 +118,12 @@ export class SpaceService {
           maxBookingMinutes: dto.maxBookingMinutes,
         }),
         ...(dto.hourlyRate !== undefined && { hourlyRate: dto.hourlyRate }),
+        // Which part of the photo the square crops take (SPC-19). Clamped
+        // rather than trusted: the DTO constrains this app's own form, not a
+        // caller that is not this app.
+        ...(dto.imageFocusX !== undefined && {
+          imageFocusX: Math.min(100, Math.max(0, Math.round(dto.imageFocusX))),
+        }),
       },
     });
   }

@@ -200,6 +200,16 @@ export class ServiceController {
     return this.service.standingDuties(orgId);
   }
 
+  @Post('service/adoptions/:adoptionId/reviewed')
+  @Roles('ADMIN', 'STAFF')
+  @ApiOperation({ summary: 'Record that a standing duty has been checked (SRV-04)' })
+  reviewAdoption(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('adoptionId', ParseUUIDPipe) adoptionId: string,
+  ) {
+    return this.service.reviewStandingDuty(orgId, adoptionId);
+  }
+
   @Post('service/claims/:claimId/confirm')
   @Roles('ADMIN', 'STAFF')
   confirm(
