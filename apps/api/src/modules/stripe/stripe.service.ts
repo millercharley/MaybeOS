@@ -5,6 +5,7 @@ import {
   BadRequestException,
   ConflictException,
   InternalServerErrorException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
@@ -41,7 +42,7 @@ type PrismaTx = Prisma.TransactionClient;
 const ACTIVE_SUBSCRIPTION_STATUSES = ['ACTIVE', 'TRIALING', 'PAST_DUE'];
 
 @Injectable()
-export class StripeService {
+export class StripeService implements OnModuleInit {
   private readonly logger = new Logger(StripeService.name);
   private stripe: Stripe;
 
@@ -460,6 +461,139 @@ export class StripeService {
     });
 
     return session.url;
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // Reconciliation (PLT-07)
+  // ──────────────────────────────────────────────────────────────
+
+  /**
+   * Read a subscription back from Stripe and make the membership match.
+   *
+   * **Everything MaybeOS knows about a subscription arrives by webhook**, which
+   * is fine until one is missed, arrives out of order, or — the case that
+   * proved it — lands before the code knows what to do with it. On 2026-09-09 a
+   * member cancelled, the event was handled correctly under the rules that
+   * existed, and `cancel_at_period_end` was not stored because the column did
+   * not exist yet. The membership has been quietly wrong ever since.
+   *
+   * **Replaying cannot fix that.** `handleWebhook` claims the event id before
+   * dispatching, so a resent event — same id — is refused by the idempotency
+   * guard, correctly. There is no Stripe-side action that repairs a row; the
+   * only cure is asking Stripe what is true now.
+   *
+   * Idempotent, and safe to call on a membership that is already correct: it
+   * writes the same values back. Returns null when there is nothing to
+   * reconcile, so a caller can tell "nothing to do" from "brought up to date".
+   */
+  async reconcileMembership(orgId: string, userId: string) {
+    const membership = await this.prisma.userOrg.findUnique({
+      where: { userId_orgId: { userId, orgId } },
+      select: { id: true, stripeSubscriptionId: true },
+    });
+
+    if (!membership?.stripeSubscriptionId) return null;
+    return this.reconcileBySubscriptionId(membership.id, membership.stripeSubscriptionId);
+  }
+
+  /**
+   * The shared half, by membership row.
+   *
+   * A subscription Stripe no longer has is treated as ended rather than as an
+   * error: the usual way to reach that state is a cancellation whose
+   * `deleted` event never arrived, which is exactly what this exists to
+   * repair.
+   */
+  private async reconcileBySubscriptionId(userOrgId: string, subscriptionId: string) {
+    let subscription: Stripe.Subscription;
+    try {
+      subscription = await this.stripe.subscriptions.retrieve(subscriptionId);
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code === 'resource_missing') {
+        this.logger.warn(
+          `Subscription ${subscriptionId} no longer exists at Stripe; marking membership canceled`,
+        );
+        return this.prisma.userOrg.update({
+          where: { id: userOrgId },
+          data: { subscriptionStatus: 'CANCELED', cancelAtPeriodEnd: false },
+        });
+      }
+      throw err;
+    }
+
+    const statusMap: Record<string, string> = {
+      active: 'ACTIVE',
+      past_due: 'PAST_DUE',
+      canceled: 'CANCELED',
+      trialing: 'TRIALING',
+    };
+    const mapped = statusMap[subscription.status];
+
+    return this.prisma.userOrg.update({
+      where: { id: userOrgId },
+      data: {
+        // An unmapped Stripe status leaves the stored one alone rather than
+        // guessing. `incomplete_expired` and `unpaid` are real states this
+        // product has no word for yet, and overwriting with a wrong word is
+        // worse than leaving a stale right one.
+        ...(mapped ? { subscriptionStatus: mapped as never } : {}),
+        ...this.periodFrom(subscription),
+        // Ended means nothing is pending, whatever Stripe still reports on the
+        // flag of a subscription that is already over.
+        ...(mapped === 'CANCELED' ? { cancelAtPeriodEnd: false } : {}),
+      },
+    });
+  }
+
+  /**
+   * Repair memberships whose subscription facts were never recorded (PLT-07).
+   *
+   * Runs on boot, like the token sweep — bounded, idempotent, and logged
+   * rather than thrown, because a co-op's billing screen must not fail over a
+   * repair. The signal is a membership holding a subscription id with no
+   * `currentPeriodEnd`: every path that writes one now writes the other, so
+   * the combination means "written before this existed, or by an event that
+   * went missing".
+   *
+   * Deliberately not a full re-read of every subscription on every cold start.
+   * Stripe is rate-limited and this is a repair, not a synchroniser — the
+   * webhook remains the way facts normally arrive.
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      const stale = await this.prisma.userOrg.findMany({
+        where: { stripeSubscriptionId: { not: null }, currentPeriodEnd: null },
+        select: { id: true, stripeSubscriptionId: true },
+        take: 100,
+      });
+      if (stale.length === 0) return;
+
+      let repaired = 0;
+      for (const membership of stale) {
+        try {
+          await this.reconcileBySubscriptionId(
+            membership.id,
+            membership.stripeSubscriptionId as string,
+          );
+          repaired += 1;
+        } catch (err) {
+          this.logger.warn(
+            `Could not reconcile membership ${membership.id}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      }
+
+      this.logger.log(`Reconciled ${repaired} membership(s) against Stripe (PLT-07)`);
+    } catch (err) {
+      this.logger.error(
+        `Subscription reconciliation sweep failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   // ──────────────────────────────────────────────────────────────

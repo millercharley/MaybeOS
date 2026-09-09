@@ -718,6 +718,24 @@ class ApiClient {
       }),
   };
 
+  /**
+   * Ask Stripe what is true about my membership and store it (PLT-07).
+   *
+   * Everything else about a subscription arrives by webhook. This is the
+   * repair path for when one was missed, arrived out of order, or landed
+   * before the code knew what to do with it — replaying cannot fix that,
+   * because the idempotency guard correctly refuses a resent event id.
+   */
+  billing = {
+    reconcile: (orgId: string, token: string) =>
+      this.request<{
+        reconciled: boolean;
+        subscriptionStatus: string | null;
+        cancelAtPeriodEnd: boolean;
+        currentPeriodEnd: string | null;
+      }>(`/orgs/${orgId}/billing/reconcile`, { method: 'POST', token }),
+  };
+
   invites = {
     get: (inviteToken: string) =>
       this.request<InviteInfo>(`/invites?token=${inviteToken}`),

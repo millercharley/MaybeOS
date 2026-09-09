@@ -73,6 +73,41 @@ export class StripeController {
   }
 
   // ──────────────────────────────────────────────────────────────
+  // Reconciliation (PLT-07)
+  // ──────────────────────────────────────────────────────────────
+
+  /**
+   * Ask Stripe what is true about my own membership, and store it.
+   *
+   * The caller's own membership only — the org comes from the path and the
+   * user from the token, so there is no id to tamper with. An organiser
+   * repairing somebody else's row is a different feature with a different
+   * argument; this one is "I just changed something at Stripe and want the
+   * page to agree."
+   */
+  @Post('orgs/:orgId/billing/reconcile')
+  @BypassRequiredReading(
+    'Reading back what a member already changed at Stripe is not a community ' +
+      'write action, and somebody who cannot see their own dues because of ' +
+      'unread required reading is being punished twice.',
+  )
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Bring my membership back in line with Stripe' })
+  async reconcile(
+    @Param('orgId') orgId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    const updated = await this.stripeService.reconcileMembership(orgId, user.userId);
+    return {
+      reconciled: updated !== null,
+      subscriptionStatus: updated?.subscriptionStatus ?? null,
+      cancelAtPeriodEnd: updated?.cancelAtPeriodEnd ?? false,
+      currentPeriodEnd: updated?.currentPeriodEnd ?? null,
+    };
+  }
+
+  // ──────────────────────────────────────────────────────────────
   // Billing Portal
   // ──────────────────────────────────────────────────────────────
 
