@@ -391,6 +391,27 @@ export default function MembersPage() {
                   <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusBadge[member.subscriptionStatus ?? ''] ?? 'badge-info'}`}>
                     {member.subscriptionStatus ?? 'NONE'}
                   </span>
+                  {/* Somebody who has cancelled still reads as ACTIVE until
+                      their paid period runs out, which is correct and useless
+                      to an organiser looking at this list (PLT-06). */}
+                  {member.cancelAtPeriodEnd && (
+                    <span
+                      className="ml-2 inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-800"
+                      title={
+                        member.currentPeriodEnd
+                          ? `Ends ${new Date(member.currentPeriodEnd).toLocaleDateString()}`
+                          : 'Ends when the paid period does'
+                      }
+                    >
+                      Leaving
+                      {member.currentPeriodEnd
+                        ? ` ${new Date(member.currentPeriodEnd).toLocaleDateString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                          })}`
+                        : ''}
+                    </span>
+                  )}
                 </td>
                 <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
                   {new Date(member.memberSince).toLocaleDateString('en-US', {

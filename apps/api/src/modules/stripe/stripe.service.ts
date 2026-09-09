@@ -701,12 +701,40 @@ export class StripeService {
         stripeSubscriptionId: subscription.id,
         subscriptionStatus: 'ACTIVE',
         tierId: tierId || undefined,
+        // From the start, so "renews on" is answerable before anybody cancels.
+        ...this.periodFrom(subscription),
       },
     });
 
     this.logger.log(
       `Subscription ${subscription.id} created for user ${userId} in org ${orgId}`,
     );
+  }
+
+  /**
+   * When the paid period ends, and whether the membership ends with it (PLT-06).
+   *
+   * **`current_period_end` is not on the Subscription any more.** It moved onto
+   * the subscription *item* — the same class of drift as `invoice.subscription`
+   * becoming `invoice.parent.subscription_details`, which is already recorded
+   * below as the one breaking change that reached live. Read off the first
+   * item, which is the only one a membership has; `cancel_at` is the fallback,
+   * and Stripe sets it to the period end when a cancellation is scheduled.
+   *
+   * Both are optional in practice, so neither is allowed to throw: a missing
+   * date shows nothing rather than failing a webhook.
+   */
+  private periodFrom(subscription: Stripe.Subscription): {
+    cancelAtPeriodEnd: boolean;
+    currentPeriodEnd: Date | null;
+  } {
+    const seconds =
+      subscription.items?.data?.[0]?.current_period_end ?? subscription.cancel_at ?? null;
+
+    return {
+      cancelAtPeriodEnd: subscription.cancel_at_period_end === true,
+      currentPeriodEnd: seconds ? new Date(seconds * 1000) : null,
+    };
   }
 
   private async handleSubscriptionUpdated(
@@ -741,11 +769,16 @@ export class StripeService {
 
     await tx.userOrg.update({
       where: { id: userOrg.id },
-      data: { subscriptionStatus: mappedStatus as any },
+      data: { subscriptionStatus: mappedStatus as any, ...this.periodFrom(subscription) },
     });
 
+    // The cancellation is *here*, not in the deleted event. Stripe's portal
+    // cancels at period end, so this arrives with `status: active` and
+    // `cancel_at_period_end: true` — which is why a status-only handler looked
+    // correct and told a leaving member their dues were up to date (PLT-06).
     this.logger.log(
-      `Subscription ${subscription.id} updated to status ${mappedStatus}`,
+      `Subscription ${subscription.id} updated to status ${mappedStatus}` +
+        (subscription.cancel_at_period_end ? ' (ending at period end)' : ''),
     );
   }
 
@@ -766,7 +799,12 @@ export class StripeService {
 
     await tx.userOrg.update({
       where: { id: userOrg.id },
-      data: { subscriptionStatus: 'CANCELED' },
+      data: {
+        subscriptionStatus: 'CANCELED',
+        // It has ended. Leaving `cancelAtPeriodEnd` true would keep saying
+        // "ending on..." about a membership that already has.
+        cancelAtPeriodEnd: false,
+      },
     });
 
     this.logger.log(`Subscription ${subscription.id} canceled`);

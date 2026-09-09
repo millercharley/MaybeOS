@@ -2166,6 +2166,17 @@ export interface UserProfile {
     tierId?: string | null;
     /** Non-null in the database with a NONE default, so always present. */
     subscriptionStatus: string;
+    /**
+     * Whether this membership ends when the paid period does (PLT-06).
+     *
+     * Stripe's portal cancels at period end, so `subscriptionStatus` stays
+     * ACTIVE until then — correctly, the member paid for the month. Without
+     * this the two states are indistinguishable and a leaving member is told
+     * their dues are up to date.
+     */
+    cancelAtPeriodEnd?: boolean;
+    /** When the paid period runs out. ISO 8601, null before any subscription. */
+    currentPeriodEnd?: string | null;
     memberSince?: string;
     /**
      * The co-op's public identity, carried on the session so a member's pages
@@ -2477,6 +2488,9 @@ export interface Member {
   tier?: MembershipTier;
   /** Another member's billing state is not their business — organisers only. */
   subscriptionStatus?: string;
+  /** Ending when the paid period does (PLT-06), and when that is. */
+  cancelAtPeriodEnd?: boolean;
+  currentPeriodEnd?: string | null;
   memberSince: string;
   tags: string[];
   /**
