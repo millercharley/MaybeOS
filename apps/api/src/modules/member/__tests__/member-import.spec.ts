@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { MemberService, safeLinks } from '../member.service';
+import { MemberService, safeLinks, enrichment } from '../member.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { EmailService } from '../../email/email.service';
 import { StripeService } from '../../stripe/stripe.service';
@@ -32,6 +32,7 @@ describe('MemberService — importing a community', () => {
       userOrg: {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({}),
+        update: jest.fn().mockResolvedValue({}),
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
       },
@@ -55,10 +56,20 @@ describe('MemberService — importing a community', () => {
   });
 
   describe('what it refuses to overwrite', () => {
-    it('leaves an existing membership completely alone', async () => {
+    const settled = {
+      id: 'membership-1',
+      bio: 'in my own words',
+      headline: 'Potter',
+      location: 'Louisville, KY',
+      tags: ['ceramics'],
+      links: ['https://example.org'],
+      emailOptIn: false,
+    };
+
+    it('leaves a membership that needs nothing completely alone', async () => {
       // The owner of the co-op, already here, sitting in row one of the file.
       prisma.user.findUnique.mockResolvedValue({ id: 'owner-1', avatarUrl: null });
-      prisma.userOrg.findUnique.mockResolvedValue({ id: 'membership-1' });
+      prisma.userOrg.findUnique.mockResolvedValue(settled);
 
       const result = await service.importMembers('org-1', [
         { email, name: 'Someone Else', bio: 'from the old platform' },
@@ -66,10 +77,38 @@ describe('MemberService — importing a community', () => {
 
       expect(result.alreadyMembers).toBe(1);
       expect(result.created).toBe(0);
-      // The two calls that would have demoted an OWNER to MEMBER, or replaced
-      // a curated profile with whatever the export held.
+      expect(result.enriched).toBe(0);
+      // The three calls that would have demoted an OWNER to MEMBER, replaced a
+      // curated profile with whatever the export held, or rewritten the
+      // account itself.
       expect(prisma.userOrg.create).not.toHaveBeenCalled();
+      expect(prisma.userOrg.update).not.toHaveBeenCalled();
       expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('fills in what an existing membership is missing, and only that', async () => {
+      // A membership created by Stripe adoption: an email and nothing else.
+      // This used to be skipped, so the roster arrived with the money and
+      // none of the people.
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-3', avatarUrl: null });
+      prisma.userOrg.findUnique.mockResolvedValue({
+        ...settled,
+        bio: null,
+        headline: null,
+      });
+
+      const result = await service.importMembers('org-1', [
+        { email, bio: 'Potter', headline: 'Makes bowls', location: 'Elsewhere' },
+      ]);
+
+      expect(result.enriched).toBe(1);
+      expect(result.alreadyMembers).toBe(0);
+      expect(prisma.userOrg.update).toHaveBeenCalledWith({
+        where: { id: 'membership-1' },
+        // `location` is absent: the membership already had one.
+        data: { bio: 'Potter', headline: 'Makes bowls' },
+      });
+      expect(prisma.userOrg.create).not.toHaveBeenCalled();
     });
 
     it('joins an existing MaybeOS account without rewriting it', async () => {
@@ -199,5 +238,65 @@ describe('MemberService — importing a community', () => {
       expect(result.imported).toBe(1);
       expect(result.done).toBe(true);
     });
+  });
+});
+
+describe('enriching a membership that already exists', () => {
+  const blank = {
+    bio: null,
+    headline: null,
+    location: null,
+    tags: [] as string[],
+    links: [] as string[],
+    emailOptIn: null,
+  };
+
+  it('fills in what the membership is missing', () => {
+    // The case that matters: Stripe adoption created this membership from an
+    // email and nothing else, and the roster arrives afterwards. Before this,
+    // the import skipped the row and the community stayed anonymous.
+    expect(
+      enrichment(blank, {
+        bio: 'Potter',
+        headline: 'Makes bowls',
+        location: 'Louisville, KY',
+        tags: ['ceramics'],
+      }),
+    ).toEqual({
+      bio: 'Potter',
+      headline: 'Makes bowls',
+      location: 'Louisville, KY',
+      tags: ['ceramics'],
+    });
+  });
+
+  it('never overwrites what a member wrote themselves', () => {
+    const written = { ...blank, bio: 'In my own words', tags: ['printmaking'] };
+
+    expect(enrichment(written, { bio: 'From the old platform', tags: ['ceramics'] })).toEqual({});
+  });
+
+  it('changes nothing on a second run', () => {
+    const row = { bio: 'Potter', headline: 'Makes bowls' };
+    const after = { ...blank, ...enrichment(blank, row) };
+
+    expect(enrichment(after, row)).toEqual({});
+  });
+
+  it('will not talk a member out of an unsubscribe', () => {
+    // `false` is a refusal somebody made. Only a membership nobody has asked
+    // can take an answer from a .csv.
+    expect(enrichment({ ...blank, emailOptIn: false }, { emailOptIn: true })).toEqual({});
+    expect(enrichment(blank, { emailOptIn: true })).toEqual({ emailOptIn: true });
+  });
+
+  it('leaves the join date alone', () => {
+    // It always holds a value, so there is no blank to fill — and adoption
+    // sets it from Stripe's own start date, which beats any export.
+    expect(Object.keys(enrichment(blank, { bio: 'x' }))).not.toContain('memberSince');
+  });
+
+  it('ignores whitespace-only values rather than storing them', () => {
+    expect(enrichment(blank, { bio: '   ', headline: '' })).toEqual({});
   });
 });

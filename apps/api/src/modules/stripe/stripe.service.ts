@@ -17,6 +17,7 @@ import {
   PER_MEMBER_PRICE_IDS,
 } from './maybeos-plans';
 import { ConnectService } from './connect.service';
+import { membershipStatusFor } from './subscription-status';
 import {
   WRITTEN_REPORT_PRICE_CENTS,
   WRITTEN_REPORT_PRODUCT_NAME,
@@ -522,13 +523,7 @@ export class StripeService implements OnModuleInit {
       throw err;
     }
 
-    const statusMap: Record<string, string> = {
-      active: 'ACTIVE',
-      past_due: 'PAST_DUE',
-      canceled: 'CANCELED',
-      trialing: 'TRIALING',
-    };
-    const mapped = statusMap[subscription.status];
+    const mapped = membershipStatusFor(subscription.status);
 
     return this.prisma.userOrg.update({
       where: { id: userOrgId },
@@ -875,14 +870,7 @@ export class StripeService implements OnModuleInit {
     subscription: Stripe.Subscription,
     tx: PrismaTx,
   ) {
-    const statusMap: Record<string, string> = {
-      active: 'ACTIVE',
-      past_due: 'PAST_DUE',
-      canceled: 'CANCELED',
-      trialing: 'TRIALING',
-    };
-
-    const mappedStatus = statusMap[subscription.status];
+    const mappedStatus = membershipStatusFor(subscription.status);
     if (!mappedStatus) {
       this.logger.warn(
         `Unmapped subscription status: ${subscription.status}`,
@@ -995,49 +983,6 @@ export class StripeService implements OnModuleInit {
   // ──────────────────────────────────────────────────────────────
   // Subscription Sync
   // ──────────────────────────────────────────────────────────────
-
-  /**
-   * Fetch the latest subscription state from Stripe and update the local DB.
-   * Useful for reconciliation or manual admin triggers.
-   */
-  async syncSubscriptionStatus(stripeSubscriptionId: string) {
-    const subscription = await this.stripe.subscriptions.retrieve(
-      stripeSubscriptionId,
-    );
-
-    const statusMap: Record<string, string> = {
-      active: 'ACTIVE',
-      past_due: 'PAST_DUE',
-      canceled: 'CANCELED',
-      trialing: 'TRIALING',
-      incomplete: 'PAST_DUE',
-      incomplete_expired: 'CANCELED',
-      unpaid: 'PAST_DUE',
-    };
-
-    const mappedStatus = statusMap[subscription.status] ?? 'NONE';
-
-    const userOrg = await this.prisma.userOrg.findFirst({
-      where: { stripeSubscriptionId },
-    });
-
-    if (!userOrg) {
-      throw new NotFoundException(
-        `No membership found for subscription ${stripeSubscriptionId}`,
-      );
-    }
-
-    await this.prisma.userOrg.update({
-      where: { id: userOrg.id },
-      data: { subscriptionStatus: mappedStatus as any },
-    });
-
-    this.logger.log(
-      `Synced subscription ${stripeSubscriptionId} -> ${mappedStatus}`,
-    );
-
-    return { subscriptionId: stripeSubscriptionId, status: mappedStatus };
-  }
 
   // ──────────────────────────────────────────────────────────────
   // Stripe Product / Price Creation

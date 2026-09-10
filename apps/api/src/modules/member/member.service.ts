@@ -1108,8 +1108,10 @@ export class MemberService {
   async importMembers(orgId: string, rows: ImportMemberRowDto[]) {
     const results = {
       created: 0,
-      /** Already a member here. Left untouched, not updated. */
+      /** Already a member here, and already had everything this row offered. */
       alreadyMembers: 0,
+      /** Already a member, and this row filled in something that was blank. */
+      enriched: 0,
       /** Had a MaybeOS account already; joined to this co-op. */
       linkedExistingUsers: 0,
       /** Imported with an avatar still to copy across. */
@@ -1144,11 +1146,37 @@ export class MemberService {
 
         const existing = await this.prisma.userOrg.findUnique({
           where: { userId_orgId: { userId: user.id, orgId } },
-          select: { id: true },
+          select: {
+            id: true,
+            bio: true,
+            headline: true,
+            location: true,
+            tags: true,
+            links: true,
+            emailOptIn: true,
+          },
         });
 
         if (existing) {
-          results.alreadyMembers++;
+          // **Enrich, never overwrite.** This used to `continue`, which was
+          // right when a .csv was the only way in and a second run meant
+          // somebody importing the same file twice. It stopped being right
+          // the moment memberships could arrive from Stripe: adoption creates
+          // a membership holding an email and nothing else, and a roster
+          // imported afterwards would silently decline to fill in a single
+          // name, bio or join date — the money without the people.
+          //
+          // Only empty fields are filled, so a member who has since written
+          // their own bio keeps it, and running the import twice is still a
+          // no-op the second time.
+          const filled = enrichment(existing, row);
+
+          if (Object.keys(filled).length > 0) {
+            await this.prisma.userOrg.update({ where: { id: existing.id }, data: filled });
+            results.enriched++;
+          } else {
+            results.alreadyMembers++;
+          }
           continue;
         }
 
@@ -1246,4 +1274,64 @@ export class MemberService {
       done: memberships.length < limit,
     };
   }
+}
+
+/**
+ * What a .csv row can add to a membership that already exists.
+ *
+ * Only blanks are filled. A member who wrote their own headline keeps it, and
+ * an import run twice changes nothing the second time — the property that
+ * makes this safe to combine with Stripe adoption in either order.
+ *
+ * `memberSince` is deliberately absent: it always holds a value (the column
+ * defaults to now, and adoption sets it from Stripe's own start date), so
+ * there is no blank to fill and no way to tell a real join date from a
+ * default. Overwriting it would let a .csv quietly move dates Stripe knows
+ * better.
+ */
+export function enrichment(
+  existing: {
+    bio: string | null;
+    headline: string | null;
+    location: string | null;
+    tags: string[];
+    links: string[];
+    emailOptIn: boolean | null;
+  },
+  row: {
+    bio?: string;
+    headline?: string;
+    location?: string;
+    tags?: string[];
+    links?: string[];
+    emailOptIn?: boolean;
+  },
+): Record<string, unknown> {
+  const filled: Record<string, unknown> = {};
+
+  const text = (current: string | null, incoming?: string) =>
+    !current && incoming?.trim() ? incoming.trim() : undefined;
+
+  const bio = text(existing.bio, row.bio);
+  if (bio !== undefined) filled.bio = bio;
+
+  const headline = text(existing.headline, row.headline);
+  if (headline !== undefined) filled.headline = headline;
+
+  const location = text(existing.location, row.location);
+  if (location !== undefined) filled.location = location;
+
+  const tags = (row.tags ?? []).map((t) => t.trim()).filter(Boolean);
+  if (existing.tags.length === 0 && tags.length > 0) filled.tags = tags;
+
+  const links = safeLinks(row.links ?? []);
+  if (existing.links.length === 0 && links.length > 0) filled.links = links;
+
+  // Only when nobody has been asked. `false` is a refusal somebody made and
+  // an import must not talk them out of it.
+  if (existing.emailOptIn === null && row.emailOptIn !== undefined) {
+    filled.emailOptIn = row.emailOptIn;
+  }
+
+  return filled;
 }
