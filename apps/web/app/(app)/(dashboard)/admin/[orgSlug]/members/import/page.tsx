@@ -170,6 +170,22 @@ export default function ImportMembersPage(props: { params: Promise<{ orgSlug: st
           From a .csv exported by whatever your community uses now. Nothing is sent until you
           have seen what it will do, and <b>no one is emailed</b>.
         </p>
+        {/*
+          A .csv is the right source for people, and the wrong one for money: a
+          co-op's paying members are already in its Stripe account, more
+          current than any export, with the amount and the renewal date
+          attached. Two sources, one join key.
+        */}
+        <p className="mt-2 text-sm text-gray-500">
+          Members who pay you through Stripe are already there —{' '}
+          <Link
+            href={`/admin/${orgSlug}/members/import/stripe`}
+            className="font-medium text-brand-600 hover:text-brand-700"
+          >
+            read them from your Stripe account
+          </Link>{' '}
+          instead of exporting them.
+        </p>
       </div>
 
       {/* ─── 1. The file ─────────────────────────────────────── */}

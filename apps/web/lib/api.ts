@@ -659,6 +659,17 @@ class ApiClient {
     spotlight: (orgId: string, token: string) =>
       this.request<SpotlightMember | null>(`/orgs/${orgId}/members/spotlight`, { token }),
 
+    /**
+     * Read the co-op's existing Stripe subscriptions and report what adopting
+     * them would mean (MIG-01).
+     *
+     * A GET because it is one. Nothing is written — not in Stripe, not here —
+     * so it is safe to run against a live account holding real members' money,
+     * and safe to run twice.
+     */
+    stripeScan: (orgId: string, token: string) =>
+      this.request<StripeScan>(`/orgs/${orgId}/members/stripe-scan`, { token }),
+
     /** Copy imported avatars into MaybeOS storage, one batch per call. */
     importAvatars: (orgId: string, body: { after?: string; limit?: number }, token: string) =>
       this.request<AvatarImportResult>(`/orgs/${orgId}/members/import/avatars`, {
@@ -2447,6 +2458,66 @@ export interface ImportResult {
   linkedExistingUsers: number;
   avatarsPending: number;
   errors: Array<{ email: string; reason: string }>;
+}
+
+/**
+ * What adopting a co-op's existing Stripe subscriptions would do (MIG-01).
+ *
+ * A report, not a plan that has been carried out. Nothing in Stripe or in
+ * MaybeOS changes when this is fetched.
+ */
+export interface StripeScanRow {
+  subscriptionId: string;
+  email: string | null;
+  name: string | null;
+  status: string;
+  cancelAtPeriodEnd: boolean;
+  currentPeriodEnd: string | null;
+  monthlyCents: number | null;
+  outcome: 'link' | 'create' | 'already-linked' | 'conflict';
+  conflict: 'no-email' | 'duplicate-email' | 'member-has-other-subscription' | null;
+  userOrgId: string | null;
+}
+
+export interface StripeScanPrice {
+  priceId: string;
+  productName: string | null;
+  unitAmountCents: number | null;
+  interval: 'day' | 'week' | 'month' | 'year' | null;
+  intervalCount: number;
+  monthlyCents: number | null;
+  subscriptions: number;
+  suggestedTierId: string | null;
+  suggestedTierName: string | null;
+}
+
+export interface StripeScan {
+  scannedAt: string;
+  truncated: boolean;
+  prices: StripeScanPrice[];
+  rows: StripeScanRow[];
+  summary: {
+    subscriptions: {
+      total: number;
+      byStatus: Record<string, number>;
+      cancelingAtPeriodEnd: number;
+      unpriced: number;
+    };
+    people: {
+      link: number;
+      create: number;
+      alreadyLinked: number;
+      conflicts: number;
+      byConflict: Record<string, number>;
+      membersWithoutSubscription: number;
+    };
+    money: {
+      stripeMonthlyCents: number;
+      maybeosMonthlyCents: number;
+      deltaCents: number;
+      pastDueMonthlyCents: number;
+    };
+  };
 }
 
 export interface AvatarImportResult {
