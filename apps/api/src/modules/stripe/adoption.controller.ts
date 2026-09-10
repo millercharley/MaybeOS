@@ -19,8 +19,16 @@ export class AdoptionController {
    * is the roster's most private column and not a thing staff or members see.
    *
    * A GET because it is one: nothing is written, in Stripe or here.
+   *
+   * **The path is three segments deep on purpose.** `MemberController` has
+   * `@Get('members/:userId')` and its module is registered first, so a route
+   * at `members/stripe-scan` never runs — Nest matches it as a member whose id
+   * is the string "stripe-scan", and the reply is that controller's, guarded
+   * and plausible. `members/spotlight` next door is declared above `:userId`
+   * for the same reason; from another module, ordering is not available, so
+   * depth is. `adoption-route-shadowing.spec.ts` holds this down.
    */
-  @Get('members/stripe-scan')
+  @Get('members/import/stripe-scan')
   @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
   @Roles('ADMIN')
   @ApiBearerAuth()

@@ -668,7 +668,7 @@ class ApiClient {
      * and safe to run twice.
      */
     stripeScan: (orgId: string, token: string) =>
-      this.request<StripeScan>(`/orgs/${orgId}/members/stripe-scan`, { token }),
+      this.request<StripeScan>(`/orgs/${orgId}/members/import/stripe-scan`, { token }),
 
     /** Copy imported avatars into MaybeOS storage, one batch per call. */
     importAvatars: (orgId: string, body: { after?: string; limit?: number }, token: string) =>
