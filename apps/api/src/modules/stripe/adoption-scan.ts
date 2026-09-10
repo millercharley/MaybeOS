@@ -421,3 +421,73 @@ export function summarize(
     },
   };
 }
+
+/** What went wrong, in terms the person reading the screen can act on. */
+export interface ScanFailure {
+  status: number | null;
+  /** Stripe's error class — an enum-like token, safe to show. */
+  type: string | null;
+  /** Stripe's error code, where it has one. Also safe. */
+  code: string | null;
+  message: string;
+}
+
+/** Any credential-shaped token, so none can travel in a message. */
+const KEY_FRAGMENT = /\b(?:sk|pk|rk|rk_live|rk_test)_[A-Za-z0-9_*]+/g;
+
+/**
+ * Turn a Stripe refusal into something the admin can act on.
+ *
+ * The first version of this said *"the reason is in the server logs"* and
+ * stopped there, which was the wrong lesson taken from `checkoutFailed` next
+ * door. That one hides Stripe's text from a **buyer** on a public checkout
+ * page — someone who cannot act on it and should never see a fragment of
+ * MaybeOS's key. Here the reader is the co-op's admin, looking at a screen
+ * they asked to see, and the likeliest failure is a settings change somebody
+ * has to make. Telling them to read logs they have no access to is not
+ * discretion, it is a dead end.
+ *
+ * So: Stripe's `type` and `code` are enum-like tokens and pass through, the
+ * remediation is written out in full, and the raw `message` — the part that
+ * names the key, the account and a dashboard link — never leaves the server.
+ */
+export function describeStripeFailure(err: unknown): ScanFailure {
+  const raw = (err ?? {}) as {
+    type?: string;
+    code?: string;
+    statusCode?: number;
+    rawType?: string;
+  };
+
+  const type = raw.type ?? null;
+  const code = raw.code ?? null;
+  const status = typeof raw.statusCode === 'number' ? raw.statusCode : null;
+
+  const detail = (): string => {
+    if (type === 'StripePermissionError' || status === 403) {
+      return "Stripe refused the read: MaybeOS's API key is not permitted to act on this connected account. If it is a restricted key, it needs read access to Customers and Subscriptions with connected-account access turned on.";
+    }
+    if (type === 'StripeAuthenticationError' || status === 401) {
+      return "Stripe rejected MaybeOS's API key outright. It has been revoked, rolled, or belongs to a different mode than this account.";
+    }
+    if (code === 'account_invalid' || code === 'resource_missing') {
+      return 'Stripe no longer recognises the connection to this account. Reconnecting the co-op’s Stripe account will restore it.';
+    }
+    if (type === 'StripeConnectionError' || type === 'StripeAPIError') {
+      return 'Stripe could not be reached, or answered with an error of its own. Nothing is wrong with the co-op’s account — this is worth simply trying again.';
+    }
+    return 'Stripe refused the read, and did not say why in a way this page can repeat.';
+  };
+
+  const named = [type, code].filter(Boolean).join(' · ');
+
+  return {
+    status,
+    type,
+    code,
+    message: `${detail()}${named ? ` (Stripe said: ${named})` : ''} Nothing was changed.`.replace(
+      KEY_FRAGMENT,
+      '[key]',
+    ),
+  };
+}

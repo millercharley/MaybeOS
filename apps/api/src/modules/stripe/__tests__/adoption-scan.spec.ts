@@ -6,6 +6,7 @@ import {
   groupPrices,
   planRows,
   summarize,
+  describeStripeFailure,
   ScanItem,
   ScanSubscription,
   MemberSnapshot,
@@ -297,5 +298,66 @@ describe('summarize', () => {
     const summary = summarize(subs, planRows(subs, []), []);
 
     expect(summary.subscriptions.cancelingAtPeriodEnd).toBe(1);
+  });
+});
+
+describe('describeStripeFailure', () => {
+  const stripeError = (over: Record<string, unknown>) =>
+    Object.assign(new Error('unused'), over);
+
+  it('names the fix for the failure this was always most likely to hit', () => {
+    const failure = describeStripeFailure(
+      stripeError({
+        type: 'StripePermissionError',
+        statusCode: 403,
+        message:
+          'This application does not have the required permissions. rk_live_****BuW4ie on acct_1MhgKw',
+      }),
+    );
+
+    expect(failure.message).toMatch(/restricted key/i);
+    expect(failure.message).toMatch(/connected-account access/i);
+  });
+
+  it('never repeats a credential fragment, whatever Stripe put in the message', () => {
+    // Stripe redacts its own keys to the last four characters, which is not
+    // usable — but it is still MaybeOS's key on a co-op admin's screen.
+    const failure = describeStripeFailure(
+      stripeError({ type: 'rk_live_****BuW4ie', code: 'sk_test_abc', statusCode: 403 }),
+    );
+
+    expect(failure.message).not.toMatch(/rk_live|sk_test|pk_live/);
+  });
+
+  it('tells a revoked key apart from a forbidden one', () => {
+    expect(describeStripeFailure(stripeError({ statusCode: 401 })).message).toMatch(
+      /revoked, rolled/i,
+    );
+  });
+
+  it('says a lost connection can be reconnected', () => {
+    expect(describeStripeFailure(stripeError({ code: 'account_invalid' })).message).toMatch(
+      /Reconnecting/i,
+    );
+  });
+
+  it('says an outage is worth retrying rather than fixing', () => {
+    expect(describeStripeFailure(stripeError({ type: 'StripeConnectionError' })).message).toMatch(
+      /trying again/i,
+    );
+  });
+
+  it('still says nothing was changed when it cannot explain the failure', () => {
+    // The promise the page makes is the one thing that must survive every
+    // branch: a failed scan has written nothing either way.
+    expect(describeStripeFailure(new Error('something new')).message).toMatch(/Nothing was changed/);
+  });
+
+  it('passes Stripe’s own tokens through, so a new failure can still be looked up', () => {
+    const failure = describeStripeFailure(
+      stripeError({ type: 'StripeInvalidRequestError', code: 'parameter_unknown' }),
+    );
+
+    expect(failure.message).toContain('StripeInvalidRequestError · parameter_unknown');
   });
 });
