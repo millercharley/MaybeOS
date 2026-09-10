@@ -7,6 +7,7 @@ import {
   planRows,
   summarize,
   describeStripeFailure,
+  tierForSubscription,
   ScanItem,
   ScanSubscription,
   MemberSnapshot,
@@ -250,7 +251,7 @@ describe('summarize', () => {
       sub({ id: 's3', email: 'c@example.com', status: 'past_due' }),
     ];
 
-    const summary = summarize(subs, planRows(subs, []), []);
+    const summary = summarize(subs, planRows(subs, []), [], groupPrices(subs, []));
 
     expect(summary.money.stripeMonthlyCents).toBe(2000);
     // Money at risk, reported apart rather than folded in.
@@ -267,7 +268,7 @@ describe('summarize', () => {
       member({ email: 'a@example.com', subscriptionStatus: 'ACTIVE', ...tiers }),
     ];
 
-    const summary = summarize(subs, planRows(subs, members), members);
+    const summary = summarize(subs, planRows(subs, members), members, groupPrices(subs, []));
 
     expect(summary.money.stripeMonthlyCents).toBe(2000);
     expect(summary.money.maybeosMonthlyCents).toBe(1000);
@@ -276,7 +277,7 @@ describe('summarize', () => {
 
   it('leaves unpriceable subscriptions out of the money and says how many', () => {
     const subs = [sub({ items: [item({ unitAmountCents: null })] })];
-    const summary = summarize(subs, planRows(subs, []), subs.length ? [] : []);
+    const summary = summarize(subs, planRows(subs, []), [], groupPrices(subs, []));
 
     expect(summary.subscriptions.unpriced).toBe(1);
     expect(summary.money.stripeMonthlyCents).toBe(0);
@@ -288,14 +289,14 @@ describe('summarize', () => {
     const subs = [sub({ email: 'a@example.com' })];
     const members = [member({ email: 'a@example.com' }), member({ userOrgId: 'uo_2', email: 'free@example.com' })];
 
-    const summary = summarize(subs, planRows(subs, members), members);
+    const summary = summarize(subs, planRows(subs, members), members, groupPrices(subs, []));
 
     expect(summary.people.membersWithoutSubscription).toBe(1);
   });
 
   it('counts subscriptions set to end', () => {
     const subs = [sub({ cancelAtPeriodEnd: true }), sub({ id: 's2', email: 'b@example.com' })];
-    const summary = summarize(subs, planRows(subs, []), []);
+    const summary = summarize(subs, planRows(subs, []), [], groupPrices(subs, []));
 
     expect(summary.subscriptions.cancelingAtPeriodEnd).toBe(1);
   });
@@ -359,5 +360,128 @@ describe('describeStripeFailure', () => {
     );
 
     expect(failure.message).toContain('StripeInvalidRequestError · parameter_unknown');
+  });
+});
+
+describe('the scan checking its own arithmetic', () => {
+  const check = (subs: ScanSubscription[]) =>
+    summarize(subs, planRows(subs, []), [], groupPrices(subs, [])).reconciliation;
+
+  it('balances on an ordinary account', () => {
+    const subs = [sub({ id: 's1' }), sub({ id: 's2', email: 'b@example.com' })];
+    const result = check(subs);
+
+    expect(result.balanced).toBe(true);
+    expect(result.priceRows).toBe(result.subscriptions);
+  });
+
+  it('explains why the price table can hold more rows than there are subscriptions', () => {
+    // Not a fault: a price row counts *items*. Reported so the difference
+    // stops looking like one number being wrong.
+    const subs = [
+      sub({ items: [item({ priceId: 'p1' }), item({ priceId: 'p2', unitAmountCents: 500 })] }),
+    ];
+    const result = check(subs);
+
+    expect(result.subscriptions).toBe(1);
+    expect(result.priceRows).toBe(2);
+    expect(result.multiItemSubscriptions).toBe(1);
+    expect(result.balanced).toBe(true);
+  });
+
+  it('catches the table and the money disagreeing over a quantity', () => {
+    // The price table shows a per-unit price against a member count, so
+    // reading it the obvious way only gives the right total when every item
+    // is one unit. A single item at quantity 2 makes the page show two
+    // numbers that cannot both be true, with nothing else visibly wrong.
+    const subs = [sub({ items: [item({ unitAmountCents: 1950, quantity: 2 })] })];
+    const result = check(subs);
+
+    expect(result.itemsWithOtherQuantity).toBe(1);
+    expect(result.priceTableMonthlyCents).toBe(1950);
+    expect(result.pricedMonthlyCents).toBe(3900);
+    expect(result.balanced).toBe(false);
+  });
+
+  it('counts a status outside every bucket instead of losing it', () => {
+    // The first version added to the earning total and the past-due total
+    // with two separate `if`s, so a status in neither was counted nowhere:
+    // real money, present in the price table, missing from every figure.
+    const subs = [sub({ status: 'paused' })];
+    const result = check(subs);
+
+    expect(result.pricedMonthlyCents).toBe(1000);
+    expect(result.accountedMonthlyCents).toBe(1000);
+    expect(result.balanced).toBe(true);
+  });
+
+  it('keeps that money out of the headline figure', () => {
+    const subs = [sub({ status: 'paused' })];
+    const money = summarize(subs, planRows(subs, []), [], groupPrices(subs, [])).money;
+
+    expect(money.stripeMonthlyCents).toBe(0);
+    expect(money.otherStatusMonthlyCents).toBe(1000);
+  });
+});
+
+describe('tierForSubscription', () => {
+  const mapping = { price_a: 'tier_1', price_b: 'tier_1', price_c: 'tier_2' };
+
+  it('grants the tier the price maps to', () => {
+    expect(tierForSubscription(sub({ items: [item({ priceId: 'price_a' })] }), mapping)).toEqual({
+      tierId: 'tier_1',
+      problem: null,
+    });
+  });
+
+  it('is happy when several items agree — a tier may span prices', () => {
+    const subscription = sub({
+      items: [item({ priceId: 'price_a' }), item({ priceId: 'price_b' })],
+    });
+
+    expect(tierForSubscription(subscription, mapping).tierId).toBe('tier_1');
+  });
+
+  it('refuses to pick between two tiers on one subscription', () => {
+    const subscription = sub({
+      items: [item({ priceId: 'price_a' }), item({ priceId: 'price_c' })],
+    });
+
+    expect(tierForSubscription(subscription, mapping).problem).toBe(
+      'several-tiers-for-subscription',
+    );
+  });
+
+  it('says when a price was never mapped', () => {
+    expect(tierForSubscription(sub({ items: [item({ priceId: 'zzz' })] }), mapping).problem).toBe(
+      'no-tier-for-price',
+    );
+  });
+});
+
+describe('planRows with a mapping', () => {
+  const mapping = { price_1: 'tier_1' };
+
+  it('carries the tier onto the row', () => {
+    const [row] = planRows([sub()], [member()], mapping);
+
+    expect(row.tierId).toBe('tier_1');
+    expect(row.outcome).toBe('link');
+  });
+
+  it('turns an unmapped price into a conflict rather than a membership with no tier', () => {
+    const [row] = planRows([sub({ items: [item({ priceId: 'other' })] })], [member()], mapping);
+
+    expect(row.outcome).toBe('conflict');
+    expect(row.conflict).toBe('no-tier-for-price');
+  });
+
+  it('says nothing about tiers before the admin has mapped anything', () => {
+    // Otherwise the first look at the page reports every subscription as a
+    // conflict, which is true and useless.
+    const [row] = planRows([sub()], [member()]);
+
+    expect(row.outcome).toBe('link');
+    expect(row.tierId).toBeNull();
   });
 });

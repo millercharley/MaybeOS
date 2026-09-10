@@ -37,6 +37,8 @@ export interface ScanSubscription {
   cancelAtPeriodEnd: boolean;
   currentPeriodEnd: Date | null;
   customerId: string | null;
+  /** When Stripe first billed them — a truer join date than any export. */
+  startedAt: Date | null;
   email: string | null;
   name: string | null;
   items: ScanItem[];
@@ -75,7 +77,11 @@ export type ConflictReason =
   /** Two live subscriptions share an email. Which one is their membership? */
   | 'duplicate-email'
   /** The member is already linked to a *different* subscription. */
-  | 'member-has-other-subscription';
+  | 'member-has-other-subscription'
+  /** No tier chosen for this subscription's price, so there is nothing to grant. */
+  | 'no-tier-for-price'
+  /** Its items map to different tiers; which one the member holds is a guess. */
+  | 'several-tiers-for-subscription';
 
 export interface PlannedRow {
   subscriptionId: string;
@@ -85,6 +91,8 @@ export interface PlannedRow {
   cancelAtPeriodEnd: boolean;
   currentPeriodEnd: Date | null;
   monthlyCents: number | null;
+  /** The tier this membership would be given, once prices are mapped. */
+  tierId: string | null;
   outcome: RowOutcome;
   conflict: ConflictReason | null;
   /** The membership this would attach to, when there is one. */
@@ -235,6 +243,30 @@ export function groupPrices(
   return [...groups.values()].sort((a, b) => b.subscriptions - a.subscriptions);
 }
 
+/** Which tier each Stripe price grants, as the admin mapped them. */
+export type PriceToTier = Record<string, string>;
+
+/**
+ * Which tier a whole subscription grants.
+ *
+ * A subscription can carry several items. If they all point at one tier — the
+ * usual shape, an add-on beside the membership — that tier is the answer. If
+ * they point at two, **nothing is chosen**: which tier the member actually
+ * holds is a question about this co-op's intent, not a tie to break in code.
+ */
+export function tierForSubscription(
+  sub: ScanSubscription,
+  mapping: PriceToTier,
+): { tierId: string | null; problem: ConflictReason | null } {
+  const chosen = new Set(
+    sub.items.map((item) => mapping[item.priceId]).filter(Boolean),
+  );
+
+  if (chosen.size === 1) return { tierId: [...chosen][0], problem: null };
+  if (chosen.size === 0) return { tierId: null, problem: 'no-tier-for-price' };
+  return { tierId: null, problem: 'several-tiers-for-subscription' };
+}
+
 /**
  * What linking each scanned subscription would do.
  *
@@ -244,6 +276,7 @@ export function groupPrices(
 export function planRows(
   subs: ScanSubscription[],
   members: MemberSnapshot[],
+  mapping: PriceToTier = {},
 ): PlannedRow[] {
   const byEmail = new Map(members.map((m) => [m.email, m]));
 
@@ -259,6 +292,7 @@ export function planRows(
   return subs.map((sub) => {
     const email = normalizeEmail(sub.email);
     const monthlyCents = subscriptionMonthlyCents(sub);
+    const tier = tierForSubscription(sub, mapping);
 
     const base = {
       subscriptionId: sub.id,
@@ -268,10 +302,17 @@ export function planRows(
       cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
       currentPeriodEnd: sub.currentPeriodEnd,
       monthlyCents,
+      tierId: tier.tierId,
     };
 
     if (!email) {
       return { ...base, outcome: 'conflict' as const, conflict: 'no-email' as const, userOrgId: null };
+    }
+
+    // Only once a mapping exists. Before the admin has chosen anything, every
+    // row would read as a conflict and the screen would say nothing.
+    if (Object.keys(mapping).length > 0 && tier.problem) {
+      return { ...base, outcome: 'conflict' as const, conflict: tier.problem, userOrgId: null };
     }
 
     if ((seen.get(email) ?? 0) > 1) {
@@ -336,6 +377,37 @@ export interface ScanSummary {
     deltaCents: number;
     /** Money at risk rather than money collected — reported apart. */
     pastDueMonthlyCents: number;
+    /** Any live status this product does not model. Zero, or a surprise. */
+    otherStatusMonthlyCents: number;
+  };
+  /**
+   * The scan checking its own arithmetic.
+   *
+   * Two figures on this page are derived differently and must agree: the
+   * price table counts subscription **items**, the money counts
+   * **subscriptions**. On the first real run they were out by $19.50 and the
+   * only way to notice was adding up a screenshot by hand — which is not a
+   * check, and would not have survived anyone being in a hurry. A scan whose
+   * numbers need verifying elsewhere has not finished its job.
+   */
+  reconciliation: {
+    subscriptions: number;
+    /** Sum of the price table's member counts. Exceeds `subscriptions` when
+     *  a subscription carries more than one price. */
+    priceRows: number;
+    multiItemSubscriptions: number;
+    /** What the price table adds up to, read the way a person reads it:
+     *  each row's monthly price times its member count. */
+    priceTableMonthlyCents: number;
+    /** Items billed for other than one unit — the reason the table and the
+     *  money can legitimately disagree. */
+    itemsWithOtherQuantity: number;
+    /** Every priced subscription, summed once. */
+    pricedMonthlyCents: number;
+    /** The same money as split across the buckets shown on the page. */
+    accountedMonthlyCents: number;
+    /** False means the page is showing two numbers that cannot both be true. */
+    balanced: boolean;
   };
 }
 
@@ -350,24 +422,47 @@ export function summarize(
   subs: ScanSubscription[],
   rows: PlannedRow[],
   members: MemberSnapshot[],
+  groups: PriceGroup[],
 ): ScanSummary {
   const byStatus: Record<string, number> = {};
   let unpriced = 0;
   let cancelingAtPeriodEnd = 0;
   let stripeMonthlyCents = 0;
   let pastDueMonthlyCents = 0;
+  let otherStatusMonthlyCents = 0;
+  let pricedMonthlyCents = 0;
+  let priceRows = 0;
+  let multiItemSubscriptions = 0;
+  let itemsWithOtherQuantity = 0;
 
   for (const sub of subs) {
     byStatus[sub.status] = (byStatus[sub.status] ?? 0) + 1;
     if (sub.cancelAtPeriodEnd) cancelingAtPeriodEnd++;
+
+    priceRows += sub.items.length;
+    if (sub.items.length > 1) multiItemSubscriptions++;
+    for (const item of sub.items) {
+      if (item.quantity !== 1) itemsWithOtherQuantity++;
+    }
 
     const monthly = subscriptionMonthlyCents(sub);
     if (monthly === null) {
       unpriced++;
       continue;
     }
-    if (EARNING_STATUSES.includes(sub.status)) stripeMonthlyCents += monthly;
-    if (sub.status === 'past_due') pastDueMonthlyCents += monthly;
+
+    pricedMonthlyCents += monthly;
+
+    // Every priced subscription lands in exactly one bucket. The `else` is
+    // what makes that true rather than merely intended: a status outside both
+    // sets used to fall through, counted nowhere and missed by nothing.
+    if (EARNING_STATUSES.includes(sub.status)) {
+      stripeMonthlyCents += monthly;
+    } else if (sub.status === 'past_due') {
+      pastDueMonthlyCents += monthly;
+    } else {
+      otherStatusMonthlyCents += monthly;
+    }
   }
 
   const byConflict: Record<string, number> = {};
@@ -418,6 +513,32 @@ export function summarize(
       maybeosMonthlyCents,
       deltaCents: stripeMonthlyCents - maybeosMonthlyCents,
       pastDueMonthlyCents,
+      otherStatusMonthlyCents,
+    },
+    reconciliation: {
+      subscriptions: subs.length,
+      priceRows,
+      multiItemSubscriptions,
+      // The table shows a per-unit price against a member count, so reading it
+      // that way is what a person does — and it is only the same money when
+      // every item is billed for one unit. A single item at quantity 0 or 2
+      // makes the table and the total disagree with nothing visibly wrong.
+      priceTableMonthlyCents: groups.reduce(
+        (total, group) => total + (group.monthlyCents ?? 0) * group.subscriptions,
+        0,
+      ),
+      itemsWithOtherQuantity,
+      pricedMonthlyCents,
+      accountedMonthlyCents:
+        stripeMonthlyCents + pastDueMonthlyCents + otherStatusMonthlyCents,
+      balanced:
+        pricedMonthlyCents ===
+          stripeMonthlyCents + pastDueMonthlyCents + otherStatusMonthlyCents &&
+        (groups.length === 0 ||
+          groups.reduce(
+            (total, group) => total + (group.monthlyCents ?? 0) * group.subscriptions,
+            0,
+          ) === pricedMonthlyCents),
     },
   };
 }

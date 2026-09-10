@@ -94,7 +94,7 @@ export default function ImportMembersPage(props: { params: Promise<{ orgSlug: st
     setRunning(true);
     setFailure('');
     const totals: ImportResult = {
-      created: 0, alreadyMembers: 0, linkedExistingUsers: 0, avatarsPending: 0, errors: [],
+      created: 0, alreadyMembers: 0, enriched: 0, linkedExistingUsers: 0, avatarsPending: 0, errors: [],
     };
     const batches = chunk(prepared.rows, 50);
     setProgress({ done: 0, total: prepared.rows.length });
@@ -104,6 +104,7 @@ export default function ImportMembersPage(props: { params: Promise<{ orgSlug: st
         const outcome = await api.members.import(orgId, batch, token);
         totals.created += outcome.created;
         totals.alreadyMembers += outcome.alreadyMembers;
+        totals.enriched += outcome.enriched;
         totals.linkedExistingUsers += outcome.linkedExistingUsers;
         totals.avatarsPending += outcome.avatarsPending;
         totals.errors.push(...outcome.errors);
@@ -375,6 +376,12 @@ export default function ImportMembersPage(props: { params: Promise<{ orgSlug: st
             <li><b>{result.created}</b> members added</li>
             {result.linkedExistingUsers > 0 && (
               <li>{result.linkedExistingUsers} already had a MaybeOS account and were joined to this co-op</li>
+            )}
+            {result.enriched > 0 && (
+              <li>
+                {result.enriched} were already members and had blank details filled in — anything
+                they had written themselves was left as it was
+              </li>
             )}
             {result.alreadyMembers > 0 && (
               <li>{result.alreadyMembers} were already members here and were left untouched</li>

@@ -15,7 +15,10 @@ import {
   normalizeEmail,
   summarize,
   describeStripeFailure,
+  PriceToTier,
+  TierSnapshot as Tier,
 } from './adoption-scan';
+import { membershipStatusFor } from './subscription-status';
 
 /**
  * Look at a co-op's existing Stripe subscriptions and report what adopting
@@ -67,13 +70,37 @@ export class AdoptionScanService {
     );
   }
 
-  async scan(orgId: string): Promise<{
+  async scan(
+    orgId: string,
+    mapping: PriceToTier = {},
+  ): Promise<{
     scannedAt: string;
     truncated: boolean;
     prices: PriceGroup[];
+    tiers: TierSnapshot[];
     summary: ScanSummary;
     rows: PlannedRow[];
   }> {
+    const { subs, truncated, members, tiers } = await this.read(orgId);
+
+    const prices = groupPrices(subs, tiers);
+    const rows = planRows(subs, members, mapping);
+
+    return {
+      scannedAt: new Date().toISOString(),
+      truncated,
+      prices,
+      // The mapping screen needs every tier to choose from, not only the ones
+      // a price happens to match. Requiring the amounts to agree is what made
+      // a co-op edit its live price list to import its own history.
+      tiers,
+      summary: summarize(subs, rows, members, prices),
+      rows,
+    };
+  }
+
+  /** Everything both the scan and the adoption need, read once. */
+  private async read(orgId: string) {
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
       // Named in `select`, which is what lifts the client-level omit on this
@@ -101,15 +128,173 @@ export class AdoptionScanService {
       this.readTiers(orgId),
     ]);
 
-    const rows = planRows(subs, members);
+    // Stable order, so a batched adoption can walk the list with a cursor and
+    // resume exactly where it stopped even though Stripe was re-read.
+    subs.sort((a, b) => a.id.localeCompare(b.id));
+
+    return { subs, truncated, members, tiers };
+  }
+
+
+  /**
+   * Write the adoption: link live Stripe subscriptions onto memberships.
+   *
+   * The only method here that writes anything. It re-reads Stripe rather than
+   * trusting a plan the browser sends back, so a mapping is the only thing the
+   * caller decides — the money, the status and the dates always come from
+   * Stripe at the moment of writing.
+   *
+   * **Idempotent.** Matching is on the subscription id, so a second run over
+   * the same batch refreshes the same rows instead of duplicating them, and a
+   * run that dies half way can simply be run again.
+   *
+   * Batched with a cursor because 371 memberships do not fit in one Lambda's
+   * wall clock, and a partial import that reports honestly is worth far more
+   * than a whole one that times out and leaves nobody sure what landed.
+   */
+  async adopt(
+    orgId: string,
+    options: { mapping: PriceToTier; dryRun: boolean; limit?: number; after?: string },
+  ) {
+    const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
+    const { subs, members, tiers } = await this.read(orgId);
+
+    const known = new Set(tiers.map((tier) => tier.id));
+    for (const tierId of Object.values(options.mapping)) {
+      // A tier from another co-op would hand this org's members someone
+      // else's price (SEC-04). Checked against the tiers actually read for
+      // this org rather than looked up by bare id.
+      if (!known.has(tierId)) {
+        throw new BadRequestException('A chosen tier does not belong to this co-op');
+      }
+    }
+
+    const rows = planRows(subs, members, options.mapping);
+    const paired = subs.map((sub, index) => ({ sub, row: rows[index] }));
+
+    const start = options.after
+      ? paired.findIndex(({ sub }) => sub.id === options.after) + 1
+      : 0;
+    const batch = options.dryRun ? paired : paired.slice(start, start + limit);
+
+    const counts = {
+      linked: 0,
+      created: 0,
+      refreshed: 0,
+      skipped: 0,
+      errors: [] as Array<{ email: string; reason: string }>,
+    };
+    const byConflict: Record<string, number> = {};
+
+    for (const { sub, row } of batch) {
+      if (row.outcome === 'conflict') {
+        counts.skipped++;
+        if (row.conflict) byConflict[row.conflict] = (byConflict[row.conflict] ?? 0) + 1;
+        continue;
+      }
+
+      // The scan deliberately stays quiet about tiers until the admin has
+      // mapped something, so the first look at the page is not a wall of
+      // conflicts. **Writing cannot inherit that silence**: an empty mapping
+      // would create memberships holding a subscription and no tier — paying
+      // members with no membership level, which reads as a data problem long
+      // after the import is forgotten.
+      if (!row.tierId) {
+        counts.skipped++;
+        byConflict['no-tier-for-price'] = (byConflict['no-tier-for-price'] ?? 0) + 1;
+        continue;
+      }
+
+      const status = membershipStatusFor(sub.status);
+      if (!status) {
+        // PLT-07's rule, applied at the point of creation: a Stripe status
+        // this product has no word for is not written as a guess.
+        counts.skipped++;
+        byConflict['unmapped-status'] = (byConflict['unmapped-status'] ?? 0) + 1;
+        continue;
+      }
+
+      if (options.dryRun) {
+        if (row.outcome === 'create') counts.created++;
+        else if (row.outcome === 'link') counts.linked++;
+        else counts.refreshed++;
+        continue;
+      }
+
+      try {
+        await this.writeRow(orgId, sub, row, status, counts);
+      } catch (err) {
+        counts.errors.push({
+          email: row.email ?? sub.id,
+          reason: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    const last = batch.at(-1)?.sub.id ?? options.after ?? null;
+    const done = options.dryRun || start + batch.length >= paired.length;
 
     return {
-      scannedAt: new Date().toISOString(),
-      truncated,
-      prices: groupPrices(subs, tiers),
-      summary: summarize(subs, rows, members),
-      rows,
+      dryRun: options.dryRun,
+      total: paired.length,
+      processed: batch.length,
+      counts,
+      byConflict,
+      nextAfter: done ? null : last,
+      done,
     };
+  }
+
+  /** One membership, from one live subscription. */
+  private async writeRow(
+    orgId: string,
+    sub: ScanSubscription,
+    row: PlannedRow,
+    status: string,
+    counts: { linked: number; created: number; refreshed: number },
+  ): Promise<void> {
+    const billing = {
+      tierId: row.tierId,
+      stripeCustomerId: sub.customerId,
+      stripeSubscriptionId: sub.id,
+      subscriptionStatus: status as never,
+      cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+      currentPeriodEnd: sub.currentPeriodEnd,
+    };
+
+    if (row.userOrgId) {
+      await this.prisma.userOrg.update({ where: { id: row.userOrgId }, data: billing });
+      if (row.outcome === 'already-linked') counts.refreshed++;
+      else counts.linked++;
+      return;
+    }
+
+    const email = row.email as string;
+
+    // A User can exist without being a member here — someone who belongs to
+    // another co-op, or who signed up and never joined. Reused, never
+    // duplicated: email is unique on User and a second insert would throw.
+    const user =
+      (await this.prisma.user.findUnique({ where: { email }, select: { id: true } })) ??
+      (await this.prisma.user.create({
+        // No password and unverified, exactly as the .csv import does: this
+        // account was made *for* somebody rather than *by* them.
+        data: { email, name: sub.name ?? null },
+        select: { id: true },
+      }));
+
+    await this.prisma.userOrg.create({
+      data: {
+        userId: user.id,
+        orgId,
+        role: 'MEMBER',
+        // When Stripe first billed them. Truer than today, and truer than a
+        // join date exported by the platform they are leaving.
+        ...(sub.startedAt ? { memberSince: sub.startedAt } : {}),
+        ...billing,
+      },
+    });
+    counts.created++;
   }
 
   /**
@@ -163,6 +348,9 @@ export class AdoptionScanService {
       cancelAtPeriodEnd: sub.cancel_at_period_end === true,
       currentPeriodEnd: this.periodEnd(sub),
       customerId: typeof customer === 'string' ? customer : (customer?.id ?? null),
+      // Stripe's own record of when this member started paying. Better than a
+      // CSV's join date, which is whatever the last platform chose to export.
+      startedAt: sub.start_date ? new Date(sub.start_date * 1000) : null,
       // A subscription can carry its own billing email; it is the one Stripe
       // actually sends invoices to, so it wins over the customer's.
       email: live?.email ?? null,

@@ -670,6 +670,29 @@ class ApiClient {
     stripeScan: (orgId: string, token: string) =>
       this.request<StripeScan>(`/orgs/${orgId}/members/import/stripe-scan`, { token }),
 
+    /**
+     * Link those subscriptions onto memberships (MIG-02).
+     *
+     * `dryRun` has no default here on purpose — the caller says which it
+     * means every time, and the API defaults to the preview if it somehow
+     * arrives without one.
+     */
+    stripeAdopt: (
+      orgId: string,
+      body: {
+        mapping: Array<{ priceId: string; tierId: string }>;
+        dryRun: boolean;
+        limit?: number;
+        after?: string;
+      },
+      token: string,
+    ) =>
+      this.request<StripeAdoptResult>(`/orgs/${orgId}/members/import/stripe-adopt`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        token,
+      }),
+
     /** Copy imported avatars into MaybeOS storage, one batch per call. */
     importAvatars: (orgId: string, body: { after?: string; limit?: number }, token: string) =>
       this.request<AvatarImportResult>(`/orgs/${orgId}/members/import/avatars`, {
@@ -2455,6 +2478,8 @@ export interface ImportMemberRow {
 export interface ImportResult {
   created: number;
   alreadyMembers: number;
+  /** Already a member, and this row filled in something that was blank. */
+  enriched: number;
   linkedExistingUsers: number;
   avatarsPending: number;
   errors: Array<{ email: string; reason: string }>;
@@ -2474,8 +2499,15 @@ export interface StripeScanRow {
   cancelAtPeriodEnd: boolean;
   currentPeriodEnd: string | null;
   monthlyCents: number | null;
+  tierId: string | null;
   outcome: 'link' | 'create' | 'already-linked' | 'conflict';
-  conflict: 'no-email' | 'duplicate-email' | 'member-has-other-subscription' | null;
+  conflict:
+    | 'no-email'
+    | 'duplicate-email'
+    | 'member-has-other-subscription'
+    | 'no-tier-for-price'
+    | 'several-tiers-for-subscription'
+    | null;
   userOrgId: string | null;
 }
 
@@ -2491,10 +2523,19 @@ export interface StripeScanPrice {
   suggestedTierName: string | null;
 }
 
+export interface StripeScanTier {
+  id: string;
+  name: string;
+  priceMonthly: number;
+  isPayWhatYouCan: boolean;
+}
+
 export interface StripeScan {
   scannedAt: string;
   truncated: boolean;
   prices: StripeScanPrice[];
+  /** Every tier, so a price can be mapped to one whose amount differs. */
+  tiers: StripeScanTier[];
   rows: StripeScanRow[];
   summary: {
     subscriptions: {
@@ -2516,8 +2557,37 @@ export interface StripeScan {
       maybeosMonthlyCents: number;
       deltaCents: number;
       pastDueMonthlyCents: number;
+      otherStatusMonthlyCents: number;
+    };
+    /** The scan checking its own arithmetic, so nobody has to add up a page. */
+    reconciliation: {
+      subscriptions: number;
+      priceRows: number;
+      multiItemSubscriptions: number;
+      priceTableMonthlyCents: number;
+      itemsWithOtherQuantity: number;
+      pricedMonthlyCents: number;
+      accountedMonthlyCents: number;
+      balanced: boolean;
     };
   };
+}
+
+/** One pass of the adoption: a preview, or one batch of writes. */
+export interface StripeAdoptResult {
+  dryRun: boolean;
+  total: number;
+  processed: number;
+  counts: {
+    linked: number;
+    created: number;
+    refreshed: number;
+    skipped: number;
+    errors: Array<{ email: string; reason: string }>;
+  };
+  byConflict: Record<string, number>;
+  nextAfter: string | null;
+  done: boolean;
 }
 
 export interface AvatarImportResult {
