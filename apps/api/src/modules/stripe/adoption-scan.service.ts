@@ -14,6 +14,7 @@ import {
   planRows,
   normalizeEmail,
   summarize,
+  describeStripeFailure,
 } from './adoption-scan';
 
 /**
@@ -268,15 +269,18 @@ export class AdoptionScanService {
    * The overwhelmingly likely cause is the platform's **restricted key**
    * lacking permission on connected accounts — the same class of failure that
    * broke ticket checkout and refunds. Stripe's own message names the key, the
-   * account and the missing scope; it is logged in full and not returned,
-   * because the viewer is a co-op admin and that key is MaybeOS's, not theirs.
+   * account and the missing scope, so it is logged and never returned; what
+   * goes back is the enum-like `type` and `code` plus the fix in words.
+   *
+   * "The reason is in the server logs" is not an option here. These logs need
+   * a Netlify token nobody currently holds, and a 400 never reaches Sentry —
+   * so the first version of this message was a dead end for the one person who
+   * could act on it.
    */
   private scanFailed(err: unknown, status: string): never {
     const detail = err instanceof Error ? err.message : String(err);
     this.logger.error(`Subscription scan failed (${status}): ${detail}`);
 
-    throw new BadRequestException(
-      "MaybeOS could not read this account's subscriptions from Stripe. Nothing was changed. The reason is in the server logs.",
-    );
+    throw new BadRequestException(describeStripeFailure(err).message);
   }
 }

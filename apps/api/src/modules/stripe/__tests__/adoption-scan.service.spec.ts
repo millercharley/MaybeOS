@@ -186,13 +186,20 @@ describe('scanning a connected account for existing subscriptions', () => {
     // Stripe writes permission errors for the developer holding the key: they
     // name the restricted key, the account and the missing scope. That key is
     // MaybeOS's, and the viewer here is a co-op admin.
-    const leak =
-      'This application does not have the required permissions for this endpoint. rk_live_****BuW4ie on acct_connected';
+    const leak = Object.assign(
+      new Error(
+        'This application does not have the required permissions for this endpoint. rk_live_****BuW4ie on acct_connected',
+      ),
+      { type: 'StripePermissionError', statusCode: 403 },
+    );
     list.mockImplementation(() => ({
-      autoPagingToArray: jest.fn().mockRejectedValue(new Error(leak)),
+      autoPagingToArray: jest.fn().mockRejectedValue(leak),
     }));
 
-    await expect(service.scan(ORG_ID)).rejects.toThrow(/could not read/i);
+    // What comes back instead is the fix in words: a co-op admin can act on
+    // "the key needs connected-account access" and cannot act on a log line
+    // they have no way to read.
+    await expect(service.scan(ORG_ID)).rejects.toThrow(/restricted key/i);
     await expect(service.scan(ORG_ID)).rejects.not.toThrow(/rk_live/);
   });
 
