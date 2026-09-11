@@ -10,6 +10,7 @@ import {
   UseGuards,
   DefaultValuePipe,
   ParseIntPipe,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -21,6 +22,7 @@ import { CurrentUser, RequestUser } from '../../common/decorators/current-user.d
 import { viewerFor } from '../../common/access/contact-visibility';
 import { UpdateMyMembershipDto } from './dto/update-my-membership.dto';
 import { MemberService } from './member.service';
+import { MemberProfileService } from './member-profile.service';
 import { CreateTierDto } from './dto/create-tier.dto';
 import { ImportMembersDto, ImportAvatarsDto } from './dto/import-members.dto';
 import { UpdateMemberRoleDto } from './dto/update-role.dto';
@@ -31,7 +33,10 @@ import { InviteMemberDto } from './dto/invite-member.dto';
 @ApiTags('members')
 @Controller('orgs/:orgId')
 export class MemberController {
-  constructor(private readonly memberService: MemberService) {}
+  constructor(
+    private readonly memberService: MemberService,
+    private readonly profiles: MemberProfileService,
+  ) {}
 
   // ─── Members ────────────────────────────────────────────────
 
@@ -80,6 +85,27 @@ export class MemberController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.memberService.getMember(orgId, userId, viewerFor(user, orgId));
+  }
+
+  /**
+   * The card that opens on a member's name, anywhere in MaybeOS (MEM-18).
+   *
+   * Separate from `members/:userId` on purpose: that one returns an email to
+   * organisers, and this one returns no email or phone to anyone — it is the
+   * view of a person, not the record of one. Three segments deep, so it
+   * cannot be claimed by `members/:userId` or collide with
+   * `members/import/stripe-scan`.
+   */
+  @Get('members/:userId/profile')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "A member's profile card: who they are and what they have written" })
+  getProfile(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.profiles.getProfile(orgId, userId, viewerFor(user, orgId));
   }
 
   /**

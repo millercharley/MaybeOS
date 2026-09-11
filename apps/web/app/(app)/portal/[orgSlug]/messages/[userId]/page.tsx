@@ -10,6 +10,7 @@ import { api, DirectMessage } from '@/lib/api';
 import { renderBodyHtml } from '@/lib/rich-text';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
 import { timeAgo } from '@/lib/relative-time';
+import { MemberName } from '@/components/member/member-name';
 
 /**
  * One conversation, and — if you are somebody's buddy — the prompts for it
@@ -113,7 +114,9 @@ export default function ThreadPage() {
         Messages
       </Link>
 
-      <h1 className="font-display text-2xl leading-tight text-ink">{other?.name ?? 'Conversation'}</h1>
+      <h1 className="font-display text-2xl leading-tight text-ink">
+        {other?.name ? <MemberName userId={otherUserId} name={other.name} /> : 'Conversation'}
+      </h1>
 
       {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 

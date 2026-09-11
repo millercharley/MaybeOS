@@ -15,6 +15,7 @@ import { ticketCost, describeFees, money } from '@/lib/fees';
 import { eventArt } from '@/lib/event-art';
 import { PageHeader } from '@/components/layout/page-header';
 import { maturityBadge } from '@/lib/maturity';
+import { MemberName } from '@/components/member/member-name';
 
 /**
  * One event, at the size an event deserves (EVT-08, EVT-11).
@@ -183,7 +184,7 @@ export default function PortalEventPage(props: {
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-100 text-[11px] font-medium text-brand-700">
                   {event.host.name.charAt(0).toUpperCase()}
                 </span>
-                Hosted by {event.host.name}
+                Hosted by <MemberName userId={event.host.id} name={event.host.name} />
               </p>
             )}
           </div>
@@ -477,7 +478,11 @@ function EventDiscussion({ orgId, eventId, token }: { orgId: string; eventId: st
         {comments.map((comment) => (
           <div key={comment.id} className="rounded-lg bg-gray-50 px-3 py-2">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-gray-900">{comment.author?.name || 'Member'}</span>
+              <MemberName
+                userId={comment.author?.id}
+                name={comment.author?.name || 'Member'}
+                className="text-xs font-medium text-gray-900"
+              />
               <span className="text-[11px] text-gray-400">
                 {new Date(comment.createdAt).toLocaleDateString()}
               </span>

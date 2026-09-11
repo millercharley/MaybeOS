@@ -73,7 +73,7 @@ export class KnowledgeService {
       where: { orgId, ...(isAdmin ? {} : { state: 'PUBLISHED' }) },
       orderBy: { position: 'asc' },
       include: {
-        author: { select: { id: true, headline: true, user: { select: { name: true, avatarPath: true } } } },
+        author: { select: { id: true, userId: true, headline: true, user: { select: { name: true, avatarPath: true } } } },
         _count: { select: { likes: true, comments: true } },
         comments: {
           orderBy: { createdAt: 'desc' },
@@ -108,6 +108,8 @@ export class KnowledgeService {
         version: a.version,
         author: a.author
           ? {
+              // Whose card the name opens (MEM-18) — the user, not the membership.
+              userId: a.author.userId,
               name: a.author.user.name,
               avatarPath: a.author.user.avatarPath,
               // The small line under the name that makes a set of house rules
@@ -137,11 +139,11 @@ export class KnowledgeService {
         ...(isAdmin ? {} : { state: 'PUBLISHED' }),
       },
       include: {
-        author: { select: { headline: true, user: { select: { name: true, avatarPath: true } } } },
+        author: { select: { userId: true, headline: true, user: { select: { name: true, avatarPath: true } } } },
         _count: { select: { likes: true, comments: true } },
         comments: {
           orderBy: { createdAt: 'asc' },
-          include: { member: { select: { id: true, user: { select: { name: true, avatarPath: true } } } } },
+          include: { member: { select: { id: true, userId: true, user: { select: { name: true, avatarPath: true } } } } },
         },
         likes: { where: { memberId: viewerId }, select: { id: true } },
         acknowledgments: { where: { memberId: viewerId }, select: { articleVersion: true } },
@@ -166,6 +168,7 @@ export class KnowledgeService {
       // silently showed every article as written by "A member".
       author: article.author
         ? {
+            userId: article.author.userId,
             name: article.author.user.name,
             avatarPath: article.author.user.avatarPath,
             headline: article.author.headline,
@@ -510,7 +513,7 @@ export class KnowledgeService {
 
     return this.prisma.articleComment.create({
       data: { articleId: article.id, memberId, body: body.trim() },
-      include: { member: { select: { user: { select: { name: true, avatarPath: true } } } } },
+      include: { member: { select: { id: true, userId: true, user: { select: { name: true, avatarPath: true } } } } },
     });
   }
 

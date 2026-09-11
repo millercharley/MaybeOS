@@ -20,6 +20,7 @@ import { api, Comment as CommentT, Post, PaginatedResponse, DirectMessage } from
 import { renderBodyHtml, isBlankBody, asRichBody } from '@/lib/rich-text';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
 import { PageHeader } from '@/components/layout/page-header';
+import { MemberName } from '@/components/member/member-name';
 
 type View =
   | { type: 'channel'; id: string }
@@ -79,7 +80,11 @@ function CommentThread({
         <div className="min-w-0 flex-1">
           <div className="rounded-lg bg-gray-50 px-3 py-2">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-gray-900">{comment.author.name ?? 'Unknown'}</span>
+              <MemberName
+                userId={comment.author.id}
+                name={comment.author.name ?? 'Unknown'}
+                className="text-xs font-semibold text-gray-900"
+              />
               <span className="text-[11px] text-gray-400">{timeAgo(comment.createdAt)}</span>
               {comment.editedAt && (
                 <span

@@ -6,6 +6,7 @@ import { MessageSquare } from 'lucide-react';
 import { api, SpotlightMember } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { Panel } from '@/components/layout/panel';
+import { MemberName } from '@/components/member/member-name';
 
 /**
  * Somebody to meet, on the front of the dashboard (MEM-12).
@@ -84,7 +85,9 @@ export function MemberSpotlight({ orgSlug }: { orgSlug: string }) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold text-gray-900">{name}</p>
+          <p className="truncate font-semibold text-gray-900">
+            <MemberName userId={member.user.id} name={name} />
+          </p>
           {member.headline ? (
             <p className="mt-0.5 text-sm text-gray-600">{member.headline}</p>
           ) : member.bio ? null : (

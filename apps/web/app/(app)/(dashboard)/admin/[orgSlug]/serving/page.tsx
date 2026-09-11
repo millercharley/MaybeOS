@@ -21,6 +21,7 @@ import {
 } from '@/lib/service-rota';
 import { DutyForm } from '@/components/service/duty-form';
 import { PageHeader } from '@/components/layout/page-header';
+import { MemberName } from '@/components/member/member-name';
 
 /**
  * Serving — naming the work, and seeing whether it is covered (SRV-01).
@@ -162,7 +163,7 @@ export default function ServingPage() {
               <li key={claim.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
                 <div className="min-w-0">
                   <p className="font-medium">
-                    {claim.user.name ?? 'A member'} · {claim.duty.title}
+                    <MemberName userId={claim.userId} name={claim.user.name ?? 'A member'} /> · {claim.duty.title}
                   </p>
                   <p className="mt-1 text-xs text-[var(--text-secondary)]">
                     {shortDate(claim.occursAt.slice(0, 10))} ·{' '}
@@ -254,7 +255,7 @@ export default function ServingPage() {
                       {held && (
                         <span className="inline-flex items-center gap-1">
                           <Repeat size={12} aria-hidden="true" />
-                          {held.user.name ?? 'A member'} has it on standing since{' '}
+                          <MemberName userId={held.userId} name={held.user.name ?? 'A member'} /> has it on standing since{' '}
                           {shortDate(held.startedAt.slice(0, 10))}
                         </span>
                       )}
@@ -313,7 +314,7 @@ export default function ServingPage() {
           {(standing?.members ?? []).map((member) => (
             <li key={member.userId} className="flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
               <span className="min-w-0">
-                <span className="font-medium">{member.name ?? 'A member'}</span>
+                <MemberName userId={member.userId} name={member.name ?? 'A member'} className="font-medium" />
                 {member.tier && (
                   <span className="ml-2 text-xs text-[var(--text-secondary)]">{member.tier}</span>
                 )}

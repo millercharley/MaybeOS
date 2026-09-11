@@ -14,6 +14,7 @@ import { uploadAttachments } from '@/lib/attachments';
 import { AttachmentList } from '@/components/composer/attachment-list';
 import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 import { PageHeader } from '@/components/layout/page-header';
+import { MemberName } from '@/components/member/member-name';
 
 type Tab = 'channels' | 'proposals';
 
@@ -85,8 +86,13 @@ function ChannelsSection() {
       .then((chs) => {
         setChannels(chs);
         if (chs.length > 0) {
-          setSelectedChannel(chs[0].id);
-          return api.commons.listPosts(org.id, chs[0].id, token);
+          // A member card links here with `?channel=` (MEM-18). Read from the
+          // location inside the effect rather than useSearchParams, which
+          // would need a Suspense boundary around the whole page.
+          const wanted = new URLSearchParams(window.location.search).get('channel');
+          const first = chs.find((c) => c.id === wanted) ?? chs[0];
+          setSelectedChannel(first.id);
+          return api.commons.listPosts(org.id, first.id, token);
         }
         return null;
       })
@@ -98,6 +104,13 @@ function ChannelsSection() {
       )
       .finally(() => setLoading(false));
   }, [org, token]);
+
+  // Then scroll to the post the card linked to, once it exists to scroll to.
+  useEffect(() => {
+    const target = window.location.hash.slice(1);
+    if (!target.startsWith('post-') || posts.length === 0) return;
+    document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [posts]);
 
   async function loadPosts(channelId: string) {
     if (!org || !token) return;
@@ -318,12 +331,16 @@ function PostCard({ post, orgId, token }: { post: Post; orgId: string; token: st
   }
 
   return (
-    <div className="card p-4">
+    <div id={`post-${post.id}`} className="card scroll-mt-24 p-4">
       <div className="flex items-center gap-2">
         <div className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-100 text-xs font-medium text-brand-700">
           {post.author?.name?.charAt(0) || '?'}
         </div>
-        <span className="text-sm font-medium text-gray-900">{post.author?.name || 'Member'}</span>
+        <MemberName
+          userId={post.author?.id}
+          name={post.author?.name || 'Member'}
+          className="text-sm font-medium text-gray-900"
+        />
         <span className="text-xs text-gray-400">
           {new Date(post.createdAt).toLocaleDateString()}
         </span>
@@ -462,7 +479,7 @@ function CommentNode({
       <div className="rounded-lg bg-gray-50 px-3 py-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-gray-900">
-            {comment.author?.name || 'Member'}
+            <MemberName userId={comment.author?.id} name={comment.author?.name || 'Member'} />
           </span>
           <span className="text-[11px] text-gray-400">
             {new Date(comment.createdAt).toLocaleDateString()}
