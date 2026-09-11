@@ -444,6 +444,7 @@ export class CalendarService implements OnModuleInit {
     expectedAttendance?: number | null;
     hasCost?: boolean | null;
     categories?: string[] | null;
+    maturityLevel?: string | null;
     user?: { name: string | null; email: string } | null;
     room: {
       name: string;
@@ -468,6 +469,7 @@ export class CalendarService implements OnModuleInit {
       expectedAttendance: booking.expectedAttendance,
       hasCost: booking.hasCost,
       categories: booking.categories,
+      maturityLevel: booking.maturityLevel as never,
       needsApproval: booking.status === 'PENDING',
     };
 

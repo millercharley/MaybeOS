@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
+import { MATURITY_LEVELS, type MaturityLevel } from '@/lib/maturity';
 
 /**
  * What the booking is for (SPC-21).
@@ -31,6 +32,8 @@ export interface BookingDetails {
   expectedAttendance?: number;
   hasCost: boolean;
   categories: string[];
+  /** Who it is suitable for (SPC-22). Always sent — the form preselects all ages. */
+  maturityLevel: MaturityLevel;
 }
 
 export function BookingDetailsForm({
@@ -52,6 +55,7 @@ export function BookingDetailsForm({
   const [attendance, setAttendance] = useState('');
   const [hasCost, setHasCost] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
+  const [maturityLevel, setMaturityLevel] = useState<MaturityLevel>('ALL_AGES');
 
   // Functional update, because two chips clicked in quick succession both read
   // the same render's `categories` otherwise and the second silently discards
@@ -149,6 +153,40 @@ export function BookingDetailsForm({
         </p>
       </fieldset>
 
+      {/* Asked right after who may come, because it is the same question from
+          the other side: who should (SPC-22). All ages is preselected — it is
+          the answer for most bookings, and a host with nothing to say should
+          not have to say it. */}
+      <fieldset className="mt-4">
+        <legend className="text-sm font-medium">Appropriate maturity level</legend>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {MATURITY_LEVELS.map(({ value, label }) => (
+            <label
+              key={value}
+              className={[
+                'cursor-pointer rounded-full border px-3 py-1 text-sm transition-colors focus-within:ring-2 focus-within:ring-[var(--text-primary)]',
+                maturityLevel === value
+                  ? 'border-[var(--text-primary)] bg-[var(--surface-sunken)] font-medium'
+                  : 'border-[var(--border)] hover:bg-[var(--surface-sunken)]',
+              ].join(' ')}
+            >
+              <input
+                type="radio"
+                name="maturityLevel"
+                className="sr-only"
+                checked={maturityLevel === value}
+                onChange={() => setMaturityLevel(value)}
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-[var(--text-tertiary)]">
+          Shown on the room&apos;s calendar and the day&apos;s schedule whenever it isn&apos;t
+          all ages.
+        </p>
+      </fieldset>
+
       <div className="mt-4 flex flex-wrap items-end gap-4">
         <label className="block">
           <span className="text-sm font-medium">Roughly how many people?</span>
@@ -206,6 +244,7 @@ export function BookingDetailsForm({
             expectedAttendance: attendance ? parseInt(attendance, 10) : undefined,
             hasCost,
             categories,
+            maturityLevel,
           })
         }
         disabled={busy || !title.trim()}

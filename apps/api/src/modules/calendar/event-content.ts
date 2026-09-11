@@ -21,6 +21,7 @@ export interface BookingForCalendar {
   expectedAttendance?: number | null;
   hasCost?: boolean | null;
   categories?: string[] | null;
+  maturityLevel?: 'ALL_AGES' | 'AGES_13_PLUS' | 'AGES_18_PLUS' | 'AGES_21_PLUS' | null;
   needsApproval?: boolean;
 }
 
@@ -39,6 +40,13 @@ const VISIBILITY: Record<string, string> = {
   PUBLIC: 'Open to the public',
   MEMBERS_ONLY: 'Open to members',
   PRIVATE: 'Private to their guests',
+};
+
+/** Only the restricting answers have words (SPC-22); all ages is the norm. */
+const MATURITY: Record<string, string> = {
+  AGES_13_PLUS: '13 and over',
+  AGES_18_PLUS: '18 and over',
+  AGES_21_PLUS: '21 and over',
 };
 
 /**
@@ -98,6 +106,11 @@ export function eventDescription(
   // Only said when it is true. "Cost to attend: No" on every entry is noise
   // that trains people to stop reading the description.
   if (booking.hasCost) push('Cost to attend', 'Yes — ask the organiser');
+
+  // Same rule, same reason (SPC-22): "All ages" on every entry is noise, and
+  // the entries that matter are the ones a parent or a door volunteer has to
+  // notice.
+  push('Ages', booking.maturityLevel ? MATURITY[booking.maturityLevel] : null);
 
   push('Kind of gathering', booking.categories?.length ? booking.categories.join(', ') : null);
 

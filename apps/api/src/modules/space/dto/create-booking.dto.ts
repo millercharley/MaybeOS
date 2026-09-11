@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsDateString,
   IsIn,
+  IsEnum,
   IsInt,
   IsBoolean,
   IsArray,
@@ -12,6 +13,7 @@ import {
   Min,
   Max,
 } from 'class-validator';
+import { MaturityLevel } from '@prisma/client';
 
 /**
  * The three answers a booking gives about who it is for. Reuses the event
@@ -67,6 +69,16 @@ export class CreateBookingDto {
   @IsString({ each: true })
   @MaxLength(60, { each: true })
   categories?: string[];
+
+  /**
+   * Who it is suitable for (SPC-22). Optional, and all ages when absent --
+   * the same answer the form preselects, so a client that sends nothing books
+   * exactly as every booking did before the question was asked.
+   */
+  @ApiPropertyOptional({ enum: MaturityLevel, default: MaturityLevel.ALL_AGES })
+  @IsOptional()
+  @IsEnum(MaturityLevel)
+  maturityLevel?: MaturityLevel;
 
   @ApiProperty({ example: '2026-03-01T09:00:00.000Z' })
   @IsDateString()

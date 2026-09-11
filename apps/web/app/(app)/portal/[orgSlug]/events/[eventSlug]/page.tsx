@@ -14,6 +14,7 @@ import { uploadAttachments } from '@/lib/attachments';
 import { ticketCost, describeFees, money } from '@/lib/fees';
 import { eventArt } from '@/lib/event-art';
 import { PageHeader } from '@/components/layout/page-header';
+import { maturityBadge } from '@/lib/maturity';
 
 /**
  * One event, at the size an event deserves (EVT-08, EVT-11).
@@ -322,6 +323,14 @@ export default function PortalEventPage(props: {
             {/* Charged at the door rather than ticketed here — most co-op
                 events that cost money work that way, and silence reads as
                 free (EVT-17). */}
+            {maturityBadge(event.maturityLevel) && (
+              // Said before anything about money: it decides whether somebody
+              // can come at all, and this page is often read by a stranger
+              // from a link (SPC-22).
+              <p className="mt-3 text-center text-sm font-medium text-gray-900">
+                Ages {maturityBadge(event.maturityLevel)}
+              </p>
+            )}
             {!cost && event.hasCost && (
               <p className="mt-3 text-center text-xs text-gray-500">
                 There is a cost to attend — ask the host.

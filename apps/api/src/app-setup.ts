@@ -1,5 +1,6 @@
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
+import { VALIDATION_PIPE_OPTIONS } from './common/validation-options';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import helmet from 'helmet';
@@ -82,11 +83,7 @@ export async function configureApp(app: NestExpressApplication) {
   // and a grey initial everywhere else (MEM-10).
   app.useGlobalInterceptors(new AvatarUrlInterceptor(app.get(StorageService)));
   app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
+    new ValidationPipe(VALIDATION_PIPE_OPTIONS),
   );
 
   if (process.env.NODE_ENV !== 'production') {

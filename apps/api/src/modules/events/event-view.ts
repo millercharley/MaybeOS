@@ -47,6 +47,9 @@ export const PUBLIC_EVENT_SELECT = {
   category: true,
   tags: true,
   hasCost: true,
+  // Public by nature: it is on the poster, and the person deciding whether to
+  // bring their teenager is exactly who reads a public event page (SPC-22).
+  maturityLevel: true,
   isPublished: true,
   publishedAt: true,
   canceledAt: true,
