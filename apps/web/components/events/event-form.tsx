@@ -5,6 +5,7 @@ import { Globe, Lock, Users } from 'lucide-react';
 import { CreateEventData } from '@/lib/api';
 import { PLATFORM_FEE_CENTS } from '@/lib/fees';
 import { GATHERING_KINDS } from '@/components/rooms/booking-details';
+import { MATURITY_LEVELS, type MaturityLevel } from '@/lib/maturity';
 
 /**
  * The event form (EVT-05).
@@ -26,6 +27,7 @@ import { GATHERING_KINDS } from '@/components/rooms/booking-details';
 
 export interface EventFormValues extends CreateEventData {
   publish?: boolean;
+  maturityLevel?: MaturityLevel;
 }
 
 /** MaybeOS's per-transaction fee by plan, in cents (D-013). */
@@ -117,6 +119,9 @@ export function EventForm({
     initial?.tags?.length ? initial.tags : initial?.category ? [initial.category] : [],
   );
   const [hasCost, setHasCost] = useState(initial?.hasCost ?? false);
+  const [maturityLevel, setMaturityLevel] = useState<MaturityLevel>(
+    initial?.maturityLevel ?? 'ALL_AGES',
+  );
   const [hostId, setHostId] = useState(initial?.hostId ?? '');
   const [localError, setLocalError] = useState('');
 
@@ -159,6 +164,7 @@ export function EventForm({
       category: kinds[0],
       tags: kinds,
       hasCost,
+      maturityLevel,
       priceCents,
       ...(hosts && hostId ? { hostId } : {}),
       publish,
@@ -358,6 +364,36 @@ export function EventForm({
           </span>
         </span>
       </label>
+
+      {/* The same question a booking asks (SPC-22), editable here so an event
+          published from a booking can be corrected — and so an event created
+          directly can say it at all. */}
+      <fieldset>
+        <legend className="text-sm font-medium text-gray-900">Appropriate maturity level</legend>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {MATURITY_LEVELS.map(({ value, label }) => (
+            <label
+              key={value}
+              className={[
+                'cursor-pointer rounded-full border px-3 py-1 text-sm focus-within:ring-2 focus-within:ring-gray-900',
+                maturityLevel === value
+                  ? 'border-gray-900 bg-gray-100 font-medium text-gray-900'
+                  : 'border-gray-200 text-gray-600 hover:bg-gray-50',
+              ].join(' ')}
+            >
+              <input
+                type="radio"
+                name="maturityLevel"
+                className="sr-only"
+                checked={maturityLevel === value}
+                onChange={() => setMaturityLevel(value)}
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+        <p className="mt-1 text-xs text-gray-500">Shown on the event whenever it isn&apos;t all ages.</p>
+      </fieldset>
 
       {/*
         The switch that was missing (EVT-02). The waitlist engine has worked

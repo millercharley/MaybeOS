@@ -1,3 +1,4 @@
+import { MaturityLevel } from '@prisma/client';
 import {
   IsString,
   IsOptional,
@@ -141,6 +142,12 @@ export class CreateEventDto {
   @IsOptional()
   @IsBoolean()
   hasCost?: boolean;
+
+  /** Who it is suitable for (SPC-22). All ages unless said otherwise. */
+  @ApiPropertyOptional({ enum: MaturityLevel, default: MaturityLevel.ALL_AGES })
+  @IsOptional()
+  @IsEnum(MaturityLevel)
+  maturityLevel?: MaturityLevel;
 }
 
 export class UpdateEventDto {
@@ -245,4 +252,24 @@ export class UpdateEventDto {
   @IsOptional()
   @IsString()
   imageUrl?: string;
+
+  /**
+   * Whether the host charges attendees (EVT-17). Absent from this DTO until
+   * EVT-21, while the edit form sent it on every save since 2026-09-02 -- and
+   * with the whitelist forbidding unknown fields, one undeclared key rejects
+   * the whole request, not the field. Every edit from the admin events page
+   * failed. `update-event-whitelist.spec.ts` runs the form's body through the
+   * real pipe so the next undeclared key fails a test instead.
+   */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  hasCost?: boolean;
+
+  /** Who it is suitable for (SPC-22). All ages unless said otherwise. */
+  @ApiPropertyOptional({ enum: MaturityLevel, default: MaturityLevel.ALL_AGES })
+  @IsOptional()
+  @IsEnum(MaturityLevel)
+  maturityLevel?: MaturityLevel;
+
 }

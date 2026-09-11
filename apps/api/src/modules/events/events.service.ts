@@ -175,6 +175,9 @@ export class EventsService {
         bookingId: booking.id,
         publish: dto.publish ?? true,
         hasCost: booking.hasCost,
+        // Carried like every other booking answer (EVT-17): a 21+ booking
+        // published to the public must not arrive there saying nothing.
+        maturityLevel: booking.maturityLevel,
       },
     );
   }
@@ -183,7 +186,12 @@ export class EventsService {
     orgId: string,
     dto: CreateEventDto,
     userId: string,
-    options: { bookingId?: string; publish?: boolean; hasCost?: boolean } = {},
+    options: {
+      bookingId?: string;
+      publish?: boolean;
+      hasCost?: boolean;
+      maturityLevel?: CreateEventDto['maturityLevel'];
+    } = {},
   ) {
     const slug = toSlug(dto.title, dto.startTime);
 
@@ -226,6 +234,7 @@ export class EventsService {
         category: dto.category,
         tags: dto.tags,
         hasCost: options.hasCost ?? dto.hasCost ?? false,
+        maturityLevel: options.maturityLevel ?? dto.maturityLevel ?? 'ALL_AGES',
       },
     });
   }
@@ -343,6 +352,8 @@ export class EventsService {
         ...(dto.waitlistEnabled !== undefined && { waitlistEnabled: dto.waitlistEnabled }),
         ...(dto.category !== undefined && { category: dto.category }),
         ...(dto.tags !== undefined && { tags: dto.tags }),
+        ...(dto.hasCost !== undefined && { hasCost: dto.hasCost }),
+        ...(dto.maturityLevel !== undefined && { maturityLevel: dto.maturityLevel }),
         ...(dto.imageUrl !== undefined && { imageUrl: dto.imageUrl }),
         ...(slug && { slug }),
       },

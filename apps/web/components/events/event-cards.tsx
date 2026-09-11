@@ -7,6 +7,7 @@ import { eventArt } from '@/lib/event-art';
 import { startsIn, whenLabel } from '@/lib/event-list';
 import { RsvpFaces } from '@/components/events/rsvp-faces';
 import { ticketCost, money } from '@/lib/fees';
+import { maturityBadge } from '@/lib/maturity';
 
 /**
  * How an event appears in a list (EVT-19).
@@ -173,6 +174,12 @@ export function NextEventCard({
             {!event.room?.name && <PlaceLine event={event} />}
             {!event.room?.name && !event.location && 'In person'}
           </span>
+          {maturityBadge(event.maturityLevel) && (
+            // Before cost: whether someone may come at all comes first (SPC-22).
+            <span className="rounded-full bg-[var(--surface-sunken)] px-3 py-1 font-medium">
+              {maturityBadge(event.maturityLevel)}
+            </span>
+          )}
           {event.hasCost && !event.priceCents && (
             // An event that charges at the door says so here, or the absence
             // of a ticket price reads as free.
@@ -224,6 +231,9 @@ export function EventRow({ event, actions }: { event: Event; actions: EventActio
           </span>
           <RoomLine event={event} />
           {!event.room?.name && <PlaceLine event={event} />}
+          {maturityBadge(event.maturityLevel) && (
+            <span className="font-medium">{maturityBadge(event.maturityLevel)}</span>
+          )}
           {event.hasCost && !event.priceCents && <span>Cost at the door</span>}
         </p>
       </div>

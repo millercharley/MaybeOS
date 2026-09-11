@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Users } from 'lucide-react';
 import { api, type DaySchedule as DayScheduleData } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
+import { maturityBadge } from '@/lib/maturity';
 
 /**
  * What is on across the whole building today (SPC-18).
@@ -159,6 +160,13 @@ export function DaySchedule({ orgId, initialDate }: { orgId: string; initialDate
                         <span className="data text-sm font-medium text-gray-900">
                           {time(b.startTime)} – {time(b.endTime)}
                         </span>
+                        {maturityBadge(b.maturityLevel) && (
+                          // Beside the time, where a member scanning the day
+                          // looks first (SPC-22). Only the restricting answers.
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                            {maturityBadge(b.maturityLevel)}
+                          </span>
+                        )}
                         {b.status === 'PENDING' && (
                           <span className="badge-warning">Awaiting approval</span>
                         )}

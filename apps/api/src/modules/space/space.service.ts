@@ -726,6 +726,7 @@ export class SpaceService {
         expectedAttendance: dto.expectedAttendance ?? null,
         hasCost: dto.hasCost ?? false,
         categories: dto.categories ?? [],
+        maturityLevel: dto.maturityLevel ?? 'ALL_AGES',
         startTime,
         endTime,
         status,
@@ -1101,6 +1102,7 @@ export class SpaceService {
         endTime: true,
         expectedAttendance: true,
         categories: true,
+        maturityLevel: true,
         room: { select: { id: true, name: true } },
         user: {
           select: {

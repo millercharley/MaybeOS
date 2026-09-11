@@ -560,6 +560,16 @@ enum EventVisibility {
   PRIVATE
 }
 
+/// Who a booking or event is suitable for (SPC-22). Asked of the host when a
+/// room is booked, and carried onto the event if the booking is published
+/// (EVT-17) -- the two answers drifting apart is worse than either.
+enum MaturityLevel {
+  ALL_AGES
+  AGES_13_PLUS
+  AGES_18_PLUS
+  AGES_21_PLUS
+}
+
 enum RecurrenceRule {
   NONE
   DAILY
@@ -626,6 +636,9 @@ model Event {
   /// event can have a cost and no ticket, and most co-op events that charge
   /// do exactly that.
   hasCost             Boolean         @default(false)
+  /// Who it is suitable for (SPC-22) -- from the booking when published from
+  /// one, and editable here. Only the restricting answers are ever displayed.
+  maturityLevel       MaturityLevel   @default(ALL_AGES)
   isPublished         Boolean         @default(false)
   publishedAt         DateTime?
   canceledAt          DateTime?
@@ -901,6 +914,10 @@ model Booking {
   hasCost            Boolean         @default(false)
   /// What kind of gathering: "Art or expression", "Organising", "Social".
   categories         String[]        @default([])
+  /// Who it is suitable for (SPC-22). All ages unless the host says
+  /// otherwise: the choice the form preselects, and what every booking made
+  /// before the question existed is taken to be.
+  maturityLevel      MaturityLevel   @default(ALL_AGES)
   startTime          DateTime
   endTime            DateTime
   status             BookingStatus   @default(PENDING)

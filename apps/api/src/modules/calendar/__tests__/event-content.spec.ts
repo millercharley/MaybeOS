@@ -122,3 +122,25 @@ describe('eventDescription', () => {
     expect(text).not.toContain('stephanie@example.org');
   });
 });
+
+describe('the age line (SPC-22)', () => {
+  const room = { name: 'Attic', address: '1425 Story Ave' };
+  const booking = { title: 'Late show', memberName: 'Stephanie Collins' };
+
+  it('says who it is suitable for when it restricts', () => {
+    const text = eventDescription({ ...booking, maturityLevel: 'AGES_21_PLUS' }, room);
+
+    expect(text).toContain('Ages');
+    expect(text).toContain('21 and over');
+  });
+
+  it('says nothing for all ages, which is the norm', () => {
+    // "Ages: All" on every entry is the same noise as "Cost to attend: No",
+    // and trains people to stop reading the one line that matters.
+    expect(eventDescription({ ...booking, maturityLevel: 'ALL_AGES' }, room)).not.toContain('Ages');
+  });
+
+  it('says nothing for a booking made before the question existed', () => {
+    expect(eventDescription(booking, room)).not.toContain('Ages');
+  });
+});

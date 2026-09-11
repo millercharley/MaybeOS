@@ -1,3 +1,4 @@
+import type { MaturityLevel } from './maturity';
 import * as Sentry from '@sentry/nextjs';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -2732,6 +2733,8 @@ export interface Event {
    * Distinct from `priceCents`, which is a ticket sold through MaybeOS.
    */
   hasCost?: boolean;
+  /** Who it is suitable for (SPC-22). */
+  maturityLevel?: MaturityLevel;
   /**
    * Who runs this event (EVT-04). Present on org-scoped reads only — the
    * public endpoints deliberately omit it, so a member's name is not
@@ -2779,6 +2782,8 @@ export interface CreateEventData {
    * Distinct from `priceCents`, which is a ticket sold through MaybeOS.
    */
   hasCost?: boolean;
+  /** Who it is suitable for (SPC-22). */
+  maturityLevel?: MaturityLevel;
   locationId?: string;
   roomId?: string;
   /** Go live immediately rather than saving a draft (EVT-05). */
@@ -2952,6 +2957,8 @@ export interface DaySchedule {
     endTime: string;
     expectedAttendance?: number | null;
     categories: string[];
+    /** Who it is suitable for (SPC-22). */
+    maturityLevel?: MaturityLevel;
     room: { id: string; name: string };
     user: { id: string; name?: string | null; avatarUrl?: string | null };
   }>;
@@ -2990,6 +2997,8 @@ export interface CreateBookingData {
   expectedAttendance?: number;
   hasCost?: boolean;
   categories?: string[];
+  /** Who it is suitable for (SPC-22). All ages when absent. */
+  maturityLevel?: MaturityLevel;
   startTime: string;
   endTime: string;
 }
