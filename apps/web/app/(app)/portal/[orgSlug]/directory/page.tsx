@@ -11,8 +11,8 @@ import { PageHeader } from '@/components/layout/page-header';
 import { useMemberCard } from '@/contexts/member-card-context';
 
 /**
- * The Member Ledger (MEM-17) — the Directory, redesigned to read like a cap
- * table.
+ * Members (MEM-17, MEM-19) — the Directory, and, when the co-op tracks them,
+ * its cap table.
  *
  * Every member, what they hold, and what share of the co-op that is, visible
  * to the whole co-op: in a cooperative, who owns what is everybody's business.
@@ -51,7 +51,7 @@ export default function MemberLedgerPage() {
     return (
       <div className="py-12 text-center">
         <Users className="mx-auto h-10 w-10 text-gray-300" />
-        <PageHeader title="Member Ledger" description="Sign in to view the member ledger." />
+        <PageHeader title="Members" description="Sign in to see the co-op's members." />
       </div>
     );
   }
@@ -66,6 +66,9 @@ export default function MemberLedgerPage() {
 
   const holders = ledger?.holders ?? [];
   const total = ledger?.totalShares ?? 0;
+  // Share tracking is the co-op's choice (MEM-19). Off, this is a directory:
+  // no shares were read, so there are no columns to show them in.
+  const on = ledger?.sharesEnabled ?? false;
   const members = holders.length + (ledger?.privateMembers.count ?? 0);
 
   // Name only. Searching an address would answer "is this person a member
@@ -81,11 +84,11 @@ export default function MemberLedgerPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Member Ledger"
+        title="Members"
         description={[
           `${members} ${members === 1 ? 'member' : 'members'}`,
-          total > 0 && `${formatShares(total)} shares distributed`,
-          asOf && `as of ${asOf}`,
+          on && total > 0 && `${formatShares(total)} shares distributed`,
+          on && asOf && `as of ${asOf}`,
         ]
           .filter(Boolean)
           .join(' · ')}
@@ -93,7 +96,7 @@ export default function MemberLedgerPage() {
 
       {failure && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{failure}</p>}
 
-      {ledger && total === 0 && (
+      {on && total === 0 && (
         <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600">
           The co-op&apos;s cap table hasn&apos;t been imported yet, so every member shows no shares.
         </p>
@@ -114,10 +117,10 @@ export default function MemberLedgerPage() {
         <table className="w-full min-w-[34rem] text-sm">
           <thead className="border-b border-gray-200 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
             <tr>
-              <th className="w-12 px-4 py-3 font-medium">#</th>
+              {on && <th className="w-12 px-4 py-3 font-medium">#</th>}
               <th className="px-4 py-3 font-medium">Member</th>
-              <th className="px-4 py-3 text-right font-medium">Shares</th>
-              <th className="px-4 py-3 text-right font-medium">Ownership</th>
+              {on && <th className="px-4 py-3 text-right font-medium">Shares</th>}
+              {on && <th className="px-4 py-3 text-right font-medium">Ownership</th>}
               <th className="w-14 px-2 py-3">
                 <span className="sr-only">Message</span>
               </th>
@@ -127,7 +130,7 @@ export default function MemberLedgerPage() {
           <tbody className="divide-y divide-gray-100">
             {filtered.map((holder) => (
               <tr key={holder.userId} className={holder.isYou ? 'bg-brand-50/40' : undefined}>
-                <td className="px-4 py-3 tabular-nums text-gray-400">{holder.rank}</td>
+                {on && <td className="px-4 py-3 tabular-nums text-gray-400">{holder.rank}</td>}
                 <td className="px-4 py-3">
                   <button
                     type="button"
@@ -160,10 +163,14 @@ export default function MemberLedgerPage() {
                     </span>
                   </button>
                 </td>
-                <td className="px-4 py-3 text-right tabular-nums text-gray-900">{formatShares(holder.shares)}</td>
-                <td className="px-4 py-3 text-right tabular-nums text-gray-700">
-                  {formatOwnership(holder.shares, total)}
-                </td>
+                {on && (
+                  <td className="px-4 py-3 text-right tabular-nums text-gray-900">{formatShares(holder.shares)}</td>
+                )}
+                {on && (
+                  <td className="px-4 py-3 text-right tabular-nums text-gray-700">
+                    {formatOwnership(holder.shares, total)}
+                  </td>
+                )}
                 <td className="px-2 py-3 text-right">
                   {!holder.isYou && org && (
                     <Link
@@ -186,36 +193,40 @@ export default function MemberLedgerPage() {
                 } profile private`}
                 shares={ledger.privateMembers.shares}
                 total={total}
+                on={on}
               />
             )}
-            {!search && ledger && ledger.unlinked.count > 0 && (
+            {!search && on && ledger && ledger.unlinked.count > 0 && (
               <AggregateRow
                 label={`${ledger.unlinked.count} ${
                   ledger.unlinked.count === 1 ? 'holder' : 'holders'
                 } on the cap table not yet in MaybeOS`}
                 shares={ledger.unlinked.shares}
                 total={total}
+                on={on}
               />
             )}
 
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">
+                <td colSpan={on ? 5 : 2} className="px-4 py-8 text-center text-sm text-gray-500">
                   {search ? 'No members match your search.' : 'No members yet.'}
                 </td>
               </tr>
             )}
           </tbody>
 
-          <tfoot className="border-t-2 border-gray-200 bg-gray-50 font-medium text-gray-900">
-            <tr>
-              <td className="px-4 py-3" />
-              <td className="px-4 py-3">Total distributed</td>
-              <td className="px-4 py-3 text-right tabular-nums">{formatShares(total)}</td>
-              <td className="px-4 py-3 text-right tabular-nums">{total > 0 ? '100.00%' : '—'}</td>
-              <td />
-            </tr>
-          </tfoot>
+          {on && (
+            <tfoot className="border-t-2 border-gray-200 bg-gray-50 font-medium text-gray-900">
+              <tr>
+                <td className="px-4 py-3" />
+                <td className="px-4 py-3">Total distributed</td>
+                <td className="px-4 py-3 text-right tabular-nums">{formatShares(total)}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{total > 0 ? '100.00%' : '—'}</td>
+                <td />
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 
@@ -223,13 +234,23 @@ export default function MemberLedgerPage() {
   );
 }
 
-function AggregateRow({ label, shares, total }: { label: string; shares: number; total: number }) {
+function AggregateRow({
+  label,
+  shares,
+  total,
+  on,
+}: {
+  label: string;
+  shares: number;
+  total: number;
+  on: boolean;
+}) {
   return (
     <tr className="text-gray-500">
-      <td className="px-4 py-3" />
+      {on && <td className="px-4 py-3" />}
       <td className="px-4 py-3 italic">{label}</td>
-      <td className="px-4 py-3 text-right tabular-nums">{formatShares(shares)}</td>
-      <td className="px-4 py-3 text-right tabular-nums">{formatOwnership(shares, total)}</td>
+      {on && <td className="px-4 py-3 text-right tabular-nums">{formatShares(shares)}</td>}
+      {on && <td className="px-4 py-3 text-right tabular-nums">{formatOwnership(shares, total)}</td>}
       <td />
     </tr>
   );

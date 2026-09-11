@@ -122,9 +122,9 @@ const coopNav = (slug: string): NavItem[] => [
   { href: `/portal/${slug}/handbook`, label: 'Handbook', icon: BookOpen },
   { href: `/portal/${slug}/commons`, label: 'Commons', icon: MessageSquare },
   { href: `/portal/${slug}/messages`, label: 'Messages', icon: Mail },
-  // The Directory, redesigned as the co-op's cap table (MEM-17). Same route,
-  // so every existing link to it still lands.
-  { href: `/portal/${slug}/directory`, label: 'Member Ledger', icon: Users },
+  // The Directory, and the co-op's cap table when it tracks shares (MEM-17,
+  // MEM-19). Same route, so every existing link to it still lands.
+  { href: `/portal/${slug}/directory`, label: 'Members', icon: Users },
   { href: `/portal/${slug}/events`, label: 'Events', icon: Calendar },
   { href: `/portal/${slug}/rooms`, label: 'Rooms', icon: DoorOpen },
   // What needs doing, and taking a turn (SRV-01). Last in the section

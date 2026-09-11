@@ -1,8 +1,11 @@
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
+  IsUUID,
   IsOptional,
   IsString,
   Max,
@@ -12,6 +15,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { GRANT_KINDS, GrantKind } from '../ledger';
 
 const MAX_SHARES = 2_000_000_000;
 
@@ -49,4 +53,54 @@ export class ImportLedgerDto {
 
   /** Publish even though the import disagrees with the sheet's total. */
   @ApiPropertyOptional() @IsOptional() @IsBoolean() acceptMismatch?: boolean;
+}
+
+/**
+ * Shares granted in MaybeOS, to one member or a selection (MEM-19). The
+ * rules a grant must meet live in `grantProblem`, so the preview and the
+ * server cannot disagree about them.
+ */
+export class GrantSharesDto {
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(5000)
+  @IsUUID('all', { each: true })
+  userIds!: string[];
+
+  @ApiProperty({ enum: GRANT_KINDS })
+  @IsIn(GRANT_KINDS as unknown as string[])
+  kind!: GrantKind;
+
+  @ApiProperty({ example: 100 })
+  @IsInt()
+  @Min(-MAX_SHARES)
+  @Max(MAX_SHARES)
+  shares!: number;
+
+  @ApiPropertyOptional({ example: '2026 annual patronage grant' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
+}
+
+/** Set one member's balance to a figure, recorded as an adjustment (MEM-19). */
+export class SetTotalDto {
+  @ApiProperty({ example: 1200 })
+  @IsInt()
+  @Min(0)
+  @Max(MAX_SHARES)
+  total!: number;
+
+  /** The balance the admin was looking at. Refused if it has moved since. */
+  @ApiProperty({ example: 1000 })
+  @IsInt()
+  expectedCurrent!: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
 }

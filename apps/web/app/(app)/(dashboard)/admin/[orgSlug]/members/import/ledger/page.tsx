@@ -9,7 +9,7 @@ import { parseCapTable, CapTableFormatError, formatShares, ParsedCapTable } from
 import { PageHeader } from '@/components/layout/page-header';
 
 /**
- * Import the co-op's cap table into the Member Ledger (MEM-17).
+ * Import the co-op's cap table into Members' shares and ownership (MEM-17).
  *
  * Read in the browser, previewed on the server with writes switched off, then
  * imported — and the import replaces the ledger whole, so running it again
@@ -91,7 +91,7 @@ export default function ImportLedgerPage(props: { params: Promise<{ orgSlug: str
       <div>
         <PageHeader title="Import the cap table" />
         <p className="mt-1 text-sm text-gray-500">
-          Shares and ownership for the Member Ledger, from the spreadsheet the co-op keeps them in.
+          Shares and ownership for the Members page, from the spreadsheet the co-op keeps them in.
           Every member will see what every member holds — names and shares only, never an email or a
           phone number.
         </p>
@@ -158,6 +158,14 @@ export default function ImportLedgerPage(props: { params: Promise<{ orgSlug: str
             </p>
           )}
 
+          {preview.manualShares !== 0 && (
+            <p className="mt-3 flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              {formatShares(preview.manualShares)} shares have been granted in MaybeOS. This import keeps
+              them — so if the sheet already includes those grants, they will be counted twice.
+            </p>
+          )}
+
           <ul className="mt-4 space-y-1.5 text-sm text-gray-600">
             <li>
               <b className="text-gray-900">{preview.holders}</b> people hold shares, across {preview.rows} rows
@@ -213,7 +221,8 @@ export default function ImportLedgerPage(props: { params: Promise<{ orgSlug: str
             {running ? 'Importing…' : 'Import the cap table'}
           </button>
           <p className="mt-2 text-xs text-gray-500">
-            This replaces whatever the ledger held before. Nothing is written until you press it.
+            This replaces the previous cap-table import. Shares granted in MaybeOS are kept. Nothing is
+            written until you press it.
           </p>
         </section>
       )}
@@ -225,7 +234,7 @@ export default function ImportLedgerPage(props: { params: Promise<{ orgSlug: str
             Imported {formatShares(done.importedShares)} shares for {done.holders} people.
           </p>
           <Link href={`/portal/${orgSlug}/directory`} className="mt-2 inline-block text-brand-700 hover:underline">
-            Open the Member Ledger
+            Open Members
           </Link>
         </section>
       )}

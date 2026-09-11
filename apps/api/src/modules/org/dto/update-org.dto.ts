@@ -24,6 +24,17 @@ export class UpdateOrgDto extends PartialType(CreateOrgDto) {
   allowPublicJoin?: boolean;
 
   /**
+   * Whether the co-op tracks shares and ownership (MEM-19). Off by default;
+   * when on, every member sees every member's holding on the Members page.
+   * Declared here because the whitelist rejects the whole save otherwise —
+   * one undeclared field is a refused request, not an ignored field (EVT-21).
+   */
+  @ApiPropertyOptional({ example: false, default: false })
+  @IsOptional()
+  @IsBoolean()
+  sharesEnabled?: boolean;
+
+  /**
    * A fee the co-op adds to its own ticket sales, in cents per ticket, on top
    * of MaybeOS's (D-013). Capped at $50 — not a business rule so much as a
    * guard against a typo in a cents field becoming a $500 booking fee on a

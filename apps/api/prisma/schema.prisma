@@ -79,6 +79,10 @@ model Organization {
   // Off by default: a housing co-op or members' club must not be joinable by
   // anyone with a card. Each org opts in. See D-020.
   allowPublicJoin          Boolean           @default(false)
+  /// Whether this co-op tracks shares and ownership at all (MEM-19). Off by
+  /// default: most co-ops do not keep an equity register, and one that does
+  /// decides when members see it.
+  sharesEnabled            Boolean           @default(false)
   /// The co-op's MaybeOS plan (D-013). Everyone starts on FREE.
   plan                     MaybeOsPlan       @default(FREE)
   /// The co-op's own Stripe account, from Connect onboarding. Ticket money is
@@ -283,6 +287,8 @@ model User {
   hostPayouts           HostPayout[]           @relation("HostPayoutRecipient")
   payoutsMarked         HostPayout[]           @relation("HostPayoutPayer")
   attachments           Attachment[]
+  /// Share grants naming this member (MEM-19).
+  shareGrants           ShareGrant[]
 
   @@map("users")
 }
@@ -2321,33 +2327,52 @@ enum ShareGrantKind {
   ADJUSTMENT
 }
 
-/// One line in a co-op's equity ledger (MEM-17).
+/// Where a ledger line came from (MEM-19). A re-import of the cap table
+/// replaces IMPORT lines only, so a grant made in MaybeOS is never wiped by it.
+enum ShareGrantSource {
+  IMPORT
+  MANUAL
+}
+
+/// One line in a co-op's equity ledger (MEM-17, MEM-19).
 ///
 /// A holder's balance is the sum of their lines, the way a real cap table
 /// works: transactions first, balances derived, so every number shown can be
-/// traced to where it came from.
+/// traced to where it came from — and corrected by an adjustment, never by
+/// editing history.
 ///
-/// Keyed to the holder's email rather than a user id, because the cap table
-/// predates most members' MaybeOS accounts and a grant has to find its member
-/// the day they join, without anybody re-importing. The email is used for that
-/// match on the server and never returned; it is omitted at the Prisma client
-/// like every other column nobody should select by accident.
+/// Belongs to a member by `userId` when it names one (every grant made in
+/// MaybeOS, and every imported line whose email matched a member), otherwise
+/// by `holderEmail` — the cap table predates most members' accounts, and a line
+/// has to find its member the day they join. The email is matched on the
+/// server and never returned; it is omitted at the Prisma client.
 model ShareGrant {
-  id          String         @id @default(uuid())
+  id          String           @id @default(uuid())
   orgId       String
+  /// The member it belongs to. Null for a cap-table holder not yet in MaybeOS.
+  userId      String?
   holderEmail String
-  /// As the source wrote it. Shown to nobody; kept so an import can be read back.
+  /// As the source wrote it. Shown to organisers only.
   holderName  String?
   kind        ShareGrantKind
-  /// Signed: an ADJUSTMENT is negative when a source row's total is below its parts.
+  /// Signed: an ADJUSTMENT is negative when a balance is corrected downward.
   shares      Int
-  /// Which import wrote it. Re-importing replaces the co-op's ledger whole.
-  importBatch String
-  importedAt  DateTime       @default(now())
+  source      ShareGrantSource @default(IMPORT)
+  /// Why, in the admin's words. Optional.
+  note        String?
+  /// The admin who recorded a MaybeOS grant. Null on imported lines.
+  grantedById String?
+  /// Which import wrote it. Null on a grant made in MaybeOS.
+  importBatch String?
+  /// When the line was recorded — imported or granted.
+  importedAt  DateTime         @default(now())
 
-  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([orgId])
   @@index([orgId, holderEmail])
+  @@index([orgId, userId])
   @@map("share_grants")
 }
+
