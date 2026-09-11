@@ -505,6 +505,8 @@ class ApiClient {
       data: Partial<CreateOrgData> & {
         brandColor?: string;
         allowPublicJoin?: boolean;
+        /** Whether the co-op tracks shares and ownership (MEM-19). */
+        sharesEnabled?: boolean;
         /** The co-op's own fee per ticket, in cents (D-013 ticketing). */
         ticketFeeCents?: number;
         /**
@@ -765,6 +767,36 @@ class ApiClient {
   ledger = {
     get: (orgId: string, token: string) =>
       this.request<MemberLedger>(`/orgs/${orgId}/ledger`, { token }),
+
+    /** Every member with their holding, for the admin's Shares page (MEM-19). */
+    adminView: (orgId: string, token: string) =>
+      this.request<LedgerAdminView>(`/orgs/${orgId}/ledger/admin`, { token }),
+
+    history: (orgId: string, userId: string, token: string) =>
+      this.request<LedgerHistory>(`/orgs/${orgId}/ledger/members/${userId}/history`, { token }),
+
+    /** Grant shares to one member or a selection. All or nothing. */
+    grant: (
+      orgId: string,
+      body: { userIds: string[]; kind: GrantKind; shares: number; note?: string },
+      token: string,
+    ) =>
+      this.request<{ members: number; sharesEach: number; totalGranted: number }>(
+        `/orgs/${orgId}/ledger/grants`,
+        { method: 'POST', body: JSON.stringify(body), token },
+      ),
+
+    /** Set a member's balance; refused if it moved from `expectedCurrent`. */
+    setTotal: (
+      orgId: string,
+      userId: string,
+      body: { total: number; expectedCurrent: number; note?: string },
+      token: string,
+    ) =>
+      this.request<{ changed: boolean; total: number; adjustment: number }>(
+        `/orgs/${orgId}/ledger/members/${userId}/total`,
+        { method: 'POST', body: JSON.stringify(body), token },
+      ),
 
     /** Import the co-op's cap table. `dryRun` is the caller's to state every time. */
     importCapTable: (
@@ -2536,13 +2568,50 @@ export interface LedgerHolder {
 }
 
 export interface MemberLedger {
-  /** When the cap table was last imported. Null before the first import. */
+  /** Whether this co-op tracks shares at all (MEM-19). When false, shares are all zero and unread. */
+  sharesEnabled: boolean;
+  /** When the ledger last changed — an import or a grant. Null before either. */
   asOf: string | null;
   totalShares: number;
   holders: LedgerHolder[];
   privateMembers: { count: number; shares: number };
   unlinked: { count: number; shares: number };
   reconciled: boolean;
+}
+
+/** One member on the admin's Shares page (MEM-19). Hidden members included. */
+export interface LedgerAdminMember {
+  userId: string;
+  role: string;
+  isPublic: boolean;
+  tierName: string | null;
+  shares: number;
+  breakdown: Partial<Record<GrantKind, number>>;
+  user: { id: string; name: string | null; avatarUrl: string | null };
+}
+
+export interface LedgerAdminView {
+  sharesEnabled: boolean;
+  totalShares: number;
+  importedShares: number;
+  grantedShares: number;
+  lastImportAt: string | null;
+  members: LedgerAdminMember[];
+  /** Cap-table holders not yet in MaybeOS, by name. Never by address. */
+  unlinked: Array<{ name: string | null; shares: number }>;
+}
+
+export interface LedgerHistory {
+  balance: number;
+  lines: Array<{
+    id: string;
+    kind: GrantKind;
+    shares: number;
+    source: 'IMPORT' | 'MANUAL';
+    note: string | null;
+    recordedAt: string;
+    grantedBy: string | null;
+  }>;
 }
 
 export interface LedgerImportResult {
@@ -2555,6 +2624,8 @@ export interface LedgerImportResult {
   matchesSheet: boolean | null;
   linkedToMembers: number;
   notYetMembers: number;
+  /** Shares granted in MaybeOS. An import keeps them, so a sheet that already includes them counts twice. */
+  manualShares: number;
   skipped: Array<{ name: string | null; shares: number; reason: string }>;
   adjusted: Array<{ name: string | null; parts: number; total: number }>;
   repeatedEmails: number;

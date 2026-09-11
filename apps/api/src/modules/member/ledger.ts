@@ -30,6 +30,9 @@ export type GrantKind = (typeof GRANT_KINDS)[number];
 
 export interface GrantLine {
   holderEmail: string;
+  /** The member it names (MEM-19). Wins over the email when present. */
+  userId?: string | null;
+  holderName?: string | null;
   kind: GrantKind;
   shares: number;
 }
@@ -90,31 +93,81 @@ export function normalizeEmail(email: string | null | undefined): string {
   return (email ?? '').trim().toLowerCase();
 }
 
+type Holding = { shares: number; breakdown: Partial<Record<GrantKind, number>> };
+
+const credit = (holding: Holding, grant: GrantLine) => {
+  holding.shares += grant.shares;
+  holding.breakdown[grant.kind] = (holding.breakdown[grant.kind] ?? 0) + grant.shares;
+};
+
+/**
+ * Whose each line is (MEM-19).
+ *
+ * A line naming a member (`userId`) is theirs — every grant made in MaybeOS,
+ * and every imported line whose email matched a member at import. A line
+ * naming only an email belongs to whichever member holds that address here.
+ *
+ * A line naming somebody who has since left belongs to **no current member**.
+ * It does not fall back to its email, which may by now belong to somebody
+ * else: shares do not move between people because an address did.
+ */
+export function attribute(grants: GrantLine[], members: Pick<LedgerMember, 'userId' | 'email'>[]) {
+  const byUser = new Map(members.map((m) => [m.userId, m.userId]));
+  const byEmail = new Map(members.map((m) => [normalizeEmail(m.email), m.userId]));
+
+  const held = new Map<string, Holding>();
+  const unlinked = new Map<string, Holding & { name: string | null }>();
+  let totalShares = 0;
+
+  for (const grant of grants) {
+    totalShares += grant.shares;
+    const owner = grant.userId ? byUser.get(grant.userId) : byEmail.get(normalizeEmail(grant.holderEmail));
+
+    if (owner) {
+      const holding = held.get(owner) ?? { shares: 0, breakdown: {} };
+      credit(holding, grant);
+      held.set(owner, holding);
+      continue;
+    }
+
+    const key = grant.userId ? `user:${grant.userId}` : `email:${normalizeEmail(grant.holderEmail)}`;
+    const holding = unlinked.get(key) ?? { shares: 0, breakdown: {}, name: grant.holderName ?? null };
+    credit(holding, grant);
+    unlinked.set(key, holding);
+  }
+
+  return { held, unlinked, totalShares };
+}
+
+/**
+ * Whether a grant is one an admin may make (MEM-19). A message when not.
+ *
+ * Grants are whole, non-zero shares. Only an adjustment goes down, and an
+ * adjustment corrects one member's balance — a negative figure applied to a
+ * whole selection at once is how a slip becomes a mass correction.
+ */
+export function grantProblem(kind: GrantKind, shares: number, members: number): string | null {
+  if (!Number.isInteger(shares) || shares === 0) return 'Grant a whole number of shares, other than zero.';
+  if (Math.abs(shares) > 1_000_000_000) return 'That is more shares than a single grant can carry.';
+  if (shares < 0 && kind !== 'ADJUSTMENT') return 'Only an adjustment can take shares away.';
+  if (members > 1 && shares < 0) return 'Shares can be taken away from one member at a time, not a selection.';
+  if (members > 1 && kind === 'ADJUSTMENT') return 'Adjustments correct one member at a time. Grant a kind of share to a selection.';
+  if (shares * members > 2_000_000_000) return 'Together that is more shares than the ledger can hold.';
+  return null;
+}
+
 export function computeLedger(
   grants: GrantLine[],
   members: LedgerMember[],
   viewer: LedgerViewer,
 ): Ledger {
-  const held = new Map<string, { shares: number; breakdown: Partial<Record<GrantKind, number>> }>();
-  let totalShares = 0;
+  const { held, unlinked: stray, totalShares } = attribute(grants, members);
 
-  for (const grant of grants) {
-    const email = normalizeEmail(grant.holderEmail);
-    const entry = held.get(email) ?? { shares: 0, breakdown: {} };
-    entry.shares += grant.shares;
-    entry.breakdown[grant.kind] = (entry.breakdown[grant.kind] ?? 0) + grant.shares;
-    held.set(email, entry);
-    totalShares += grant.shares;
-  }
-
-  const memberEmails = new Set<string>();
   const holders: Omit<LedgerHolder, 'rank'>[] = [];
   const privateMembers = { count: 0, shares: 0 };
 
   for (const member of members) {
-    const email = normalizeEmail(member.email);
-    memberEmails.add(email);
-    const holding = held.get(email);
+    const holding = held.get(member.userId);
     const shares = holding?.shares ?? 0;
 
     const isYou = member.userId === viewer.userId;
@@ -148,12 +201,8 @@ export function computeLedger(
     });
   }
 
-  const unlinked = { count: 0, shares: 0 };
-  for (const [email, holding] of held) {
-    if (memberEmails.has(email)) continue;
-    unlinked.count++;
-    unlinked.shares += holding.shares;
-  }
+  const unlinked = { count: stray.size, shares: 0 };
+  for (const holding of stray.values()) unlinked.shares += holding.shares;
 
   // Largest first, as a cap table reads; ties by name so the order is stable.
   holders.sort(

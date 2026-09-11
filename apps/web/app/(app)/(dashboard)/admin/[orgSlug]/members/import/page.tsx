@@ -193,7 +193,7 @@ export default function ImportMembersPage(props: { params: Promise<{ orgSlug: st
             href={`/admin/${orgSlug}/members/import/ledger`}
             className="font-medium text-brand-600 hover:text-brand-700"
           >
-            import it for the Member Ledger
+            import it for Members
           </Link>
           .
         </p>

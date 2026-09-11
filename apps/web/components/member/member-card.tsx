@@ -43,8 +43,8 @@ type Tab = 'about' | 'posts' | 'comments';
  * written here. The same card on every page, opened by `MemberName` through
  * `MemberCardProvider`.
  *
- * Not on it, deliberately: shares and ownership (the Member Ledger is where
- * those live), email and phone (nobody's to hand out), and anything MaybeOS
+ * Not on it, deliberately: shares and ownership (the Members page is where
+ * those live, when a co-op tracks them), email and phone (nobody's to hand out), and anything MaybeOS
  * does not actually know — there is no "last seen" and no activity score,
  * because neither is recorded, and a card that guesses is worse than one
  * that leaves a gap.

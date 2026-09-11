@@ -3,7 +3,7 @@
 import { useState, FormEvent } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { Search, Plus, MoreHorizontal, Clock, RefreshCw, Mail, Upload } from 'lucide-react';
+import { PieChart, Search, Plus, MoreHorizontal, Clock, RefreshCw, Mail, Upload } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
 import { useAuthStore } from '@/lib/auth-store';
 import { api } from '@/lib/api';
@@ -159,7 +159,14 @@ export default function MembersPage() {
         <PageHeader
           title="Members"
         />
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+        <Link
+          href={`/admin/${orgSlug}/shares`}
+          className="btn-secondary inline-flex items-center gap-2"
+        >
+          <PieChart className="h-4 w-4" />
+          Shares
+        </Link>
         <Link
           href={`/admin/${orgSlug}/members/import`}
           className="btn-secondary inline-flex items-center gap-2"
