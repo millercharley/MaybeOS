@@ -8,6 +8,7 @@ import { money } from '@/lib/fees';
 // Aliased: the data shape and the component that renders it would
 // otherwise share a name.
 import { api, DoorList as DoorListData, Event, TicketSale } from '@/lib/api';
+import { MemberName } from '@/components/member/member-name';
 
 /**
  * The door list (IMP-10).
@@ -205,7 +206,7 @@ export function DoorList({
           </p>
           <p className="mt-2 text-sm text-gray-500">
             {event?.host ? (
-              <>Hosted by {event.host.name ?? 'a member'}</>
+              <>Hosted by <MemberName userId={event.host.id} name={event.host.name ?? 'a member'} /></>
             ) : (
               // Every event made before EVT-04 has no host, and the PRD's
               // post-event follow-up needs one. Saying so beats an empty line.
@@ -277,7 +278,7 @@ export function DoorList({
 
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium text-gray-900">
-                    {a.name}
+                    <MemberName userId={a.userId} name={a.name} />
                   </span>
                   <span className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-gray-500">
                     {a.isGuest && <span>Guest</span>}

@@ -8,6 +8,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { CommandPalette, OPEN_SEARCH_EVENT } from '@/components/layout/command-palette';
 import { OrgMark } from '@/components/layout/org-mark';
 import { PortalProvider, usePortal } from '@/contexts/portal-context';
+import { MemberCardProvider } from '@/contexts/member-card-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { brandStyle, brandTheme } from '@/lib/brand';
 
@@ -54,7 +55,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <PortalProvider orgSlug={onPortal ? slugParam : undefined}>
-      <AppShell>{children}</AppShell>
+      {/* One member card for every signed-in page (MEM-18). Unconditional for
+          the same reason as PortalProvider above: a wrapper that comes and
+          goes between routes changes the tree's shape and remounts the shell. */}
+      <MemberCardProvider>
+        <AppShell>{children}</AppShell>
+      </MemberCardProvider>
     </PortalProvider>
   );
 }

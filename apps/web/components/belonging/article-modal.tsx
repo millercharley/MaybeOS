@@ -7,6 +7,7 @@ import { renderBodyHtml } from '@/lib/rich-text';
 import { HANDBOOK_COVER_ASPECT } from '@/lib/image-crop';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
 import { timeAgo } from '@/lib/relative-time';
+import { MemberName } from '@/components/member/member-name';
 
 /**
  * Reading an article, following the reference layout.
@@ -101,7 +102,11 @@ export function ArticleModal({
             )}
             <div className="min-w-0">
               <p className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold text-gray-900">{article.author?.name ?? 'A member'}</span>
+                <MemberName
+                  userId={article.author?.userId}
+                  name={article.author?.name ?? 'A member'}
+                  className="font-semibold text-gray-900"
+                />
                 <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-800">
                   Admin
                 </span>
@@ -205,9 +210,11 @@ export function ArticleModal({
                 )}
                 <div className="min-w-0">
                   <p className="text-sm">
-                    <span className="font-semibold text-gray-900">
-                      {comment.member.user.name ?? 'A member'}
-                    </span>{' '}
+                    <MemberName
+                      userId={comment.member.userId}
+                      name={comment.member.user.name ?? 'A member'}
+                      className="font-semibold text-gray-900"
+                    />{' '}
                     <span className="text-gray-500">{timeAgo(comment.createdAt)}</span>
                   </p>
                   <div

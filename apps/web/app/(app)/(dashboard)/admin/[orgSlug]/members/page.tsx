@@ -9,6 +9,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { api } from '@/lib/api';
 import { Modal } from '@/components/ui/modal';
 import { PageHeader } from '@/components/layout/page-header';
+import { MemberName } from '@/components/member/member-name';
 
 const roleBadge: Record<string, string> = {
   ADMIN: 'badge-success',
@@ -358,7 +359,7 @@ export default function MembersPage() {
                       </span>
                     </div>
                     <span className="text-sm font-medium text-gray-900">
-                      {member.user.name ?? member.user.email ?? 'Member'}
+                      <MemberName userId={member.user.id} name={member.user.name ?? member.user.email ?? 'Member'} />
                     </span>
                   </div>
                 </td>

@@ -5,6 +5,7 @@ import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Users } from 'lucide-
 import { api, type DaySchedule as DayScheduleData } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { maturityBadge } from '@/lib/maturity';
+import { MemberName } from '@/components/member/member-name';
 
 /**
  * What is on across the whole building today (SPC-18).
@@ -175,7 +176,7 @@ export function DaySchedule({ orgId, initialDate }: { orgId: string; initialDate
                       <p className="mt-1 text-sm font-semibold text-gray-900">{b.title}</p>
 
                       <p className="mt-0.5 text-sm text-gray-500">
-                        {b.user.name || 'A member'}
+                        <MemberName userId={b.user.id} name={b.user.name || 'A member'} />
                         {typeof b.expectedAttendance === 'number' && b.expectedAttendance > 0 && (
                           <span className="ml-2 inline-flex items-center gap-1 text-xs text-gray-400">
                             <Users className="h-3 w-3" />

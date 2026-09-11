@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Users, Search, X, Calendar, Link2, MapPin, MessageCircle, EyeOff } from 'lucide-react';
+import { Users, Search, MessageCircle, EyeOff } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, LedgerHolder, MemberLedger } from '@/lib/api';
-import { safeProfileLinks, profileLinkLabel } from '@/lib/profile-links';
-import { GRANT_KINDS, GRANT_LABELS, formatOwnership, formatShares } from '@/lib/ledger';
+import { formatOwnership, formatShares } from '@/lib/ledger';
 import { PageHeader } from '@/components/layout/page-header';
+import { useMemberCard } from '@/contexts/member-card-context';
 
 /**
  * The Member Ledger (MEM-17) — the Directory, redesigned to read like a cap
@@ -16,7 +16,8 @@ import { PageHeader } from '@/components/layout/page-header';
  *
  * Every member, what they hold, and what share of the co-op that is, visible
  * to the whole co-op: in a cooperative, who owns what is everybody's business.
- * Clicking a name opens their card; every row but your own offers a message.
+ * Clicking a name opens the member card every name in MaybeOS opens; every
+ * row but your own offers a message.
  *
  * What it will not show is how to reach anyone outside MaybeOS. No email and
  * no phone number are in the response for any role — the ledger is read by
@@ -30,7 +31,9 @@ export default function MemberLedgerPage() {
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState('');
   const [search, setSearch] = useState('');
-  const [open, setOpen] = useState<LedgerHolder | null>(null);
+  // The same card every name in MaybeOS opens (MEM-18). Shares and ownership
+  // stay in this table; the card is about the person.
+  const { openMember } = useMemberCard();
 
   useEffect(() => {
     if (!org || !token) {
@@ -128,7 +131,7 @@ export default function MemberLedgerPage() {
                 <td className="px-4 py-3">
                   <button
                     type="button"
-                    onClick={() => setOpen(holder)}
+                    onClick={() => openMember({ userId: holder.userId, name: holder.user.name })}
                     className="group flex items-center gap-3 text-left"
                   >
                     <Avatar holder={holder} size="sm" />
@@ -216,9 +219,6 @@ export default function MemberLedgerPage() {
         </table>
       </div>
 
-      {open && org && (
-        <MemberCard holder={open} total={total} orgSlug={org.slug} onClose={() => setOpen(null)} />
-      )}
     </div>
   );
 }
@@ -248,138 +248,5 @@ function Avatar({ holder, size }: { holder: LedgerHolder; size: 'sm' | 'lg' }) {
         </span>
       )}
     </span>
-  );
-}
-
-/**
- * One member's card: who they are, what they hold, and a way to say hello.
- *
- * The equity comes first after the name because that is what this page is
- * for; the introduction follows because that is what somebody opening a card
- * before a first conversation actually wants.
- */
-function MemberCard({
-  holder,
-  total,
-  orgSlug,
-  onClose,
-}: {
-  holder: LedgerHolder;
-  total: number;
-  orgSlug: string;
-  onClose: () => void;
-}) {
-  const joined = new Date(holder.memberSince);
-  const firstName = holder.user.name?.split(' ')[0] || 'this member';
-  const kinds = GRANT_KINDS.filter((kind) => holder.breakdown[kind]);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 p-4 pt-20"
-      onClick={onClose}
-      role="presentation"
-    >
-      <div
-        className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-label={holder.user.name || 'Member'}
-      >
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <Avatar holder={holder} size="lg" />
-            <div className="min-w-0">
-              <h2 className="text-xl font-semibold text-gray-900">{holder.user.name || 'Member'}</h2>
-              {holder.headline && <p className="mt-0.5 text-sm text-gray-600">{holder.headline}</p>}
-              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-500">
-                <span className="flex items-center gap-1.5">
-                  <Calendar className="h-3.5 w-3.5" />
-                  Member since {joined.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
-                </span>
-                {holder.location && (
-                  <span className="flex items-center gap-1.5">
-                    <MapPin className="h-3.5 w-3.5" />
-                    {holder.location}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-          <button type="button" onClick={onClose} className="shrink-0 text-gray-400 hover:text-gray-600" aria-label="Close">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="mt-5 grid grid-cols-2 gap-4 rounded-xl bg-gray-50 p-4">
-          <div>
-            <p className="text-2xl font-semibold tabular-nums text-gray-900">{formatShares(holder.shares)}</p>
-            <p className="text-xs text-gray-500">shares</p>
-          </div>
-          <div>
-            <p className="text-2xl font-semibold tabular-nums text-gray-900">{formatOwnership(holder.shares, total)}</p>
-            <p className="text-xs text-gray-500">of the co-op</p>
-          </div>
-          {kinds.length > 0 && (
-            <dl className="col-span-2 space-y-1 border-t border-gray-200 pt-3 text-sm">
-              {kinds.map((kind) => (
-                <div key={kind} className="flex flex-wrap justify-between gap-x-4">
-                  <dt className="text-gray-500">{GRANT_LABELS[kind]}</dt>
-                  <dd className="tabular-nums text-gray-900">{formatShares(holder.breakdown[kind] ?? 0)}</dd>
-                </div>
-              ))}
-            </dl>
-          )}
-        </div>
-
-        {!holder.isYou && (
-          <Link
-            href={`/portal/${orgSlug}/messages/${holder.userId}`}
-            className="btn-primary mt-4 inline-flex w-full items-center justify-center gap-2"
-          >
-            <MessageCircle className="h-4 w-4" />
-            Message {firstName}
-          </Link>
-        )}
-
-        {holder.bio ? (
-          <p className="mt-5 whitespace-pre-line text-sm leading-relaxed text-gray-700">{holder.bio}</p>
-        ) : (
-          <p className="mt-5 text-sm italic text-gray-400">
-            {holder.isYou ? "You haven't" : `${firstName} hasn't`} written an introduction yet.
-          </p>
-        )}
-
-        {holder.tags.length > 0 && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {holder.tags.map((tag) => (
-              <span key={tag} className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600">
-                {tag}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {safeProfileLinks(holder.links).length > 0 && (
-          <ul className="mt-4 space-y-1.5">
-            {safeProfileLinks(holder.links).map((link) => (
-              <li key={link}>
-                <a
-                  href={link}
-                  target="_blank"
-                  // noreferrer as well as noopener: these point off the co-op's
-                  // site, and the page they land on has no business knowing
-                  // which co-op sent them.
-                  rel="noopener noreferrer nofollow"
-                  className="inline-flex items-center gap-2 text-sm text-brand-600 hover:underline"
-                >
-                  <Link2 className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                  <span className="truncate">{profileLinkLabel(link)}</span>
-                </a>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
   );
 }

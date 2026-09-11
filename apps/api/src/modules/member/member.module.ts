@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MemberService } from './member.service';
 import { LedgerService } from './ledger.service';
+import { MemberProfileService } from './member-profile.service';
 import { LedgerController } from './ledger.controller';
 import { MemberController } from './member.controller';
 import { InviteController } from './invite.controller';
@@ -12,7 +13,7 @@ import { StorageModule } from '../storage/storage.module';
 @Module({
   imports: [EmailModule, StripeModule, StorageModule, BelongingModule],
   controllers: [MemberController, InviteController, LedgerController],
-  providers: [MemberService, LedgerService],
+  providers: [MemberService, LedgerService, MemberProfileService],
   exports: [MemberService],
 })
 export class MemberModule {}

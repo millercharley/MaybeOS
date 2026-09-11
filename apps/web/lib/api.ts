@@ -695,6 +695,10 @@ class ApiClient {
         token,
       }),
 
+    /** The card that opens on a member's name, anywhere in MaybeOS (MEM-18). */
+    profile: (orgId: string, userId: string, token: string) =>
+      this.request<MemberProfile>(`/orgs/${orgId}/members/${userId}/profile`, { token }),
+
     /** Copy imported avatars into MaybeOS storage, one batch per call. */
     importAvatars: (orgId: string, body: { after?: string; limit?: number }, token: string) =>
       this.request<AvatarImportResult>(`/orgs/${orgId}/members/import/avatars`, {
@@ -2556,6 +2560,44 @@ export interface LedgerImportResult {
   repeatedEmails: number;
 }
 
+/**
+ * A member as the card on their name shows them (MEM-18). No email or phone
+ * for anyone. `restricted` means the member hid their profile and the viewer
+ * is neither an organiser nor them: only the name, face and join date arrive.
+ */
+export interface MemberProfile {
+  userId: string;
+  orgSlug: string;
+  isYou: boolean;
+  /** Hidden from other members — said only to organisers and the member. */
+  isHidden: boolean;
+  restricted: boolean;
+  role: string;
+  memberSince: string;
+  user: { id: string; name: string | null; avatarUrl: string | null };
+  headline?: string | null;
+  bio?: string | null;
+  location?: string | null;
+  tags?: string[];
+  links?: string[];
+  /** Their newest post or comment in this co-op. Not "last seen" — MaybeOS does not record that. */
+  lastPostedAt?: string | null;
+  counts?: { posts: number; comments: number };
+  posts?: Array<{
+    id: string;
+    title: string | null;
+    excerpt: string;
+    createdAt: string;
+    channel: { id: string; name: string };
+  }>;
+  comments?: Array<{
+    id: string;
+    excerpt: string;
+    createdAt: string;
+    post: { id: string; title: string | null; excerpt: string; channel: { id: string; name: string } };
+  }>;
+}
+
 export interface ImportResult {
   created: number;
   alreadyMembers: number;
@@ -3484,6 +3526,8 @@ export interface BuddySuggestion {
 }
 
 export interface ArticleAuthor {
+  /** Whose card the name opens (MEM-18) — the user, not the membership. */
+  userId?: string | null;
   name: string | null;
   avatarUrl?: string | null;
   headline?: string | null;
@@ -3516,7 +3560,7 @@ export interface ArticleComment {
   id: string;
   body: string;
   createdAt: string;
-  member: { id: string; user: { name: string | null; avatarUrl?: string | null } };
+  member: { id: string; userId?: string; user: { name: string | null; avatarUrl?: string | null } };
 }
 
 export interface Article extends Omit<ArticleSummary, 'lastActivity'> {
