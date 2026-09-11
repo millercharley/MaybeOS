@@ -187,6 +187,16 @@ export default function ImportMembersPage(props: { params: Promise<{ orgSlug: st
           </Link>{' '}
           instead of exporting them.
         </p>
+        <p className="mt-2 text-sm text-gray-500">
+          Shares and ownership come from the co-op&apos;s cap table instead —{' '}
+          <Link
+            href={`/admin/${orgSlug}/members/import/ledger`}
+            className="font-medium text-brand-600 hover:text-brand-700"
+          >
+            import it for the Member Ledger
+          </Link>
+          .
+        </p>
       </div>
 
       {/* ─── 1. The file ─────────────────────────────────────── */}

@@ -66,6 +66,14 @@ export class PrismaService
          * place that should.
          */
         userOrg: { demographics: true },
+        /**
+         * A share holder's email (MEM-17). Stored so a grant from the co-op's
+         * cap table finds its member the day they join; used for that match on
+         * the server and nowhere else. The ledger is read by every member, and
+         * a member list with addresses attached is the exact thing the
+         * directory promised not to be.
+         */
+        shareGrant: { holderEmail: true },
       },
     });
   }

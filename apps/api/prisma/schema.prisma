@@ -186,6 +186,8 @@ model Organization {
   knowledgeArticles       KnowledgeArticle[]
   belongingEmailTemplates BelongingEmailTemplate[]
   hostPayouts             HostPayout[]
+  /// The co-op's equity ledger (MEM-17).
+  shareGrants             ShareGrant[]
 
   /// Backs the platform console's org list, which orders by signup date
   /// (PLT-01). Created by that migration but never declared here, so every
@@ -2306,4 +2308,46 @@ model HostBriefingNotice {
 
   @@unique([bookingId, phase])
   @@map("host_briefing_notices")
+}
+
+/// What a line in the equity ledger records (MEM-17): the cap table's own
+/// columns, plus an adjustment for a row whose total disagrees with its parts.
+enum ShareGrantKind {
+  ANNUAL
+  FOUNDER
+  BELIEVER
+  BOUNTY
+  REFERRAL
+  ADJUSTMENT
+}
+
+/// One line in a co-op's equity ledger (MEM-17).
+///
+/// A holder's balance is the sum of their lines, the way a real cap table
+/// works: transactions first, balances derived, so every number shown can be
+/// traced to where it came from.
+///
+/// Keyed to the holder's email rather than a user id, because the cap table
+/// predates most members' MaybeOS accounts and a grant has to find its member
+/// the day they join, without anybody re-importing. The email is used for that
+/// match on the server and never returned; it is omitted at the Prisma client
+/// like every other column nobody should select by accident.
+model ShareGrant {
+  id          String         @id @default(uuid())
+  orgId       String
+  holderEmail String
+  /// As the source wrote it. Shown to nobody; kept so an import can be read back.
+  holderName  String?
+  kind        ShareGrantKind
+  /// Signed: an ADJUSTMENT is negative when a source row's total is below its parts.
+  shares      Int
+  /// Which import wrote it. Re-importing replaces the co-op's ledger whole.
+  importBatch String
+  importedAt  DateTime       @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([orgId, holderEmail])
+  @@map("share_grants")
 }
