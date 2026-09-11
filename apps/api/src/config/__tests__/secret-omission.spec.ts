@@ -38,6 +38,11 @@ describe('PrismaService — secret omission', () => {
       // devtools panel away, for a field collected on the promise that only
       // aggregates would be shown.
       userOrg: { demographics: true },
+      // A share holder's email (MEM-17). Stored so a grant from the co-op's
+      // cap table finds its member the day they join — and the ledger it
+      // feeds is read by every member, which is exactly the page the
+      // directory promised would never carry an address.
+      shareGrant: { holderEmail: true },
     });
   });
 

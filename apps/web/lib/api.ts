@@ -1,4 +1,5 @@
 import type { MaturityLevel } from './maturity';
+import type { GrantKind } from './ledger';
 import * as Sentry from '@sentry/nextjs';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -749,6 +750,41 @@ class ApiClient {
       this.request<TierUpdateResult>(`/orgs/${orgId}/tiers/${tierId}`, {
         method: 'PATCH',
         body: JSON.stringify(data),
+        token,
+      }),
+  };
+
+  /**
+   * The member ledger (MEM-17): every member, their shares and ownership.
+   * Visible to the whole co-op; carries no email or phone for anyone.
+   */
+  ledger = {
+    get: (orgId: string, token: string) =>
+      this.request<MemberLedger>(`/orgs/${orgId}/ledger`, { token }),
+
+    /** Import the co-op's cap table. `dryRun` is the caller's to state every time. */
+    importCapTable: (
+      orgId: string,
+      body: {
+        rows: Array<{
+          name?: string;
+          email?: string;
+          annual?: number;
+          founder?: number;
+          believer?: number;
+          bounty?: number;
+          referral?: number;
+          totalShares: number;
+        }>;
+        sheetTotal?: number;
+        dryRun: boolean;
+        acceptMismatch?: boolean;
+      },
+      token: string,
+    ) =>
+      this.request<LedgerImportResult>(`/orgs/${orgId}/ledger/import`, {
+        method: 'POST',
+        body: JSON.stringify(body),
         token,
       }),
   };
@@ -2474,6 +2510,50 @@ export interface ImportMemberRow {
   links?: string[];
   avatarUrl?: string;
   emailOptIn?: boolean;
+}
+
+/** One member's line on the ledger (MEM-17). No email or phone, for any role. */
+export interface LedgerHolder {
+  rank: number;
+  userId: string;
+  isYou: boolean;
+  /** Hidden from other members. Only ever true on an organiser's view. */
+  isPrivate: boolean;
+  role: string;
+  memberSince: string;
+  shares: number;
+  breakdown: Partial<Record<GrantKind, number>>;
+  user: { id: string; name: string | null; avatarUrl: string | null };
+  headline: string | null;
+  bio: string | null;
+  location: string | null;
+  tags: string[];
+  links: string[];
+}
+
+export interface MemberLedger {
+  /** When the cap table was last imported. Null before the first import. */
+  asOf: string | null;
+  totalShares: number;
+  holders: LedgerHolder[];
+  privateMembers: { count: number; shares: number };
+  unlinked: { count: number; shares: number };
+  reconciled: boolean;
+}
+
+export interface LedgerImportResult {
+  dryRun: boolean;
+  rows: number;
+  holders: number;
+  lines: number;
+  importedShares: number;
+  sheetTotal: number | null;
+  matchesSheet: boolean | null;
+  linkedToMembers: number;
+  notYetMembers: number;
+  skipped: Array<{ name: string | null; shares: number; reason: string }>;
+  adjusted: Array<{ name: string | null; parts: number; total: number }>;
+  repeatedEmails: number;
 }
 
 export interface ImportResult {
