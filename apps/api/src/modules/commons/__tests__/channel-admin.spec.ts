@@ -16,6 +16,7 @@ describe('CommonsService — channels', () => {
   let prisma: jest.Mocked<PrismaService>;
 
   const ORG = 'org-1';
+  const ADMIN = 'admin-1';
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -51,7 +52,7 @@ describe('CommonsService — channels', () => {
         .mockResolvedValueOnce(null) // "general-2" free
         .mockResolvedValueOnce(null); // the position lookup
 
-      const created = await service.createChannel(ORG, { name: 'General' } as never);
+      const created = await service.createChannel(ORG, { name: 'General' } as never, ADMIN, 'ADMIN');
 
       expect(created.slug).toBe('general-2');
     });
@@ -61,7 +62,7 @@ describe('CommonsService — channels', () => {
       // then collides with the next one that does the same.
       prisma.channel.findFirst.mockResolvedValue(null);
 
-      const created = await service.createChannel(ORG, { name: '???' } as never);
+      const created = await service.createChannel(ORG, { name: '???' } as never, ADMIN, 'ADMIN');
 
       expect(created.slug).toBe('channel');
     });
@@ -71,7 +72,7 @@ describe('CommonsService — channels', () => {
         .mockResolvedValueOnce(null) // slug is free
         .mockResolvedValueOnce({ position: 4 } as never); // the last channel
 
-      const created = await service.createChannel(ORG, { name: 'New' } as never);
+      const created = await service.createChannel(ORG, { name: 'New' } as never, ADMIN, 'ADMIN');
 
       expect(created.position).toBe(5);
     });
@@ -85,7 +86,7 @@ describe('CommonsService — channels', () => {
         .mockResolvedValueOnce({ id: 'c1', orgId: ORG } as never) // the scoped lookup
         .mockResolvedValueOnce(null); // the new slug is free
 
-      const updated = await service.updateChannel(ORG, 'c1', { name: 'Announcements' });
+      const updated = await service.updateChannel(ORG, 'c1', { name: 'Announcements' }, ADMIN, 'ADMIN');
 
       expect(updated).toMatchObject({ name: 'Announcements', slug: 'announcements' });
     });
@@ -93,7 +94,7 @@ describe('CommonsService — channels', () => {
     it('refuses a name of nothing but spaces', async () => {
       prisma.channel.findFirst.mockResolvedValue({ id: 'c1', orgId: ORG } as never);
 
-      await expect(service.updateChannel(ORG, 'c1', { name: '   ' })).rejects.toThrow(
+      await expect(service.updateChannel(ORG, 'c1', { name: '   ' }, ADMIN, 'ADMIN')).rejects.toThrow(
         BadRequestException,
       );
       expect(prisma.channel.update).not.toHaveBeenCalled();

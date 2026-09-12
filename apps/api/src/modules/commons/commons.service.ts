@@ -14,6 +14,22 @@ import { VoteChoice } from '@prisma/client';
 
 const AUTHOR_SELECT = { id: true, name: true, avatarUrl: true, avatarPath: true } as const;
 
+/**
+ * Minimal escaping for text that is about to become markup.
+ *
+ * The web app has its own copy for the same job; this one exists because the
+ * invitation body (CMN-11) is built on the server out of a channel name a
+ * member chose, and a name containing `<` must not be able to close a tag.
+ */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 @Injectable()
 export class CommonsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -110,7 +126,76 @@ export class CommonsService {
 
   // ─── Channels ───────────────────────────────────────────────
 
-  async createChannel(orgId: string, dto: CreateChannelDto) {
+  /**
+   * Whether this caller may open a channel here (CMN-11).
+   *
+   * Admins always may. Everybody else may only when the co-op has turned it
+   * on, which is off by default — so a co-op that has never seen this setting
+   * behaves exactly as it did, with channels an organiser's job.
+   *
+   * The role comes from the same place `RolesGuard` reads it, rather than a
+   * second lookup that could disagree with the guard sitting in front of it.
+   */
+  private async assertMayCreateChannel(orgId: string, role?: string) {
+    if (role === 'ADMIN') return;
+
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { memberChannelsEnabled: true },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+    if (!org.memberChannelsEnabled) {
+      throw new ForbiddenException(
+        'Only admins can open a channel in this co-op.',
+      );
+    }
+  }
+
+  /**
+   * Whether this caller may change a channel's name, emoji or section
+   * (CMN-11).
+   *
+   * An admin may change any of them. A member may change the channel they
+   * opened themselves — otherwise a member who mistypes the name of their own
+   * channel has to find an organiser to fix it, which is a poor reward for
+   * starting a conversation. Deleting stays admin-only: by the time a channel
+   * is worth deleting, other people have written in it.
+   */
+  private assertMayEditChannel(
+    channel: { createdById: string | null },
+    userId?: string,
+    role?: string,
+  ) {
+    if (role === 'ADMIN') return;
+    if (userId && channel.createdById === userId) return;
+    throw new ForbiddenException('Only an admin or the member who opened this channel can change it.');
+  }
+
+  /**
+   * A section that belongs to this co-op, or NotFound (CMN-11).
+   *
+   * Filing a channel under another co-op's section would be a cross-tenant
+   * write, so the id is resolved through the org exactly like everything else
+   * here — and `null` is a legitimate value meaning "no section".
+   */
+  private async assertSectionInOrg(orgId: string, sectionId?: string | null) {
+    if (!sectionId) return;
+    const section = await this.prisma.channelSection.findFirst({
+      where: { id: sectionId, orgId },
+      select: { id: true },
+    });
+    if (!section) throw new NotFoundException('Section not found');
+  }
+
+  async createChannel(
+    orgId: string,
+    dto: CreateChannelDto,
+    createdById?: string,
+    role?: string,
+  ) {
+    await this.assertMayCreateChannel(orgId, role);
+    await this.assertSectionInOrg(orgId, dto.sectionId);
+
     const slug = await this.freeChannelSlug(orgId, dto.name);
 
     // Appended, not inserted. A new channel goes to the end of whatever order
@@ -128,6 +213,9 @@ export class CommonsService {
         slug,
         description: dto.description,
         isPublic: dto.isPublic ?? true,
+        emoji: dto.emoji?.trim() || null,
+        sectionId: dto.sectionId ?? null,
+        createdById: createdById ?? null,
         position: (last?.position ?? 0) + 1,
       },
     });
@@ -198,9 +286,19 @@ export class CommonsService {
   async updateChannel(
     orgId: string,
     channelId: string,
-    dto: { name?: string; description?: string | null; isPublic?: boolean },
+    dto: {
+      name?: string;
+      description?: string | null;
+      isPublic?: boolean;
+      emoji?: string | null;
+      sectionId?: string | null;
+    },
+    userId?: string,
+    role?: string,
   ) {
-    await this.findChannelInOrg(orgId, channelId);
+    const channel = await this.findChannelInOrg(orgId, channelId);
+    this.assertMayEditChannel(channel, userId, role);
+    await this.assertSectionInOrg(orgId, dto.sectionId);
 
     const name = dto.name?.trim();
     if (dto.name !== undefined && !name) {
@@ -213,6 +311,10 @@ export class CommonsService {
         ...(name ? { name, slug: await this.freeChannelSlug(orgId, name, channelId) } : {}),
         ...(dto.description !== undefined && { description: dto.description }),
         ...(dto.isPublic !== undefined && { isPublic: dto.isPublic }),
+        // Empty string clears it, the same as null: an emoji picker's "none"
+        // and a cleared text field should not mean two different things.
+        ...(dto.emoji !== undefined && { emoji: dto.emoji?.trim() || null }),
+        ...(dto.sectionId !== undefined && { sectionId: dto.sectionId }),
       },
     });
   }
@@ -268,6 +370,179 @@ export class CommonsService {
     return { deleted: channelId };
   }
 
+  /**
+   * What this caller may do in this co-op's Commons (CMN-11).
+   *
+   * A separate authenticated route rather than a field on the org, because
+   * `GET /orgs/:slug` answers the public internet — it draws the join page —
+   * and how a co-op runs its Commons is not something to publish. Same
+   * reasoning as the share-tracking switch, which the Members endpoint
+   * reports and the public org route does not.
+   */
+  async commonsPermissions(orgId: string, role?: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { memberChannelsEnabled: true },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    return {
+      memberChannelsEnabled: org.memberChannelsEnabled,
+      canCreateChannel: role === 'ADMIN' || org.memberChannelsEnabled,
+      canManageSections: role === 'ADMIN',
+    };
+  }
+
+  // ─── Sections (CMN-11) ──────────────────────────────────────
+  //
+  // A section is a heading in the sidebar with channels under it — Circle's
+  // "General". It is the co-op's own information architecture, so an admin
+  // makes them; members file their channels into the ones that exist.
+  //
+  // Channels are not required to have one. Anything unfiled sits above the
+  // first section rather than in an "Other" bucket nobody chose to create.
+
+  async createSection(orgId: string, name: string) {
+    const clean = name.trim();
+    if (!clean) throw new BadRequestException('A section needs a name.');
+
+    // `(orgId, name)` is unique, so a second "General" is a constraint
+    // violation surfaced as a 500 unless it is caught here — the same bug
+    // channel slugs had before CMN-10.
+    const existing = await this.prisma.channelSection.findFirst({
+      where: { orgId, name: clean },
+      select: { id: true },
+    });
+    if (existing) throw new BadRequestException(`This co-op already has a section called "${clean}".`);
+
+    const last = await this.prisma.channelSection.findFirst({
+      where: { orgId },
+      orderBy: { position: 'desc' },
+      select: { position: true },
+    });
+
+    return this.prisma.channelSection.create({
+      data: { orgId, name: clean, position: (last?.position ?? 0) + 1 },
+    });
+  }
+
+  async listSections(orgId: string) {
+    return this.prisma.channelSection.findMany({
+      where: { orgId },
+      orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+      include: { _count: { select: { channels: true } } },
+    });
+  }
+
+  async updateSection(orgId: string, sectionId: string, name: string) {
+    await this.assertSectionInOrg(orgId, sectionId);
+
+    const clean = name.trim();
+    if (!clean) throw new BadRequestException('A section needs a name.');
+
+    const clash = await this.prisma.channelSection.findFirst({
+      where: { orgId, name: clean, id: { not: sectionId } },
+      select: { id: true },
+    });
+    if (clash) throw new BadRequestException(`This co-op already has a section called "${clean}".`);
+
+    return this.prisma.channelSection.update({
+      where: { id: sectionId },
+      data: { name: clean },
+    });
+  }
+
+  /**
+   * Remove a section. The channels in it survive, unfiled.
+   *
+   * `channels.sectionId` is SET NULL rather than cascading: a section is a
+   * heading, and deleting a heading must never delete the conversations
+   * underneath it. The count is returned so the UI can say what moved.
+   */
+  async deleteSection(orgId: string, sectionId: string) {
+    await this.assertSectionInOrg(orgId, sectionId);
+
+    const ungrouped = await this.prisma.channel.count({ where: { orgId, sectionId } });
+    await this.prisma.channelSection.delete({ where: { id: sectionId } });
+
+    return { deleted: sectionId, ungrouped };
+  }
+
+  /** The whole order in one write, for the same reason channels are. */
+  async reorderSections(orgId: string, sectionIds: string[]) {
+    await this.prisma.$transaction(
+      sectionIds.map((id, index) =>
+        this.prisma.channelSection.updateMany({
+          where: { id, orgId },
+          data: { position: index },
+        }),
+      ),
+    );
+
+    return this.listSections(orgId);
+  }
+
+  // ─── Inviting somebody to a channel (CMN-11) ────────────────
+
+  /**
+   * Tell other members a channel exists.
+   *
+   * Channels in MaybeOS are open: every member can already see every channel,
+   * so this adds no access and takes none away. It is an invitation in the
+   * ordinary sense — a message saying "this is here, come and talk" — and it
+   * arrives as a direct message from the person inviting, because a message
+   * from a name you recognise is the thing that actually gets read.
+   *
+   * Deliberately not silent-add-to-a-list: the sidebar already lists every
+   * channel, so an "add" would change nothing the member could see, and a
+   * feature that appears to do something while doing nothing is worse than
+   * not having it.
+   *
+   * Every recipient is checked for membership of this org — the same rule
+   * `sendMessage` enforces, for the same reason: a user id in a request body
+   * is not evidence of anything.
+   */
+  async inviteToChannel(
+    orgId: string,
+    channelId: string,
+    inviterId: string,
+    userIds: string[],
+    note?: string,
+  ) {
+    const channel = await this.findChannelInOrg(orgId, channelId);
+
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { slug: true },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    // Yourself is not an invitation, and the same person twice is one.
+    const recipients = [...new Set(userIds)].filter((id) => id !== inviterId);
+    if (recipients.length === 0) {
+      throw new BadRequestException('Choose at least one other member to invite.');
+    }
+
+    for (const userId of recipients) {
+      await this.assertOrgMember(orgId, userId);
+    }
+
+    const label = `${channel.emoji ? `${channel.emoji} ` : '#'}${channel.name}`;
+    const link = `/portal/${org.slug}/commons?channel=${channel.id}`;
+    // Escaped: a channel name is written by a member, and this body is stored
+    // as HTML and rendered as HTML. `renderBodyHtml` sanitises on the way out
+    // too, but a body that needs sanitising to be safe is a body built wrong.
+    const body =
+      `<p>Come and join <a href="${link}">${escapeHtml(label)}</a> in the Commons.</p>` +
+      (note?.trim() ? `<p>${escapeHtml(note.trim())}</p>` : '');
+
+    await this.prisma.directMessage.createMany({
+      data: recipients.map((receiverId) => ({ orgId, senderId: inviterId, receiverId, body })),
+    });
+
+    return { invited: recipients.length, channelId };
+  }
+
   // ─── Posts ──────────────────────────────────────────────────
 
   async createPost(orgId: string, channelId: string, authorId: string, dto: CreatePostDto) {
@@ -305,7 +580,16 @@ export class CommonsService {
       this.prisma.post.count({ where: { channelId } }),
     ]);
 
-    return { data: posts, total, page, perPage };
+    // The same envelope every other paginated endpoint in MaybeOS returns.
+    // This one used to answer `{ data, total, page, perPage }` while the web
+    // client's `PaginatedResponse` declared `{ data, meta: {...} }` — so
+    // `.meta.total` read `undefined` and any caller counting on it would have
+    // rendered a zero rather than failing. Nothing read it until the channel
+    // view needed to know whether there are older messages (CMN-11).
+    return {
+      data: posts,
+      meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
+    };
   }
 
   async getPost(orgId: string, postId: string) {

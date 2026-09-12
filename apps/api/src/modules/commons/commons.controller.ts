@@ -20,6 +20,8 @@ import { CurrentUser, RequestUser } from '../../common/decorators/current-user.d
 import { CommonsService } from './commons.service';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto, ReorderChannelsDto } from './dto/update-channel.dto';
+import { SectionDto, ReorderSectionsDto } from './dto/section.dto';
+import { InviteToChannelDto } from './dto/invite-to-channel.dto';
 import { CreatePostDto } from './dto/create-post.dto';
 import { CreateProposalDto } from './dto/create-proposal.dto';
 import { AddCommentDto } from './dto/add-comment.dto';
@@ -38,13 +40,22 @@ export class CommonsController {
 
   // ─── Channels ───────────────────────────────────────────────
 
+  /**
+   * Open a channel (CMN-11).
+   *
+   * No `@Roles('ADMIN')` any more: whether a member may do this depends on a
+   * setting of the co-op's as well as the caller's role, and a decorator
+   * cannot read the database. The service refuses members when the co-op has
+   * not turned it on — which is the default — so the rule is unchanged for
+   * every co-op that has not asked for it.
+   */
   @Post('channels')
-  @Roles('ADMIN')
   createChannel(
     @Param('orgId') orgId: string,
+    @CurrentUser() user: RequestUser,
     @Body() dto: CreateChannelDto,
   ) {
-    return this.commonsService.createChannel(orgId, dto);
+    return this.commonsService.createChannel(orgId, dto, user.userId, user.orgRoles?.[orgId]);
   }
 
   @Get('channels')
@@ -53,17 +64,28 @@ export class CommonsController {
   }
 
   /**
-   * Rename a channel or change what it is for (CMN-10). ADMIN, like creating
-   * one — this is the shape of the co-op's Commons, not a post in it.
+   * Rename a channel, give it an emoji, or file it under a section (CMN-10,
+   * CMN-11).
+   *
+   * Was ADMIN-only, on the reasoning that this is the shape of the co-op's
+   * Commons rather than a post in it. Still true of somebody else's channel —
+   * but once a member can open one, they have to be able to fix its name, so
+   * the service allows an admin or the member who opened it.
    */
   @Patch('channels/:channelId')
-  @Roles('ADMIN')
   updateChannel(
     @Param('orgId') orgId: string,
     @Param('channelId') channelId: string,
+    @CurrentUser() user: RequestUser,
     @Body() dto: UpdateChannelDto,
   ) {
-    return this.commonsService.updateChannel(orgId, channelId, dto);
+    return this.commonsService.updateChannel(
+      orgId,
+      channelId,
+      dto,
+      user.userId,
+      user.orgRoles?.[orgId],
+    );
   }
 
   /**
@@ -102,6 +124,84 @@ export class CommonsController {
     @Param('channelId') channelId: string,
   ) {
     return this.commonsService.pinChannel(orgId, channelId, false);
+  }
+
+  /**
+   * Invite members to a channel (CMN-11).
+   *
+   * Any member, not just an admin: the person who started a conversation is
+   * the one who knows who should be in it. It grants no access — channels are
+   * open to the whole co-op — so what this can do at worst is send somebody a
+   * message, which is a thing any member can already do.
+   */
+  @Post('channels/:channelId/invite')
+  inviteToChannel(
+    @Param('orgId') orgId: string,
+    @Param('channelId') channelId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: InviteToChannelDto,
+  ) {
+    return this.commonsService.inviteToChannel(
+      orgId,
+      channelId,
+      user.userId,
+      dto.userIds,
+      dto.note,
+    );
+  }
+
+  /** Whether this member may open a channel here, and manage sections. */
+  @Get('commons/permissions')
+  commonsPermissions(@Param('orgId') orgId: string, @CurrentUser() user: RequestUser) {
+    return this.commonsService.commonsPermissions(orgId, user.orgRoles?.[orgId]);
+  }
+
+  // ─── Sections (CMN-11) ──────────────────────────────────────
+  //
+  // Reading is open to any member — the sidebar needs the headings to draw
+  // itself. Making and arranging them is ADMIN: it is the co-op's information
+  // architecture, and the channels filed under a heading belong to everybody.
+  //
+  // `sections/reorder` is declared before `sections/:sectionId` so the literal
+  // wins the match, the same way `channels/reorder` is. Nest resolves in
+  // declaration order, and a route shadowed by a parameter is a 404 nobody can
+  // explain later (MIG-01 lost an afternoon to exactly this).
+
+  @Get('sections')
+  listSections(@Param('orgId') orgId: string) {
+    return this.commonsService.listSections(orgId);
+  }
+
+  @Post('sections/reorder')
+  @Roles('ADMIN')
+  reorderSections(@Param('orgId') orgId: string, @Body() dto: ReorderSectionsDto) {
+    return this.commonsService.reorderSections(orgId, dto.sectionIds);
+  }
+
+  @Post('sections')
+  @Roles('ADMIN')
+  createSection(@Param('orgId') orgId: string, @Body() dto: SectionDto) {
+    return this.commonsService.createSection(orgId, dto.name);
+  }
+
+  @Patch('sections/:sectionId')
+  @Roles('ADMIN')
+  updateSection(
+    @Param('orgId') orgId: string,
+    @Param('sectionId') sectionId: string,
+    @Body() dto: SectionDto,
+  ) {
+    return this.commonsService.updateSection(orgId, sectionId, dto.name);
+  }
+
+  /** The channels in it survive, unfiled. The response says how many moved. */
+  @Delete('sections/:sectionId')
+  @Roles('ADMIN')
+  deleteSection(
+    @Param('orgId') orgId: string,
+    @Param('sectionId') sectionId: string,
+  ) {
+    return this.commonsService.deleteSection(orgId, sectionId);
   }
 
   // ─── Posts ──────────────────────────────────────────────────

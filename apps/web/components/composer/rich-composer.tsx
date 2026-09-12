@@ -1,10 +1,31 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bold, Italic, Strikethrough, Underline, Quote, Link2, Smile, ImagePlus, Paperclip, X } from 'lucide-react';
+import {
+  Bold, Italic, Strikethrough, Underline, Quote, Link2, Smile, ImagePlus, Paperclip, X,
+  AtSign, Hash,
+} from 'lucide-react';
 import { sanitizeWikiHtml } from '@/lib/wiki-html';
 import { isBlankBody, linkHtml } from '@/lib/rich-text';
 import { ATTACHMENT_ACCEPT, ATTACHMENT_MAX_BYTES, formatBytes, isImage } from '@/lib/attachments';
+import { COMPOSER_EMOJI } from '@/lib/emoji';
+import {
+  MentionChannel,
+  MentionPerson,
+  channelLabel,
+  findMentionQuery,
+  matchMentions,
+  mentionHtml,
+} from '@/lib/mentions';
+
+/** Who and what this composer can mention (CMN-11). */
+export interface MentionSources {
+  orgSlug: string;
+  people: MentionPerson[];
+  channels: MentionChannel[];
+}
+
+type Suggestion = { id: string; label: string; kind: 'member' | 'channel' };
 
 /**
  * The one box members type into.
@@ -24,7 +45,7 @@ import { ATTACHMENT_ACCEPT, ATTACHMENT_MAX_BYTES, formatBytes, isImage } from '@
  * in. The mess is stripped; the meaning survives.
  */
 
-const EMOJI = ['👍', '🎉', '❤️', '😂', '🙏', '👀', '🔥', '✅', '🤔', '😅', '💡', '🌱'];
+
 
 export function RichComposer({
   value,
@@ -36,6 +57,7 @@ export function RichComposer({
   rows = 3,
   files,
   onFilesChange,
+  mentions,
 }: {
   value: string;
   onChange: (html: string) => void;
@@ -54,6 +76,13 @@ export function RichComposer({
    */
   files?: File[];
   onFilesChange?: (files: File[]) => void;
+  /**
+   * The members and channels `@` and `#` offer (CMN-11).
+   *
+   * Omitting it turns mentions off, which is right for a composer with no org
+   * around it — the picker would have nothing true to show.
+   */
+  mentions?: MentionSources;
 }) {
   const editor = useRef<HTMLDivElement>(null);
   const [toolbar, setToolbar] = useState<{ top: number; left: number } | null>(null);
@@ -61,6 +90,124 @@ export function RichComposer({
   const [fileError, setFileError] = useState('');
   const filePicker = useRef<HTMLInputElement>(null);
   const canAttach = Boolean(onFilesChange);
+
+  // ─── Mentions (CMN-11) ──────────────────────────────────────
+  //
+  // `picker.length` is how much to delete when one is chosen: the trigger
+  // character and whatever was typed after it. Kept with the open picker
+  // rather than recomputed on selection, because by then the caret may have
+  // moved and the two would disagree.
+  const [picker, setPicker] = useState<{
+    trigger: '@' | '#';
+    items: Suggestion[];
+    length: number;
+    top: number;
+    left: number;
+  } | null>(null);
+  const [active, setActive] = useState(0);
+  const canMention = Boolean(mentions);
+
+  /** The text from the start of the editor to the caret. */
+  function textBeforeCaret(): string | null {
+    const el = editor.current;
+    const selection = window.getSelection();
+    if (!el || !selection?.rangeCount) return null;
+    const caret = selection.getRangeAt(0);
+    if (!el.contains(caret.startContainer)) return null;
+
+    const range = document.createRange();
+    range.setStart(el, 0);
+    range.setEnd(caret.startContainer, caret.startOffset);
+    return range.toString();
+  }
+
+  /** Open, update or close the picker for whatever is being typed. */
+  function syncPicker() {
+    if (!mentions) return;
+
+    const before = textBeforeCaret();
+    const found = before === null ? null : findMentionQuery(before);
+    if (!found) {
+      setPicker(null);
+      return;
+    }
+
+    const items: Suggestion[] =
+      found.trigger === '@'
+        ? matchMentions(mentions.people, found.query).map((person) => ({
+            id: person.id,
+            label: person.name,
+            kind: 'member' as const,
+          }))
+        : matchMentions(mentions.channels, found.query).map((channel) => ({
+            id: channel.id,
+            label: channelLabel(channel),
+            kind: 'channel' as const,
+          }));
+
+    // Nothing matches: close rather than hang an empty box under the caret.
+    // Somebody typing an email address is not asking for a member picker.
+    if (items.length === 0) {
+      setPicker(null);
+      return;
+    }
+
+    const selection = window.getSelection();
+    const el = editor.current;
+    if (!selection?.rangeCount || !el) return;
+    const rect = selection.getRangeAt(0).getBoundingClientRect();
+    const box = el.getBoundingClientRect();
+
+    setActive(0);
+    setPicker({
+      trigger: found.trigger,
+      items,
+      length: found.length,
+      top: rect.bottom - box.top + 6,
+      left: Math.max(0, rect.left - box.left),
+    });
+  }
+
+  /** Swap the half-typed mention for a real link. */
+  function choose(item: Suggestion) {
+    const el = editor.current;
+    const selection = window.getSelection();
+    if (!el || !mentions || !selection?.rangeCount || !picker) return;
+
+    el.focus();
+    const range = selection.getRangeAt(0);
+    const node = range.startContainer;
+
+    // Delete the trigger and the query first. Only attempted inside a single
+    // text node — which is where a just-typed "@ada" always is — because
+    // walking backwards across element boundaries to delete characters is how
+    // a composer eats the paragraph before it.
+    if (node.nodeType === Node.TEXT_NODE && range.startOffset >= picker.length) {
+      range.setStart(node, range.startOffset - picker.length);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+
+    const label = item.kind === 'member' ? `@${item.label}` : item.label;
+    // The trailing space is a normal space in its own text node, so the next
+    // character typed is not swallowed into the anchor.
+    document.execCommand(
+      'insertHTML',
+      false,
+      `${mentionHtml(item.kind, mentions.orgSlug, item.id, label)}&nbsp;`,
+    );
+
+    setPicker(null);
+    publish();
+  }
+
+  /** The `@` and `#` buttons: type the trigger, then let `syncPicker` run. */
+  function startMention(trigger: '@' | '#') {
+    editor.current?.focus();
+    document.execCommand('insertText', false, trigger);
+    publish();
+    syncPicker();
+  }
 
   function addFiles(chosen: FileList | null) {
     if (!chosen || !onFilesChange) return;
@@ -219,8 +366,34 @@ export function RichComposer({
         aria-multiline="true"
         aria-label={placeholder}
         data-placeholder={placeholder}
-        onInput={publish}
-        onBlur={publish}
+        onInput={() => {
+          publish();
+          syncPicker();
+        }}
+        onBlur={() => {
+          publish();
+          // Late enough for a click on the picker to land first — closing on
+          // blur alone means the list vanishes before the mouse arrives.
+          window.setTimeout(() => setPicker(null), 150);
+        }}
+        onKeyDown={(e) => {
+          if (!picker) return;
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setActive((i) => (i + 1) % picker.items.length);
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setActive((i) => (i - 1 + picker.items.length) % picker.items.length);
+          } else if (e.key === 'Enter' || e.key === 'Tab') {
+            // Enter belongs to the picker while it is open, and to the
+            // paragraph otherwise.
+            e.preventDefault();
+            choose(picker.items[active]);
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            setPicker(null);
+          }
+        }}
         onPaste={(e) => {
           // Paste as text. Pasting from a word processor otherwise carries in
           // fonts, colours and background shading that the sanitiser strips
@@ -234,6 +407,36 @@ export function RichComposer({
         style={{ ['--composer-min' as string]: `${rows * 1.5}rem` }}
         suppressContentEditableWarning
       />
+
+      {/* The mention picker, under the caret (CMN-11). `onMouseDown` is
+          prevented so clicking an entry does not collapse the selection the
+          insertion needs — the same guard the formatting bubble uses. */}
+      {picker && (
+        <ul
+          className="absolute z-30 max-h-56 w-64 overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+          style={{ top: picker.top, left: picker.left }}
+          onMouseDown={(e) => e.preventDefault()}
+          role="listbox"
+          aria-label={picker.trigger === '@' ? 'Members' : 'Channels'}
+        >
+          {picker.items.map((item, index) => (
+            <li key={item.id}>
+              <button
+                type="button"
+                onClick={() => choose(item)}
+                onMouseEnter={() => setActive(index)}
+                role="option"
+                aria-selected={index === active}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${
+                  index === active ? 'bg-brand-50 text-brand-700' : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <span className="truncate">{item.label}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {(files?.length ?? 0) > 0 && (
         <ul className="flex flex-wrap gap-2 border-t border-gray-100 px-2 py-2">
@@ -265,7 +468,7 @@ export function RichComposer({
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 px-2 py-1.5">
-        <div className="relative flex items-center gap-1">
+        <div className="relative flex flex-wrap items-center gap-0.5">
           <button
             type="button"
             onClick={() => setEmojiOpen(!emojiOpen)}
@@ -278,7 +481,7 @@ export function RichComposer({
 
           {emojiOpen && (
             <div className="absolute bottom-9 left-0 z-20 grid w-56 grid-cols-6 gap-1 rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
-              {EMOJI.map((emoji) => (
+              {COMPOSER_EMOJI.map((emoji) => (
                 <button
                   key={emoji}
                   type="button"
@@ -294,7 +497,29 @@ export function RichComposer({
               ))}
             </div>
           )}
-        </div>
+
+          {canMention && (
+            <>
+              <button
+                type="button"
+                onClick={() => startMention('#')}
+                className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Mention a channel"
+                title="Mention a channel"
+              >
+                <Hash className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => startMention('@')}
+                className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Mention someone"
+                title="Mention someone"
+              >
+                <AtSign className="h-4 w-4" />
+              </button>
+            </>
+          )}
 
           {canAttach && (
             <>
@@ -315,7 +540,7 @@ export function RichComposer({
                 onClick={() => filePicker.current?.click()}
                 className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
                 aria-label="Add an image"
-                title="Image or GIF"
+                title="Image"
               >
                 <ImagePlus className="h-4 w-4" />
               </button>
@@ -330,6 +555,7 @@ export function RichComposer({
               </button>
             </>
           )}
+        </div>
 
         {onSubmit && (
           <button

@@ -4,8 +4,20 @@
     {
       "name": "maybeos-web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "port": 3000
+    },
+    {
+      "name": "maybeos-api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev:api"
+      ],
+      "port": 3001
     }
   ]
 }

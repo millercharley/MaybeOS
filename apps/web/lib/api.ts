@@ -507,6 +507,8 @@ class ApiClient {
         allowPublicJoin?: boolean;
         /** Whether the co-op tracks shares and ownership (MEM-19). */
         sharesEnabled?: boolean;
+        /** Whether any member may open a channel in the Commons (CMN-11). */
+        memberChannelsEnabled?: boolean;
         /** The co-op's own fee per ticket, in cents (D-013 ticketing). */
         ticketFeeCents?: number;
         /**
@@ -1471,8 +1473,77 @@ class ApiClient {
     listChannels: (orgId: string, token: string) =>
       this.request<Channel[]>(`/orgs/${orgId}/channels`, { token }),
 
-    createChannel: (orgId: string, data: { name: string; description?: string; isPublic?: boolean }, token: string) =>
-      this.request<Channel>(`/orgs/${orgId}/channels`, { method: 'POST', body: JSON.stringify(data), token }),
+    createChannel: (
+      orgId: string,
+      data: {
+        name: string;
+        description?: string;
+        isPublic?: boolean;
+        /** A single emoji shown before the name (CMN-11). */
+        emoji?: string;
+        /** The section to file it under (CMN-11). */
+        sectionId?: string;
+      },
+      token: string,
+    ) => this.request<Channel>(`/orgs/${orgId}/channels`, { method: 'POST', body: JSON.stringify(data), token }),
+
+    /**
+     * Whether this member may open a channel here (CMN-11).
+     *
+     * Its own authenticated route rather than a field on the org: `getBySlug`
+     * answers the public internet, and how a co-op runs its Commons is not
+     * published.
+     */
+    permissions: (orgId: string, token: string) =>
+      this.request<CommonsPermissions>(`/orgs/${orgId}/commons/permissions`, { token }),
+
+    /** Tell other members the channel is there (CMN-11). Grants no access. */
+    inviteToChannel: (
+      orgId: string,
+      channelId: string,
+      data: { userIds: string[]; note?: string },
+      token: string,
+    ) =>
+      this.request<{ invited: number; channelId: string }>(
+        `/orgs/${orgId}/channels/${channelId}/invite`,
+        { method: 'POST', body: JSON.stringify(data), token },
+      ),
+
+    // ─── Sections (CMN-11) ────────────────────────────────────
+    //
+    // The named groups channels file under. Reading is open to any member,
+    // because the sidebar draws them; the rest is ADMIN.
+
+    listSections: (orgId: string, token: string) =>
+      this.request<ChannelSection[]>(`/orgs/${orgId}/sections`, { token }),
+
+    createSection: (orgId: string, name: string, token: string) =>
+      this.request<ChannelSection>(`/orgs/${orgId}/sections`, {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+        token,
+      }),
+
+    updateSection: (orgId: string, sectionId: string, name: string, token: string) =>
+      this.request<ChannelSection>(`/orgs/${orgId}/sections/${sectionId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name }),
+        token,
+      }),
+
+    /** The channels survive, unfiled. `ungrouped` counts how many moved. */
+    deleteSection: (orgId: string, sectionId: string, token: string) =>
+      this.request<{ deleted: string; ungrouped: number }>(`/orgs/${orgId}/sections/${sectionId}`, {
+        method: 'DELETE',
+        token,
+      }),
+
+    reorderSections: (orgId: string, sectionIds: string[], token: string) =>
+      this.request<ChannelSection[]>(`/orgs/${orgId}/sections/reorder`, {
+        method: 'POST',
+        body: JSON.stringify({ sectionIds }),
+        token,
+      }),
 
     pinChannel: (orgId: string, channelId: string, pinned: boolean, token: string) =>
       this.request<Channel>(`/orgs/${orgId}/channels/${channelId}/pin`, { method: pinned ? 'POST' : 'DELETE', token }),
@@ -1481,7 +1552,15 @@ class ApiClient {
     updateChannel: (
       orgId: string,
       channelId: string,
-      data: { name?: string; description?: string | null; isPublic?: boolean },
+      data: {
+        name?: string;
+        description?: string | null;
+        isPublic?: boolean;
+        /** Null or '' clears it (CMN-11). */
+        emoji?: string | null;
+        /** Null ungroups the channel (CMN-11). */
+        sectionId?: string | null;
+      },
       token: string,
     ) =>
       this.request<Channel>(`/orgs/${orgId}/channels/${channelId}`, {
@@ -1505,8 +1584,18 @@ class ApiClient {
         token,
       }),
 
-    listPosts: (orgId: string, channelId: string, token: string) =>
-      this.request<PaginatedResponse<Post>>(`/orgs/${orgId}/channels/${channelId}/posts`, { token }),
+    /**
+     * Newest first, a page at a time.
+     *
+     * The channel view reverses page 1 to read upward like a chat (CMN-11),
+     * and asks for page 2 when somebody scrolls back — so the page argument
+     * is "older", not "further down".
+     */
+    listPosts: (orgId: string, channelId: string, token: string, page = 1) =>
+      this.request<PaginatedResponse<Post>>(
+        `/orgs/${orgId}/channels/${channelId}/posts?page=${page}`,
+        { token },
+      ),
 
     getPost: (orgId: string, postId: string, token: string) =>
       this.request<Post>(`/orgs/${orgId}/posts/${postId}`, { token }),
@@ -3204,10 +3293,31 @@ export interface Channel {
   isDefault: boolean;
   isPinned: boolean;
   isPublic?: boolean;
+  /** A single emoji shown before the name (CMN-11). Null renders a plain #. */
+  emoji?: string | null;
+  /** The section it files under, or null for the ungrouped list (CMN-11). */
+  sectionId?: string | null;
+  /** Who opened it (CMN-11). Null for anything that predates the column. */
+  createdById?: string | null;
   /** The order an admin put them in (CMN-10). */
   position?: number;
   /** How much is written in it. Deleting a channel takes its posts with it. */
   _count?: { posts: number };
+}
+
+/** A named group of channels in the sidebar (CMN-11). */
+export interface ChannelSection {
+  id: string;
+  name: string;
+  position: number;
+  _count?: { channels: number };
+}
+
+/** What this member may do in this co-op's Commons (CMN-11). */
+export interface CommonsPermissions {
+  memberChannelsEnabled: boolean;
+  canCreateChannel: boolean;
+  canManageSections: boolean;
 }
 
 export interface Comment {
