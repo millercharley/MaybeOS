@@ -83,6 +83,11 @@ model Organization {
   /// default: most co-ops do not keep an equity register, and one that does
   /// decides when members see it.
   sharesEnabled            Boolean           @default(false)
+  /// Whether any member may open a channel in the Commons (CMN-11). Off by
+  /// default: a co-op decides for itself whether its Commons is something
+  /// members shape or something the organisers do. Channels are open to the
+  /// whole co-op either way — see `Channel.isPublic`, which nothing enforces.
+  memberChannelsEnabled    Boolean           @default(false)
   /// The co-op's MaybeOS plan (D-013). Everyone starts on FREE.
   plan                     MaybeOsPlan       @default(FREE)
   /// The co-op's own Stripe account, from Connect onboarding. Ticket money is
@@ -172,6 +177,7 @@ model Organization {
   hostDuties      HostDuty[]
   hostBriefings   HostBriefing[]
   channels        Channel[]
+  channelSections ChannelSection[]
   collections     Collection[]
   surveys         Survey[]
   invitations     Invitation[]
@@ -289,6 +295,8 @@ model User {
   attachments           Attachment[]
   /// Share grants naming this member (MEM-19).
   shareGrants           ShareGrant[]
+  /// Channels this member opened (CMN-11).
+  channelsCreated       Channel[]              @relation("ChannelCreator")
 
   @@map("users")
 }
@@ -537,7 +545,7 @@ model MembershipTier {
   /// highlighted exactly when it has something to say, and the pair would
   /// allow "highlighted, no text", which the badge cannot render. At most one
   /// tier per co-op carries it; the service clears the others.
-  highlightLabel       String?
+  highlightLabel String?
 
   /// What this tier asks of a member in service (SRV-01), as minutes over a
   /// period. Both null means no expectation, which is the default and the
@@ -780,7 +788,7 @@ model Room {
   /// a percentage across its width — the number CSS `object-position` takes,
   /// so 50 is what the browser already did. Same pattern as a Handbook
   /// cover's `coverFocusX`, applied where the problem was first noticed.
-  imageFocusX        Int      @default(50)
+  imageFocusX        Int       @default(50)
   isActive           Boolean   @default(true)
   requiresApproval   Boolean   @default(false)
   memberOnly         Boolean   @default(true)
@@ -977,6 +985,17 @@ model Channel {
   isDefault   Boolean  @default(false)
   isPublic    Boolean  @default(true)
   isPinned    Boolean  @default(false)
+  /// A single emoji shown before the name, the way Circle marks a channel
+  /// (CMN-11). Null is normal and renders a plain `#`.
+  emoji       String?
+  /// The named group this channel files under (CMN-11), or null for the
+  /// ungrouped list at the top. `onDelete: SetNull` — deleting a section is
+  /// filing, not deleting conversations.
+  sectionId   String?
+  /// Who opened it (CMN-11). Null for every channel that predates this and
+  /// for anything seeded. Kept so a member can rename the channel they
+  /// started without being an admin.
+  createdById String?
   /// The order an admin put the channels in (CMN-10).
   ///
   /// Zero for every channel that existed before this, which is deliberate: a
@@ -986,14 +1005,36 @@ model Channel {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  org       Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  section   ChannelSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  createdBy User?           @relation("ChannelCreator", fields: [createdById], references: [id], onDelete: SetNull)
   posts     Post[]
   proposals Proposal[]
 
   @@unique([orgId, slug])
   @@index([orgId])
   @@index([orgId, position])
+  @@index([sectionId])
   @@map("channels")
+}
+
+/// A named group of channels — Circle's "General", with channels filed under
+/// it (CMN-11). The co-op's own information architecture, so an admin makes
+/// them; a channel with no section simply sits above the first one.
+model ChannelSection {
+  id        String   @id @default(uuid())
+  orgId     String
+  name      String
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  channels Channel[]
+
+  @@unique([orgId, name])
+  @@index([orgId, position])
+  @@map("channel_sections")
 }
 
 model Post {
@@ -2375,4 +2416,3 @@ model ShareGrant {
   @@index([orgId, userId])
   @@map("share_grants")
 }
-

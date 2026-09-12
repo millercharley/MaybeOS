@@ -19,6 +19,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { api, Comment as CommentT, Post, PaginatedResponse, DirectMessage } from '@/lib/api';
 import { renderBodyHtml, isBlankBody, asRichBody } from '@/lib/rich-text';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
+import { EmojiPicker } from '@/components/composer/emoji-picker';
 import { PageHeader } from '@/components/layout/page-header';
 import { MemberName } from '@/components/member/member-name';
 
@@ -222,6 +223,10 @@ export default function CommonsPage() {
   const [renameDraft, setRenameDraft] = useState('');
   const [channelBusy, setChannelBusy] = useState(false);
   const [channelError, setChannelError] = useState('');
+  // Sections: the sidebar's headings (CMN-11).
+  const [newSectionName, setNewSectionName] = useState('');
+  const [renamingSection, setRenamingSection] = useState<string | null>(null);
+  const [sectionDraft, setSectionDraft] = useState('');
 
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
   const [newPostBody, setNewPostBody] = useState('');
@@ -230,6 +235,11 @@ export default function CommonsPage() {
 
   const { data: channels, loading: channelsLoading, error: channelsError, refetch: refetchChannels } = useApi(
     (token, orgId) => api.commons.listChannels(orgId, token),
+    [],
+  );
+
+  const { data: sections, refetch: refetchSections } = useApi(
+    (token, orgId) => api.commons.listSections(orgId, token),
     [],
   );
 
@@ -279,6 +289,7 @@ export default function CommonsPage() {
   if (!token || !currentOrgId) return null;
 
   const channelList = channels ?? [];
+  const sectionList = sections ?? [];
   const selectedChannel = channelList.find((c) => c.id === activeChannelId);
   const posts = postsData?.data ?? [];
   const proposalList = proposals ?? [];
@@ -379,6 +390,70 @@ export default function CommonsPage() {
     });
   }
 
+  /** An emoji, or the section a channel files under (CMN-11). */
+  async function handleChannelDetail(
+    channelId: string,
+    data: { emoji?: string | null; sectionId?: string | null },
+  ) {
+    await withChannels(() => api.commons.updateChannel(currentOrgId!, channelId, data, token!));
+  }
+
+  async function withSections(work: () => Promise<unknown>) {
+    setChannelBusy(true);
+    setChannelError('');
+    try {
+      await work();
+      await refetchSections();
+      // The channels carry the section they are filed under, so both lists
+      // move together — otherwise deleting a heading leaves its channels
+      // claiming a section that is gone until the next reload.
+      await refetchChannels();
+    } catch (err) {
+      setChannelError(err instanceof Error ? err.message : 'That did not save');
+    } finally {
+      setChannelBusy(false);
+    }
+  }
+
+  async function handleCreateSection() {
+    const name = newSectionName.trim();
+    if (!name) return;
+    await withSections(async () => {
+      await api.commons.createSection(currentOrgId!, name, token!);
+      setNewSectionName('');
+    });
+  }
+
+  async function handleRenameSection(sectionId: string) {
+    const name = sectionDraft.trim();
+    if (!name) return;
+    await withSections(async () => {
+      await api.commons.updateSection(currentOrgId!, sectionId, name, token!);
+      setRenamingSection(null);
+    });
+  }
+
+  async function handleDeleteSection(sectionId: string, name: string, channelCount: number) {
+    // Said plainly, because "delete" beside a list of channels reads like it
+    // takes them with it. It does not — the API sets their section to null.
+    const warning = channelCount
+      ? `Remove the "${name}" heading? The ${channelCount} ${channelCount === 1 ? 'channel' : 'channels'} under it stay, ungrouped.`
+      : `Remove the "${name}" heading?`;
+    if (!window.confirm(warning)) return;
+
+    await withSections(() => api.commons.deleteSection(currentOrgId!, sectionId, token!));
+  }
+
+  async function handleMoveSection(sectionId: string, direction: -1 | 1) {
+    const ids = sectionList.map((section) => section.id);
+    const index = ids.indexOf(sectionId);
+    const target = index + direction;
+    if (index === -1 || target < 0 || target >= ids.length) return;
+
+    [ids[index], ids[target]] = [ids[target], ids[index]];
+    await withSections(() => api.commons.reorderSections(currentOrgId!, ids, token!));
+  }
+
   async function handleTogglePin(channelId: string, isPinned: boolean) {
     await api.commons.pinChannel(currentOrgId!, channelId, !isPinned, token!);
     refetchChannels();
@@ -476,7 +551,11 @@ export default function CommonsPage() {
                               : 'text-gray-700 hover:bg-gray-100'
                         }`}
                       >
-                        <Hash className="h-4 w-4 shrink-0" />
+                        {channel.emoji ? (
+                          <span aria-hidden="true" className="w-4 shrink-0 text-center">{channel.emoji}</span>
+                        ) : (
+                          <Hash className="h-4 w-4 shrink-0" />
+                        )}
                         <span className="truncate">{channel.name}</span>
                         {channel.isPinned && <Pin className="h-3 w-3 shrink-0 text-gray-400" />}
                       </button>
@@ -528,6 +607,35 @@ export default function CommonsPage() {
                       >
                         {channel.isPinned ? 'Unpin' : 'Pin'}
                       </button>
+                      {/* The emoji and the heading it files under (CMN-11).
+                          Both save on change rather than behind a Save button:
+                          they are single values, and a control that looks set
+                          but is not saved is how an admin ends up believing
+                          the sidebar says something it does not. */}
+                      <span className="flex items-center gap-1">
+                        <EmojiPicker
+                          value={channel.emoji ?? ''}
+                          onChange={(emoji) => handleChannelDetail(channel.id, { emoji: emoji || null })}
+                        />
+                        <label className="sr-only" htmlFor={`section-${channel.id}`}>
+                          Section for {channel.name}
+                        </label>
+                        <select
+                          id={`section-${channel.id}`}
+                          value={channel.sectionId ?? ''}
+                          disabled={channelBusy}
+                          onChange={(e) =>
+                            handleChannelDetail(channel.id, { sectionId: e.target.value || null })
+                          }
+                          className="rounded-md border border-gray-200 px-1 py-0.5 text-[11px] text-gray-600"
+                        >
+                          <option value="">No section</option>
+                          {sectionList.map((section) => (
+                            <option key={section.id} value={section.id}>{section.name}</option>
+                          ))}
+                        </select>
+                      </span>
+
                       {/* The default channel has no Delete, because the API
                           refuses it — offering a button that always fails is
                           worse than not offering one. */}
@@ -572,6 +680,116 @@ export default function CommonsPage() {
                   {channelBusy ? '...' : 'Add'}
                 </button>
               </form>
+            )}
+
+            {/* Sections (CMN-11) — the headings channels file under, the way
+                Circle groups them. Only here, in manage mode: a heading with
+                no channels under it is invisible in the member sidebar, so
+                this is the one place an admin can see one they have made and
+                not yet used. */}
+            {isAdmin && managing && (
+              <div className="mt-4 border-t border-gray-100 pt-3">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Sections
+                </h3>
+
+                <ul className="space-y-1">
+                  {sectionList.map((section, index) => (
+                    <li key={section.id}>
+                      {renamingSection === section.id ? (
+                        <form
+                          className="flex gap-1"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            handleRenameSection(section.id);
+                          }}
+                        >
+                          <input
+                            autoFocus
+                            value={sectionDraft}
+                            onChange={(e) => setSectionDraft(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Escape' && setRenamingSection(null)}
+                            className="input min-w-0 flex-1 text-sm"
+                            aria-label={`Rename the ${section.name} section`}
+                          />
+                          <button type="submit" disabled={channelBusy} className="btn-primary px-2 text-xs">
+                            Save
+                          </button>
+                        </form>
+                      ) : (
+                        <div className="flex flex-wrap items-center gap-2 px-2 py-1">
+                          <span className="min-w-0 flex-1 truncate text-sm text-gray-700">
+                            {section.name}
+                            <span className="ml-1 text-[11px] text-gray-400">
+                              {section._count?.channels ?? 0}
+                            </span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveSection(section.id, -1)}
+                            disabled={channelBusy || index === 0}
+                            className="text-[11px] text-gray-400 hover:text-gray-700 disabled:opacity-40"
+                          >
+                            Up
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMoveSection(section.id, 1)}
+                            disabled={channelBusy || index === sectionList.length - 1}
+                            className="text-[11px] text-gray-400 hover:text-gray-700 disabled:opacity-40"
+                          >
+                            Down
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSectionDraft(section.name);
+                              setRenamingSection(section.id);
+                            }}
+                            className="text-[11px] text-gray-400 hover:text-gray-700"
+                          >
+                            Rename
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleDeleteSection(section.id, section.name, section._count?.channels ?? 0)
+                            }
+                            disabled={channelBusy}
+                            className="text-[11px] text-gray-400 hover:text-red-600 disabled:opacity-40"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+
+                <form
+                  className="mt-2 flex gap-1"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleCreateSection();
+                  }}
+                >
+                  <input
+                    value={newSectionName}
+                    onChange={(e) => setNewSectionName(e.target.value)}
+                    placeholder="New section"
+                    maxLength={40}
+                    className="input min-w-0 flex-1 text-sm"
+                    aria-label="New section name"
+                  />
+                  <button
+                    type="submit"
+                    disabled={channelBusy || !newSectionName.trim()}
+                    className="btn-primary px-2 text-xs disabled:opacity-50"
+                  >
+                    {channelBusy ? '...' : 'Add'}
+                  </button>
+                </form>
+              </div>
             )}
           </div>
 

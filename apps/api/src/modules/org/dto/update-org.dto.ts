@@ -35,6 +35,16 @@ export class UpdateOrgDto extends PartialType(CreateOrgDto) {
   sharesEnabled?: boolean;
 
   /**
+   * Whether any member may open a channel in the Commons (CMN-11). Off by
+   * default. Declared here for the same reason as the line above: the
+   * whitelist refuses the whole save on an undeclared field.
+   */
+  @ApiPropertyOptional({ example: false, default: false })
+  @IsOptional()
+  @IsBoolean()
+  memberChannelsEnabled?: boolean;
+
+  /**
    * A fee the co-op adds to its own ticket sales, in cents per ticket, on top
    * of MaybeOS's (D-013). Capped at $50 — not a business rule so much as a
    * guard against a typo in a cents field becoming a $500 booking fee on a

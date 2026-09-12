@@ -1,5 +1,15 @@
-import { IsString, IsOptional, IsBoolean, IsArray, ArrayMaxSize, ValidateIf } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsBoolean,
+  IsArray,
+  ArrayMaxSize,
+  ValidateIf,
+  IsUUID,
+  Matches,
+} from 'class-validator';
 import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
+import { EMOJI_PATTERN, EMOJI_MESSAGE } from './create-channel.dto';
 
 export class UpdateChannelDto {
   @ApiPropertyOptional({ description: 'Channel name' })
@@ -17,6 +27,18 @@ export class UpdateChannelDto {
   @IsOptional()
   @IsBoolean()
   isPublic?: boolean;
+
+  @ApiPropertyOptional({ description: 'A single emoji shown before the name. Null clears it.' })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== '')
+  @Matches(EMOJI_PATTERN, { message: EMOJI_MESSAGE })
+  emoji?: string | null;
+
+  @ApiPropertyOptional({ description: 'The section to file this under. Null ungroups it.' })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsUUID()
+  sectionId?: string | null;
 }
 
 export class ReorderChannelsDto {

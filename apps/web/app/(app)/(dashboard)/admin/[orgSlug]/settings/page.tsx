@@ -17,6 +17,7 @@ import { GettingStartedSettings } from '@/components/settings/getting-started-se
 import { Integrations } from '@/components/settings/integrations';
 import { PageHeader } from '@/components/layout/page-header';
 import { ShareTracking } from '@/components/settings/share-tracking';
+import { MemberChannels } from '@/components/settings/member-channels';
 
 type SettingsTab = 'general' | 'branding' | 'website' | 'onboarding' | 'integrations' | 'billing';
 
@@ -349,6 +350,9 @@ export default function SettingsPage() {
       {activeTab === 'general' && org && <ServiceValue org={org} onSaved={refetch} />}
       {activeTab === 'general' && org && (
         <ShareTracking orgId={org.id} orgName={org.name} orgSlug={org.slug} />
+      )}
+      {activeTab === 'general' && org && (
+        <MemberChannels orgId={org.id} orgSlug={org.slug} />
       )}
       {activeTab === 'general' && org && <Locations orgId={org.id} />}
       {activeTab === 'general' && org && <Support orgName={org.name} />}

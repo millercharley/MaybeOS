@@ -1,14 +1,20 @@
 'use client';
 
-import { useState, useEffect, useCallback, FormEvent } from 'react';
+import { useState, useEffect, useCallback, useRef, FormEvent } from 'react';
 import {
-  MessageSquare, Pin,
+  MessageSquare, Pin, Plus, UserPlus,
 } from 'lucide-react';
 import { WelcomeCard } from '@/components/live/welcome-card';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
-import { api, Channel, Post, Proposal, Comment } from '@/lib/api';
+import {
+  api, Channel, ChannelSection, CommonsPermissions, PaginatedResponse, Post, Proposal, Comment,
+} from '@/lib/api';
 import { renderBodyHtml, isBlankBody, asRichBody } from '@/lib/rich-text';
+import { MentionPerson, matchMentions } from '@/lib/mentions';
+import { Modal } from '@/components/ui/modal';
+import { EmojiPicker } from '@/components/composer/emoji-picker';
+import { RichBody } from '@/components/composer/rich-body';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
 import { uploadAttachments } from '@/lib/attachments';
 import { AttachmentList } from '@/components/composer/attachment-list';
@@ -64,31 +70,79 @@ export default function PortalCommonsPage() {
   );
 }
 
+/**
+ * The channels, the way a chat reads (CMN-11).
+ *
+ * Charley: "People are used to Slack and Teams, where the composer sits at the
+ * bottom and the most recent message stacks above that." So this is a column
+ * with the composer pinned to the bottom, messages above it oldest-first, and
+ * older ones further up — the opposite of what was here, which was a composer
+ * on top and a newest-first feed underneath.
+ *
+ * That ordering decides the loading too: page 1 from the API is the *newest*
+ * twenty, reversed to hang above the composer, and "page 2" means older and
+ * loads upward. Scroll position is restored by height difference when it
+ * arrives, because prepending to a scrolled list otherwise throws the reader
+ * to a different part of the conversation.
+ */
 function ChannelsSection() {
   const { org } = usePortal();
   const token = useAuthStore((s) => s.token);
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [sections, setSections] = useState<ChannelSection[]>([]);
+  const [permissions, setPermissions] = useState<CommonsPermissions | null>(null);
+  const [people, setPeople] = useState<MentionPerson[]>([]);
+  /** Oldest first: this list is rendered top to bottom above the composer. */
   const [posts, setPosts] = useState<Post[]>([]);
+  const [oldestPage, setOldestPage] = useState(1);
+  const [hasOlder, setHasOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [newPost, setNewPost] = useState('');
   const [posting, setPosting] = useState(false);
+  const [creatingChannel, setCreatingChannel] = useState(false);
+  const [inviting, setInviting] = useState(false);
   // Every call in this section used to `catch {}`. A member posted, it failed,
   // and the page said nothing — the post simply never appeared. Silence is the
   // worst possible answer here, because the member's own action is the thing
   // that vanished.
   const [error, setError] = useState('');
 
+  const scroller = useRef<HTMLDivElement>(null);
+  /** Set when the next render should land at the newest message. */
+  const stickToBottom = useRef(true);
+
   useEffect(() => {
     if (!org || !token) { setLoading(false); return; }
+
+    // The sidebar's headings, and whether this member may add to it. Neither
+    // failing should cost the member their channels, so they settle
+    // separately from the list itself.
+    api.commons.listSections(org.id, token).then(setSections).catch(() => setSections([]));
+    api.commons.permissions(org.id, token).then(setPermissions).catch(() => setPermissions(null));
+    // Who `@` offers. The ledger is the members list every member may read —
+    // no emails, no phone numbers — which is exactly what a picker needs.
+    api.ledger
+      .get(org.id, token)
+      .then((ledger) =>
+        setPeople(
+          ledger.holders
+            .filter((holder) => holder.user?.name)
+            .map((holder) => ({ id: holder.userId, name: holder.user.name as string })),
+        ),
+      )
+      .catch(() => setPeople([]));
+
     api.commons
       .listChannels(org.id, token)
       .then((chs) => {
         setChannels(chs);
         if (chs.length > 0) {
-          // A member card links here with `?channel=` (MEM-18). Read from the
-          // location inside the effect rather than useSearchParams, which
-          // would need a Suspense boundary around the whole page.
+          // A member card links here with `?channel=` (MEM-18), and so does a
+          // channel mention (CMN-11). Read from the location inside the effect
+          // rather than useSearchParams, which would need a Suspense boundary
+          // around the whole page.
           const wanted = new URLSearchParams(window.location.search).get('channel');
           const first = chs.find((c) => c.id === wanted) ?? chs[0];
           setSelectedChannel(first.id);
@@ -97,7 +151,7 @@ function ChannelsSection() {
         return null;
       })
       .then((data) => {
-        if (data) setPosts(data.data || []);
+        if (data) receiveNewest(data);
       })
       .catch((err) =>
         setError(err instanceof Error ? err.message : 'Could not load the Commons'),
@@ -105,11 +159,30 @@ function ChannelsSection() {
       .finally(() => setLoading(false));
   }, [org, token]);
 
-  // Then scroll to the post the card linked to, once it exists to scroll to.
+  /** Page 1 is the newest twenty; reversed, it reads upward from the composer. */
+  function receiveNewest(page: PaginatedResponse<Post>) {
+    const newest = [...(page.data || [])].reverse();
+    setPosts(newest);
+    setOldestPage(1);
+    setHasOlder((page.meta?.total ?? 0) > newest.length);
+    stickToBottom.current = true;
+  }
+
+  // Land on the newest message, the way every chat opens.
+  useEffect(() => {
+    if (!stickToBottom.current) return;
+    const el = scroller.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [posts]);
+
+  // Then scroll to the post a card or a link pointed at, once it exists.
   useEffect(() => {
     const target = window.location.hash.slice(1);
     if (!target.startsWith('post-') || posts.length === 0) return;
-    document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const node = document.getElementById(target);
+    if (!node) return;
+    stickToBottom.current = false;
+    node.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [posts]);
 
   async function loadPosts(channelId: string) {
@@ -119,10 +192,37 @@ function ChannelsSection() {
     setError('');
     try {
       const data = await api.commons.listPosts(org.id, channelId, token);
-      setPosts(data.data || []);
+      receiveNewest(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load these posts');
     }
+  }
+
+  /** Older messages, prepended, without moving what the reader is looking at. */
+  async function loadOlder() {
+    if (!org || !token || !selectedChannel || loadingOlder) return;
+    setLoadingOlder(true);
+    setError('');
+
+    const el = scroller.current;
+    const before = el?.scrollHeight ?? 0;
+    try {
+      const olderPage = await api.commons.listPosts(org.id, selectedChannel, token, oldestPage + 1);
+      const older = [...(olderPage.data || [])].reverse();
+      stickToBottom.current = false;
+      setPosts((prev) => [...older, ...prev]);
+      setOldestPage((page) => page + 1);
+      setHasOlder((olderPage.meta?.total ?? 0) > posts.length + older.length);
+
+      // After the browser has laid the new messages out: keep the reader where
+      // they were by adding exactly the height that appeared above them.
+      requestAnimationFrame(() => {
+        if (el) el.scrollTop += el.scrollHeight - before;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load older messages');
+    }
+    setLoadingOlder(false);
   }
 
   const [postFiles, setPostFiles] = useState<File[]>([]);
@@ -145,7 +245,9 @@ function ChannelsSection() {
         await uploadAttachments(org.id, postFiles, { postId: post.id }, token);
         setPostFiles([]);
       }
-      setPosts((prev) => [post, ...prev]);
+      // Appended, not prepended: newest sits nearest the composer now.
+      stickToBottom.current = true;
+      setPosts((prev) => [...prev, post]);
       // Only cleared once the post is actually saved. Clearing first would
       // throw away what somebody wrote the moment the request failed.
       setNewPost('');
@@ -154,6 +256,8 @@ function ChannelsSection() {
     }
     setPosting(false);
   }
+
+  const current = channels.find((c) => c.id === selectedChannel) ?? null;
 
   if (loading) {
     return (
@@ -179,58 +283,427 @@ function ChannelsSection() {
       {/* Stacked below `lg`, side by side above it (UI-01). See the admin
           Commons for why. */}
       <div className="flex flex-col gap-6 lg:flex-row">
-      <div className="w-full shrink-0 space-y-1 lg:w-48">
-        {/*
-          Pinned channels first, and said so. Admins can pin a channel (CMN-03)
-          and the portal ignored it entirely, so the one ordering a co-op had
-          deliberately chosen was the one place it did not apply.
-        */}
-        {[...channels]
-          .sort((a, b) => Number(b.isPinned) - Number(a.isPinned))
-          .map((ch) => (
+        <div className="w-full shrink-0 space-y-3 lg:w-56">
+          <ChannelRail
+            channels={channels}
+            sections={sections}
+            selected={selectedChannel}
+            onSelect={loadPosts}
+          />
+          {permissions?.canCreateChannel && (
             <button
-              key={ch.id}
-              onClick={() => loadPosts(ch.id)}
-              className={`flex w-full items-center gap-1.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${
-                selectedChannel === ch.id ? 'bg-brand-50 text-brand-700' : 'text-gray-600 hover:bg-gray-100'
-              }`}
+              onClick={() => setCreatingChannel(true)}
+              className="flex w-full items-center gap-1.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
             >
-              {ch.isPinned && <Pin className="h-3 w-3 shrink-0 text-gray-400" aria-label="Pinned" />}
-              <span className="truncate"># {ch.name}</span>
+              <Plus className="h-4 w-4 shrink-0" aria-hidden="true" />
+              New channel
             </button>
-          ))}
-      </div>
+          )}
+        </div>
 
-      <div className="min-w-0 flex-1 space-y-4">
-        <RichComposer
-          value={newPost}
-          onChange={setNewPost}
-          onSubmit={() => handlePost()}
-          placeholder="Write a message..."
-          submitLabel="Post"
-          busy={posting}
-          files={postFiles}
-          onFilesChange={setPostFiles}
-        />
+        {/* A chat, not a feed: fixed height, the conversation scrolling inside
+            it, and the composer always in reach at the bottom. */}
+        <div className="flex min-h-[30rem] min-w-0 flex-1 flex-col lg:h-[calc(100vh-15rem)]">
+          {current && (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2">
+              <div className="min-w-0">
+                <h2 className="truncate text-sm font-semibold text-gray-900">
+                  {current.emoji ? `${current.emoji} ` : '# '}
+                  {current.name}
+                </h2>
+                {current.description && (
+                  <p className="truncate text-xs text-gray-500">{current.description}</p>
+                )}
+              </div>
+              <button
+                onClick={() => setInviting(true)}
+                className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-800"
+              >
+                <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
+                Invite
+              </button>
+            </div>
+          )}
 
-        {/* In the feed, above the posts, because the point is that somebody
-            reading the Commons is the person most likely to say hello. It
-            renders nothing when nobody has joined this week, so a quiet month
-            is not a monthly reminder that nobody is joining. */}
-        {org && <WelcomeCard orgId={org.id} orgSlug={org.slug} />}
+          <div ref={scroller} className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+            {hasOlder && (
+              <div className="flex justify-center pb-1">
+                <button
+                  onClick={loadOlder}
+                  disabled={loadingOlder}
+                  className="rounded-full border border-gray-200 px-3 py-1 text-xs font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {loadingOlder ? 'Loading...' : 'Older messages'}
+                </button>
+              </div>
+            )}
 
-        {posts.length === 0 ? (
-          <p className="py-8 text-center text-sm text-gray-400">No posts in this channel yet. Be the first!</p>
-        ) : (
-          <div className="space-y-3">
-            {posts.map((post) => (
-              <PostCard key={post.id} post={post} orgId={org!.id} token={token!} />
-            ))}
+            {/* In the feed, above the posts, because the point is that somebody
+                reading the Commons is the person most likely to say hello. It
+                renders nothing when nobody has joined this week, so a quiet
+                month is not a monthly reminder that nobody is joining. */}
+            {org && <WelcomeCard orgId={org.id} orgSlug={org.slug} />}
+
+            {posts.length === 0 ? (
+              <p className="py-8 text-center text-sm text-gray-400">
+                No messages in this channel yet. Be the first.
+              </p>
+            ) : (
+              posts.map((post) => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  orgId={org!.id}
+                  token={token!}
+                  onChannelMention={loadPosts}
+                />
+              ))
+            )}
           </div>
-        )}
+
+          <div className="pt-3">
+            <RichComposer
+              value={newPost}
+              onChange={setNewPost}
+              onSubmit={() => handlePost()}
+              placeholder={current ? `Message ${current.emoji ?? '#'} ${current.name}` : 'Write a message...'}
+              submitLabel="Send"
+              busy={posting}
+              rows={2}
+              files={postFiles}
+              onFilesChange={setPostFiles}
+              mentions={org ? { orgSlug: org.slug, people, channels } : undefined}
+            />
+          </div>
         </div>
       </div>
+
+      {creatingChannel && org && (
+        <NewChannelDialog
+          orgId={org.id}
+          token={token!}
+          sections={sections}
+          onClose={() => setCreatingChannel(false)}
+          onCreated={(channel) => {
+            setChannels((prev) => [...prev, channel]);
+            setCreatingChannel(false);
+            loadPosts(channel.id);
+          }}
+        />
+      )}
+
+      {inviting && org && current && (
+        <InviteDialog
+          orgId={org.id}
+          token={token!}
+          channel={current}
+          people={people}
+          onClose={() => setInviting(false)}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * The channel list, under the headings an admin filed them under (CMN-11).
+ *
+ * Ungrouped channels sit at the top rather than under an "Other" heading
+ * nobody created — a co-op that has never made a section sees exactly the
+ * list it had. Pinned channels are pulled to the front of their own group, so
+ * pinning still means something inside a section.
+ */
+function ChannelRail({
+  channels,
+  sections,
+  selected,
+  onSelect,
+}: {
+  channels: Channel[];
+  sections: ChannelSection[];
+  selected: string | null;
+  onSelect: (channelId: string) => void;
+}) {
+  const byPin = (a: Channel, b: Channel) => Number(b.isPinned) - Number(a.isPinned);
+  const ungrouped = channels.filter((c) => !c.sectionId).sort(byPin);
+
+  const row = (channel: Channel) => (
+    <button
+      key={channel.id}
+      onClick={() => onSelect(channel.id)}
+      className={`flex w-full items-center gap-1.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${
+        selected === channel.id ? 'bg-brand-50 text-brand-700' : 'text-gray-600 hover:bg-gray-100'
+      }`}
+    >
+      {channel.isPinned && <Pin className="h-3 w-3 shrink-0 text-gray-400" aria-label="Pinned" />}
+      <span aria-hidden="true" className="shrink-0">{channel.emoji || '#'}</span>
+      <span className="truncate">{channel.name}</span>
+    </button>
+  );
+
+  return (
+    <nav className="space-y-3" aria-label="Channels">
+      {ungrouped.length > 0 && <div className="space-y-1">{ungrouped.map(row)}</div>}
+
+      {sections.map((section) => {
+        const inside = channels.filter((c) => c.sectionId === section.id).sort(byPin);
+        // A heading with nothing under it is a promise the sidebar cannot
+        // keep; the admin still sees it on the Commons page where it is made.
+        if (inside.length === 0) return null;
+
+        return (
+          <div key={section.id} className="space-y-1">
+            <h3 className="px-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+              {section.name}
+            </h3>
+            {inside.map(row)}
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
+/**
+ * A member opening a channel (CMN-11).
+ *
+ * Only rendered when the co-op has turned this on — and the API refuses it
+ * independently, because a hidden button is not a permission.
+ */
+function NewChannelDialog({
+  orgId,
+  token,
+  sections,
+  onClose,
+  onCreated,
+}: {
+  orgId: string;
+  token: string;
+  sections: ChannelSection[];
+  onClose: () => void;
+  onCreated: (channel: Channel) => void;
+}) {
+  const [name, setName] = useState('');
+  const [emoji, setEmoji] = useState('');
+  const [description, setDescription] = useState('');
+  const [sectionId, setSectionId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true);
+    setError('');
+    try {
+      const channel = await api.commons.createChannel(
+        orgId,
+        {
+          name: name.trim(),
+          ...(emoji ? { emoji } : {}),
+          ...(description.trim() ? { description: description.trim() } : {}),
+          ...(sectionId ? { sectionId } : {}),
+        },
+        token,
+      );
+      onCreated(channel);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not open that channel');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open title="New channel" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        {error && <ErrorNote message={error} />}
+
+        <div className="flex gap-2">
+          <div className="w-20">
+            <label className="label" htmlFor="channel-emoji">Emoji</label>
+            <EmojiPicker value={emoji} onChange={setEmoji} id="channel-emoji" />
+          </div>
+          <div className="flex-1">
+            <label className="label" htmlFor="channel-name">Name</label>
+            <input
+              id="channel-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={60}
+              required
+              autoFocus
+              className="input"
+              placeholder="Cycling"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="label" htmlFor="channel-description">What is it for?</label>
+          <input
+            id="channel-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="input"
+            placeholder="Rides, routes and repairs"
+          />
+        </div>
+
+        {sections.length > 0 && (
+          <div>
+            <label className="label" htmlFor="channel-section">Section</label>
+            <select
+              id="channel-section"
+              value={sectionId}
+              onChange={(e) => setSectionId(e.target.value)}
+              className="input"
+            >
+              <option value="">No section</option>
+              {sections.map((section) => (
+                <option key={section.id} value={section.id}>{section.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <p className="text-xs text-gray-500">
+          Channels are open: every member of the co-op can see this one and read it.
+        </p>
+
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="btn-secondary text-sm">Cancel</button>
+          <button type="submit" disabled={busy || !name.trim()} className="btn-primary text-sm">
+            {busy ? 'Opening...' : 'Open channel'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * Invite members to a channel (CMN-11).
+ *
+ * Says plainly what it does, because the word "invite" implies a door: every
+ * member can already see this channel, so what arrives is a message, not
+ * access. Claiming otherwise would be the interface lying about the model.
+ */
+function InviteDialog({
+  orgId,
+  token,
+  channel,
+  people,
+  onClose,
+}: {
+  orgId: string;
+  token: string;
+  channel: Channel;
+  people: MentionPerson[];
+  onClose: () => void;
+}) {
+  const me = useAuthStore((s) => s.user);
+  const [chosen, setChosen] = useState<string[]>([]);
+  const [note, setNote] = useState('');
+  const [search, setSearch] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(0);
+  const [error, setError] = useState('');
+
+  const others = people.filter((person) => person.id !== me?.id);
+  const shown = matchMentions(others, search, 50);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (chosen.length === 0) return;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await api.commons.inviteToChannel(
+        orgId,
+        channel.id,
+        { userIds: chosen, ...(note.trim() ? { note: note.trim() } : {}) },
+        token,
+      );
+      setSent(result.invited);
+      setChosen([]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not send that invitation');
+    }
+    setBusy(false);
+  }
+
+  return (
+    <Modal open title={`Invite to ${channel.emoji ?? '#'} ${channel.name}`} onClose={onClose}>
+      {sent > 0 ? (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700">
+            Invitation sent to {sent} {sent === 1 ? 'member' : 'members'}. It arrives as a
+            message from you, with a link to the channel.
+          </p>
+          <div className="flex justify-end">
+            <button onClick={onClose} className="btn-primary text-sm">Done</button>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={submit} className="space-y-4">
+          {error && <ErrorNote message={error} />}
+
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="input"
+            placeholder="Search members"
+            aria-label="Search members"
+          />
+
+          <ul className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-gray-200 p-1">
+            {shown.length === 0 && (
+              <li className="px-2 py-3 text-center text-sm text-gray-400">Nobody by that name.</li>
+            )}
+            {shown.map((person) => (
+              <li key={person.id}>
+                <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-gray-50">
+                  <input
+                    type="checkbox"
+                    checked={chosen.includes(person.id)}
+                    onChange={(e) =>
+                      setChosen((prev) =>
+                        e.target.checked ? [...prev, person.id] : prev.filter((id) => id !== person.id),
+                      )
+                    }
+                  />
+                  <span className="truncate">{person.name}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+
+          <div>
+            <label className="label" htmlFor="invite-note">A line to send with it</label>
+            <input
+              id="invite-note"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              maxLength={500}
+              className="input"
+              placeholder="Optional"
+            />
+          </div>
+
+          <p className="text-xs text-gray-500">
+            Every member can already see this channel. An invitation is a message saying it is
+            here — it does not change who can read it.
+          </p>
+
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={onClose} className="btn-secondary text-sm">Cancel</button>
+            <button type="submit" disabled={busy || chosen.length === 0} className="btn-primary text-sm">
+              {busy ? 'Sending...' : `Invite ${chosen.length || ''}`.trim()}
+            </button>
+          </div>
+        </form>
+      )}
+    </Modal>
   );
 }
 
@@ -247,7 +720,18 @@ function ChannelsSection() {
  * posts, and loading every comment on every one to show a count the list
  * already carries would be slow for information nobody asked for.
  */
-function PostCard({ post, orgId, token }: { post: Post; orgId: string; token: string }) {
+function PostCard({
+  post,
+  orgId,
+  token,
+  onChannelMention,
+}: {
+  post: Post;
+  orgId: string;
+  token: string;
+  /** Clicking `#channel` in a body switches channel rather than navigating. */
+  onChannelMention?: (channelId: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [thread, setThread] = useState<Comment[] | null>(null);
   const [reactions, setReactions] = useState(post.reactions ?? []);
@@ -356,10 +840,12 @@ function PostCard({ post, orgId, token }: { post: Post; orgId: string; token: st
       )}
       {/* Bodies are HTML now, and the plain text already stored still renders
           correctly — renderBodyHtml tells them apart rather than migrating a
-          co-op's own words. */}
-      <div
+          co-op's own words. RichBody adds the mention behaviour on top of it
+          (CMN-11): @ opens the member card, # switches channel. */}
+      <RichBody
+        body={post.body}
+        onChannelMention={onChannelMention}
         className="prose prose-sm mt-1 max-w-none whitespace-pre-wrap text-sm text-gray-700"
-        dangerouslySetInnerHTML={{ __html: renderBodyHtml(post.body) }}
       />
       <AttachmentList orgId={orgId} token={token} postId={post.id} />
 

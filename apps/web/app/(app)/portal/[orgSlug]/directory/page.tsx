@@ -47,6 +47,24 @@ export default function MemberLedgerPage() {
       .finally(() => setLoading(false));
   }, [org, token]);
 
+  /**
+   * `?member=<id>` opens that member's card (CMN-11).
+   *
+   * A member mention in the Commons is a real link to this page, so following
+   * it — in a new tab, from an email quote, or with JavaScript yet to upgrade
+   * the click — has to land on the person rather than on a list of everybody.
+   * Read from the location rather than `useSearchParams`, which would need a
+   * Suspense boundary around the page, and only once the ledger is in so the
+   * card opens over something.
+   */
+  useEffect(() => {
+    if (!ledger) return;
+    const wanted = new URLSearchParams(window.location.search).get('member');
+    if (!wanted) return;
+    const holder = ledger.holders.find((h) => h.userId === wanted);
+    openMember({ userId: wanted, name: holder?.user?.name ?? null });
+  }, [ledger, openMember]);
+
   if (!token) {
     return (
       <div className="py-12 text-center">
