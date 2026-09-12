@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, FormEvent } from 'react';
 import {
   MessageSquare, Pin, Plus, UserPlus,
 } from 'lucide-react';
-import { WelcomeCard } from '@/components/live/welcome-card';
+import { WelcomeNote, useRecentJoins } from '@/components/live/welcome-card';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
 import {
@@ -12,6 +12,7 @@ import {
 } from '@/lib/api';
 import { renderBodyHtml, isBlankBody, asRichBody } from '@/lib/rich-text';
 import { MentionPerson, matchMentions } from '@/lib/mentions';
+import { channelStream } from '@/lib/channel-stream';
 import { Modal } from '@/components/ui/modal';
 import { EmojiPicker } from '@/components/composer/emoji-picker';
 import { RichBody } from '@/components/composer/rich-body';
@@ -109,6 +110,10 @@ function ChannelsSection() {
   // that vanished.
   const [error, setError] = useState('');
 
+  // Who arrived this week. Placed in the conversation by when they joined
+  // rather than pinned above it (CMN-11) — see `channelStream`.
+  const joins = useRecentJoins(org?.id ?? '');
+
   const scroller = useRef<HTMLDivElement>(null);
   /** Set when the next render should land at the newest message. */
   const stickToBottom = useRef(true);
@@ -168,12 +173,14 @@ function ChannelsSection() {
     stickToBottom.current = true;
   }
 
-  // Land on the newest message, the way every chat opens.
+  // Land on the newest message, the way every chat opens. `joins` is in the
+  // dependencies because a welcome note arriving after the posts adds height
+  // above the composer, and without it the view sits short of the bottom.
   useEffect(() => {
     if (!stickToBottom.current) return;
     const el = scroller.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [posts]);
+  }, [posts, joins]);
 
   // Then scroll to the post a card or a link pointed at, once it exists.
   useEffect(() => {
@@ -259,6 +266,18 @@ function ChannelsSection() {
 
   const current = channels.find((c) => c.id === selectedChannel) ?? null;
 
+  /**
+   * The conversation, with this week's arrivals in their place in it.
+   *
+   * One channel carries the co-op's own news: the default one, falling back
+   * to the first if a co-op somehow has none, so the welcome cannot vanish
+   * from every channel over a missing flag. A welcome note is about the
+   * co-op, not about cycling or the kiln, and a copy in every channel is the
+   * same news three times — which is what it did before this.
+   */
+  const noticeChannel = channels.find((c) => c.isDefault) ?? channels[0];
+  const stream = channelStream(posts, current?.id === noticeChannel?.id ? joins : null);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -338,26 +357,32 @@ function ChannelsSection() {
               </div>
             )}
 
-            {/* In the feed, above the posts, because the point is that somebody
-                reading the Commons is the person most likely to say hello. It
-                renders nothing when nobody has joined this week, so a quiet
-                month is not a monthly reminder that nobody is joining. */}
-            {org && <WelcomeCard orgId={org.id} orgSlug={org.slug} />}
-
-            {posts.length === 0 ? (
+            {stream.length === 0 ? (
               <p className="py-8 text-center text-sm text-gray-400">
                 No messages in this channel yet. Be the first.
               </p>
             ) : (
-              posts.map((post) => (
-                <PostCard
-                  key={post.id}
-                  post={post}
-                  orgId={org!.id}
-                  token={token!}
-                  onChannelMention={loadPosts}
-                />
-              ))
+              stream.map((entry) =>
+                entry.kind === 'post' ? (
+                  <PostCard
+                    key={entry.key}
+                    post={entry.post}
+                    orgId={org!.id}
+                    token={token!}
+                    onChannelMention={loadPosts}
+                  />
+                ) : (
+                  // Somebody arriving, at the point in the conversation where
+                  // they arrived. The reader of a channel is the person most
+                  // likely to say hello, which is why it is here at all.
+                  <WelcomeNote
+                    key={entry.key}
+                    member={entry.member}
+                    more={entry.more}
+                    orgSlug={org!.slug}
+                  />
+                ),
+              )
             )}
           </div>
 
