@@ -97,6 +97,12 @@ export default function MemberBookingsPage() {
           capacity: values.capacity,
           category: values.category,
           publish: values.publish,
+          // The picker is on this form too (EVT-22). These are listed rather
+          // than spread because the booking route takes its own narrower DTO,
+          // and an undeclared field would fail the whole request.
+          imageUrl: values.imageUrl ?? undefined,
+          imageCredit: values.imageCredit ?? undefined,
+          imageCreditUrl: values.imageCreditUrl ?? undefined,
         },
         token,
       );
@@ -327,6 +333,8 @@ export default function MemberBookingsPage() {
                     busy={busy}
                     onSubmit={(values) => publishAsEvent(b.id, values)}
                     onCancel={() => setPublishingId(null)}
+                    orgId={orgId ?? undefined}
+                    token={token ?? undefined}
                   />
                 </div>
               )}

@@ -27,6 +27,13 @@ import { RsvpDto } from './dto/rsvp.dto';
 import { ListEventsQueryDto } from './dto/list-events.dto';
 import { WalkInDto } from './dto/walk-in.dto';
 import { PublishBookingEventDto } from './dto/publish-booking-event.dto';
+import {
+  UploadEventImageDto,
+  UnsplashSearchDto,
+  UnsplashUsedDto,
+} from './dto/event-image.dto';
+import { StorageService } from '../storage/storage.service';
+import { UnsplashService } from './unsplash.service';
 import { viewerFor } from '../../common/access/contact-visibility';
 
 /**
@@ -46,7 +53,75 @@ export class EventsController {
   constructor(
     private readonly eventsService: EventsService,
     private readonly payouts: HostPayoutService,
+    private readonly storage: StorageService,
+    private readonly unsplash: UnsplashService,
   ) {}
+
+  /* ─── An event's picture (EVT-22) ───────────────────────────── */
+  //
+  // Org-scoped, not event-scoped: the picture is chosen while the event is
+  // being written, and on the create form there is no event id yet. So this
+  // hands back a URL and the form sends it with the rest of the event.
+  //
+  // Any member, because any member may create an event. The cost of that is
+  // an orphaned file when somebody abandons a half-written form, which is the
+  // same trade the org logo makes and cheaper than the alternative.
+
+  /** Which picture sources this server actually has. */
+  @Get('orgs/:orgId/event-images/sources')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Where an event picture can come from here' })
+  imageSources() {
+    // Upload and URL always work. Unsplash needs a key, and a picker that
+    // offers a tab which then explains it is not configured is worse than one
+    // that offers two tabs.
+    return { upload: true, url: true, unsplash: this.unsplash.isConfigured };
+  }
+
+  @Post('orgs/:orgId/event-images')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upload a picture for an event' })
+  async uploadImage(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Body() dto: UploadEventImageDto,
+  ) {
+    // Either a bare base64 string or a full data: URL, since a browser's
+    // FileReader hands back the latter.
+    const base64 = dto.data.includes(',')
+      ? dto.data.slice(dto.data.indexOf(',') + 1)
+      : dto.data;
+    const bytes = Buffer.from(base64.replace(/\s/g, ''), 'base64');
+
+    return { url: await this.storage.uploadEventImage(orgId, bytes, dto.mimeType) };
+  }
+
+  @Get('orgs/:orgId/event-images/unsplash')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Search Unsplash for an event picture' })
+  searchUnsplash(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Query() query: UnsplashSearchDto,
+  ) {
+    return this.unsplash.search(query.q, query.page ?? 1);
+  }
+
+  /**
+   * Unsplash asks to be told when one of their photos is used, and the terms
+   * of using their API include doing it. Called when a photo is picked.
+   */
+  @Post('orgs/:orgId/event-images/unsplash/used')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Tell Unsplash one of their photos was used' })
+  unsplashUsed(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Body() dto: UnsplashUsedDto,
+  ) {
+    return this.unsplash.trackUse(dto.downloadLocation);
+  }
 
   /* ─── Create Event ──────────────────────────────────────────── */
 

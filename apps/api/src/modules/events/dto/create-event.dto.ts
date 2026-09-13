@@ -8,6 +8,8 @@ import {
   IsBoolean,
   IsArray,
   IsUUID,
+  Matches,
+  MaxLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Min, ValidateIf } from 'class-validator';
@@ -25,6 +27,19 @@ export enum Recurrence {
   BIWEEKLY = 'BIWEEKLY',
   MONTHLY = 'MONTHLY',
 }
+
+/**
+ * An event picture is a URL, and the URL is rendered in an `<img>` on a page
+ * the public can open (EVT-22).
+ *
+ * So it has to be `http(s)` and nothing else: `javascript:` never belongs in
+ * an attribute the browser resolves, and `data:` would let somebody store a
+ * multi-megabyte payload in a text column that nothing caps. An empty string
+ * is allowed and means "no picture" — that is what a cleared field sends, and
+ * refusing it would make removing an image an error.
+ */
+export const IMAGE_URL_PATTERN = /^(https?:\/\/\S+)?$/;
+export const IMAGE_URL_MESSAGE = 'An image address has to start with http:// or https://';
 
 export class CreateEventDto {
   @ApiProperty({ description: 'Event title' })
@@ -148,6 +163,25 @@ export class CreateEventDto {
   @IsOptional()
   @IsEnum(MaturityLevel)
   maturityLevel?: MaturityLevel;
+
+  @ApiPropertyOptional({ description: 'A picture for the event.' })
+  @IsOptional()
+  @IsString()
+  @Matches(IMAGE_URL_PATTERN, { message: IMAGE_URL_MESSAGE })
+  imageUrl?: string;
+
+  /** Who took the picture, when the source asks to be credited (EVT-22). */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  imageCredit?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(IMAGE_URL_PATTERN, { message: IMAGE_URL_MESSAGE })
+  imageCreditUrl?: string;
 }
 
 export class UpdateEventDto {
@@ -248,10 +282,24 @@ export class UpdateEventDto {
   @IsString({ each: true })
   tags?: string[];
 
+  @ApiPropertyOptional({ description: 'A picture for the event.' })
+  @IsOptional()
+  @IsString()
+  @Matches(IMAGE_URL_PATTERN, { message: IMAGE_URL_MESSAGE })
+  imageUrl?: string;
+
+  /** Who took the picture, when the source asks to be credited (EVT-22). */
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
-  imageUrl?: string;
+  @MaxLength(120)
+  imageCredit?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(IMAGE_URL_PATTERN, { message: IMAGE_URL_MESSAGE })
+  imageCreditUrl?: string;
 
   /**
    * Whether the host charges attendees (EVT-17). Absent from this DTO until

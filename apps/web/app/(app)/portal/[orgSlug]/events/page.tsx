@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { Plus, X } from 'lucide-react';
 import { Panel } from '@/components/layout/panel';
+import { EventForm, EventFormValues } from '@/components/events/event-form';
 import { NextEventCard, EventRow, type EventActions } from '@/components/events/event-cards';
 import { groupUpcoming } from '@/lib/event-list';
 import { usePortal } from '@/contexts/portal-context';
@@ -28,7 +30,7 @@ export default function PortalEventsPage() {
   // to its own members and the page looked empty rather than restricted.
   const isMember = Boolean(org && user?.orgs?.some((o) => o.orgId === org.id));
 
-  const { data: events, loading } = usePublicApi(
+  const { data: events, loading, refetch } = usePublicApi(
     () =>
       !org
         ? Promise.resolve([])
@@ -37,6 +39,36 @@ export default function PortalEventsPage() {
           : api.events.listPublic(org.id),
     [org?.id, isMember, token],
   );
+
+  /**
+   * Making an event from the Events page (EVT-22).
+   *
+   * Charley: "Don't make the user search for it with this button only showing
+   * in My Events." It was only on My Events — a page you reach from the
+   * member menu — so the answer to "how do I put something on the calendar?"
+   * was to already know. The same form, on the page where the calendar is.
+   *
+   * Members only: the API refuses anybody else, and a button that always
+   * fails is worse than no button.
+   */
+  const [creating, setCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [createError, setCreateError] = useState('');
+
+  async function createEvent(values: EventFormValues) {
+    if (!org || !token) return;
+    setSaving(true);
+    setCreateError('');
+    try {
+      await api.events.create(org.id, values, token);
+      setCreating(false);
+      await refetch();
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Could not create that event');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   /**
    * What Stripe sent them back with.
@@ -148,9 +180,48 @@ export default function PortalEventsPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        title="Events"
-      />{returned === 'purchased' && (
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <PageHeader title="Events" />
+        {isMember && token && !creating && (
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            className="btn-primary inline-flex shrink-0 items-center gap-2"
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            New event
+          </button>
+        )}
+      </div>
+
+      {creating && org && token && (
+        <section className="card">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-gray-900">New event</h2>
+            <button
+              type="button"
+              onClick={() => setCreating(false)}
+              className="text-gray-400 hover:text-gray-600"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
+          <EventForm
+            busy={saving}
+            error={createError}
+            onSubmit={createEvent}
+            onCancel={() => setCreating(false)}
+            plan={org.plan}
+            orgFeeCents={org.ticketFeeCents ?? 0}
+            canSellTickets={Boolean(org.stripeChargesEnabled)}
+            orgId={org.id}
+            token={token}
+          />
+        </section>
+      )}
+
+      {returned === 'purchased' && (
         <div className="rounded-xl border border-green-200 bg-green-50 p-4" role="status">
           <p className="text-sm font-medium text-green-800">Payment received — thank you.</p>
           <p className="mt-1 text-sm text-green-700">

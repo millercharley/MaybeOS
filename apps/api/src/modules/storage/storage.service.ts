@@ -33,6 +33,17 @@ export const AVATAR_BUCKET = 'avatars';
 export const AVATAR_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 export const AVATAR_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
 
+/**
+ * What the public `event-images` bucket itself enforces. Kept in step with it.
+ *
+ * Public, like `org-logos` and unlike room photos (EVT-22). A public event's
+ * page is meant to be shared — that is the whole point of marking an event
+ * public — and a signed URL that expires in an hour is not something anybody
+ * can put in a post or hand to a ticket buyer.
+ */
+export const EVENT_IMAGE_BUCKET = 'event-images';
+export const EVENT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
 /** What the private `attachments` bucket itself enforces. Kept in step with it. */
 export const ATTACHMENT_BUCKET = 'attachments';
 /**
@@ -630,6 +641,32 @@ export class StorageService {
     return this.uploadOrgImage(orgId, body, mimeType, '');
   }
 
+  /**
+   * Store an event's picture and return its public URL (EVT-22).
+   *
+   * Its own bucket rather than a prefix inside `org-logos`: these are not the
+   * co-op's identity, they are one event's artwork, and a bucket named for
+   * logos quietly filling with event photos is the kind of thing that makes
+   * the next person's cleanup script wrong.
+   *
+   * Inside the org's own folder, like everything else here, so the deleter's
+   * folder check keeps a doctored URL from reaching another co-op's files.
+   */
+  async uploadEventImage(orgId: string, body: Buffer, mimeType: string): Promise<string> {
+    return this.uploadPublicImage(
+      EVENT_IMAGE_BUCKET,
+      `${orgId}/${randomUUID()}.${EXTENSION[mimeType]}`,
+      body,
+      mimeType,
+      EVENT_IMAGE_MAX_BYTES,
+    );
+  }
+
+  /** Remove an event picture MaybeOS stored. Best-effort, like the logo. */
+  async deleteEventImage(orgId: string, publicUrl: string | null): Promise<void> {
+    return this.deletePublicImage(EVENT_IMAGE_BUCKET, orgId, publicUrl, 'event image');
+  }
+
   /** What both of the above actually do. */
   private async uploadOrgImage(
     orgId: string,
@@ -637,17 +674,41 @@ export class StorageService {
     mimeType: string,
     prefix: string,
   ): Promise<string> {
+    return this.uploadPublicImage(
+      LOGO_BUCKET,
+      `${orgId}/${prefix}${randomUUID()}.${EXTENSION[mimeType]}`,
+      body,
+      mimeType,
+      LOGO_MAX_BYTES,
+    );
+  }
+
+  /**
+   * Put an image in a public bucket and hand back the URL it is served from.
+   *
+   * One implementation for both public buckets. The key always contains a
+   * fresh uuid, so an upload never overwrites the file currently in use: if
+   * this fails halfway, what was there still is. It also sidesteps the CDN —
+   * a public URL is cached, so reusing a key serves a stale image after a
+   * replacement.
+   */
+  private async uploadPublicImage(
+    bucket: string,
+    path: string,
+    body: Buffer,
+    mimeType: string,
+    maxBytes: number,
+  ): Promise<string> {
     if (!this.isConfigured) {
       throw new ServiceUnavailableException(
         'Image uploads are not configured on this server (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).',
       );
     }
 
-    this.assertAcceptable(body, mimeType);
+    this.assertAcceptable(body, mimeType, maxBytes);
 
-    const path = `${orgId}/${prefix}${randomUUID()}.${EXTENSION[mimeType]}`;
     const response = await fetch(
-      `${this.url}/storage/v1/object/${LOGO_BUCKET}/${path}`,
+      `${this.url}/storage/v1/object/${bucket}/${path}`,
       {
         method: 'POST',
         headers: { ...this.headers, 'Content-Type': mimeType },
@@ -658,7 +719,7 @@ export class StorageService {
     if (!response.ok) {
       const detail = await response.text().catch(() => '');
       this.logger.error(
-        `Image upload failed for org ${orgId}: ${response.status} ${detail.slice(0, 200)}`,
+        `Image upload failed for ${bucket}/${path}: ${response.status} ${detail.slice(0, 200)}`,
       );
       // The bucket enforces its own limits too, so a rejection here is a real
       // failure rather than something to paper over with a partial success.
@@ -672,7 +733,7 @@ export class StorageService {
       );
     }
 
-    return `${this.url}/storage/v1/object/public/${LOGO_BUCKET}/${path}`;
+    return `${this.url}/storage/v1/object/public/${bucket}/${path}`;
   }
 
   /**
@@ -688,14 +749,23 @@ export class StorageService {
   }
 
   async deleteOrgLogo(orgId: string, publicUrl: string | null): Promise<void> {
+    return this.deletePublicImage(LOGO_BUCKET, orgId, publicUrl, 'logo');
+  }
+
+  private async deletePublicImage(
+    bucket: string,
+    orgId: string,
+    publicUrl: string | null,
+    what: string,
+  ): Promise<void> {
     if (!publicUrl || !this.isConfigured) return;
 
-    const prefix = `${this.url}/storage/v1/object/public/${LOGO_BUCKET}/`;
+    const prefix = `${this.url}/storage/v1/object/public/${bucket}/`;
     if (!publicUrl.startsWith(prefix)) return; // not ours; leave it alone
 
     const path = publicUrl.slice(prefix.length);
-    // Only ever inside this org's own folder, so a doctored logoUrl cannot
-    // make this delete another org's file.
+    // Only ever inside this org's own folder, so a doctored URL cannot make
+    // this delete another org's file.
     if (!path.startsWith(`${orgId}/`)) {
       this.logger.warn(`Refusing to delete "${path}": outside org ${orgId}`);
       return;
@@ -703,14 +773,14 @@ export class StorageService {
 
     try {
       const response = await fetch(
-        `${this.url}/storage/v1/object/${LOGO_BUCKET}/${path}`,
+        `${this.url}/storage/v1/object/${bucket}/${path}`,
         { method: 'DELETE', headers: this.headers },
       );
       if (!response.ok) {
-        this.logger.warn(`Could not delete old logo ${path}: ${response.status}`);
+        this.logger.warn(`Could not delete old ${what} ${path}: ${response.status}`);
       }
     } catch (error) {
-      this.logger.warn(`Could not delete old logo ${path}: ${(error as Error).message}`);
+      this.logger.warn(`Could not delete old ${what} ${path}: ${(error as Error).message}`);
     }
   }
 
@@ -719,7 +789,7 @@ export class StorageService {
    * is what produces an error a person can act on, and it stops a 3 MB
    * payload crossing the network before being refused.
    */
-  private assertAcceptable(body: Buffer, mimeType: string) {
+  private assertAcceptable(body: Buffer, mimeType: string, maxBytes: number = LOGO_MAX_BYTES) {
     if (!LOGO_MIME_TYPES.includes(mimeType as LogoMimeType)) {
       throw new BadRequestException(
         `${mimeType} is not a supported image type. Use PNG, JPEG or WebP.`,
@@ -730,9 +800,10 @@ export class StorageService {
       throw new BadRequestException('The uploaded file is empty.');
     }
 
-    if (body.length > LOGO_MAX_BYTES) {
+    if (body.length > maxBytes) {
       const mb = (body.length / 1024 / 1024).toFixed(1);
-      throw new BadRequestException(`That image is ${mb} MB. The limit is 2 MB.`);
+      const limit = (maxBytes / 1024 / 1024).toFixed(0);
+      throw new BadRequestException(`That image is ${mb} MB. The limit is ${limit} MB.`);
     }
 
     if (!this.looksLikeImage(body, mimeType)) {

@@ -604,6 +604,14 @@ model Event {
   description         String?
   richDescription     String? // HTML content
   imageUrl            String?
+  /// Who made the picture, when it came from somewhere that asks to be
+  /// credited (EVT-22). Unsplash's API terms require the photographer's name
+  /// and a link back, so a product that uses their search has to have
+  /// somewhere to put both — an uncredited photo is a licence breach, not a
+  /// missing nicety. Null for an upload or a plain URL, where there is
+  /// nobody to credit.
+  imageCredit         String?
+  imageCreditUrl      String?
   startTime           DateTime
   endTime             DateTime
   timezone            String          @default("America/New_York")

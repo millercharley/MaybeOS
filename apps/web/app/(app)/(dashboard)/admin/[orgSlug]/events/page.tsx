@@ -175,6 +175,8 @@ export default function EventsPage() {
               id: m.user.id,
               name: m.user.name || m.user.email || 'Member',
             }))}
+            orgId={orgId ?? undefined}
+            token={token ?? undefined}
           />
         </section>
       )}

@@ -864,6 +864,35 @@ class ApiClient {
 
   // ── Events ───────────────────────────────────────
   events = {
+    // ── An event's picture (EVT-22) ───────────────────
+    //
+    // Org-scoped rather than hung off an event, because the picture is chosen
+    // while the event is still being written and has no id yet.
+
+    imageSources: (orgId: string, token: string) =>
+      this.request<EventImageSources>(`/orgs/${orgId}/event-images/sources`, { token }),
+
+    uploadImage: (orgId: string, data: string, mimeType: string, token: string) =>
+      this.request<{ url: string }>(`/orgs/${orgId}/event-images`, {
+        method: 'POST',
+        body: JSON.stringify({ data, mimeType }),
+        token,
+      }),
+
+    searchUnsplash: (orgId: string, q: string, token: string, page = 1) =>
+      this.request<{ photos: UnsplashPhoto[] }>(
+        `/orgs/${orgId}/event-images/unsplash?q=${encodeURIComponent(q)}&page=${page}`,
+        { token },
+      ),
+
+    /** Unsplash's terms ask to be told when one of their photos is used. */
+    unsplashUsed: (orgId: string, downloadLocation: string, token: string) =>
+      this.request<{ tracked: boolean }>(`/orgs/${orgId}/event-images/unsplash/used`, {
+        method: 'POST',
+        body: JSON.stringify({ downloadLocation }),
+        token,
+      }),
+
     list: (orgId: string, token: string) =>
       this.request<PaginatedResponse<Event>>(`/orgs/${orgId}/events`, { token }),
 
@@ -2987,12 +3016,37 @@ export interface DoorList {
   expectedCount: number;
 }
 
+/** One Unsplash result, narrowed by the API to what the picker shows (EVT-22). */
+export interface UnsplashPhoto {
+  id: string;
+  description: string;
+  url: string;
+  thumbUrl: string;
+  photographer: string;
+  photographerUrl: string;
+  /** Handed back on selection, so Unsplash can be told the photo was used. */
+  downloadLocation: string;
+}
+
+/** Which picture sources this server has (EVT-22). Unsplash needs a key. */
+export interface EventImageSources {
+  upload: boolean;
+  url: boolean;
+  unsplash: boolean;
+}
+
 export interface Event {
   id: string;
   title: string;
   slug: string;
   description?: string;
   imageUrl?: string;
+  /**
+   * Who took the picture, when the source asks to be credited (EVT-22).
+   * Unsplash's terms require showing both of these wherever the photo is.
+   */
+  imageCredit?: string | null;
+  imageCreditUrl?: string | null;
   startTime: string;
   endTime: string;
   timezone: string;
@@ -3041,6 +3095,14 @@ export interface Event {
 
 export interface CreateEventData {
   title: string;
+  /**
+   * A picture for the event (EVT-22). Empty string removes it, and null is
+   * accepted because the edit form is seeded straight from an `Event`, whose
+   * columns are nullable.
+   */
+  imageUrl?: string | null;
+  imageCredit?: string | null;
+  imageCreditUrl?: string | null;
   description?: string;
   startTime: string;
   endTime: string;
@@ -3094,7 +3156,15 @@ export interface PublishBookingEventData {
   capacity?: number;
   category?: string;
   publish?: boolean;
-  priceCents?: number | null;
+  /** A picture for the event (EVT-22). */
+  imageUrl?: string;
+  imageCredit?: string;
+  imageCreditUrl?: string;
+  // `priceCents` was declared here and is not on `PublishBookingEventDto`,
+  // so sending it would have failed the whole request rather than the field
+  // (EVT-21). Nothing ever set it — publishing from a booking does not offer
+  // ticketing — so it is removed rather than added: a type is a claim about
+  // the API, and this one was false.
 }
 
 /** Whether a co-op can take money for tickets yet (D-013, Stripe Connect). */

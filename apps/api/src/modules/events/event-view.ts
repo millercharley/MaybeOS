@@ -33,6 +33,13 @@ export const PUBLIC_EVENT_SELECT = {
   description: true,
   richDescription: true,
   imageUrl: true,
+  // The picture's credit travels with the picture (EVT-22). Without these two
+  // in the select, a public event page — the one place a photo is most likely
+  // to be seen — would show an Unsplash photograph with nobody credited,
+  // which their terms do not allow. Prisma returns every column *unless* a
+  // select narrows it, so a new column is invisible here until it is named.
+  imageCredit: true,
+  imageCreditUrl: true,
   startTime: true,
   endTime: true,
   timezone: true,
