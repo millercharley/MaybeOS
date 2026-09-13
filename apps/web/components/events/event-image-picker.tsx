@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ImagePlus, Link2, Search, X, Loader2 } from 'lucide-react';
 import { api, EventImageSources, UnsplashPhoto } from '@/lib/api';
 import { ImageUploader } from '@/components/ui/image-uploader';
@@ -64,8 +64,7 @@ export function EventImagePicker({
     onChange(next);
   }
 
-  function submitUrl(e: FormEvent) {
-    e.preventDefault();
+  function submitUrl() {
     const address = urlDraft.trim();
     if (!address) return;
     if (!/^https?:\/\/\S+$/i.test(address)) {
@@ -170,19 +169,34 @@ export function EventImagePicker({
         />
       )}
 
+      {/* A `div`, not a `form`. This whole picker renders *inside* the event
+          form, and a form inside a form is invalid HTML — which leaves which
+          form a submit button belongs to up to the browser. Enter is handled
+          here instead, so the key does what it looks like it does and never
+          reaches the event form. */}
       {tab === 'url' && (
-        <form onSubmit={submitUrl} className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2">
           <input
             value={urlDraft}
             onChange={(e) => setUrlDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return;
+              e.preventDefault();
+              submitUrl();
+            }}
             placeholder="https://example.com/poster.jpg"
             className="input min-w-0 flex-1"
             aria-label="Picture web address"
           />
-          <button type="submit" disabled={!urlDraft.trim()} className="btn-secondary text-sm">
+          <button
+            type="button"
+            onClick={submitUrl}
+            disabled={!urlDraft.trim()}
+            className="btn-secondary text-sm"
+          >
             Use this
           </button>
-        </form>
+        </div>
       )}
 
       {tab === 'unsplash' && (
@@ -215,8 +229,7 @@ function UnsplashTab({
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
 
-  async function search(e: FormEvent) {
-    e.preventDefault();
+  async function search() {
     if (!query.trim()) return;
     setBusy(true);
     setProblem('');
@@ -245,19 +258,31 @@ function UnsplashTab({
 
   return (
     <div className="space-y-3">
-      <form onSubmit={search} className="flex flex-wrap gap-2">
+      {/* Also a `div`, for the same reason: no nested forms, and Enter must
+          search rather than save the event being written. */}
+      <div className="flex flex-wrap gap-2">
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            search();
+          }}
           placeholder="pottery, potluck, live music…"
           maxLength={100}
           className="input min-w-0 flex-1"
           aria-label="Search Unsplash"
         />
-        <button type="submit" disabled={busy || !query.trim()} className="btn-secondary text-sm">
+        <button
+          type="button"
+          onClick={search}
+          disabled={busy || !query.trim()}
+          className="btn-secondary text-sm"
+        >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
         </button>
-      </form>
+      </div>
 
       {problem && (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
