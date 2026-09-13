@@ -509,6 +509,11 @@ class ApiClient {
         sharesEnabled?: boolean;
         /** Whether any member may open a channel in the Commons (CMN-11). */
         memberChannelsEnabled?: boolean;
+        /** Door access (DOR-01): issuing codes, the sheet, and the emails. */
+        doorAccessEnabled?: boolean;
+        doorCodeEmailsEnabled?: boolean;
+        /** A full Google Sheets address is accepted; the API keeps the id. */
+        doorSheetId?: string | null;
         /** The co-op's own fee per ticket, in cents (D-013 ticketing). */
         ticketFeeCents?: number;
         /**
@@ -863,6 +868,38 @@ class ApiClient {
   };
 
   // ── Events ───────────────────────────────────────
+  /**
+   * Door codes (DOR-01).
+   *
+   * `myPin` is deliberately "mine" rather than taking a user id: a member
+   * reads their own, and a route that takes somebody else's id is one that
+   * eventually gets called with somebody else's id.
+   */
+  door = {
+    myPin: (orgId: string, token: string) =>
+      this.request<{ doorPin: string | null }>(`/orgs/${orgId}/door/pin`, { token }),
+
+    /** What this server still needs before codes can be issued. */
+    setup: (orgId: string, token: string) =>
+      this.request<{ googleConfigured: boolean; shareSheetWith: string | null }>(
+        `/orgs/${orgId}/door/setup`,
+        { token },
+      ),
+
+    /** Issue anything missing and write the sheet now, rather than within the quarter hour. */
+    sync: (orgId: string, token: string) =>
+      this.request<{ issued: number; synced: number; emailed: number }>(
+        `/orgs/${orgId}/door/sync`,
+        { method: 'POST', token },
+      ),
+
+    regenerate: (orgId: string, userId: string, token: string) =>
+      this.request<{ doorPin: string }>(`/orgs/${orgId}/door/members/${userId}/regenerate`, {
+        method: 'POST',
+        token,
+      }),
+  };
+
   events = {
     // ── An event's picture (EVT-22) ───────────────────
     //
@@ -2520,6 +2557,14 @@ export interface Org {
    * so the public page must not offer it either.
    */
   allowPublicJoin: boolean;
+  /**
+   * Door access (DOR-01). Only on the authenticated `GET /orgs/:orgId` — the
+   * public route selects a narrower set, and how a co-op's door works is not
+   * something to publish on its join page.
+   */
+  doorAccessEnabled?: boolean;
+  doorCodeEmailsEnabled?: boolean;
+  doorSheetId?: string | null;
   /**
    * Only `GET /orgs/by-slug/:slug` includes these — the public org page's
    * single call. `GET /orgs/:orgId` returns the bare row, so anything reading

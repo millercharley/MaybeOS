@@ -3,6 +3,7 @@ import { PrismaService } from '../../config/prisma.service';
 import { CommonsService } from '../commons/commons.service';
 import { ReportService } from '../impact/report.service';
 import { BuddyService } from '../belonging/buddy.service';
+import { DoorService } from '../door/door.service';
 import { HostBriefingService } from '../service/host-briefing.service';
 
 export interface TaskResult {
@@ -46,6 +47,7 @@ export class SchedulerService {
     private readonly reports: ReportService,
     private readonly buddies: BuddyService,
     private readonly hosting: HostBriefingService,
+    private readonly door: DoorService,
   ) {}
 
   async runDueTasks(now: Date = new Date()): Promise<RunResult> {
@@ -63,6 +65,7 @@ export class SchedulerService {
       { name: 'compose-pending-reports', run: () => this.composePendingReports(now) },
       { name: 'advance-buddy-pairings', run: () => this.advanceBuddyPairings(now) },
       { name: 'send-host-briefings', run: () => this.sendHostBriefings(now) },
+      { name: 'sync-door-codes', run: () => this.syncDoorCodes() },
     ]) {
       try {
         tasks.push(await task.run());
@@ -97,6 +100,30 @@ export class SchedulerService {
    * means a briefing set for 07:00 arrives between 07:00 and 07:15 — worth
    * saying out loud, because "at 7am" is what the admin screen promises.
    */
+  /**
+   * Door codes, the sheet, and the emails (DOR-01).
+   *
+   * Reconciliation rather than a hook on member creation: seven places in
+   * MaybeOS create a membership, and a rule attached to one of them is a rule
+   * the other six break. This asks the only question that matters — who has
+   * no code, whose code the sheet has not heard about, who has not been told
+   * — so a member created by a path written next year is covered too.
+   */
+  private async syncDoorCodes(): Promise<TaskResult> {
+    try {
+      const { issued, synced, emailed } = await this.door.runDue();
+      if (issued || synced || emailed) {
+        this.logger.log(
+          `Door codes: issued ${issued}, wrote ${synced} to sheets, emailed ${emailed}`,
+        );
+      }
+      return { task: 'sync-door-codes', processed: issued + synced + emailed, failed: 0, errors: [] };
+    } catch (error) {
+      const message = (error as Error).message;
+      return { task: 'sync-door-codes', processed: 0, failed: 1, errors: [message] };
+    }
+  }
+
   private async sendHostBriefings(now: Date): Promise<TaskResult> {
     try {
       const { sent, failed, errors } = await this.hosting.sendDue(now);

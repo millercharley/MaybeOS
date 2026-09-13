@@ -36,6 +36,7 @@ function toMemberView<
     stripeSubscriptionId?: string | null;
     subscriptionStatus?: unknown;
     emailOptIn?: boolean | null;
+    doorPin?: string | null;
     user: { email?: string };
   },
 >(member: T, viewer: ContactViewer) {
@@ -50,6 +51,12 @@ function toMemberView<
     // Marketing consent is between a member and the co-op that asked. It sits
     // beside the email address it governs, and travels with it.
     emailOptIn: _optIn,
+    // The door code (DOR-01). Named here and not merely omitted at the
+    // client, because the members list lifts that omission so organisers can
+    // see codes — and `...rest` would then carry every member's code to every
+    // member who opened the directory. The omission is the seatbelt; this is
+    // the one place the belt is off.
+    doorPin: _doorPin,
     user,
     ...rest
   } = member;
@@ -146,6 +153,11 @@ export class MemberService {
         skip,
         take: perPage,
         orderBy: { memberSince: 'desc' },
+        // Lifts the client-level omission on the door code, for organisers
+        // (Charley's call: admins can see them, which makes helping somebody
+        // locked out a two-second job). `toMemberView` strips it again for
+        // anybody who is not an organiser looking at somebody else.
+        omit: { doorPin: false },
         include: {
           user: {
             select: {

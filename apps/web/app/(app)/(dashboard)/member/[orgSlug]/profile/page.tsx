@@ -49,6 +49,26 @@ export default function MyProfilePage() {
   const [linkError, setLinkError] = useState('');
   const orgId = useAuthStore((s) => s.currentOrgId);
   const orgSlug = useParams<{ orgSlug: string }>().orgSlug;
+
+  /**
+   * The code that opens the co-op's door (DOR-01).
+   *
+   * Its own request rather than a field on the profile: the profile is one
+   * account across every co-op a member belongs to, and a door code belongs
+   * to one of them. Null when this co-op has no door, and then nothing is
+   * shown — a label with no code under it is a question, not an answer.
+   */
+  const [doorPin, setDoorPin] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!token || !orgId) return;
+    api.door
+      .myPin(orgId, token)
+      .then(({ doorPin: pin }) => setDoorPin(pin))
+      // A co-op with door access switched off answers with null, and a
+      // failure here must not cost a member their profile page.
+      .catch(() => setDoorPin(null));
+  }, [token, orgId]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -273,6 +293,23 @@ export default function MyProfilePage() {
               </button>
             )}
           </div>
+
+          {/*
+            The door code (DOR-01), where Charley asked for it: right of the
+            header, top-aligned with the name.
+
+            `ml-auto` rather than `justify-between` on the row, because the row
+            wraps on a narrow screen — with `justify-between` the code would be
+            flung to the far edge of a wrapped line, away from the name it
+            belongs to. `self-start` is what lines it up with the name rather
+            than the middle of the avatar.
+          */}
+          {doorPin && (
+            <p className="ml-auto self-start text-right text-sm font-medium text-[var(--text-primary)]">
+              Door Access Pin Code:{' '}
+              <span className="font-mono tracking-[0.2em]">{doorPin}</span>
+            </p>
+          )}
         </div>
 
         {avatarError && (

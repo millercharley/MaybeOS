@@ -88,6 +88,17 @@ model Organization {
   /// members shape or something the organisers do. Channels are open to the
   /// whole co-op either way — see `Channel.isPublic`, which nothing enforces.
   memberChannelsEnabled    Boolean           @default(false)
+  /// Whether this co-op issues door codes at all (DOR-01). Off by default:
+  /// most co-ops have no door for MaybeOS to let anybody through.
+  doorAccessEnabled        Boolean           @default(false)
+  /// The Google Sheet the door application reads. MaybeOS owns the codes and
+  /// writes this sheet; the sheet is a mirror, not the record — a code edited
+  /// there by hand is overwritten on the next sync.
+  doorSheetId              String?
+  /// Whether members are emailed their code as it is issued (DOR-01). Its own
+  /// switch, separate from generating them, so a co-op can fill the sheet and
+  /// check it before a few hundred people get a door code in their inbox.
+  doorCodeEmailsEnabled    Boolean           @default(false)
   /// The co-op's MaybeOS plan (D-013). Everyone starts on FREE.
   plan                     MaybeOsPlan       @default(FREE)
   /// The co-op's own Stripe account, from Connect onboarding. Ticket money is
@@ -336,6 +347,24 @@ model UserOrg {
   /// rather than "stop bothering me" — but it is per member and permanent,
   /// because a checklist that comes back is a checklist nobody trusts.
   onboardingDismissedAt DateTime?
+  /// The five letters this member types at the co-op's door (DOR-01).
+  ///
+  /// On the membership rather than the account: a code opens *this* co-op's
+  /// door, and somebody who belongs to two co-ops has two doors and two
+  /// codes. Null until issued.
+  ///
+  /// Omitted at the Prisma client, like `demographics` above it — `getMember`
+  /// and the member list both read `UserOrg` with `include`, which selects
+  /// every column, so without that this would be handed to every member of
+  /// the co-op the moment the directory loaded. Read back explicitly by the
+  /// member's own profile, the organisers' member list, and the sync.
+  doorPin               String?
+  doorPinIssuedAt       DateTime?
+  /// When this member's row was last written to the co-op's sheet, and when
+  /// they were last told their code. Both null means the work is outstanding,
+  /// which is how the scheduled task finds it.
+  doorPinSyncedAt       DateTime?
+  doorPinEmailedAt      DateTime?
   tags                  String[]           @default([])
   /// Links a member chooses to show on their profile. On the membership, not
   /// the account: what somebody publishes to one co-op is not consent to
@@ -384,6 +413,10 @@ model UserOrg {
   onboardingCompletions  OnboardingCompletion[]
 
   @@unique([userId, orgId])
+  /// Two members of one co-op must never share a door code. Postgres treats
+  /// nulls as distinct, so the many memberships with no code yet do not
+  /// collide with each other — the constraint only binds once a code exists.
+  @@unique([orgId, doorPin])
   @@index([orgId])
   @@index([orgId, role])
   @@map("user_orgs")
