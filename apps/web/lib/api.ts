@@ -969,10 +969,31 @@ class ApiClient {
         token,
       }),
 
-    update: (orgId: string, eventId: string, data: Partial<CreateEventData>, token: string) =>
+    /**
+     * Change an event.
+     *
+     * `publish` is stripped here rather than trusted to every caller. It
+     * exists on the create body and not on `UpdateEventDto`, the API
+     * validates against a whitelist, and so one stray key rejects the entire
+     * save with "property publish should not exist" — nothing written, the
+     * edit lost. That has now shipped twice, both times because a *new* call
+     * site did not know about `toUpdatePayload`: once from the organisers'
+     * form, once from My Events. A rule every caller has to remember is a
+     * rule that gets forgotten, so this is the one place it cannot be.
+     *
+     * Publishing stays a separate endpoint on purpose — going live is a
+     * distinct act from correcting a date, and merging them means an edit
+     * could broadcast a half-written event.
+     */
+    update: (
+      orgId: string,
+      eventId: string,
+      data: Partial<CreateEventData> & { publish?: boolean },
+      token: string,
+    ) =>
       this.request<Event>(`/orgs/${orgId}/events/${eventId}`, {
         method: 'PATCH',
-        body: JSON.stringify(data),
+        body: JSON.stringify(eventUpdateBody(data)),
         token,
       }),
 
@@ -3091,6 +3112,18 @@ export interface Event {
    * public while the guest list is not.
    */
   rsvpFaces?: Array<{ id: string; name: string | null; avatarUrl?: string | null }>;
+}
+
+/**
+ * The body `PATCH /orgs/:orgId/events/:eventId` will actually accept.
+ *
+ * Only `publish` is dropped, deliberately: silently discarding anything the
+ * caller passed would hide a real mistake, and the failure this prevents is
+ * specifically the create-only field that the shared event form always sends.
+ */
+function eventUpdateBody<T extends { publish?: boolean }>(data: T): Omit<T, 'publish'> {
+  const { publish: _publish, ...rest } = data;
+  return rest;
 }
 
 export interface CreateEventData {

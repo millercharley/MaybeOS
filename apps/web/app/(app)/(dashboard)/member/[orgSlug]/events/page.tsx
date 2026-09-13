@@ -10,6 +10,7 @@ import { Calendar, Globe, Lock, Plus, Users, X } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, HostedEvent, Org } from '@/lib/api';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
+import { toUpdatePayload } from '@/lib/events';
 import { MyRsvps } from '@/components/events/my-rsvps';
 import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 import { HostEarnings } from '@/components/events/host-earnings';
@@ -90,7 +91,20 @@ export default function MyEventsPage() {
     setBusy(true);
     setError('');
     try {
-      await api.events.update(orgId, editing.id, values, token);
+      // `toUpdatePayload`, not the raw values: the form is shared with
+      // creating and submits `publish`, which `UpdateEventDto` does not
+      // accept — and the whitelist refuses the whole request rather than the
+      // field. Charley hit exactly that adding a picture to an event:
+      // "property publish should not exist", and nothing saved.
+      await api.events.update(orgId, editing.id, toUpdatePayload(values), token);
+
+      // Editing a draft and choosing publish should still publish it, the
+      // same way the organisers' form does. Publishing is its own endpoint
+      // because going live is a distinct act from correcting a date.
+      if (values.publish && !editing.isPublished) {
+        await api.events.publish(orgId, editing.id, token);
+      }
+
       setEditing(null);
       await load();
     } catch (err) {
