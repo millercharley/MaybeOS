@@ -35,6 +35,14 @@ const ACCEPTED = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
  * The preview is the signed URL the API hands back, which expires — so this
  * shows the co-op exactly what a member will see, including the fact that it
  * is not a link anyone can pass around.
+ *
+ * **Every button here says `type="button"`**, which matters more than it
+ * looks. A `<button>` with no type is a *submit* button, and this component
+ * lived on two admin pages where nothing wrapped it in a `<form>` — so the
+ * omission cost nothing until EVT-22 put it inside the event form. Clicking
+ * "Upload a picture" then submitted the event: the form saved and closed
+ * while the file dialog was still open, and the member came back from Finder
+ * to the list they started on.
  */
 export function ImageUploader({
   imageUrl,
@@ -136,6 +144,7 @@ export function ImageUploader({
           />
           <div className="absolute right-2 top-2 flex gap-2">
             <button
+              type="button"
               onClick={() => input.current?.click()}
               disabled={busy}
               className="rounded-lg bg-white/90 px-3 py-1.5 text-xs font-medium text-gray-800 shadow hover:bg-white"
@@ -143,6 +152,7 @@ export function ImageUploader({
               Replace
             </button>
             <button
+              type="button"
               onClick={async () => {
                 setBusy(true);
                 try {
@@ -161,6 +171,7 @@ export function ImageUploader({
         </div>
       ) : (
         <button
+          type="button"
           onClick={() => input.current?.click()}
           disabled={busy}
           className="flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-gray-300 py-8 text-sm text-gray-500 hover:border-brand-400 hover:text-gray-700"
