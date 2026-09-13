@@ -16,6 +16,7 @@ import { PublishBookingEventDto } from './dto/publish-booking-event.dto';
 import { ConnectService } from '../stripe/connect.service';
 import ical, { ICalCalendarMethod } from 'ical-generator';
 import { PUBLIC_EVENT_SELECT } from './event-view';
+import { escapeHtml } from '../../common/escape-html';
 
 /* ───────────────────────────── helpers ───────────────────────────── */
 
@@ -205,7 +206,7 @@ export class EventsService {
 
     const finalSlug = existing ? `${slug}-${Date.now()}` : slug;
 
-    return this.prisma.event.create({
+    const created = await this.prisma.event.create({
       data: {
         orgId,
         slug: finalSlug,
@@ -246,6 +247,12 @@ export class EventsService {
         imageCreditUrl: dto.imageCreditUrl?.trim() || null,
       },
     });
+
+    // Straight into the Commons when it is created already published, which
+    // is what both member forms do (EVT-23).
+    await this.announce(orgId, created, userId);
+
+    return created;
   }
 
   /* ─── Update ────────────────────────────────────────────────── */
@@ -388,13 +395,20 @@ export class EventsService {
   ) {
     await this.loadEventForActor(orgId, eventId, actor.userId, actor.isStaff);
 
-    return this.prisma.event.update({
+    const published = await this.prisma.event.update({
       where: { id: eventId },
       data: {
         isPublished: true,
         publishedAt: new Date(),
       },
     });
+
+    // A draft going live is the moment the co-op should hear about it
+    // (EVT-23). `ensureEventThread` is idempotent, so an event published,
+    // edited and published again keeps the one thread it already has.
+    await this.announce(orgId, published, actor.userId);
+
+    return published;
   }
 
   /* ─── Cancel ────────────────────────────────────────────────── */
@@ -662,10 +676,60 @@ export class EventsService {
    * having a conversation, and burying it somewhere the Commons cannot see
    * would mean two places to look for the same thing.
    */
+  /**
+   * Put a published event in the Commons (EVT-23).
+   *
+   * Charley, having made an event and gone looking for it: a new event should
+   * appear in #Events. It did not, and that was by design — the thread was
+   * created the first time somebody opened an event's discussion, on the
+   * reasoning that most events are never discussed and a thread each would
+   * fill the Commons with empty ones. True, and it also meant the Commons
+   * never told anybody an event existed, which is most of what a co-op wants
+   * from it. Announcing is now the point; the empty-thread cost is real and
+   * accepted.
+   *
+   * Two things it will not announce:
+   *
+   * - **A draft.** Publishing is the act of telling people, and an event
+   *   somebody is still writing has not been told to anybody.
+   * - **A private event.** "Just me for now" means exactly that, and #Events
+   *   is read by every member of the co-op. Posting one there would be the
+   *   product overriding a member's own answer about who can see it.
+   *
+   * Failure here never fails the event. The Commons is where people hear
+   * about it; the event itself is the thing that must exist, and losing an
+   * announcement is a smaller harm than refusing to create what somebody
+   * spent five minutes writing.
+   */
+  private async announce(
+    orgId: string,
+    event: { id: string; isPublished: boolean; visibility: string; hostId: string | null },
+    actorId: string,
+  ): Promise<void> {
+    if (!event.isPublished || event.visibility === 'PRIVATE') return;
+
+    try {
+      // Under the host's name rather than whoever pressed publish: an
+      // organiser publishing on somebody's behalf should not appear to be
+      // running their event.
+      await this.ensureEventThread(orgId, event.id, event.hostId ?? actorId);
+    } catch (error) {
+      this.logger.warn(
+        `Could not announce event ${event.id} in the Commons: ${(error as Error).message}`,
+      );
+    }
+  }
+
   async ensureEventThread(orgId: string, eventId: string, authorId: string) {
     const event = await this.prisma.event.findFirst({
       where: { id: eventId, orgId },
-      select: { id: true, title: true, slug: true, postId: true },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        postId: true,
+        org: { select: { slug: true } },
+      },
     });
     if (!event) throw new NotFoundException('Event not found');
 
@@ -691,9 +755,16 @@ export class EventsService {
         channelId: channel.id,
         authorId,
         title: event.title,
-        // Deliberately thin. The event page is where the detail lives, and a
-        // copy here would be a second version of the truth to keep in step.
-        body: `Discussion for ${event.title}.`,
+        // Deliberately thin, and now with a way to reach the event. The event
+        // page is where the detail lives — a copy here would be a second
+        // version of the truth to keep in step — but a thread announcing
+        // something people cannot click through to is a poor announcement.
+        //
+        // Escaped, because a title is written by a member and this body is
+        // stored and rendered as HTML.
+        body:
+          `<p>Discussion for <a href="/portal/${event.org.slug}/events/${event.slug}">` +
+          `${escapeHtml(event.title)}</a>.</p>`,
       },
       select: { id: true },
     });
