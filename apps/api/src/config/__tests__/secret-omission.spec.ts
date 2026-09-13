@@ -37,7 +37,11 @@ describe('PrismaService — secret omission', () => {
       // precisely why it went unnoticed: the data was in the response, one
       // devtools panel away, for a field collected on the promise that only
       // aggregates would be shown.
-      userOrg: { demographics: true },
+      // The door code joins it (DOR-01), through the same `include` and for a
+      // sharper reason: five letters that open a real building, handed to
+      // anyone who loaded the directory. Read back explicitly by the member's
+      // own profile, the organisers' member list, and the sheet sync.
+      userOrg: { demographics: true, doorPin: true },
       // A share holder's email (MEM-17). Stored so a grant from the co-op's
       // cap table finds its member the day they join — and the ledger it
       // feeds is read by every member, which is exactly the page the

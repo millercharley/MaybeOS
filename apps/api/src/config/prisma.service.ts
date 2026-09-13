@@ -65,7 +65,19 @@ export class PrismaService
          * ImpactOS reads them with an explicit `select`, which is the one
          * place that should.
          */
-        userOrg: { demographics: true },
+        /**
+         * A member's demographic answers, and their door code (DOR-01).
+         *
+         * The code is a physical credential: five letters that open a real
+         * building. The same `include` that leaked demographics — `getMember`
+         * and the member list both read `UserOrg` that way — would hand every
+         * member's door code to anybody who opened the directory.
+         *
+         * Three places opt back in, each with an explicit `select`: the
+         * member's own profile, the organisers' member list, and the sheet
+         * sync. Nothing else has any business with it.
+         */
+        userOrg: { demographics: true, doorPin: true },
         /**
          * A share holder's email (MEM-17). Stored so a grant from the co-op's
          * cap table finds its member the day they join; used for that match on

@@ -11,6 +11,7 @@ import { AttachmentsModule } from './modules/attachments/attachments.module';
 import { OrgModule } from './modules/org/org.module';
 import { MemberModule } from './modules/member/member.module';
 import { EventsModule } from './modules/events/events.module';
+import { DoorModule } from './modules/door/door.module';
 import { SpaceModule } from './modules/space/space.module';
 import { ServiceModule } from './modules/service/service.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
@@ -125,6 +126,7 @@ import { HealthModule } from './modules/health/health.module';
     AttachmentsModule,
     MemberModule,
     EventsModule,
+    DoorModule,
     SpaceModule,
     ServiceModule,
     OnboardingModule,

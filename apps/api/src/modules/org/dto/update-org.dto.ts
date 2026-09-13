@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsBoolean, IsInt, Max, Min, ValidateIf } from 'class-validator';
+import { IsOptional, IsString, IsBoolean, IsInt, Max, Min, ValidateIf, MaxLength } from 'class-validator';
 import { PartialType } from '@nestjs/swagger';
 import { CreateOrgDto } from './create-org.dto';
 
@@ -43,6 +43,38 @@ export class UpdateOrgDto extends PartialType(CreateOrgDto) {
   @IsOptional()
   @IsBoolean()
   memberChannelsEnabled?: boolean;
+
+  /**
+   * Door access (DOR-01). Three fields rather than one, because issuing codes,
+   * mirroring them to a sheet and telling members are three separate acts a
+   * co-op turns on at different moments — Charley's first run was "fill the
+   * sheet, email nobody".
+   *
+   * Declared here for the same reason as the switches above: the whitelist
+   * refuses the whole save on an undeclared field.
+   */
+  @ApiPropertyOptional({ example: false, default: false })
+  @IsOptional()
+  @IsBoolean()
+  doorAccessEnabled?: boolean;
+
+  @ApiPropertyOptional({ example: false, default: false })
+  @IsOptional()
+  @IsBoolean()
+  doorCodeEmailsEnabled?: boolean;
+
+  /**
+   * The sheet the door application reads. A full Google URL is accepted and
+   * reduced to its id — an organiser copies the address bar, not an id buried
+   * in it, and refusing that is a puzzle rather than a validation. Null clears
+   * it.
+   */
+  @ApiPropertyOptional({ example: '1Qg4JZ6VWwP8iIO8_k9pLTn2UbqTOZli-mc98YSi4lzo' })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(300)
+  doorSheetId?: string | null;
 
   /**
    * A fee the co-op adds to its own ticket sales, in cents per ticket, on top

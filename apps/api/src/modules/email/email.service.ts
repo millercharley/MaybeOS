@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { escapeHtml } from '../../common/escape-html';
 import { ConfigService } from '@nestjs/config';
 import * as postmark from 'postmark';
 
@@ -36,7 +37,8 @@ export interface EmailJobData {
     | 'booking-confirmed'
     | 'booking-rejected'
     | 'booking-canceled'
-    | 'booking-rescheduled';
+    | 'booking-rescheduled'
+    | 'door-code';
   to: string;
   data: Record<string, any>;
 }
@@ -84,6 +86,19 @@ export class EmailService {
 
   async sendWelcome(to: string, orgName: string, memberName: string) {
     await this.send({ type: 'welcome', to, data: { orgName, memberName } });
+  }
+
+  /**
+   * A member's door code (DOR-01).
+   *
+   * Says where to find it again, because a code sent once and then lost is a
+   * support request — and the answer, My Profile, is a page they already have.
+   */
+  async sendDoorCode(
+    to: string,
+    data: { memberName: string; orgName: string; pin: string; profileUrl: string },
+  ) {
+    await this.send({ type: 'door-code', to, data });
   }
 
   async sendMagicLink(to: string, link: string) {
@@ -251,6 +266,24 @@ export class EmailService {
             <h1>Welcome, ${data.memberName}!</h1>
             <p>You've successfully joined <strong>${data.orgName}</strong>.</p>
             <p>We're excited to have you as a member. Explore your new community dashboard to get started.</p>
+          `,
+        };
+
+      case 'door-code':
+        return {
+          subject: `Your door code for ${escapeHtml(data.orgName)}`,
+          // Escaped, unlike its neighbours: a member's own name goes into this
+          // one, and a name is not markup. The others interpolate raw and
+          // should be looked at, which is not this change.
+          htmlBody: `
+            <h1>Your door code</h1>
+            <p>Hello ${escapeHtml(data.memberName)},</p>
+            <p>This is the code to open the door at ${escapeHtml(data.orgName)}:</p>
+            <p style="font-size:32px;letter-spacing:6px;font-weight:700;margin:24px 0;">${escapeHtml(data.pin)}</p>
+            <p>Five letters, typed on the keypad. It is yours alone — please do not pass it on.</p>
+            <p>If you forget it, it is always on your profile:
+              <a href="${escapeHtml(data.profileUrl)}">${escapeHtml(data.profileUrl)}</a>
+            </p>
           `,
         };
 

@@ -35,6 +35,10 @@ describe('MemberService — contact redaction', () => {
     stripeSubscriptionId: 'sub_123',
     subscriptionStatus: 'ACTIVE',
     emailOptIn: true,
+    // Present because the list lifts the client-level omission so organisers
+    // can read codes (DOR-01). Which makes this fixture the shape the real
+    // query returns, and the leak below a real one.
+    doorPin: 'ABCDE',
     headline: 'Ask me about sourdough',
     location: 'Butchertown, KY',
     user: { id: userId, email, name: 'Alex', avatarUrl: null },
@@ -71,6 +75,31 @@ describe('MemberService — contact redaction', () => {
     prisma.userOrg.count.mockResolvedValue(2);
     return (await service.listMembers('org-1', viewer)).data;
   };
+
+  it('withholds another member\'s door code from an ordinary member', async () => {
+    // DOR-01. The code opens a real building, and the members list lifts the
+    // Prisma omission so organisers can see codes — which means `toMemberView`
+    // is the only thing standing between a curious member and every door code
+    // in the co-op. It strips by naming fields, so a field nobody named rides
+    // out in `...rest`.
+    const [other] = await listAs({ userId: 'user-1', privileged: false });
+
+    expect(other).not.toHaveProperty('doorPin');
+  });
+
+  it('gives a member their own door code', async () => {
+    // Their own record comes back untouched, which is how the profile can
+    // show it without a second request.
+    const [, mine] = await listAs({ userId: 'user-1', privileged: false });
+
+    expect(mine).toMatchObject({ doorPin: 'ABCDE' });
+  });
+
+  it('gives organisers the door codes, which is what they are for', async () => {
+    const [other] = await listAs({ userId: 'admin-1', privileged: true });
+
+    expect(other).toMatchObject({ doorPin: 'ABCDE' });
+  });
 
   it('withholds another member\'s email from an ordinary member', async () => {
     const [other] = await listAs({ userId: 'user-1', privileged: false });

@@ -14,6 +14,23 @@ import { RESERVED_ORG_SLUGS } from './reserved-slugs';
 import { UpdateOrgDto } from './dto/update-org.dto';
 import { ForumService } from './forum.service';
 
+/**
+ * The id inside a Google Sheets address, or whatever was given (DOR-01).
+ *
+ * An organiser setting this up copies the address bar — the whole
+ * `https://docs.google.com/spreadsheets/d/<id>/edit#gid=0`. Storing that
+ * would send every request to a URL rather than an id, and "not found" would
+ * be the only clue. A bare id passes through untouched.
+ */
+export function sheetIdFrom(value: string | null): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const inUrl = /\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/.exec(trimmed);
+  return inUrl ? inUrl[1] : trimmed;
+}
+
 @Injectable()
 export class OrgService {
   constructor(
@@ -387,6 +404,9 @@ export class OrgService {
       where: { id: orgId },
       data: {
         ...dto,
+        ...(dto.doorSheetId !== undefined && {
+          doorSheetId: sheetIdFrom(dto.doorSheetId),
+        }),
       },
     });
   }

@@ -4,6 +4,7 @@ import { PrismaService } from '../../../config/prisma.service';
 import { CommonsService } from '../../commons/commons.service';
 import { ReportService } from '../../impact/report.service';
 import { BuddyService } from '../../belonging/buddy.service';
+import { DoorService } from '../../door/door.service';
 import { HostBriefingService } from '../../service/host-briefing.service';
 
 /**
@@ -53,6 +54,14 @@ describe('SchedulerService', () => {
         {
           provide: HostBriefingService,
           useValue: { sendDue: jest.fn().mockResolvedValue({ sent: 0, failed: 0, errors: [] }) },
+        },
+        // DOR-01. The door pass is reconciliation, so it does nothing at all
+        // unless a co-op has switched door access on and named a sheet.
+        {
+          provide: DoorService,
+          useValue: {
+            runDue: jest.fn().mockResolvedValue({ issued: 0, synced: 0, emailed: 0 }),
+          },
         },
       ],
     }).compile();
@@ -197,6 +206,14 @@ describe('SchedulerService — compose-pending-reports', () => {
         {
           provide: HostBriefingService,
           useValue: { sendDue: jest.fn().mockResolvedValue({ sent: 0, failed: 0, errors: [] }) },
+        },
+        // DOR-01. The door pass is reconciliation, so it does nothing at all
+        // unless a co-op has switched door access on and named a sheet.
+        {
+          provide: DoorService,
+          useValue: {
+            runDue: jest.fn().mockResolvedValue({ issued: 0, synced: 0, emailed: 0 }),
+          },
         },
       ],
     }).compile();
