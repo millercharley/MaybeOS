@@ -175,6 +175,30 @@ export default function PortalEventPage(props: {
         className="max-h-96 w-full rounded-2xl object-cover"
       />
 
+      {/* Whoever took it (EVT-22). Unsplash's terms require the photographer's
+          name and a link back wherever their photo appears, so this is not
+          decoration — an uncredited photo is a licence breach. Rendered only
+          when there is somebody to credit, which an upload or a pasted URL
+          has not. */}
+      {event.imageCredit && (
+        <p className="-mt-4 text-xs text-gray-400">
+          Photo by{' '}
+          {event.imageCreditUrl ? (
+            <a
+              href={event.imageCreditUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="underline hover:text-gray-600"
+            >
+              {event.imageCredit}
+            </a>
+          ) : (
+            event.imageCredit
+          )}{' '}
+          on Unsplash
+        </p>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
         <div className="min-w-0 space-y-6">
           <div>

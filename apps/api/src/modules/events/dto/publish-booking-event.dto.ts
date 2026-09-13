@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, MaxLength, Matches } from 'class-validator';
+import { IMAGE_URL_PATTERN, IMAGE_URL_MESSAGE } from './create-event.dto';
 
 /**
  * Turning a room booking into an event (EVT-05).
@@ -51,4 +52,30 @@ export class PublishBookingEventDto {
   @IsOptional()
   @IsBoolean()
   publish?: boolean;
+
+  /**
+   * A picture for the event (EVT-22).
+   *
+   * The publish-from-a-booking form shows the same picker as every other
+   * event form, so it has to be able to send what the picker produced —
+   * otherwise a member chooses a photograph, publishes, and finds the event
+   * has none.
+   */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(IMAGE_URL_PATTERN, { message: IMAGE_URL_MESSAGE })
+  imageUrl?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  imageCredit?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(IMAGE_URL_PATTERN, { message: IMAGE_URL_MESSAGE })
+  imageCreditUrl?: string;
 }

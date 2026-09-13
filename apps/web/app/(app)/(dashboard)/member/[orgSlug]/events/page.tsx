@@ -36,6 +36,16 @@ export default function MyEventsPage() {
   const [org, setOrg] = useState<Org | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  /**
+   * The event being edited (EVT-22).
+   *
+   * The API has always let a host change their own event — `loadEventForActor`
+   * allows `event.hostId === userId`, and the controller's own comment says a
+   * member "may edit and cancel it afterwards". Nothing in the member's half
+   * of the product ever offered it, so the only way to fix a typo in your own
+   * event was to ask an organiser.
+   */
+  const [editing, setEditing] = useState<HostedEvent | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -70,6 +80,21 @@ export default function MyEventsPage() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create that');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveEdit(values: EventFormValues) {
+    if (!token || !orgId || !editing) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.events.update(orgId, editing.id, values, token);
+      setEditing(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save those changes');
     } finally {
       setBusy(false);
     }
@@ -129,7 +154,7 @@ export default function MyEventsPage() {
             }
           />
         </div>
-        {!creating && (
+        {!creating && !editing && (
           <button
             type="button"
             onClick={() => setCreating(true)}
@@ -147,13 +172,15 @@ export default function MyEventsPage() {
         </p>
       )}
 
-      {creating && (
+      {(creating || editing) && (
         <section className="card">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-gray-900">New event</h2>
+            <h2 className="text-base font-semibold text-gray-900">
+              {editing ? `Edit ${editing.title}` : 'New event'}
+            </h2>
             <button
               type="button"
-              onClick={() => setCreating(false)}
+              onClick={() => { setCreating(false); setEditing(null); }}
               className="text-gray-400 hover:text-gray-600"
               aria-label="Close"
             >
@@ -161,17 +188,25 @@ export default function MyEventsPage() {
             </button>
           </div>
           <EventForm
+            // Remounted per event, so opening a second edit reloads the
+            // fields rather than keeping the first one's state.
+            key={editing?.id ?? 'new'}
+            initial={editing ?? undefined}
+            alreadyPublished={Boolean(editing?.isPublished)}
+            submitLabel={editing ? 'Save changes' : 'Create event'}
             busy={busy}
-            onSubmit={create}
-            onCancel={() => setCreating(false)}
+            onSubmit={editing ? saveEdit : create}
+            onCancel={() => { setCreating(false); setEditing(null); }}
             plan={org?.plan ?? 'FREE'}
             orgFeeCents={org?.ticketFeeCents ?? 0}
             canSellTickets={Boolean(org?.stripeChargesEnabled)}
+            orgId={orgId ?? undefined}
+            token={token ?? undefined}
           />
         </section>
       )}
 
-      {events.length === 0 && !creating ? (
+      {events.length === 0 && !creating && !editing ? (
         <div className="card py-12 text-center">
           <Calendar className="mx-auto h-10 w-10 text-gray-300" />
           <p className="mt-3 text-sm text-gray-500">
@@ -185,6 +220,7 @@ export default function MyEventsPage() {
             events={upcoming}
             onCancel={cancelEvent}
             onPublish={publish}
+            onEdit={setEditing}
             busy={busy}
           />
           {/* Only for somebody who has actually been to something. The PRD's
@@ -218,6 +254,7 @@ function Section({
   events,
   onCancel,
   onPublish,
+  onEdit,
   busy,
   muted = false,
 }: {
@@ -225,6 +262,8 @@ function Section({
   events: HostedEvent[];
   onCancel: (id: string) => void;
   onPublish: (id: string) => void;
+  /** Absent on past events, which there is nothing useful left to change. */
+  onEdit?: (event: HostedEvent) => void;
   busy: boolean;
   muted?: boolean;
 }) {
@@ -239,6 +278,7 @@ function Section({
             event={event}
             onCancel={onCancel}
             onPublish={onPublish}
+            onEdit={onEdit}
             busy={busy}
           />
         ))}
@@ -251,11 +291,13 @@ function EventRow({
   event,
   onCancel,
   onPublish,
+  onEdit,
   busy,
 }: {
   event: HostedEvent;
   onCancel: (id: string) => void;
   onPublish: (id: string) => void;
+  onEdit?: (event: HostedEvent) => void;
   busy: boolean;
 }) {
   // Its own, rather than threaded through props: the row is rendered in two
@@ -323,6 +365,19 @@ function EventRow({
               disabled={busy}
             >
               Publish
+            </button>
+          )}
+          {/* Your own event, yours to fix (EVT-22). The API has always
+              allowed this; until now the member's side of the product had no
+              button for it, so a typo meant asking an organiser. */}
+          {onEdit && !ended && (
+            <button
+              type="button"
+              onClick={() => onEdit(event)}
+              className="font-medium text-brand-600 hover:underline"
+              disabled={busy}
+            >
+              Edit
             </button>
           )}
           {confirming ? (

@@ -169,6 +169,9 @@ export class EventsService {
           dto.capacity ?? booking.expectedAttendance ?? booking.room.capacity ?? undefined,
         category: dto.category ?? booking.categories[0],
         tags: booking.categories,
+        imageUrl: dto.imageUrl,
+        imageCredit: dto.imageCredit,
+        imageCreditUrl: dto.imageCreditUrl,
       } as CreateEventDto,
       userId,
       {
@@ -235,6 +238,12 @@ export class EventsService {
         tags: dto.tags,
         hasCost: options.hasCost ?? dto.hasCost ?? false,
         maturityLevel: options.maturityLevel ?? dto.maturityLevel ?? 'ALL_AGES',
+        // The picture, and whoever has to be credited for it (EVT-22). Empty
+        // string means "none" — that is what a cleared field sends — and is
+        // stored as null so the column has one way of saying nothing.
+        imageUrl: dto.imageUrl?.trim() || null,
+        imageCredit: dto.imageCredit?.trim() || null,
+        imageCreditUrl: dto.imageCreditUrl?.trim() || null,
       },
     });
   }
@@ -354,7 +363,17 @@ export class EventsService {
         ...(dto.tags !== undefined && { tags: dto.tags }),
         ...(dto.hasCost !== undefined && { hasCost: dto.hasCost }),
         ...(dto.maturityLevel !== undefined && { maturityLevel: dto.maturityLevel }),
-        ...(dto.imageUrl !== undefined && { imageUrl: dto.imageUrl }),
+        // Blank clears it, so removing a picture is a save rather than a
+        // separate delete — and the credit goes with it, because a credit
+        // with no photograph is a stray line under nothing (EVT-22).
+        // `?.` rather than `.`: `@IsOptional()` lets an explicit null through,
+        // and the edit form sends one for a field it is clearing. `null.trim()`
+        // is a 500 on a save that should simply have removed the picture.
+        ...(dto.imageUrl !== undefined && { imageUrl: dto.imageUrl?.trim() || null }),
+        ...(dto.imageCredit !== undefined && { imageCredit: dto.imageCredit?.trim() || null }),
+        ...(dto.imageCreditUrl !== undefined && {
+          imageCreditUrl: dto.imageCreditUrl?.trim() || null,
+        }),
         ...(slug && { slug }),
       },
     });

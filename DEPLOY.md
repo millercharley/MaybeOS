@@ -57,6 +57,31 @@ round. Full procedure in
 [apps/api/prisma/migrations/README.md](apps/api/prisma/migrations/README.md),
 including the drift check to run against both databases before a release.
 
+### Storage buckets are not in the migrations
+
+Buckets live in Supabase's own `storage.buckets` table, which a plain
+PostgreSQL database does not have — so creating one from a Prisma migration
+would break `docker compose` local development. They are created through the
+Supabase connector instead, on each project, and listed here because nothing
+in the repository will tell you they exist.
+
+| Bucket | Public | Limit | Types | What it holds |
+|---|---|---|---|---|
+| `org-logos` | yes | 2 MB | png, jpeg, webp | Co-op logos and dashboard banners |
+| `event-images` | yes | 5 MB | png, jpeg, webp | Event pictures (EVT-22) |
+| `avatars` | no | 5 MB | png, jpeg, webp, gif | Member faces — signed URLs, never public |
+| `attachments` | no | 25 MB | images, PDF, text, Office | Files on posts and comments |
+
+Public means a permanent URL anybody can open, which is right for the two
+things that appear on pages meant to be shared and wrong for the two that
+carry members' own material.
+
+```sql
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('event-images', 'event-images', true, 5242880, ARRAY['image/png','image/jpeg','image/webp'])
+ON CONFLICT (id) DO NOTHING;
+```
+
 ## After a deploy
 
 ```bash
@@ -86,7 +111,9 @@ in the repo. The ones production needs:
 | `DIRECT_URL` | Supabase **prod session-mode** pooler, port 5432 — migrations only; transaction mode cannot run them |
 | `JWT_SECRET` | |
 | `WEB_URL` | `https://maybeos.org` — also drives the CORS allow-list |
-| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | org logo storage (D-017) |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | org logo and event picture storage (D-017, EVT-22) |
+| `UNSPLASH_ACCESS_KEY` | optional; adds an Unsplash tab to the event picture picker (EVT-22). Unset, the picker offers upload and a web address only, which is a working picker rather than a broken tab. A free key comes from [unsplash.com/developers](https://unsplash.com/developers); a demo key allows 50 searches an hour, which the picker explains when it runs out |
+| `UNSPLASH_APP_NAME` | optional; the application name Unsplash registered, used in the `utm_source` on photographer links their terms ask for. Defaults to `MaybeOS` |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | live mode in production. If this is a **restricted** key (`rk_live_`), it needs Connect permissions — see below |
 | `STRIPE_CONNECT_CLIENT_ID` | `ca_…` from Stripe → Connect → Settings. Lets a co-op link a Stripe account it already has (PAY-05); unset just hides that option |
 | `POSTMARK_API_TOKEN` | email delivery — **see below, this one fails silently** |

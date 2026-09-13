@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { Globe, Lock, Users } from 'lucide-react';
+import { EventImagePicker, EventImageValue } from '@/components/events/event-image-picker';
 import { CreateEventData } from '@/lib/api';
 import { PLATFORM_FEE_CENTS } from '@/lib/fees';
 import { GATHERING_KINDS } from '@/components/rooms/booking-details';
@@ -77,6 +78,8 @@ export function EventForm({
   orgFeeCents = 0,
   canSellTickets = false,
   hosts,
+  orgId,
+  token,
 }: {
   initial?: Partial<EventFormValues>;
   /** Editing something already live: there is no unpublish, so no draft button. */
@@ -98,9 +101,24 @@ export function EventForm({
    * appear rather than appearing and being refused.
    */
   hosts?: { id: string; name: string }[];
+  /**
+   * Needed to offer a picture (EVT-22): uploading goes to this co-op's
+   * folder, and searching Unsplash goes through this server's key. Omit them
+   * and the field is simply not shown, rather than shown and broken.
+   */
+  orgId?: string;
+  token?: string;
 }) {
   const [title, setTitle] = useState(initial?.title ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
+  // The picture, and whoever has to be credited for it (EVT-22). One piece of
+  // state, because a credit belonging to a different photograph is worse than
+  // no credit at all.
+  const [image, setImage] = useState<EventImageValue>({
+    imageUrl: initial?.imageUrl ?? '',
+    imageCredit: initial?.imageCredit ?? '',
+    imageCreditUrl: initial?.imageCreditUrl ?? '',
+  });
   const [startTime, setStartTime] = useState(toLocalInput(initial?.startTime));
   const [endTime, setEndTime] = useState(toLocalInput(initial?.endTime));
   const [visibility, setVisibility] = useState(initial?.visibility ?? 'MEMBERS_ONLY');
@@ -153,6 +171,11 @@ export function EventForm({
     onSubmit({
       title: title.trim(),
       description: description.trim() || undefined,
+      // Always sent, including empty, so that clearing the picture on an edit
+      // actually removes it — an omitted field leaves the old one in place.
+      imageUrl: image.imageUrl,
+      imageCredit: image.imageCredit,
+      imageCreditUrl: image.imageCreditUrl,
       // The inputs are local time; the API stores instants.
       startTime: new Date(startTime).toISOString(),
       endTime: new Date(endTime).toISOString(),
@@ -236,6 +259,13 @@ export function EventForm({
           className="input w-full"
         />
       </div>
+
+      {orgId && token && (
+        <div>
+          <span className="mb-1 block text-sm font-medium text-gray-900">A picture</span>
+          <EventImagePicker orgId={orgId} token={token} value={image} onChange={setImage} />
+        </div>
+      )}
 
       <fieldset>
         <legend className="mb-2 text-sm font-medium text-gray-900">Who can see it?</legend>
