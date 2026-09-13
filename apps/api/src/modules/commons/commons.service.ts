@@ -5,6 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
+import { escapeHtml } from '../../common/escape-html';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { CreatePostDto } from './dto/create-post.dto';
 import { CreateProposalDto } from './dto/create-proposal.dto';
@@ -14,21 +15,6 @@ import { VoteChoice } from '@prisma/client';
 
 const AUTHOR_SELECT = { id: true, name: true, avatarUrl: true, avatarPath: true } as const;
 
-/**
- * Minimal escaping for text that is about to become markup.
- *
- * The web app has its own copy for the same job; this one exists because the
- * invitation body (CMN-11) is built on the server out of a channel name a
- * member chose, and a name containing `<` must not be able to close a tag.
- */
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 @Injectable()
 export class CommonsService {
