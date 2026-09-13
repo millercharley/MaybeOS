@@ -34,6 +34,12 @@ const EDIT_FORM_BODY = {
   maturityLevel: 'AGES_21_PLUS',
   priceCents: null,
   hostId: '11111111-1111-4111-8111-111111111111',
+  // The picture the form has sent since EVT-22. Added here because the list
+  // is the point: a form field missing from it is a field nothing proves the
+  // API will accept.
+  imageUrl: 'https://images.unsplash.com/abc?w=1080',
+  imageCredit: 'Ada Potter',
+  imageCreditUrl: 'https://unsplash.com/@ada?utm_source=MaybeOS&utm_medium=referral',
 };
 
 const validate = (body: object) =>
@@ -44,10 +50,27 @@ describe('editing an event through the whitelist', () => {
     await expect(validate(EDIT_FORM_BODY)).resolves.toMatchObject({
       hasCost: true,
       maturityLevel: 'AGES_21_PLUS',
+      imageCredit: 'Ada Potter',
     });
   });
 
-  it('still refuses publish, which is why toUpdatePayload strips it', async () => {
+  it('accepts an edit that clears the picture', async () => {
+    // Removing a photograph is a save with empty fields, not a delete.
+    await expect(
+      validate({ ...EDIT_FORM_BODY, imageUrl: '', imageCredit: '', imageCreditUrl: '' }),
+    ).resolves.toBeDefined();
+  });
+
+  /**
+   * The refusal that keeps coming back.
+   *
+   * Stripping it in `toUpdatePayload` fixed the organisers' form and did
+   * nothing for the next call site: My Events grew an Edit button in EVT-22,
+   * sent the form's values unchanged, and every save failed with this exact
+   * message — which is what Charley saw adding a picture to his event. The
+   * strip now lives in the API client, where a caller cannot skip it.
+   */
+  it('still refuses publish, which is why the client strips it', async () => {
     await expect(validate({ ...EDIT_FORM_BODY, publish: true })).rejects.toThrow();
   });
 
