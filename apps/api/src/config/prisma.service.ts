@@ -49,7 +49,13 @@ export class PrismaService
          * ConnectService opts back in per query; it is the only thing that
          * needs it.
          */
-        organization: { stripeAccountId: true },
+        /**
+         * `doorScriptSecret` (DOR-01) signs writes to a co-op's door sheet.
+         * Sealed at rest, and still omitted: `GET /orgs/:orgId` returns the
+         * whole row, and ciphertext has no business in that response. The
+         * door module opts back in.
+         */
+        organization: { stripeAccountId: true, doorScriptSecret: true },
         /**
          * A member's demographic answers (IMP-17). D-021 and the PRD are
          * explicit that no route reads another member's profile and that the

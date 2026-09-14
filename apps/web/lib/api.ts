@@ -513,7 +513,6 @@ class ApiClient {
         doorAccessEnabled?: boolean;
         doorCodeEmailsEnabled?: boolean;
         /** A full Google Sheets address is accepted; the API keeps the id. */
-        doorSheetId?: string | null;
         /** The co-op's own fee per ticket, in cents (D-013 ticketing). */
         ticketFeeCents?: number;
         /**
@@ -879,14 +878,28 @@ class ApiClient {
     myPin: (orgId: string, token: string) =>
       this.request<{ doorPin: string | null }>(`/orgs/${orgId}/door/pin`, { token }),
 
-    /** What this server still needs before codes can be issued. */
+    /** The door script's address, and whether a secret is set. Never the secret. */
     setup: (orgId: string, token: string) =>
-      this.request<{ googleConfigured: boolean; shareSheetWith: string | null }>(
-        `/orgs/${orgId}/door/setup`,
-        { token },
-      ),
+      this.request<{ scriptUrl: string | null; secretSet: boolean }>(`/orgs/${orgId}/door/setup`, {
+        token,
+      }),
 
-    /** Issue anything missing and write the sheet now, rather than within the quarter hour. */
+    setScript: (orgId: string, url: string | null, token: string) =>
+      this.request<{ scriptUrl: string | null }>(`/orgs/${orgId}/door/script`, {
+        method: 'PUT',
+        body: JSON.stringify({ url }),
+        token,
+      }),
+
+    /** A new signing secret, returned this once for Script Properties. */
+    rotateSecret: (orgId: string, token: string) =>
+      this.request<{ secret: string }>(`/orgs/${orgId}/door/secret`, { method: 'POST', token }),
+
+    /** Whether the script answers and accepts the secret. */
+    test: (orgId: string, token: string) =>
+      this.request<{ members: number }>(`/orgs/${orgId}/door/test`, { method: 'POST', token }),
+
+    /** Issue anything missing and resend the whole sheet now. */
     sync: (orgId: string, token: string) =>
       this.request<{ issued: number; synced: number; emailed: number }>(
         `/orgs/${orgId}/door/sync`,
@@ -2564,7 +2577,6 @@ export interface Org {
    */
   doorAccessEnabled?: boolean;
   doorCodeEmailsEnabled?: boolean;
-  doorSheetId?: string | null;
   /**
    * Only `GET /orgs/by-slug/:slug` includes these — the public org page's
    * single call. `GET /orgs/:orgId` returns the bare row, so anything reading

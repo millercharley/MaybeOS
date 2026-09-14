@@ -28,7 +28,9 @@ describe('PrismaService — secret omission', () => {
       // Added when ticketing landed: `GET /orgs/:orgId` is unauthenticated and
       // returns the whole row, so a new column is published to the world by
       // default. This is the guard that noticed.
-      organization: { stripeAccountId: true },
+      // The door script's signing secret (DOR-01) joins it: sealed at rest,
+      // and ciphertext still has no place in an org response.
+      organization: { stripeAccountId: true, doorScriptSecret: true },
       // A member's demographic answers (IMP-17). D-021 promises that no route
       // reads another member's profile and that admins see only a suppressed
       // aggregate — while `getMember` and the member list both read `UserOrg`
