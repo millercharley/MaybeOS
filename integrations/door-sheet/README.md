@@ -1,0 +1,112 @@
+# Door access sheet
+
+The Google Sheet and Apps Script that open MaybeItsFate's doors. It replaces the
+first door sheet. **MaybeOS owns the door codes and writes them here**; the door
+page checks a member's email and code against this sheet and pulses the Shelly
+relay.
+
+| File | Goes where |
+| --- | --- |
+| `Code.gs` | Apps Script editor → `Code.gs` |
+| `Index.html` | Apps Script editor → a new HTML file named `Index` |
+| `appsscript.json` | Apps Script editor → Project Settings → tick "Show appsscript.json", then replace its contents |
+| `test/code.test.js` | Not deployed. `node test/code.test.js` runs the script against mocked Google services. |
+
+## What is different from the first door sheet
+
+- **The Shelly key is not in the sheet.** It is a Script Property. Anyone who can
+  open a spreadsheet can read every cell, and that key opens the door through
+  Shelly's API without this script.
+- **The door page cannot read secrets.** Every internal function ends in `_`, so
+  `google.script.run` cannot call it. In the first version, the page could call
+  `getDoorConfig` and get the Shelly key back.
+- **Revoking takes effect immediately.** It used to take up to an hour.
+- **Five wrong tries lock that email out for 15 minutes.**
+- **Denied attempts are logged**, not only successful ones.
+- **MaybeOS writes through a signed web request.** It is never given access to
+  the spreadsheet.
+- **Optional:** the door opens only within a set distance
+  (`REQUIRE_NEARBY_FEET`). A phone can fake its location, so treat this as a
+  deterrent, not a lock.
+
+## Tabs
+
+`setupDoorSheet` creates these. Columns are positional, so do not reorder them.
+
+**Members** — written by MaybeOS; one row per member.
+
+| A Email | B Door Code | C Full Name | D Revoked | E Updated by MaybeOS |
+| --- | --- | --- | --- | --- |
+
+Codes are five capital letters with no I and no L. A ticked or "yes" in Revoked
+denies the door. Organisers can add a row by hand, for example for a cleaner.
+MaybeOS only changes rows whose email it manages.
+
+**Doors** — one row per door.
+
+| A Door ID | B Name | C Shelly Server | D Shelly Device ID | E Latitude | F Longitude | G Active |
+| --- | --- | --- | --- | --- | --- | --- |
+
+- The Door ID goes in the link: `…/exec?door=side`. A link with no door opens `side`.
+- Shelly Server is the name from the Shelly Cloud control panel, for example
+  `shelly-103-eu`; `.shelly.cloud` is optional.
+- Untick Active to take a door offline.
+
+**Access Log** — Time, Email, Door, Result (Granted / Denied / Error), Reason,
+Latitude, Longitude, Distance.
+
+## Setup, in the MaybeItsFate Google account
+
+1. **Create the sheet.** Signed in as the MaybeItsFate account, create a blank
+   Google Sheet named "MaybeItsFate Door Access".
+2. **Open the script editor.** Extensions → Apps Script. Name the project "Door
+   Access".
+3. **Paste the three files** as in the table at the top. Save.
+4. **Build the tabs.** Pick `setupDoorSheet` in the function menu and press Run.
+   Approve the permissions Google asks for; they are this sheet plus outside
+   web requests, for Shelly. Running it again changes nothing.
+5. **Fill in the Doors tab**: Shelly Server, Shelly Device ID, latitude and
+   longitude for each door. The builder can copy these from his sheet, columns
+   C, D, F and G there.
+6. **Set the Script Properties.** Project Settings (gear icon) → Script
+   Properties → Add:
+   - `SHELLY_AUTH_KEY` — the Shelly Cloud authorization key. In the Shelly app:
+     User settings → Authorization cloud key. **Get a new key** rather than
+     reusing the one from the old sheet: that key has been sitting in a shared
+     sheet and is exposed.
+   - `MAYBEOS_SECRET` — MaybeOS supplies this. Do not make one up; it has to
+     match on both sides.
+   - `REQUIRE_NEARBY_FEET` — optional, for example `500`.
+7. **Deploy.** Deploy → New deployment → gear → Web app.
+   - Execute as: **Me**.
+   - Who has access: **Anyone**. Members open the door without signing in to
+     Google, and MaybeOS calls it from a server.
+
+   Copy the Web app URL that ends in `/exec`.
+8. **Test before switching.** Add yourself to Members by hand, open
+   `<web app URL>?door=side` on your phone, and open the door.
+9. **Switch over.** Replace the old door link (QR codes, NFC tags, bookmarks)
+   with the new URL.
+
+After any code change: Deploy → Manage deployments → pencil → Version: **New
+version** → Deploy. The URL stays the same. Saving alone does not update what
+members use.
+
+## MaybeOS request format
+
+`POST <web app URL>` with a JSON body:
+
+```json
+{ "timestamp": 1757880000000, "payload": "{\"action\":\"upsert\",\"members\":[…]}", "signature": "…" }
+```
+
+- `payload` is a JSON **string**:
+  - `{"action":"ping"}` returns the member count.
+  - `{"action":"upsert","members":[{"email","code","name","revoked"}]}` adds or
+    updates up to 1000 members.
+- `signature` is `base64(HMAC-SHA256(MAYBEOS_SECRET, timestamp + "." + payload))`
+  over the exact payload string, UTF-8.
+- Requests older than five minutes are refused.
+- The response is always HTTP 200 (Apps Script cannot set a status), so read
+  `ok` from the body. It never contains codes or names.
+- Apps Script answers a POST with a 302 redirect. Follow it with a GET.
