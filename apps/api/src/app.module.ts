@@ -12,6 +12,7 @@ import { OrgModule } from './modules/org/org.module';
 import { MemberModule } from './modules/member/member.module';
 import { EventsModule } from './modules/events/events.module';
 import { DoorModule } from './modules/door/door.module';
+import { SocialModule } from './modules/social/social.module';
 import { SpaceModule } from './modules/space/space.module';
 import { ServiceModule } from './modules/service/service.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
@@ -56,6 +57,10 @@ import { HealthModule } from './modules/health/health.module';
         GOOGLE_CLIENT_ID: Joi.string().allow('').default(''),
         GOOGLE_CLIENT_SECRET: Joi.string().allow('').default(''),
         GOOGLE_REDIRECT_URI: Joi.string().allow('').default(''),
+        // Facebook Login for sharing events to a co-op's Page and Instagram (SOC-01).
+        META_APP_ID: Joi.string().allow('').default(''),
+        META_APP_SECRET: Joi.string().allow('').default(''),
+        META_REDIRECT_URI: Joi.string().allow('').default(''),
         POSTMARK_API_TOKEN: Joi.string().allow('').default(''),
         // The site's own domain. It was maybeos.app here and maybeos.com in
         // EmailService — neither is a domain MaybeOS owns, so neither could
@@ -127,6 +132,7 @@ import { HealthModule } from './modules/health/health.module';
     MemberModule,
     EventsModule,
     DoorModule,
+    SocialModule,
     SpaceModule,
     ServiceModule,
     OnboardingModule,

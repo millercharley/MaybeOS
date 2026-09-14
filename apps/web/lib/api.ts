@@ -612,10 +612,12 @@ class ApiClient {
         headline?: string;
         location?: string;
         emailOptIn?: boolean;
+        /** Credited when they share an event to the co-op's Instagram (SOC-01). Null clears it. */
+        instagramHandle?: string | null;
       },
       token: string,
     ) =>
-      this.request<{ id: string; bio: string | null; tags: string[]; links: string[] }>(`/orgs/${orgId}/me`, {
+      this.request<{ id: string; bio: string | null; tags: string[]; links: string[]; instagramHandle?: string | null }>(`/orgs/${orgId}/me`, {
         method: 'PATCH',
         body: JSON.stringify(data),
         token,
@@ -909,6 +911,57 @@ class ApiClient {
     regenerate: (orgId: string, userId: string, token: string) =>
       this.request<{ doorPin: string }>(`/orgs/${orgId}/door/members/${userId}/regenerate`, {
         method: 'POST',
+        token,
+      }),
+  };
+
+  /**
+   * Sharing public events to the co-op's Facebook Page and Instagram (SOC-01).
+   */
+  social = {
+    status: (orgId: string, token: string) =>
+      this.request<SocialStatus>(`/orgs/${orgId}/social`, { token }),
+
+    /** The Facebook Login address. The page sends the admin there. */
+    connect: (orgId: string, token: string) =>
+      this.request<{ url: string }>(`/orgs/${orgId}/social/meta/connect`, { method: 'POST', token }),
+
+    choosePage: (orgId: string, pageId: string, token: string) =>
+      this.request<SocialStatus>(`/orgs/${orgId}/social/meta/page`, {
+        method: 'PUT',
+        body: JSON.stringify({ pageId }),
+        token,
+      }),
+
+    disconnect: (orgId: string, token: string) =>
+      this.request<SocialStatus>(`/orgs/${orgId}/social/meta`, { method: 'DELETE', token }),
+
+    updateSettings: (orgId: string, data: { enabled?: boolean; membersByDefault?: boolean }, token: string) =>
+      this.request<SocialStatus>(`/orgs/${orgId}/social/settings`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    /** True or false decides for this member; null follows the co-op default. */
+    setMember: (orgId: string, userId: string, allowed: boolean | null, token: string) =>
+      this.request<{ userId: string; socialShareAllowed: boolean | null }>(
+        `/orgs/${orgId}/social/members/${userId}`,
+        { method: 'PATCH', body: JSON.stringify({ allowed }), token },
+      ),
+
+    shareOptions: (orgId: string, eventId: string, token: string) =>
+      this.request<ShareOptions>(`/orgs/${orgId}/events/${eventId}/social`, { token }),
+
+    share: (
+      orgId: string,
+      eventId: string,
+      data: { platforms: SocialPlatform[]; body: string; image?: string },
+      token: string,
+    ) =>
+      this.request<{ results: ShareResult[] }>(`/orgs/${orgId}/events/${eventId}/social`, {
+        method: 'POST',
+        body: JSON.stringify(data),
         token,
       }),
   };
@@ -2575,6 +2628,8 @@ export interface Org {
    * public route selects a narrower set, and how a co-op's door works is not
    * something to publish on its join page.
    */
+  /** Whether hosts may share public events to Facebook and Instagram (SOC-01). */
+  socialSharingEnabled?: boolean;
   doorAccessEnabled?: boolean;
   doorCodeEmailsEnabled?: boolean;
   /**
@@ -3067,6 +3122,14 @@ export interface Member {
    * the address has no business knowing whether it may be written to.
    */
   emailOptIn?: boolean | null;
+  /** Their Instagram username, without the @, credited on events they share (SOC-01). */
+  instagramHandle?: string | null;
+  /**
+   * Whether an admin has decided this member may share to the co-op's
+   * Facebook and Instagram (SOC-01). Null follows the co-op's default.
+   * Organisers and the member themselves only.
+   */
+  socialShareAllowed?: boolean | null;
 }
 
 /**
@@ -4449,4 +4512,46 @@ export interface StandingDuty extends DutyAdoption {
   /** When it next falls due. ISO 8601. */
   reviewDueAt?: string;
   reviewedAt?: string | null;
+}
+
+// ── Sharing to Facebook and Instagram (SOC-01) ─────────────
+
+export type SocialPlatform = 'FACEBOOK' | 'INSTAGRAM';
+
+export interface SocialStatus {
+  /** Whether this server has a Facebook app configured at all. */
+  configured: boolean;
+  enabled: boolean;
+  membersByDefault: boolean;
+  connection: { pageName: string | null; instagramUsername: string | null; connectedAt: string | null } | null;
+  /** Pages to choose from, after a login that manages several. */
+  pendingPages: { id: string; name: string; igUsername: string | null }[] | null;
+}
+
+export interface SocialPostRecord {
+  platform: SocialPlatform;
+  permalink: string | null;
+  createdAt: string;
+}
+
+export interface ShareOptions {
+  canShare: boolean;
+  reason: string | null;
+  facebook: { pageName: string | null; post: SocialPostRecord | null } | null;
+  instagram: { username: string | null; post: SocialPostRecord | null; needsImage: boolean } | null;
+  imageUrl: string | null;
+  body: string;
+  /** The credit and link added after the body, as each platform will show them. */
+  facebookCredit: string;
+  instagramCredit: string;
+  credit: { hostName: string; instagramHandle: string | null };
+}
+
+export interface ShareResult {
+  platform: SocialPlatform;
+  ok: boolean;
+  permalink?: string | null;
+  error?: string;
+  alreadyShared?: boolean;
+  collaboratorInvited?: boolean;
 }

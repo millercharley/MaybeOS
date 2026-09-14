@@ -43,6 +43,8 @@ export default function MyProfilePage() {
   const [links, setLinks] = useState<string[]>([]);
   const [headline, setHeadline] = useState('');
   const [location, setLocation] = useState('');
+  // Credited when they share an event to the co-op's Instagram (SOC-01).
+  const [instagramHandle, setInstagramHandle] = useState('');
   // Nullable on purpose — null means nobody has ever asked this member, which
   // is different from their having declined (MEM-06).
   const [emailOptIn, setEmailOptIn] = useState<boolean | null>(null);
@@ -147,6 +149,7 @@ export default function MyProfilePage() {
         setLinks(me.links ?? []);
         setHeadline(me.headline ?? '');
         setLocation(me.location ?? '');
+        setInstagramHandle(me.instagramHandle ?? '');
         setEmailOptIn(me.emailOptIn ?? null);
       })
       .catch(() => {});
@@ -180,6 +183,7 @@ export default function MyProfilePage() {
             links: links.filter((l) => l.trim()),
             headline,
             location,
+            instagramHandle: instagramHandle.trim() || null,
             // Only sent once the member has actually answered. Sending false
             // for "never asked" would record a refusal they never made.
             ...(emailOptIn !== null && { emailOptIn }),
@@ -362,6 +366,29 @@ export default function MyProfilePage() {
             placeholder="Butchertown, KY"
             className="w-full rounded-lg border border-[var(--border)] px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
+        </div>
+
+        <div>
+          <label htmlFor="instagram-handle" className="mb-1 block text-sm font-medium text-[var(--text-primary)]">
+            Instagram
+          </label>
+          <div className="flex items-center rounded-lg border border-[var(--border)] focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500">
+            <span className="pl-3 text-sm text-[var(--text-tertiary)]">@</span>
+            <input
+              id="instagram-handle"
+              type="text"
+              value={instagramHandle}
+              onChange={(e) => setInstagramHandle(e.target.value.replace(/^@/, '').replace(/\s/g, ''))}
+              maxLength={30}
+              placeholder="yourname"
+              autoCapitalize="off"
+              spellCheck={false}
+              className="w-full rounded-lg border-0 bg-transparent px-1 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-0"
+            />
+          </div>
+          <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+            When you share an event to this co-op&apos;s Instagram, you&apos;re credited and invited as a collaborator.
+          </p>
         </div>
 
         <div>

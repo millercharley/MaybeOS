@@ -103,6 +103,12 @@ model Organization {
   /// Omitted at the Prisma client: it is read by the door sync and nowhere
   /// else.
   doorScriptSecret         Json?
+  /// Whether hosts may share this co-op's public events to its Facebook Page
+  /// and Instagram account (SOC-01). Off until an admin turns it on.
+  socialSharingEnabled        Boolean @default(false)
+  /// Whether a member may share without being switched on individually.
+  /// `UserOrg.socialShareAllowed` overrides this for one member either way.
+  socialShareMembersByDefault Boolean @default(true)
   /// Whether members are emailed their code as it is issued (DOR-01). Its own
   /// switch, separate from generating them, so a co-op can fill the sheet and
   /// check it before a few hundred people get a door code in their inbox.
@@ -225,6 +231,8 @@ model Organization {
   /// the schema and the database agree.
   @@index([createdAt])
   @@map("organizations")
+  socialAccount    OrgSocialAccount?
+  eventSocialPosts EventSocialPost[]
 }
 
 model Location {
@@ -374,6 +382,15 @@ model UserOrg {
   /// which is how the scheduled task finds it.
   doorPinSyncedAt       DateTime?
   doorPinEmailedAt      DateTime?
+  /// Whether this member may share events to the co-op's Facebook and
+  /// Instagram (SOC-01). Null follows `Organization.socialShareMembersByDefault`;
+  /// an admin sets true or false to decide for this member. Stripped from what
+  /// other members see.
+  socialShareAllowed    Boolean?
+  /// The member's Instagram username, without the @, credited on posts they
+  /// share. Per membership, like `links`: what someone publishes in one co-op
+  /// is not consent to publish it in another.
+  instagramHandle       String?
   tags                  String[]           @default([])
   /// Links a member chooses to show on their profile. On the membership, not
   /// the account: what somebody publishes to one co-op is not consent to
@@ -732,6 +749,7 @@ model Event {
   tickets     Ticket[]
   attachments Attachment[]
 
+  socialPosts EventSocialPost[]
   @@unique([orgId, slug])
   @@index([orgId, startTime])
   @@index([orgId, visibility, isPublished])
@@ -2489,4 +2507,62 @@ model DoorSheetEntry {
 
   @@unique([orgId, email])
   @@map("door_sheet_entries")
+}
+
+/// The Facebook Page and Instagram account a co-op shares events to (SOC-01).
+///
+/// Connected once by an admin through Facebook Login. The Page token is
+/// sealed with secret-box and omitted at the Prisma client. `pendingPages`
+/// holds the choices, sealed, for the few minutes between Facebook sending the
+/// admin back and the admin picking one, when their login manages several
+/// Pages.
+model OrgSocialAccount {
+  id            String    @id @default(uuid())
+  orgId         String    @unique
+  pageId        String?
+  pageName      String?
+  pageToken     Json?
+  igUserId      String?
+  igUsername    String?
+  pendingPages  Json?
+  pendingUntil  DateTime?
+  connectedById String?
+  connectedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("org_social_accounts")
+}
+
+enum SocialPlatform {
+  FACEBOOK
+  INSTAGRAM
+}
+
+/// One event shared to one platform (SOC-01). Unique per event and platform,
+/// so a double click or a second host cannot post the same event twice.
+///
+/// Written as PENDING before the post goes out, which is what takes the
+/// unique slot, and set to PUBLISHED with the post's link after. A failed post
+/// deletes its row so it can be tried again.
+model EventSocialPost {
+  id          String         @id @default(uuid())
+  orgId       String
+  eventId     String
+  platform    SocialPlatform
+  status      String         @default("PENDING")
+  externalId  String?
+  permalink   String?
+  postedById  String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  event Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, platform])
+  @@index([orgId, createdAt])
+  @@map("event_social_posts")
 }

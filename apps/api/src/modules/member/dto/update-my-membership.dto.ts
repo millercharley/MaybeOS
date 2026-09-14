@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength, IsArray, ArrayMaxSize, IsUrl, IsBoolean } from 'class-validator';
+import { IsOptional, IsString, MaxLength, IsArray, ArrayMaxSize, IsUrl, IsBoolean, Matches, ValidateIf } from 'class-validator';
 
 /**
  * What a member may change about how they appear in their co-op (MEM-09).
@@ -17,6 +17,17 @@ export class UpdateMyMembershipDto {
   @IsString()
   @MaxLength(160)
   headline?: string;
+
+  /**
+   * The member's Instagram username, credited when they share an event to the
+   * co-op's Instagram (SOC-01). With or without the @. Null or empty clears it.
+   */
+  @ApiPropertyOptional({ example: 'maybeitsfate', nullable: true, type: String })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== '')
+  @IsString()
+  @Matches(/^@?[A-Za-z0-9._]{1,30}$/, { message: 'An Instagram username is letters, numbers, periods and underscores.' })
+  instagramHandle?: string | null;
 
   @ApiPropertyOptional({ example: 'Butchertown, KY' })
   @IsOptional()

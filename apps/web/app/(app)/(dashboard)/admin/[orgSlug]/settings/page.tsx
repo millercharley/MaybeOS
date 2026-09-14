@@ -19,6 +19,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { ShareTracking } from '@/components/settings/share-tracking';
 import { MemberChannels } from '@/components/settings/member-channels';
 import { DoorAccess } from '@/components/settings/door-access';
+import { SocialSharing } from '@/components/settings/social-sharing';
 
 type SettingsTab = 'general' | 'branding' | 'website' | 'onboarding' | 'integrations' | 'billing';
 
@@ -64,6 +65,9 @@ export default function SettingsPage() {
     // The plan lives on Billing now, so land there — the banner says "below"
     // and General would not have shown them anything they had just bought.
     if (subscribed) setActiveTab('billing');
+    // Coming back from Facebook Login (SOC-01) lands on the tab it started from.
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    if (tab && tabs.some((t) => t.key === tab)) setActiveTab(tab as SettingsTab);
   }, []);
 
   const { data: org, loading, refetch } = useApi(
@@ -535,7 +539,10 @@ export default function SettingsPage() {
       {activeTab === 'onboarding' && <GettingStartedSettings />}
 
       {activeTab === 'integrations' && (
-        <Integrations onGoToGeneral={() => setActiveTab('general')} />
+        <div className="space-y-6">
+          <SocialSharing />
+          <Integrations onGoToGeneral={() => setActiveTab('general')} />
+        </div>
       )}
 
       {/* The real plan, not a hand-written one (Charley, 2026-09-04). This tab

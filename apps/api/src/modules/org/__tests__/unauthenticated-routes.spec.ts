@@ -26,9 +26,12 @@ const EXPECTED = [
   'GET /auth/magic-link/verify',
 
   // Redirect targets: a browser arrives with no Authorization header. Both
-  // carry an HMAC-signed `state` (PAY-05, SEC-14).
+  // carry an HMAC-signed `state` (PAY-05, SEC-14, SOC-01).
   'GET /calendar/oauth/callback',
   'GET /connect/oauth/callback',
+  // Facebook Login for sharing events (SOC-01), with the same signed state,
+  // marked `flow: 'meta'` so another flow's state is refused.
+  'GET /social/meta/callback',
   // Stripe signs its webhooks; the signature is the authentication.
   'POST /stripe/webhooks',
 

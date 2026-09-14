@@ -57,6 +57,12 @@ export class PrismaService
          */
         organization: { stripeAccountId: true, doorScriptSecret: true },
         /**
+         * The co-op's Facebook Page token (SOC-01), which can post as the
+         * co-op, and the sealed choices waiting for an admin to pick a Page.
+         * The sharing service selects them explicitly.
+         */
+        orgSocialAccount: { pageToken: true, pendingPages: true },
+        /**
          * A member's demographic answers (IMP-17). D-021 and the PRD are
          * explicit that no route reads another member's profile and that the
          * only admin view is a suppressed aggregate — but `getMember` and the

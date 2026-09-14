@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
+import { normaliseHandle } from '../social/social-caption';
 import { ConfigService } from '@nestjs/config';
 import { OrgRole } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
@@ -37,6 +38,7 @@ function toMemberView<
     subscriptionStatus?: unknown;
     emailOptIn?: boolean | null;
     doorPin?: string | null;
+    socialShareAllowed?: boolean | null;
     user: { email?: string };
   },
 >(member: T, viewer: ContactViewer) {
@@ -57,6 +59,9 @@ function toMemberView<
     // member who opened the directory. The omission is the seatbelt; this is
     // the one place the belt is off.
     doorPin: _doorPin,
+    // Whether an admin has stopped this member sharing to the co-op's
+    // Facebook and Instagram (SOC-01). A moderation decision, not a profile.
+    socialShareAllowed: _socialShare,
     user,
     ...rest
   } = member;
@@ -308,6 +313,7 @@ export class MemberService {
       location?: string;
       emailOptIn?: boolean;
       isPublic?: boolean;
+      instagramHandle?: string | null;
     },
   ) {
     const membership = await this.prisma.userOrg.findUnique({
@@ -329,10 +335,11 @@ export class MemberService {
         ...(dto.isPublic !== undefined && { isPublic: dto.isPublic }),
         ...(dto.location !== undefined && { location: dto.location.trim() || null }),
         ...(dto.emailOptIn !== undefined && { emailOptIn: dto.emailOptIn }),
+        ...(dto.instagramHandle !== undefined && { instagramHandle: normaliseHandle(dto.instagramHandle) }),
       },
       select: {
         id: true, bio: true, tags: true, links: true,
-        headline: true, location: true, emailOptIn: true,
+        headline: true, location: true, emailOptIn: true, instagramHandle: true,
       },
     });
   }
