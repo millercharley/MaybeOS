@@ -150,6 +150,21 @@ export default function MembersPage() {
     }
   }
 
+  /** Whether this member may share events to the co-op's Facebook and Instagram (SOC-01). */
+  async function changeSocial(userId: string, value: string) {
+    if (!token || !currentOrgId) return;
+    setSavingRole(userId);
+    setRoleError('');
+    try {
+      await api.social.setMember(currentOrgId, userId, value === '' ? null : value === 'on', token);
+      refetch();
+    } catch (err) {
+      setRoleError(err instanceof Error ? err.message : 'Could not change that');
+    } finally {
+      setSavingRole(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       {roleError && (
@@ -341,6 +356,12 @@ export default function MembersPage() {
               <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                 Role
               </th>
+              <th
+                className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                title="Whether they can share events to the co-op's Facebook and Instagram"
+              >
+                Socials
+              </th>
               <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                 Tier
               </th>
@@ -392,6 +413,27 @@ export default function MembersPage() {
                     <option value="GUEST">GUEST</option>
                   </select>
                 </td>
+                <td className="whitespace-nowrap px-6 py-4 text-xs text-gray-500">
+                  {/* SOC-01. Admins and staff can always share, and guests
+                      never can, so only members get a choice. */}
+                  {member.role === 'ADMIN' || member.role === 'STAFF' ? (
+                    'Always'
+                  ) : member.role === 'GUEST' ? (
+                    'Never'
+                  ) : (
+                    <select
+                      value={member.socialShareAllowed == null ? '' : member.socialShareAllowed ? 'on' : 'off'}
+                      onChange={(e) => changeSocial(member.user.id, e.target.value)}
+                      disabled={savingRole === member.user.id}
+                      aria-label={`Sharing to socials for ${member.user.name ?? member.user.email ?? 'member'}`}
+                      className="rounded-md border border-gray-200 px-1.5 py-0.5 text-xs text-gray-700"
+                    >
+                      <option value="">Co-op default</option>
+                      <option value="on">Can share</option>
+                      <option value="off">Can’t share</option>
+                    </select>
+                  )}
+                </td>
                 <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
                   {member.tier?.name ?? '-'}
                 </td>
@@ -437,7 +479,7 @@ export default function MembersPage() {
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-6 py-12 text-center text-sm text-gray-500">
+                <td colSpan={8} className="px-6 py-12 text-center text-sm text-gray-500">
                   No members found matching your search.
                 </td>
               </tr>

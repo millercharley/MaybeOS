@@ -39,6 +39,8 @@ describe('MemberService — contact redaction', () => {
     // can read codes (DOR-01). Which makes this fixture the shape the real
     // query returns, and the leak below a real one.
     doorPin: 'ABCDE',
+    // An admin has stopped this member sharing to the co-op's socials (SOC-01).
+    socialShareAllowed: false,
     headline: 'Ask me about sourdough',
     location: 'Butchertown, KY',
     user: { id: userId, email, name: 'Alex', avatarUrl: null },
@@ -93,6 +95,14 @@ describe('MemberService — contact redaction', () => {
     const [, mine] = await listAs({ userId: 'user-1', privileged: false });
 
     expect(mine).toMatchObject({ doorPin: 'ABCDE' });
+  });
+
+  it('does not tell other members that an admin has stopped someone sharing', async () => {
+    const [other] = await listAs({ userId: 'user-1', privileged: false });
+    expect(other).not.toHaveProperty('socialShareAllowed');
+
+    const [asAdmin] = await listAs({ userId: 'admin-1', privileged: true });
+    expect(asAdmin).toMatchObject({ socialShareAllowed: false });
   });
 
   it('gives organisers the door codes, which is what they are for', async () => {

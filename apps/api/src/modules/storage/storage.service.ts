@@ -662,6 +662,21 @@ export class StorageService {
     );
   }
 
+  /**
+   * The JPEG a host's browser prepared for Instagram (SOC-01). Instagram
+   * fetches the picture from a public address and accepts only JPEG, so it
+   * is stored beside the event's own picture, under `social/`.
+   */
+  async uploadSocialImage(orgId: string, body: Buffer): Promise<string> {
+    return this.uploadPublicImage(
+      EVENT_IMAGE_BUCKET,
+      `${orgId}/social/${randomUUID()}.jpg`,
+      body,
+      'image/jpeg',
+      EVENT_IMAGE_MAX_BYTES,
+    );
+  }
+
   /** Remove an event picture MaybeOS stored. Best-effort, like the logo. */
   async deleteEventImage(orgId: string, publicUrl: string | null): Promise<void> {
     return this.deletePublicImage(EVENT_IMAGE_BUCKET, orgId, publicUrl, 'event image');

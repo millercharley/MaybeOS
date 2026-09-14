@@ -15,6 +15,7 @@ import { MyRsvps } from '@/components/events/my-rsvps';
 import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 import { HostEarnings } from '@/components/events/host-earnings';
 import { PageHeader } from '@/components/layout/page-header';
+import { ShareEventDialog } from '@/components/events/share-event-dialog';
 import { Panel } from '@/components/layout/panel';
 
 /**
@@ -236,6 +237,7 @@ export default function MyEventsPage() {
             onPublish={publish}
             onEdit={setEditing}
             busy={busy}
+            sharingOn={Boolean(org?.socialSharingEnabled)}
           />
           {/* Only for somebody who has actually been to something. The PRD's
               post-event question is a follow-up, and asking it of a member
@@ -271,6 +273,7 @@ function Section({
   onEdit,
   busy,
   muted = false,
+  sharingOn = false,
 }: {
   title: string;
   events: HostedEvent[];
@@ -280,6 +283,8 @@ function Section({
   onEdit?: (event: HostedEvent) => void;
   busy: boolean;
   muted?: boolean;
+  /** Whether the co-op lets hosts share to Facebook and Instagram (SOC-01). */
+  sharingOn?: boolean;
 }) {
   if (events.length === 0) return null;
 
@@ -294,6 +299,7 @@ function Section({
             onPublish={onPublish}
             onEdit={onEdit}
             busy={busy}
+            sharingOn={sharingOn}
           />
         ))}
       </div>
@@ -307,12 +313,14 @@ function EventRow({
   onPublish,
   onEdit,
   busy,
+  sharingOn = false,
 }: {
   event: HostedEvent;
   onCancel: (id: string) => void;
   onPublish: (id: string) => void;
   onEdit?: (event: HostedEvent) => void;
   busy: boolean;
+  sharingOn?: boolean;
 }) {
   // Its own, rather than threaded through props: the row is rendered in two
   // places and the URL already knows which co-op this is.
@@ -320,12 +328,23 @@ function EventRow({
   const orgId = useAuthStore((st) => st.currentOrgId);
   const [confirming, setConfirming] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const token = useAuthStore((st) => st.token);
   const start = new Date(event.startTime);
   const canceled = Boolean((event as { canceledAt?: string | null }).canceledAt);
   const ended = Boolean(event.endTime && new Date(event.endTime) <= new Date());
 
   return (
     <div className="card space-y-4">
+    {sharing && orgId && token && (
+      <ShareEventDialog
+        orgId={orgId}
+        orgSlug={orgSlug}
+        token={token}
+        eventId={event.id}
+        onClose={() => setSharing(false)}
+      />
+    )}
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0">
         <p className="font-medium text-gray-900">{event.title}</p>
@@ -392,6 +411,18 @@ function EventRow({
               disabled={busy}
             >
               Edit
+            </button>
+          )}
+          {/* SOC-01. Public, published and upcoming only; the API checks
+              the rest and the dialog says why if it refuses. */}
+          {sharingOn && event.isPublished && event.visibility === 'PUBLIC' && !ended && (
+            <button
+              type="button"
+              onClick={() => setSharing(true)}
+              className="font-medium text-brand-600 hover:underline"
+              disabled={busy}
+            >
+              Share
             </button>
           )}
           {confirming ? (

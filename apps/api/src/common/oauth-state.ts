@@ -45,6 +45,12 @@ export interface OAuthState {
    * names belongs to the co-op it names.
    */
   roomId?: string;
+  /**
+   * Which flow issued this state, where one callback must not accept another
+   * flow's state. Set to `meta` by the Facebook connection (SOC-01), which
+   * refuses a state without it.
+   */
+  flow?: 'meta';
 }
 
 const base64url = (input: Buffer | string) =>
