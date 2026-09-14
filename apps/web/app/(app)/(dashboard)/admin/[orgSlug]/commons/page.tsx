@@ -17,11 +17,15 @@ import {
 import { useApi } from '@/hooks/use-api';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Comment as CommentT, Post, PaginatedResponse, DirectMessage } from '@/lib/api';
+import { groupChannels } from '@/lib/channel-groups';
 import { renderBodyHtml, isBlankBody, asRichBody } from '@/lib/rich-text';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
 import { EmojiPicker } from '@/components/composer/emoji-picker';
 import { PageHeader } from '@/components/layout/page-header';
 import { MemberName } from '@/components/member/member-name';
+
+/** What a dragged channel carries, so a drop can ignore anything else dragged in. */
+const CHANNEL_DRAG_TYPE = 'application/x-maybeos-channel';
 
 type View =
   | { type: 'channel'; id: string }
@@ -227,6 +231,10 @@ export default function CommonsPage() {
   const [newSectionName, setNewSectionName] = useState('');
   const [renamingSection, setRenamingSection] = useState<string | null>(null);
   const [sectionDraft, setSectionDraft] = useState('');
+  // Dragging a channel onto a heading files it there. `dropTarget` is the
+  // section id under the pointer, '' for "no section", null when none.
+  const [draggingChannel, setDraggingChannel] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
 
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
   const [newPostBody, setNewPostBody] = useState('');
@@ -290,6 +298,9 @@ export default function CommonsPage() {
 
   const channelList = channels ?? [];
   const sectionList = sections ?? [];
+  // Admins see every heading, empty ones included, so a new section is
+  // somewhere to drop a channel. Members only see headings with channels.
+  const channelGroups = groupChannels(channelList, sectionList, { includeEmpty: isAdmin });
   const selectedChannel = channelList.find((c) => c.id === activeChannelId);
   const posts = postsData?.data ?? [];
   const proposalList = proposals ?? [];
@@ -395,7 +406,12 @@ export default function CommonsPage() {
     channelId: string,
     data: { emoji?: string | null; sectionId?: string | null },
   ) {
-    await withChannels(() => api.commons.updateChannel(currentOrgId!, channelId, data, token!));
+    await withChannels(async () => {
+      await api.commons.updateChannel(currentOrgId!, channelId, data, token!);
+      // A section's channel count feeds its Remove warning, so it has to
+      // follow a channel moving in or out.
+      if (data.sectionId !== undefined) await refetchSections();
+    });
   }
 
   async function withSections(work: () => Promise<unknown>) {
@@ -516,146 +532,212 @@ export default function CommonsPage() {
               <p className="mb-2 text-xs text-red-600" role="alert">{channelError}</p>
             )}
 
-            <ul className="space-y-1">
-              {channelList.map((channel, index) => (
-                <li key={channel.id} className="group">
-                  {renaming === channel.id ? (
-                    <form
-                      className="flex gap-1"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        handleRenameChannel(channel.id);
-                      }}
-                    >
-                      <input
-                        autoFocus
-                        value={renameDraft}
-                        onChange={(e) => setRenameDraft(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Escape' && setRenaming(null)}
-                        className="input min-w-0 flex-1 text-sm"
-                        aria-label={`Rename ${channel.name}`}
-                      />
-                      <button type="submit" disabled={channelBusy} className="btn-primary px-2 text-xs">
-                        Save
-                      </button>
-                    </form>
-                  ) : (
-                    <div className="flex items-center">
-                      <button
-                        onClick={() => setView({ type: 'channel', id: channel.id })}
-                        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
-                          view?.type === 'channel' && view.id === channel.id
-                            ? 'bg-brand-50 text-brand-700 font-medium'
-                            : (!view && channel.id === activeChannelId)
-                              ? 'bg-brand-50 text-brand-700 font-medium'
-                              : 'text-gray-700 hover:bg-gray-100'
-                        }`}
-                      >
-                        {channel.emoji ? (
-                          <span aria-hidden="true" className="w-4 shrink-0 text-center">{channel.emoji}</span>
-                        ) : (
-                          <Hash className="h-4 w-4 shrink-0" />
-                        )}
-                        <span className="truncate">{channel.name}</span>
-                        {channel.isPinned && <Pin className="h-3 w-3 shrink-0 text-gray-400" />}
-                      </button>
-                      {isAdmin && !managing && (
-                        <button
-                          onClick={() => handleTogglePin(channel.id, channel.isPinned)}
-                          className="ml-1 hidden shrink-0 text-gray-300 hover:text-gray-600 group-hover:block"
-                          title={channel.isPinned ? 'Unpin' : 'Pin'}
-                        >
-                          {channel.isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-                        </button>
-                      )}
-                    </div>
-                  )}
+            <div className="space-y-3">
+              {channelGroups.map((group) => {
+                const key = group.section?.id ?? '';
+                const isTarget = draggingChannel !== null && dropTarget === key;
+                // The "no section" area only matters while dragging when it is
+                // empty: it is where a channel goes to leave its section.
+                if (!group.section && group.channels.length === 0 && draggingChannel === null) return null;
 
-                  {isAdmin && managing && renaming !== channel.id && (
-                    <div className="ml-2 flex flex-wrap items-center gap-2 pb-1 pt-0.5">
-                      <button
-                        type="button"
-                        onClick={() => handleMoveChannel(channel.id, -1)}
-                        disabled={channelBusy || index === 0}
-                        className="text-[11px] text-gray-400 hover:text-gray-700 disabled:opacity-40"
-                      >
-                        Up
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleMoveChannel(channel.id, 1)}
-                        disabled={channelBusy || index === channelList.length - 1}
-                        className="text-[11px] text-gray-400 hover:text-gray-700 disabled:opacity-40"
-                      >
-                        Down
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRenameDraft(channel.name);
-                          setRenaming(channel.id);
-                        }}
-                        className="text-[11px] text-gray-400 hover:text-gray-700"
-                      >
-                        Rename
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleTogglePin(channel.id, channel.isPinned)}
-                        disabled={channelBusy}
-                        className="text-[11px] text-gray-400 hover:text-gray-700 disabled:opacity-40"
-                      >
-                        {channel.isPinned ? 'Unpin' : 'Pin'}
-                      </button>
-                      {/* The emoji and the heading it files under (CMN-11).
-                          Both save on change rather than behind a Save button:
-                          they are single values, and a control that looks set
-                          but is not saved is how an admin ends up believing
-                          the sidebar says something it does not. */}
-                      <span className="flex items-center gap-1">
-                        <EmojiPicker
-                          value={channel.emoji ?? ''}
-                          onChange={(emoji) => handleChannelDetail(channel.id, { emoji: emoji || null })}
-                        />
-                        <label className="sr-only" htmlFor={`section-${channel.id}`}>
-                          Section for {channel.name}
-                        </label>
-                        <select
-                          id={`section-${channel.id}`}
-                          value={channel.sectionId ?? ''}
-                          disabled={channelBusy}
-                          onChange={(e) =>
-                            handleChannelDetail(channel.id, { sectionId: e.target.value || null })
-                          }
-                          className="rounded-md border border-gray-200 px-1 py-0.5 text-[11px] text-gray-600"
-                        >
-                          <option value="">No section</option>
-                          {sectionList.map((section) => (
-                            <option key={section.id} value={section.id}>{section.name}</option>
-                          ))}
-                        </select>
-                      </span>
+                return (
+                  <div
+                    key={key || 'ungrouped'}
+                    onDragOver={(e) => {
+                      if (!isAdmin || !e.dataTransfer.types.includes(CHANNEL_DRAG_TYPE)) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      if (dropTarget !== key) setDropTarget(key);
+                    }}
+                    onDragLeave={(e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropTarget(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const channelId = e.dataTransfer.getData(CHANNEL_DRAG_TYPE);
+                      setDropTarget(null);
+                      setDraggingChannel(null);
+                      const moved = channelList.find((c) => c.id === channelId);
+                      if (moved && (moved.sectionId ?? '') !== key) {
+                        handleChannelDetail(channelId, { sectionId: key || null });
+                      }
+                    }}
+                    className={`rounded-md transition-colors ${isTarget ? 'bg-brand-50 ring-2 ring-brand-300' : ''}`}
+                  >
+                    {group.section ? (
+                      <h3 className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                        {group.section.name}
+                      </h3>
+                    ) : (
+                      group.channels.length === 0 && (
+                        <p className="px-2 py-1 text-[11px] text-gray-400">No section</p>
+                      )
+                    )}
+                    {group.section && group.channels.length === 0 && (
+                      <p className="mx-2 rounded border border-dashed border-gray-200 px-2 py-1.5 text-[11px] text-gray-400">
+                        {draggingChannel ? 'Drop here' : 'Drag a channel here'}
+                      </p>
+                    )}
+                    <ul className="space-y-1">
+                      {group.channels.map((channel) => {
+                        const index = channelList.indexOf(channel);
+                        return (
+                          <li
+                            key={channel.id}
+                            className={`group ${draggingChannel === channel.id ? 'opacity-50' : ''}`}
+                            draggable={isAdmin && renaming !== channel.id}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData(CHANNEL_DRAG_TYPE, channel.id);
+                              e.dataTransfer.effectAllowed = 'move';
+                              setDraggingChannel(channel.id);
+                            }}
+                            onDragEnd={() => {
+                              setDraggingChannel(null);
+                              setDropTarget(null);
+                            }}
+                          >
+                            {renaming === channel.id ? (
+                              <form
+                                className="flex gap-1"
+                                onSubmit={(e) => {
+                                  e.preventDefault();
+                                  handleRenameChannel(channel.id);
+                                }}
+                              >
+                                <input
+                                  autoFocus
+                                  value={renameDraft}
+                                  onChange={(e) => setRenameDraft(e.target.value)}
+                                  onKeyDown={(e) => e.key === 'Escape' && setRenaming(null)}
+                                  className="input min-w-0 flex-1 text-sm"
+                                  aria-label={`Rename ${channel.name}`}
+                                />
+                                <button type="submit" disabled={channelBusy} className="btn-primary px-2 text-xs">
+                                  Save
+                                </button>
+                              </form>
+                            ) : (
+                              <div className="flex items-center">
+                                <button
+                                  onClick={() => setView({ type: 'channel', id: channel.id })}
+                                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
+                                    view?.type === 'channel' && view.id === channel.id
+                                      ? 'bg-brand-50 text-brand-700 font-medium'
+                                      : (!view && channel.id === activeChannelId)
+                                        ? 'bg-brand-50 text-brand-700 font-medium'
+                                        : 'text-gray-700 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  {channel.emoji ? (
+                                    <span aria-hidden="true" className="w-4 shrink-0 text-center">{channel.emoji}</span>
+                                  ) : (
+                                    <Hash className="h-4 w-4 shrink-0" />
+                                  )}
+                                  <span className="truncate">{channel.name}</span>
+                                  {channel.isPinned && <Pin className="h-3 w-3 shrink-0 text-gray-400" />}
+                                </button>
+                                {isAdmin && !managing && (
+                                  <button
+                                    onClick={() => handleTogglePin(channel.id, channel.isPinned)}
+                                    className="ml-1 hidden shrink-0 text-gray-300 hover:text-gray-600 group-hover:block"
+                                    title={channel.isPinned ? 'Unpin' : 'Pin'}
+                                  >
+                                    {channel.isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+                                  </button>
+                                )}
+                              </div>
+                            )}
 
-                      {/* The default channel has no Delete, because the API
-                          refuses it — offering a button that always fails is
-                          worse than not offering one. */}
-                      {!channel.isDefault && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleDeleteChannel(channel.id, channel.name, channel._count?.posts ?? 0)
-                          }
-                          disabled={channelBusy}
-                          className="text-[11px] text-gray-400 hover:text-red-600 disabled:opacity-40"
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
+                            {isAdmin && managing && renaming !== channel.id && (
+                              <div className="ml-2 flex flex-wrap items-center gap-2 pb-1 pt-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveChannel(channel.id, -1)}
+                                  disabled={channelBusy || index === 0}
+                                  className="text-[11px] text-gray-400 hover:text-gray-700 disabled:opacity-40"
+                                >
+                                  Up
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveChannel(channel.id, 1)}
+                                  disabled={channelBusy || index === channelList.length - 1}
+                                  className="text-[11px] text-gray-400 hover:text-gray-700 disabled:opacity-40"
+                                >
+                                  Down
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRenameDraft(channel.name);
+                                    setRenaming(channel.id);
+                                  }}
+                                  className="text-[11px] text-gray-400 hover:text-gray-700"
+                                >
+                                  Rename
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleTogglePin(channel.id, channel.isPinned)}
+                                  disabled={channelBusy}
+                                  className="text-[11px] text-gray-400 hover:text-gray-700 disabled:opacity-40"
+                                >
+                                  {channel.isPinned ? 'Unpin' : 'Pin'}
+                                </button>
+                                {/* The emoji and the heading it files under (CMN-11).
+                                    Both save on change rather than behind a Save button:
+                                    they are single values, and a control that looks set
+                                    but is not saved is how an admin ends up believing
+                                    the sidebar says something it does not. */}
+                                <span className="flex items-center gap-1">
+                                  <EmojiPicker
+                                    value={channel.emoji ?? ''}
+                                    onChange={(emoji) => handleChannelDetail(channel.id, { emoji: emoji || null })}
+                                  />
+                                  <label className="sr-only" htmlFor={`section-${channel.id}`}>
+                                    Section for {channel.name}
+                                  </label>
+                                  <select
+                                    id={`section-${channel.id}`}
+                                    value={channel.sectionId ?? ''}
+                                    disabled={channelBusy}
+                                    onChange={(e) =>
+                                      handleChannelDetail(channel.id, { sectionId: e.target.value || null })
+                                    }
+                                    className="rounded-md border border-gray-200 px-1 py-0.5 text-[11px] text-gray-600"
+                                  >
+                                    <option value="">No section</option>
+                                    {sectionList.map((section) => (
+                                      <option key={section.id} value={section.id}>{section.name}</option>
+                                    ))}
+                                  </select>
+                                </span>
+
+                                {/* The default channel has no Delete, because the API
+                                    refuses it — offering a button that always fails is
+                                    worse than not offering one. */}
+                                {!channel.isDefault && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleDeleteChannel(channel.id, channel.name, channel._count?.posts ?? 0)
+                                    }
+                                    disabled={channelBusy}
+                                    className="text-[11px] text-gray-400 hover:text-red-600 disabled:opacity-40"
+                                  >
+                                    Delete
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
 
             {isAdmin && managing && (
               <form
@@ -717,8 +799,10 @@ export default function CommonsPage() {
                           </button>
                         </form>
                       ) : (
-                        <div className="flex flex-wrap items-center gap-2 px-2 py-1">
-                          <span className="min-w-0 flex-1 truncate text-sm text-gray-700">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-2 py-1">
+                          {/* Its own line: beside four buttons in a 240px rail,
+                              "Groups and Clubs" was truncated to "G…". */}
+                          <span className="w-full break-words text-sm text-gray-700">
                             {section.name}
                             <span className="ml-1 text-[11px] text-gray-400">
                               {section._count?.channels ?? 0}
