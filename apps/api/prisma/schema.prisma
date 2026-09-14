@@ -95,6 +95,14 @@ model Organization {
   /// writes this sheet; the sheet is a mirror, not the record — a code edited
   /// there by hand is overwritten on the next sync.
   doorSheetId              String?
+  /// The Apps Script web app that owns the door sheet (DOR-01). MaybeOS
+  /// writes members to it with a signed request and never holds access to
+  /// the spreadsheet itself. Replaces `doorSheetId`, which is no longer read.
+  doorScriptUrl            String?
+  /// The shared secret that signs those requests, sealed with secret-box.
+  /// Omitted at the Prisma client: it is read by the door sync and nowhere
+  /// else.
+  doorScriptSecret         Json?
   /// Whether members are emailed their code as it is issued (DOR-01). Its own
   /// switch, separate from generating them, so a co-op can fill the sheet and
   /// check it before a few hundred people get a door code in their inbox.
@@ -209,6 +217,7 @@ model Organization {
   hostPayouts             HostPayout[]
   /// The co-op's equity ledger (MEM-17).
   shareGrants             ShareGrant[]
+  doorSheetEntries        DoorSheetEntry[]
 
   /// Backs the platform console's org list, which orders by signup date
   /// (PLT-01). Created by that migration but never declared here, so every
@@ -2456,4 +2465,28 @@ model ShareGrant {
   @@index([orgId, holderEmail])
   @@index([orgId, userId])
   @@map("share_grants")
+}
+
+/// What MaybeOS last wrote to a co-op's door sheet, one row per email (DOR-01).
+///
+/// Kept separately from the membership because a membership can disappear:
+/// someone removed from the co-op, or an account deleted, takes their
+/// `user_orgs` row with them, and without this record nothing would remember
+/// that their code is still in the sheet. The sync compares what should be
+/// there with this, marks anyone who is gone as revoked, and sends only what
+/// changed.
+model DoorSheetEntry {
+  id       String   @id @default(uuid())
+  orgId    String
+  /// Lowercased. The sheet matches on email, so this does too.
+  email    String
+  doorPin  String
+  name     String
+  revoked  Boolean
+  syncedAt DateTime @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, email])
+  @@map("door_sheet_entries")
 }
