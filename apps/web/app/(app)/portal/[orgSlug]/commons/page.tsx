@@ -10,6 +10,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import {
   api, Channel, ChannelSection, CommonsPermissions, PaginatedResponse, Post, Proposal, Comment,
 } from '@/lib/api';
+import { groupChannels } from '@/lib/channel-groups';
 import { renderBodyHtml, isBlankBody, asRichBody } from '@/lib/rich-text';
 import { MentionPerson, matchMentions } from '@/lib/mentions';
 import { channelStream } from '@/lib/channel-stream';
@@ -449,8 +450,6 @@ function ChannelRail({
   selected: string | null;
   onSelect: (channelId: string) => void;
 }) {
-  const byPin = (a: Channel, b: Channel) => Number(b.isPinned) - Number(a.isPinned);
-  const ungrouped = channels.filter((c) => !c.sectionId).sort(byPin);
 
   const row = (channel: Channel) => (
     <button
@@ -468,23 +467,19 @@ function ChannelRail({
 
   return (
     <nav className="space-y-3" aria-label="Channels">
-      {ungrouped.length > 0 && <div className="space-y-1">{ungrouped.map(row)}</div>}
-
-      {sections.map((section) => {
-        const inside = channels.filter((c) => c.sectionId === section.id).sort(byPin);
-        // A heading with nothing under it is a promise the sidebar cannot
-        // keep; the admin still sees it on the Commons page where it is made.
-        if (inside.length === 0) return null;
-
-        return (
-          <div key={section.id} className="space-y-1">
+      {/* Empty headings are left out here: a heading with nothing under it
+          is a promise the sidebar cannot keep. Admins see them on the admin
+          Commons page, where channels are dragged into them. */}
+      {groupChannels(channels, sections).map(({ section, channels: inside }) => (
+        <div key={section?.id ?? 'ungrouped'} className="space-y-1">
+          {section && (
             <h3 className="px-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
               {section.name}
             </h3>
-            {inside.map(row)}
-          </div>
-        );
-      })}
+          )}
+          {inside.map(row)}
+        </div>
+      ))}
     </nav>
   );
 }
