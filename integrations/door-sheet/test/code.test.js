@@ -11,7 +11,8 @@ function makeSheet(name) {
     setFrozenRows: () => {}, getProtections: () => [],
     appendRow: r => { rows[sh.getLastRow()] = r.map(v => (typeof v === 'string' && /^=/.test(v)) ? { FORMULA: v } : v); },
     getRange(r, c, nr = 1, nc = 1) {
-      const chain = { setNumberFormat: () => chain, insertCheckboxes: () => chain, setFontWeight: () => chain,
+      const chain = { setNumberFormat: () => chain, setFontWeight: () => chain,
+        insertCheckboxes: () => { if (r === 'D2:D') for (let i = 1; i < 1000; i++) { rows[i] = rows[i] || []; if (rows[i][3] == null || rows[i][3] === '') rows[i][3] = false; } return chain; },
         protect: () => ({ setDescription() { return this; }, setWarningOnly() { return this; } }) };
       if (typeof r === 'string') return chain;
       return Object.assign(chain, {
@@ -65,6 +66,9 @@ t('setup creates the three tabs with headers and a default door', () => {
   assert.strictEqual(sheets.Doors.rows[1][0], 'side');
   assert.ok(!sheets.Doors.rows[0].some(h => /key/i.test(h)), 'no key column in Doors');
 });
+t('empty checkboxes fill the Revoked column like real Sheets does', () => {
+  assert.strictEqual(sheets.Members.getLastRow(), 1000);
+});
 t('setup run twice changes nothing', () => { const before = JSON.stringify(sheets); ctx.setupDoorSheet(); assert.strictEqual(JSON.stringify(sheets), before); });
 
 // Configure the door
@@ -87,7 +91,9 @@ t('upsert adds members, rejects bad codes and duplicates, neutralises formulas',
     { email: 'noat', code: 'ABCDE', name: 'No at' },
   ] });
   assert.deepStrictEqual(r, { ok: true, action: 'upsert', updated: 0, added: 2, unchanged: 0, rejected: 4 });
-  assert.strictEqual(sheets.Members.rows[1][0], 'ada@example.com');
+  assert.strictEqual(sheets.Members.rows[1][0], 'ada@example.com', 'first member lands in row 2, not below the checkboxes');
+  assert.strictEqual(sheets.Members.rows[2][0], 'bob@example.com');
+  assert.deepStrictEqual(post(ctx, { action: 'ping' }), { ok: true, action: 'ping', members: 2 });
   assert.strictEqual(sheets.Members.rows[1][1], 'ABCDE');
   assert.strictEqual(typeof sheets.Members.rows[2][2], 'string', 'name stored as text, not a formula');
   assert.ok(!JSON.stringify(r).includes('ABCDE'), 'response has no codes');
