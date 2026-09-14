@@ -266,6 +266,7 @@ function onEdit(e) {
 function setupDoorSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
+  const membersIsNew = !ss.getSheetByName(MEMBERS_TAB);
   const members = ensureTab_(ss, MEMBERS_TAB, MEMBER_HEADERS);
   const doors = ensureTab_(ss, DOORS_TAB, DOOR_HEADERS);
   const log = ensureTab_(ss, LOG_TAB, LOG_HEADERS);
@@ -273,7 +274,8 @@ function setupDoorSheet() {
   // Plain text, so Sheets never turns an email, a code or a device id into a
   // number or a formula.
   members.getRange('A:C').setNumberFormat('@');
-  members.getRange('D2:D').insertCheckboxes();
+  // Only on a new tab: turning a typed "yes" into a checkbox would hide it.
+  if (membersIsNew) members.getRange('D2:D').insertCheckboxes();
   doors.getRange('A:D').setNumberFormat('@');
   log.getRange('B:E').setNumberFormat('@');
 
@@ -338,7 +340,7 @@ function upsertMembers_(members) {
   if (!sheet) throw new Error('The Members tab is missing. Run setupDoorSheet.');
 
   const width = MEMBER_HEADERS.length;
-  const lastRow = sheet.getLastRow();
+  const lastRow = lastMemberRow_(sheet);
   const existing = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, width).getValues() : [];
 
   const rowOf = {};
@@ -410,7 +412,22 @@ function upsertMembers_(members) {
 
 function countMembers_() {
   const sheet = sheet_(MEMBERS_TAB);
-  return sheet ? Math.max(sheet.getLastRow() - 1, 0) : 0;
+  return sheet ? Math.max(lastMemberRow_(sheet) - 1, 0) : 0;
+}
+
+/**
+ * The last row with an email in column A. Not getLastRow(): an empty Revoked
+ * checkbox holds FALSE, so Sheets counts every checkbox row as filled, and new
+ * members would land below row 1000.
+ */
+function lastMemberRow_(sheet) {
+  const last = sheet.getLastRow();
+  if (last < 2) return 1;
+  const emails = sheet.getRange(2, M_EMAIL, last - 1, 1).getValues();
+  for (let i = emails.length - 1; i >= 0; i -= 1) {
+    if (String(emails[i][0] == null ? '' : emails[i][0]).trim() !== '') return i + 2;
+  }
+  return 1;
 }
 
 /** Checkbox TRUE, or the words people type: yes, y, true, revoked. */
