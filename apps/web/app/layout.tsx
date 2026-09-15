@@ -34,9 +34,9 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'MaybeOS — Run your co-op, not your software stack',
+  title: 'MaybeOS — One place for your whole community',
   description:
-    'Open-source tools for member-run organizations. Membership, events, spaces, decisions, and impact in one suite — built by a co-op, for co-ops.',
+    'Open-source software for member-run communities: members and dues, events and tickets, rooms, conversations and votes, door codes and impact reporting, working together in one place.',
 };
 
 export default function RootLayout({
