@@ -1,3 +1,5 @@
+import { PublicPricingController } from './public-pricing.controller';
+import { PublicPricingService } from './public-pricing.service';
 import { Module } from '@nestjs/common';
 import { CalendarModule } from '../calendar/calendar.module';
 import { StripeService } from './stripe.service';
@@ -10,8 +12,8 @@ import { AdoptionController } from './adoption.controller';
 
 @Module({
   imports: [CalendarModule],
-  controllers: [StripeController, ConnectController, ConnectOAuthController, AdoptionController],
-  providers: [StripeService, ConnectService, AdoptionScanService],
+  controllers: [StripeController, ConnectController, ConnectOAuthController, AdoptionController, PublicPricingController],
+  providers: [StripeService, ConnectService, AdoptionScanService, PublicPricingService],
   exports: [StripeService, ConnectService, AdoptionScanService],
 })
 export class StripeModule {}

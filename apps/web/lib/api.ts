@@ -915,6 +915,11 @@ class ApiClient {
       }),
   };
 
+  /** MaybeOS's own plan prices, read from Stripe, for the landing page (WEB-02). Public. */
+  pricing = {
+    get: () => this.request<PublicPricing>('/pricing'),
+  };
+
   /**
    * Sharing public events to the co-op's Facebook Page and Instagram (SOC-01).
    */
@@ -4554,4 +4559,23 @@ export interface ShareResult {
   error?: string;
   alreadyShared?: boolean;
   collaboratorInvited?: boolean;
+}
+
+// ── MaybeOS's own prices (WEB-02) ──────────────────────────
+
+export type MaybeOsPlanName = 'FREE' | 'PLUS' | 'UNLIMITED';
+
+export interface PublicPlan {
+  plan: MaybeOsPlanName;
+  /** Null when the server could not read the price from Stripe. */
+  monthlyCents: number | null;
+  yearlyCents: number | null;
+  perMember: boolean;
+  transactionFeeCents: number;
+}
+
+export interface PublicPricing {
+  currency: 'usd';
+  plans: PublicPlan[];
+  writtenReportCents: number;
 }

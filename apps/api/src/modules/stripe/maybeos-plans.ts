@@ -32,6 +32,23 @@ export const PLAN_BY_PRICE_ID: Record<string, MaybeOsPlan> = {
 };
 
 /**
+ * The prices the public pricing section shows (WEB-02), one per plan and
+ * interval. These are the prices in the live pricing table: the retired
+ * metered Plus price and Free's one-time price are left out.
+ *
+ * Only ids are written here. The amounts are read from Stripe by
+ * `PublicPricingService`, so a repricing in Stripe reaches the landing page
+ * without anyone editing copy (MKT-02, the drift that rule was written to
+ * stop). `maybeos-plans.spec.ts` checks that each id grants the plan it is
+ * shown under.
+ */
+export const ADVERTISED_PRICE_IDS: Record<MaybeOsPlan, { month: string; year: string }> = {
+  FREE: { month: 'price_1U6M1vD14bhghVE2WEDgNnmV', year: 'price_1U6M2iD14bhghVE2VMPWxmQp' },
+  PLUS: { month: 'price_1U6M1VD14bhghVE2lprg1qo0', year: 'price_1U95auD14bhghVE2T71z3ryJ' },
+  UNLIMITED: { month: 'price_1U6LvpD14bhghVE2Grl0L9DI', year: 'price_1U6LSOD14bhghVE2SmwvrD1d' },
+};
+
+/**
  * The plan a subscription grants, or null if nothing here recognises it.
  *
  * Takes the **highest** plan among the subscription's items rather than the
