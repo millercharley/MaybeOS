@@ -18,6 +18,7 @@ import { SUPPORT_EMAIL, supportMailto } from '@/lib/support';
 import { Reveal } from '@/components/landing/reveal';
 import { RotatingWord } from '@/components/landing/rotating-word';
 import { HeroScene } from '@/components/landing/hero-scene';
+import { RetireTicker } from '@/components/landing/retire-ticker';
 import { WeekTimeline, type WeekStep } from '@/components/landing/week-timeline';
 import styles from '@/components/landing/landing.module.css';
 
@@ -32,7 +33,17 @@ import styles from '@/components/landing/landing.module.css';
 
 const SOURCE_URL = 'https://github.com/millercharley/MaybeOS';
 
-const ROTATING = ['members', 'events', 'rooms', 'dues', 'decisions', 'front door'];
+const ROTATING = [
+  'members',
+  'events',
+  'ticketing',
+  'rooms',
+  'dues',
+  'decisions',
+  'handbook',
+  'front door',
+  'community',
+];
 
 const DUCT_TAPE = [
   'the member spreadsheet',
@@ -353,24 +364,7 @@ export default function HomePage() {
 
         {/* ── The duct tape it replaces ──────────────────────── */}
         <section className="border-y-[1.5px] border-ink bg-ink py-5 text-paper" aria-label="What MaybeOS replaces">
-          <div className={`${styles.marquee} flex items-center gap-6 overflow-hidden`}>
-            <p className="shrink-0 pl-6 font-mono text-xs uppercase tracking-[0.2em] text-paper/60">Retire</p>
-            <div className="relative min-w-0 flex-1 overflow-hidden">
-              <div className={styles.marqueeTrack}>
-                {[0, 1].map((copy) => (
-                  <ul key={copy} className="flex shrink-0 items-center gap-10 pr-10" aria-hidden={copy === 1}>
-                    {DUCT_TAPE.map((thing, i) => (
-                      <li key={thing} className="font-display text-lg text-paper">
-                        <span className={styles.struck} style={{ ['--delay' as string]: `${600 + i * 250}ms` }}>
-                          {thing}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                ))}
-              </div>
-            </div>
-          </div>
+          <RetireTicker items={DUCT_TAPE} />
         </section>
 
         {/* ── A week on MaybeOS ──────────────────────────────── */}
