@@ -62,6 +62,13 @@ describe('StripeService', () => {
             // recognise — so the org lookup has to exist even here.
             organization: {
               findFirst: jest.fn().mockResolvedValue(null),
+              // Dues run on the co-op's connected account (PAY-09).
+              findUnique: jest.fn().mockResolvedValue({
+                stripeAccountId: 'acct_coop',
+                stripeChargesEnabled: true,
+                plan: 'PLUS',
+                stripeConnectObjects: null,
+              }),
               update: jest.fn(),
             },
             userOrg: {
@@ -74,6 +81,7 @@ describe('StripeService', () => {
               // org being joined so a checkout cannot target another co-op's
               // tier (SEC-04).
               findFirst: jest.fn(),
+              update: jest.fn(),
             },
           },
         },
@@ -93,12 +101,16 @@ describe('StripeService', () => {
       minPrice: 1000,
       stripeProductId: 'prod_abc',
       stripePriceIdMonthly: 'price_fixed',
+      stripeDuesAccountId: 'acct_coop',
+      priceMonthly: 1500,
+      description: null,
     };
 
     beforeEach(() => {
       prisma.userOrg.findUnique.mockResolvedValue({
         id: 'uo-1',
         stripeCustomerId: 'cus_1',
+        stripeDuesAccountId: 'acct_coop',
         user: { email: 'a@b.co', name: 'A' },
       });
     });
@@ -183,10 +195,11 @@ describe('StripeService', () => {
       expect(res.priceId).toBe('price_new');
       expect(stripe.prices.create).toHaveBeenCalledWith(
         expect.objectContaining({ product: 'prod_1', unit_amount: 2000 }),
+        undefined,
       );
       // Deactivated, never deleted — historical invoices and grandfathered
       // subscriptions must keep resolving.
-      expect(stripe.prices.update).toHaveBeenCalledWith('price_old', { active: false });
+      expect(stripe.prices.update).toHaveBeenCalledWith('price_old', { active: false }, undefined);
     });
 
     it('grandfathers existing subscribers by default', async () => {
@@ -207,20 +220,24 @@ describe('StripeService', () => {
       stripe.prices.update = jest.fn().mockResolvedValue({});
       stripe.subscriptions.update = jest.fn().mockResolvedValue({});
       stripe.subscriptions.retrieve.mockResolvedValue({
-        id: 'sub_1', items: { data: [{ id: 'si_1' }] },
+        id: 'sub_1', items: { data: [{ id: 'si_1', price: { product: 'prod_1' } }] },
       });
       prisma.userOrg.findMany = jest.fn().mockResolvedValue([
-        { id: 'uo1', stripeSubscriptionId: 'sub_1' },
+        { id: 'uo1', stripeSubscriptionId: 'sub_1', duesFeeCents: 0 },
       ]);
 
       const res = await service.repriceTier(tier, 2000, true);
 
       expect(res.migrated).toBe(1);
-      expect(stripe.subscriptions.update).toHaveBeenCalledWith('sub_1', {
-        items: [{ id: 'si_1', price: 'price_new' }],
-        // Without this Stripe bills everyone a prorated amount today.
-        proration_behavior: 'none',
-      });
+      expect(stripe.subscriptions.update).toHaveBeenCalledWith(
+        'sub_1',
+        {
+          items: [{ id: 'si_1', price: 'price_new' }],
+          // Without this Stripe bills everyone a prorated amount today.
+          proration_behavior: 'none',
+        },
+        undefined,
+      );
     });
 
     it('keeps going when one subscriber fails to migrate', async () => {
@@ -229,7 +246,7 @@ describe('StripeService', () => {
       stripe.prices.update = jest.fn().mockResolvedValue({});
       stripe.subscriptions.retrieve
         .mockRejectedValueOnce(new Error('no such subscription'))
-        .mockResolvedValueOnce({ id: 'sub_2', items: { data: [{ id: 'si_2' }] } });
+        .mockResolvedValueOnce({ id: 'sub_2', items: { data: [{ id: 'si_2', price: { product: 'prod_1' } }] } });
       stripe.subscriptions.update = jest.fn().mockResolvedValue({});
       prisma.userOrg.findMany = jest.fn().mockResolvedValue([
         { id: 'uo1', stripeSubscriptionId: 'sub_bad' },
@@ -301,6 +318,10 @@ describe('StripeService', () => {
           stripeSubscriptionId: 'sub_123',
           subscriptionStatus: 'ACTIVE',
           tierId: 'tier-1',
+          // Delivered by MaybeOS's own endpoint, so no connected account, and
+          // no dues fee in its metadata (PAY-09).
+          stripeDuesAccountId: null,
+          duesFeeCents: 0,
           // PLT-06. The fixture's subscription carries no period, which is
           // the honest answer for it: no date rather than a guessed one.
           cancelAtPeriodEnd: false,

@@ -499,7 +499,7 @@ export default function HomePage() {
             {[
               {
                 title: 'Flat fees. Never a percentage.',
-                body: 'A flat fee is added to tickets and paid room hire, shown to the buyer as a fee. Your dues are yours: MaybeOS takes nothing from them.',
+                body: 'A flat fee is added on top of tickets and paid room hire, and of dues on the Free plan, shown to the person paying. It never comes out of the price you set.',
               },
               {
                 title: 'Private by default.',

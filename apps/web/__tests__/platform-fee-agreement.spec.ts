@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { PLATFORM_FEE_CENTS } from '@/lib/fees';
+import { DUES_FEE_CENTS, PLATFORM_FEE_CENTS } from '@/lib/fees';
 
 /**
  * The web and the API charge the same fee.
@@ -61,5 +61,21 @@ describe('the web and the API agree on MaybeOS’s cut', () => {
   it('is the numbers on the published pricing table', () => {
     // Charley's live Stripe pricing table, 2026-08-21.
     expect(PLATFORM_FEE_CENTS).toEqual({ FREE: 100, PLUS: 30, UNLIMITED: 10 });
+  });
+});
+
+describe('the web and the API agree on the dues fee (PAY-09)', () => {
+  const source = readFileSync(
+    join(__dirname, '..', '..', 'api', 'src', 'modules', 'stripe', 'dues-pricing.ts'),
+    'utf8',
+  );
+  const block = source.match(/export const DUES_FEE_CENTS: Record<MaybeOsPlan, number> = \{([^}]*)\}/);
+
+  it('matches plan for plan', () => {
+    if (!block) throw new Error('DUES_FEE_CENTS not found in the API — did it move?');
+    const apiTable = Object.fromEntries(
+      [...block[1].matchAll(/(\w+)\s*:\s*(\d+)/g)].map(([, plan, cents]) => [plan, Number(cents)]),
+    );
+    expect(DUES_FEE_CENTS).toEqual(apiTable);
   });
 });

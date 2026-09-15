@@ -5,6 +5,7 @@ import { CommonsService } from '../../commons/commons.service';
 import { ReportService } from '../../impact/report.service';
 import { BuddyService } from '../../belonging/buddy.service';
 import { DoorService } from '../../door/door.service';
+import { StripeService } from '../../stripe/stripe.service';
 import { HostBriefingService } from '../../service/host-briefing.service';
 
 /**
@@ -62,6 +63,11 @@ describe('SchedulerService', () => {
           useValue: {
             runDue: jest.fn().mockResolvedValue({ issued: 0, synced: 0, emailed: 0 }),
           },
+        },
+        // PAY-09. Removes the Free dues fee after an upgrade; nothing to do here.
+        {
+          provide: StripeService,
+          useValue: { removeDuesFeesAfterUpgrade: jest.fn().mockResolvedValue({ removed: 0, failed: 0 }) },
         },
       ],
     }).compile();
@@ -214,6 +220,11 @@ describe('SchedulerService — compose-pending-reports', () => {
           useValue: {
             runDue: jest.fn().mockResolvedValue({ issued: 0, synced: 0, emailed: 0 }),
           },
+        },
+        // PAY-09. Removes the Free dues fee after an upgrade; nothing to do here.
+        {
+          provide: StripeService,
+          useValue: { removeDuesFeesAfterUpgrade: jest.fn().mockResolvedValue({ removed: 0, failed: 0 }) },
         },
       ],
     }).compile();

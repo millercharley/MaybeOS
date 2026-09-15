@@ -1,3 +1,4 @@
+import { memberRoom } from '../member/member-capacity';
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
@@ -132,7 +133,7 @@ export class AdoptionScanService {
     // resume exactly where it stopped even though Stripe was re-read.
     subs.sort((a, b) => a.id.localeCompare(b.id));
 
-    return { subs, truncated, members, tiers };
+    return { subs, truncated, members, tiers, accountId: org.stripeAccountId };
   }
 
 
@@ -157,7 +158,7 @@ export class AdoptionScanService {
     options: { mapping: PriceToTier; dryRun: boolean; limit?: number; after?: string },
   ) {
     const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
-    const { subs, members, tiers } = await this.read(orgId);
+    const { subs, members, tiers, accountId } = await this.read(orgId);
 
     const known = new Set(tiers.map((tier) => tier.id));
     for (const tierId of Object.values(options.mapping)) {
@@ -185,6 +186,10 @@ export class AdoptionScanService {
       errors: [] as Array<{ email: string; reason: string }>,
     };
     const byConflict: Record<string, number> = {};
+
+    // The Free plan's member limit (PAY-09). Adoption creates members, so it
+    // stops at the limit like every other way in, and says how many it left.
+    let room = await memberRoom(this.prisma, orgId);
 
     for (const { sub, row } of batch) {
       if (row.outcome === 'conflict') {
@@ -214,6 +219,15 @@ export class AdoptionScanService {
         continue;
       }
 
+      if (row.outcome === 'create' && room !== null) {
+        if (room <= 0) {
+          counts.skipped++;
+          byConflict['member-limit'] = (byConflict['member-limit'] ?? 0) + 1;
+          continue;
+        }
+        room--;
+      }
+
       if (options.dryRun) {
         if (row.outcome === 'create') counts.created++;
         else if (row.outcome === 'link') counts.linked++;
@@ -222,7 +236,7 @@ export class AdoptionScanService {
       }
 
       try {
-        await this.writeRow(orgId, sub, row, status, counts);
+        await this.writeRow(orgId, sub, row, status, counts, accountId);
       } catch (err) {
         counts.errors.push({
           email: row.email ?? sub.id,
@@ -252,11 +266,16 @@ export class AdoptionScanService {
     row: PlannedRow,
     status: string,
     counts: { linked: number; created: number; refreshed: number },
+    accountId: string,
   ): Promise<void> {
     const billing = {
       tierId: row.tierId,
       stripeCustomerId: sub.customerId,
       stripeSubscriptionId: sub.id,
+      // The co-op's own account, which is where adopted subscriptions already
+      // live (PAY-09). Without it, reconciling or opening the billing portal
+      // looked for them on MaybeOS's account and found nothing.
+      stripeDuesAccountId: accountId,
       subscriptionStatus: status as never,
       cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
       currentPeriodEnd: sub.currentPeriodEnd,

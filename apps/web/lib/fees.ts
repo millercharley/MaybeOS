@@ -23,6 +23,22 @@ export const PLATFORM_FEE_CENTS: Record<string, number> = {
   UNLIMITED: 10,
 };
 
+/**
+ * What MaybeOS adds on top of a member's dues, by plan (PAY-09). Mirrors
+ * `apps/api/src/modules/stripe/dues-pricing.ts`; a test asserts they agree.
+ * Shown beside a tier's price so a member sees the same total Stripe charges.
+ */
+export const DUES_FEE_CENTS: Record<string, number> = {
+  FREE: 200,
+  PLUS: 0,
+  UNLIMITED: 0,
+};
+
+/** The dues fee a member on this tier price pays, for a co-op on `plan`. None on a $0 tier. */
+export function duesFeeFor(plan: string | null | undefined, duesCents: number): number {
+  return duesCents > 0 ? (DUES_FEE_CENTS[plan ?? 'FREE'] ?? DUES_FEE_CENTS.FREE) : 0;
+}
+
 /** What a co-op pays MaybeOS, for the pages that explain the choice. */
 export const PLAN_PRICING = {
   FREE: { monthlyCents: 0, yearlyCents: 0, label: 'MaybeOS Free' },

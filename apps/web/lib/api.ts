@@ -849,6 +849,14 @@ class ApiClient {
         cancelAtPeriodEnd: boolean;
         currentPeriodEnd: string | null;
       }>(`/orgs/${orgId}/billing/reconcile`, { method: 'POST', token }),
+
+    /** Stripe Checkout for a MaybeOS plan picked on the landing page (PAY-09). Admins only. */
+    planCheckout: (orgId: string, data: { plan: 'PLUS' | 'UNLIMITED'; interval: 'month' | 'year' }, token: string) =>
+      this.request<{ url: string }>(`/orgs/${orgId}/billing/plan-checkout`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
   };
 
   invites = {
@@ -4572,6 +4580,10 @@ export interface PublicPlan {
   yearlyCents: number | null;
   perMember: boolean;
   transactionFeeCents: number;
+  /** Added to each dues payment on this plan, when a community charges dues. */
+  duesFeeCents: number;
+  /** Members allowed, not counting guests. Null for no limit. */
+  memberLimit: number | null;
 }
 
 export interface PublicPricing {

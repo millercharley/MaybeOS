@@ -26,6 +26,10 @@ export interface PlanFigures {
   /** A second line under the price, or null. */
   note: string | null;
   fee: string;
+  /** The fee added to each dues payment, or null when the plan adds none. */
+  duesFee: string | null;
+  /** "Up to N members", or null when there is no limit. */
+  memberLimit: string | null;
 }
 
 /** Null when the price for that interval is unknown, so the page never guesses. */
@@ -47,7 +51,14 @@ export function planFigures(plan: PublicPlan, interval: Interval): PlanFigures |
     note = saving > 0 ? `${equivalent}. Save ${saving}%.` : `${equivalent}.`;
   }
 
-  return { amount: money(cents), unit, note, fee };
+  return {
+    amount: money(cents),
+    unit,
+    note,
+    fee,
+    duesFee: plan.duesFeeCents > 0 ? money(plan.duesFeeCents, { cents: true }) : null,
+    memberLimit: plan.memberLimit ? `Up to ${plan.memberLimit.toLocaleString('en-US')} members` : null,
+  };
 }
 
 /** The largest yearly saving across plans, for the toggle's label. */

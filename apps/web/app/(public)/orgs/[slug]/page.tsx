@@ -1,5 +1,6 @@
 'use client';
 
+import { duesFeeFor } from '@/lib/fees';
 import { use, useMemo } from 'react';
 import Link from 'next/link';
 import { Calendar, CalendarPlus, Clock, MapPin, Users, Check, Star } from 'lucide-react';
@@ -172,6 +173,13 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
                       <span className="text-4xl font-bold text-gray-900">{priceDisplay}</span>
                       {period && (
                         <span className="text-sm text-gray-500">{period}</span>
+                      )}
+                      {/* The Free plan's dues fee, added on top (PAY-09), so the
+                          price here is the price Stripe charges. */}
+                      {duesFeeFor(org.plan, tier.priceMonthly) > 0 && (
+                        <span className="mt-1 block text-xs text-gray-500">
+                          + ${(duesFeeFor(org.plan, tier.priceMonthly) / 100).toFixed(2)} MaybeOS fee a month
+                        </span>
                       )}
                     </div>
                     <p className="mt-2 text-sm text-gray-500">

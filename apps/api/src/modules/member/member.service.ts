@@ -1,3 +1,4 @@
+import { assertMemberRoom, countsAsMember, memberRoom } from './member-capacity';
 import {
   Injectable,
   Logger,
@@ -369,6 +370,11 @@ export class MemberService {
       );
     }
 
+    // A guest made a member takes a place under the Free plan's limit (PAY-09).
+    if (!countsAsMember(member.role) && countsAsMember(role)) {
+      await assertMemberRoom(this.prisma, orgId, 1, 'organiser');
+    }
+
     if (member.role === 'ADMIN' && role !== 'ADMIN') {
       const admins = await this.prisma.userOrg.count({
         where: { orgId, role: 'ADMIN' },
@@ -405,6 +411,8 @@ export class MemberService {
         `User "${userId}" is already a member of org "${orgId}"`,
       );
     }
+
+    if (countsAsMember(role)) await assertMemberRoom(this.prisma, orgId, 1, 'organiser');
 
     return this.prisma.userOrg.create({
       data: {
@@ -490,6 +498,8 @@ export class MemberService {
       }
     }
 
+    await assertMemberRoom(this.prisma, orgId, 1, 'joiner');
+
     const membership = await this.prisma.userOrg.create({
       data: {
         userId,
@@ -570,8 +580,13 @@ export class MemberService {
   }
 
   /**
-   * Create the Stripe Product/Price for a tier and store the ids.
-   * Safe to call on a tier that already has them — it skips.
+   * Create the Stripe product and price for a tier on the co-op's connected
+   * account, and store the ids (PAY-09). Safe to call on a tier that already
+   * has them there — it skips.
+   *
+   * A co-op that has not connected Stripe yet gets its tier without Stripe
+   * objects; checkout creates them on the connected account once there is
+   * one. That is the normal state for a new community, not a failure.
    */
   async provisionStripeForTier(tier: {
     id: string;
@@ -579,22 +594,24 @@ export class MemberService {
     description?: string | null;
     priceMonthly: number;
     orgId: string;
+    isPayWhatYouCan?: boolean;
     stripePriceIdMonthly?: string | null;
+    stripeProductId?: string | null;
+    stripeDuesAccountId?: string | null;
   }): Promise<boolean> {
-    if (tier.stripePriceIdMonthly) return true;
+    if (tier.stripeDuesAccountId && tier.stripeProductId) return true;
 
     try {
-      const priceId = await this.stripeService.createStripePricesForTier({
-        id: tier.id,
-        name: tier.name,
-        description: tier.description ?? undefined,
-        priceMonthly: tier.priceMonthly,
-        orgId: tier.orgId,
-      });
+      const created = await this.stripeService.provisionTierOnConnectedAccount(tier);
+      if (!created) return false;
 
       await this.prisma.membershipTier.update({
         where: { id: tier.id },
-        data: { stripePriceIdMonthly: priceId },
+        data: {
+          stripeProductId: created.productId,
+          stripePriceIdMonthly: created.priceId,
+          stripeDuesAccountId: created.accountId,
+        },
       });
 
       return true;
@@ -602,7 +619,7 @@ export class MemberService {
       this.logger.warn(
         `Could not provision Stripe objects for tier ${tier.id} (${tier.name}): ` +
           `${err instanceof Error ? err.message : String(err)}. ` +
-          'The tier exists but cannot be purchased until this succeeds.',
+          'Checkout will create them on the connected account instead.',
       );
       return false;
     }
@@ -805,17 +822,14 @@ export class MemberService {
         fields.priceMonthly as number,
         applyToExistingMembers ?? false,
       );
-      stripePriceIdMonthly = result.priceId;
+      stripePriceIdMonthly = result.priceId ?? tier.stripePriceIdMonthly;
       migrated = result.migrated;
 
       // The org's Billing Portal configuration pins specific price ids, so it
       // now points at the Price we just archived — members would be offered a
       // tier they can no longer switch to. Clearing the cached id makes
       // ensurePortalConfiguration rebuild it on the next portal visit.
-      await this.prisma.organization.update({
-        where: { id: orgId },
-        data: { stripePortalConfigId: null },
-      });
+      await this.stripeService.forgetPortalConfigurations(orgId);
     }
 
     // The badge (MEM-16). Blank is not a badge: an admin who clears the text
@@ -899,6 +913,9 @@ export class MemberService {
       where: { id: orgId },
     });
     if (!org) throw new NotFoundException('Organization not found');
+
+    // Said now, to the organiser, rather than later to the person invited.
+    if (countsAsMember(role)) await assertMemberRoom(this.prisma, orgId, 1, 'organiser');
 
     const inviter = await this.prisma.user.findUnique({
       where: { id: invitedByUserId },
@@ -1006,6 +1023,10 @@ export class MemberService {
         data: { acceptedAt: new Date() },
       });
       return { status: 'already_member', orgId: invitation.orgId, tierId: null };
+    }
+
+    if (countsAsMember(invitation.role)) {
+      await assertMemberRoom(this.prisma, invitation.orgId, 1, 'joiner');
     }
 
     await this.prisma.$transaction([
@@ -1138,6 +1159,11 @@ export class MemberService {
       errors: [] as Array<{ email: string; reason: string }>,
     };
 
+    // The Free plan's limit (PAY-09). Rows past it are reported, not imported,
+    // so the organiser sees exactly who did not come across and why.
+    let room = await memberRoom(this.prisma, orgId);
+    const FULL = 'Not imported: the Free plan allows up to 100 members. Upgrade in Settings to add more.';
+
     for (const row of rows) {
       const email = row.email.toLowerCase().trim();
 
@@ -1146,6 +1172,12 @@ export class MemberService {
           where: { email },
           select: { id: true, avatarUrl: true },
         });
+
+        // Nobody new is made for a place that is not there.
+        if (!user && room !== null && room <= 0) {
+          results.errors.push({ email, reason: FULL });
+          continue;
+        }
 
         if (user) {
           results.linkedExistingUsers++;
@@ -1199,6 +1231,11 @@ export class MemberService {
           continue;
         }
 
+        if (room !== null && room <= 0) {
+          results.errors.push({ email, reason: FULL });
+          continue;
+        }
+
         await this.prisma.userOrg.create({
           data: {
             userId: user.id,
@@ -1219,6 +1256,7 @@ export class MemberService {
         });
 
         results.created++;
+        if (room !== null) room--;
         if (user.avatarUrl) results.avatarsPending++;
       } catch (err) {
         results.errors.push({ email, reason: (err as Error).message });
