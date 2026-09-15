@@ -12,16 +12,47 @@ import { join } from 'path';
  * failed; the sentence simply stopped being true.
  *
  * So the rule this enforces is narrow and mechanical: **the landing copy does
- * not quote amounts.** It may promise the *shape* of the pricing — flat, not
+ * not type amounts in** (see the revision above: figures are fetched). It may promise the *shape* of the pricing — flat, not
  * a percentage — which is the actual differentiator and does not move when a
  * price does. Anyone who wants the figures reads the pricing table, which is
  * generated from Stripe and cannot drift from it.
  */
+/*
+ * Revised 2026-09-15 (WEB-02): Charley asked for real figures on the pricing
+ * section. They are allowed on one condition, the one this file exists to
+ * enforce: no amount is typed into the page. The pricing cards fetch
+ * `/api/pricing`, which reads the live Stripe prices and the fee constants
+ * billing uses, so a repricing reaches the page without an edit. The check
+ * below holds that line for every file the landing page is built from.
+ */
+describe('the landing page’s prices', () => {
+  const read = (...path: string[]) => readFileSync(join(__dirname, '..', ...path), 'utf8');
+  const sources = {
+    'app/page.tsx': read('app', 'page.tsx'),
+    'components/landing/pricing-plans.tsx': read('components', 'landing', 'pricing-plans.tsx'),
+    'lib/pricing-format.ts': read('lib', 'pricing-format.ts'),
+  };
+
+  it('are never typed in: no dollar amount appears in the source', () => {
+    const offenders = Object.entries(sources)
+      .filter(([, source]) => /\$\s?\d/.test(source))
+      .map(([file]) => file);
+    expect(offenders).toEqual([]);
+  });
+
+  it('come from the pricing endpoint, which reads Stripe', () => {
+    expect(sources['components/landing/pricing-plans.tsx']).toMatch(/api\.pricing\s*\.get\(\)/);
+    expect(sources['app/page.tsx']).toMatch(/<PricingPlans \/>/);
+  });
+});
+
 describe('the landing page', () => {
   const source = readFileSync(join(__dirname, '..', 'app', 'page.tsx'), 'utf8');
 
   /** Just the marketing prose, not class names or code. */
-  const copy = [...source.matchAll(/'([^']{40,})'/g)].map((m) => m[1]).join('\n');
+  // Single-line strings only. Without the newline guard, a span from one
+  // quoted string to the next can swallow the code between them.
+  const copy = [...source.matchAll(/'([^'\n]{40,})'/g)].map((m) => m[1]).join('\n');
 
   it('has copy to check', () => {
     expect(copy.length).toBeGreaterThan(200);

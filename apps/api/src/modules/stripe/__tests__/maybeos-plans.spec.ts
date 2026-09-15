@@ -1,4 +1,4 @@
-import { PLAN_BY_PRICE_ID, planForSubscriptionItems } from '../maybeos-plans';
+import { ADVERTISED_PRICE_IDS, PER_MEMBER_PRICE_IDS, PLAN_BY_PRICE_ID, planForSubscriptionItems } from '../maybeos-plans';
 import { PLATFORM_FEE_CENTS } from '../ticket-pricing';
 
 /**
@@ -54,5 +54,28 @@ describe('MaybeOS plan prices', () => {
   it('is worth having: the plans really do charge different fees', () => {
     // If these were equal the mapping would be decoration rather than money.
     expect(PLATFORM_FEE_CENTS.FREE).not.toBe(PLATFORM_FEE_CENTS.UNLIMITED);
+  });
+});
+
+describe('the prices the landing page advertises (WEB-02)', () => {
+  it('each advertised price grants the plan it is shown under', () => {
+    for (const [plan, ids] of Object.entries(ADVERTISED_PRICE_IDS)) {
+      expect([plan, planForSubscriptionItems([ids.month])]).toEqual([plan, plan]);
+      expect([plan, planForSubscriptionItems([ids.year])]).toEqual([plan, plan]);
+    }
+  });
+
+  it('only Plus is advertised per member, in both intervals', () => {
+    expect(PER_MEMBER_PRICE_IDS.has(ADVERTISED_PRICE_IDS.PLUS.month)).toBe(true);
+    expect(PER_MEMBER_PRICE_IDS.has(ADVERTISED_PRICE_IDS.PLUS.year)).toBe(true);
+    for (const plan of ['FREE', 'UNLIMITED'] as const) {
+      expect(PER_MEMBER_PRICE_IDS.has(ADVERTISED_PRICE_IDS[plan].month)).toBe(false);
+      expect(PER_MEMBER_PRICE_IDS.has(ADVERTISED_PRICE_IDS[plan].year)).toBe(false);
+    }
+  });
+
+  it('never advertises the retired metered Plus price', () => {
+    const advertised = Object.values(ADVERTISED_PRICE_IDS).flatMap((ids) => [ids.month, ids.year]);
+    expect(advertised).not.toContain('price_1U6FNXD14bhghVE2xTrj9hFm');
   });
 });

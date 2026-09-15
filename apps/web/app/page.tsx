@@ -22,6 +22,7 @@ import { Reveal } from '@/components/landing/reveal';
 import { RotatingWord } from '@/components/landing/rotating-word';
 import { HeroScene } from '@/components/landing/hero-scene';
 import { RetireTicker } from '@/components/landing/retire-ticker';
+import { PricingPlans } from '@/components/landing/pricing-plans';
 import { WeekTimeline, type WeekStep } from '@/components/landing/week-timeline';
 import styles from '@/components/landing/landing.module.css';
 
@@ -268,32 +269,6 @@ const MATCHES = [
   { email: 'jonah.t@…', tier: 'Studio member', outcome: 'Matched' },
   { email: 'amara.k@…', tier: 'Supporter', outcome: 'New member' },
   { email: 'dee@…', tier: 'Pay what you can', outcome: 'Matched' },
-];
-
-/**
- * The shape of the pricing, not the figures (MKT-02). Amounts live in the
- * Stripe pricing table an admin sees before choosing a plan, which cannot
- * drift from what Stripe charges. `landing-claims.spec.ts` holds the line.
- */
-const PLANS = [
-  {
-    name: 'Free',
-    headline: 'Free to start',
-    body: 'No subscription. A flat fee is added to each ticket sold or room hired, and nothing else.',
-    featured: false,
-  },
-  {
-    name: 'Plus',
-    headline: 'Priced per member',
-    body: 'A small amount per member, monthly or yearly, and a lower flat fee on each sale. Guests aren’t counted.',
-    featured: true,
-  },
-  {
-    name: 'Unlimited',
-    headline: 'One flat price',
-    body: 'The same subscription however many members you have, and the lowest flat fee on each sale.',
-    featured: false,
-  },
 ];
 
 export default function HomePage() {
@@ -555,31 +530,7 @@ export default function HomePage() {
               </p>
             </Reveal>
 
-            <div className="mt-14 grid gap-6 md:grid-cols-3">
-              {PLANS.map((plan, i) => (
-                <Reveal key={plan.name} delay={i * 120}>
-                  <div
-                    className={`${styles.lift} flex h-full flex-col rounded-lg border-[1.5px] border-ink p-7 ${
-                      plan.featured ? 'bg-white shadow-hard-accent' : 'bg-white shadow-hard'
-                    }`}
-                  >
-                    <p className="font-mono text-xs uppercase tracking-[0.2em] text-ink-soft">{plan.name}</p>
-                    <p className="mt-4 font-display text-2xl leading-tight text-ink">{plan.headline}</p>
-                    <p className="mt-4 flex-1 text-sm leading-relaxed text-ink-soft">{plan.body}</p>
-                    <Link href="/register" className={`${plan.featured ? 'btn-primary' : 'btn-secondary'} mt-7 justify-center`}>
-                      {plan.name === 'Free' ? 'Start free' : 'Start free, upgrade when ready'}
-                    </Link>
-                  </div>
-                </Reveal>
-              ))}
-            </div>
-
-            <Reveal className="mx-auto mt-10 max-w-3xl text-center text-sm text-ink-faint">
-              Start on Free, and see current prices before you choose a plan in Settings. MaybeOS’s fee is added on top of
-              the price you set and shown to the buyer, so it never comes out of your price. Stripe’s own processing fees
-              apply, and nothing is taken from dues. An optional written impact report is priced separately. Self-hosting
-              MaybeOS is free, and always will be.
-            </Reveal>
+            <PricingPlans />
           </div>
         </section>
 

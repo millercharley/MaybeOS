@@ -55,6 +55,9 @@ const EXPECTED = [
   'POST /orgs/:orgId/events/:eventId/rsvp/guest',
   'POST /orgs/:orgId/events/:eventId/tickets/checkout',
 
+  // MaybeOS's own prices for the landing page (WEB-02). Nothing about any co-op.
+  'GET /pricing',
+
   // Liveness.
   'GET /health',
 ];
