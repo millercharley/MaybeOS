@@ -49,6 +49,17 @@ describe('MetaGraphService', () => {
     expect(url.searchParams.get('scope')).toContain('pages_manage_posts');
   });
 
+  it('asks through the Facebook Login for Business configuration, not scope, when one is set', () => {
+    const withConfig = new MetaGraphService({
+      get: (k: string) => ({ ...env, META_CONFIG_ID: 'config-123' })[k],
+    } as unknown as ConfigService);
+    const url = new URL(withConfig.authUrl('signed-state'));
+    expect(url.searchParams.get('config_id')).toBe('config-123');
+    expect(url.searchParams.get('response_type')).toBe('code');
+    expect(url.searchParams.get('override_default_response_type')).toBe('true');
+    expect(url.searchParams.has('scope')).toBe(false);
+  });
+
   it('refuses when the server has no Facebook app configured', () => {
     const bare = new MetaGraphService({ get: () => undefined } as unknown as ConfigService);
     expect(() => bare.authUrl('s')).toThrow(ServiceUnavailableException);
