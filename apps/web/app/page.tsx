@@ -1,6 +1,9 @@
 import Link from 'next/link';
 import {
   ArrowRight,
+  CreditCard,
+  FileSpreadsheet,
+  ScanSearch,
   BarChart3,
   CalendarDays,
   Check,
@@ -241,6 +244,32 @@ const FEATURES = [
   },
 ];
 
+const MIGRATION = [
+  {
+    Icon: CreditCard,
+    title: 'Keep your Stripe subscriptions',
+    body: 'Link the Stripe account you already use. MaybeOS finds the members already paying you, matches them by email, and puts each one on the tier you pair with their price. Their subscriptions keep billing exactly as before: nobody re-enters a card or signs up again.',
+  },
+  {
+    Icon: FileSpreadsheet,
+    title: 'Import your member list',
+    body: 'Upload a spreadsheet from wherever your members are now. Say what each column means, including join dates, bios, tags and profile photos, then read every row before anything is saved.',
+  },
+  {
+    Icon: ScanSearch,
+    title: 'See it before it happens',
+    body: 'Adopting subscriptions starts with a preview: who matches, who is new, and whether the dues MaybeOS will record add up to what Stripe is actually collecting. If you issue member shares, your cap table comes across too.',
+  },
+];
+
+/** Illustration only: made-up addresses, showing the adoption preview's outcomes. */
+const MATCHES = [
+  { email: 'priya@…', tier: 'Supporter', outcome: 'Matched' },
+  { email: 'jonah.t@…', tier: 'Studio member', outcome: 'Matched' },
+  { email: 'amara.k@…', tier: 'Supporter', outcome: 'New member' },
+  { email: 'dee@…', tier: 'Pay what you can', outcome: 'Matched' },
+];
+
 /**
  * The shape of the pricing, not the figures (MKT-02). Amounts live in the
  * Stripe pricing table an admin sees before choosing a plan, which cannot
@@ -279,6 +308,7 @@ export default function HomePage() {
           <nav className="hidden items-center gap-7 text-sm font-medium text-ink-soft md:flex" aria-label="Page sections">
             <a href="#week" className="hover:text-ink">How it works</a>
             <a href="#features" className="hover:text-ink">Features</a>
+            <a href="#switching" className="hover:text-ink">Switching</a>
             <a href="#pricing" className="hover:text-ink">Pricing</a>
             <a href={SOURCE_URL} className="hover:text-ink">Open source</a>
           </nav>
@@ -410,6 +440,81 @@ export default function HomePage() {
                 </Reveal>
               ))}
             </div>
+          </div>
+        </section>
+
+        {/* ── Switching (MIG-01/02, MEM-06) ────────────────────── */}
+        {/*
+          Verified 2026-09-15: adoption reads the co-op's own connected Stripe
+          account, matches subscriptions to members by email (creating the
+          member when needed) and writes nothing to Stripe. Only subscriptions
+          on the community's own account can be adopted, which is why the copy
+          says "your own Stripe account".
+        */}
+        <section id="switching" className="scroll-mt-20 py-24 md:py-32">
+          <div className="mx-auto grid max-w-container items-center gap-14 px-6 lg:grid-cols-[1fr_1.1fr]">
+            <Reveal>
+              <p className="font-mono text-xs uppercase tracking-[0.2em] text-brand-600">Switching</p>
+              <h2 className="mt-4 font-display text-2xl leading-tight text-ink md:text-3xl">
+                Bring your community with you
+              </h2>
+              <p className="mt-5 text-md text-ink-soft">
+                You don’t start over. MaybeOS moves in the members, dues and records you already have, and nobody has to
+                sign up again.
+              </p>
+
+              <div className="mt-10 space-y-7">
+                {MIGRATION.map(({ Icon, title, body }) => (
+                  <div key={title} className="flex gap-4">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border-[1.5px] border-ink bg-white shadow-hard-sm">
+                      <Icon className="h-5 w-5 text-brand-600" />
+                    </span>
+                    <div>
+                      <h3 className="font-display text-lg text-ink">{title}</h3>
+                      <p className="mt-1 text-base text-ink-soft">{body}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Reveal>
+
+            <Reveal delay={150}>
+              <div className="card p-0" aria-hidden="true">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b-[1.5px] border-ink px-5 py-4">
+                  <p className="flex items-center gap-2 font-display text-lg text-ink">
+                    <ScanSearch className="h-5 w-5 text-brand-600" /> Your Stripe subscriptions
+                  </p>
+                  <span className="rounded-full bg-moss-tint px-2.5 py-0.5 text-xs font-semibold text-moss">
+                    Preview · nothing saved yet
+                  </span>
+                </div>
+                <ul className="divide-y divide-ink/10">
+                  {MATCHES.map((row, i) => (
+                    <li
+                      key={row.email}
+                      className={`${styles.popIn} flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-sm`}
+                      style={{ ['--delay' as string]: `${300 + i * 220}ms` }}
+                    >
+                      <span className="min-w-0">
+                        <span className="block font-mono text-xs text-ink-soft">{row.email}</span>
+                        <span className="text-ink">{row.tier}</span>
+                      </span>
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                          row.outcome === 'New member' ? 'bg-mustard-tint text-ink' : 'bg-moss-tint text-moss'
+                        }`}
+                      >
+                        {row.outcome}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex flex-wrap items-center gap-2 border-t-[1.5px] border-ink bg-paper px-5 py-4 text-sm text-ink">
+                  <CreditCard className="h-4 w-4 text-ink-soft" />
+                  Billing stays in Stripe. No card re-entered, no new billing date.
+                </div>
+              </div>
+            </Reveal>
           </div>
         </section>
 

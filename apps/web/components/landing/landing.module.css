@@ -136,6 +136,15 @@
   transition: none;
 }
 
+/* ── Rows that pop in once their section is on screen ─────────── */
+.popIn {
+  opacity: 0;
+}
+.reveal[data-visible='true'] .popIn {
+  animation: pop 500ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  animation-delay: var(--delay, 0ms);
+}
+
 /* ── The week timeline's spine ─────────────────────────────────── */
 .spine {
   transform-origin: top;
@@ -159,7 +168,9 @@
   .reveal,
   .enter,
   .floaty,
-  .pop {
+  .pop,
+  .popIn,
+  .reveal[data-visible='true'] .popIn {
     opacity: 1 !important;
     transform: none !important;
     animation: none !important;
