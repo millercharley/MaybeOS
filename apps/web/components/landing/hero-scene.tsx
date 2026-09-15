@@ -92,11 +92,11 @@ export function HeroScene() {
   const code = useTyped('KXQTR', 2200, reduced);
 
   return (
-    <div className="relative mx-auto w-full max-w-[34rem] lg:h-[34rem]" aria-hidden="true">
-      <div className="grid gap-4 sm:grid-cols-2 lg:block">
+    <div className="relative mx-auto w-full max-w-[48rem] xl:h-[34rem] xl:max-w-[34rem]" aria-hidden="true">
+      <div className="grid gap-4 sm:grid-cols-2 xl:block">
         {/* An event, filling up */}
         <div
-          className={`${styles.floaty} rounded-lg border-[1.5px] border-ink bg-white p-4 shadow-hard-lg lg:absolute lg:left-0 lg:top-6 lg:w-[19rem]`}
+          className={`${styles.floaty} rounded-lg border-[1.5px] border-ink bg-white p-4 shadow-hard-lg xl:absolute xl:left-0 xl:top-6 xl:w-[19rem]`}
           style={tilt(-2, 7, 150)}
         >
           <div className="flex flex-wrap items-center justify-between gap-1">
@@ -131,7 +131,7 @@ export function HeroScene() {
 
         {/* Somebody joining */}
         <div
-          className={`${styles.floaty} hidden rounded-lg border-[1.5px] border-ink bg-white p-4 shadow-hard sm:block lg:absolute lg:right-0 lg:top-0 lg:w-[15.5rem]`}
+          className={`${styles.floaty} hidden rounded-lg border-[1.5px] border-ink bg-white p-4 shadow-hard sm:block xl:absolute xl:right-0 xl:top-0 xl:w-[15.5rem]`}
           style={tilt(2.5, 8, 450)}
         >
           <div className="flex items-center gap-2 text-xs text-ink-faint">
@@ -150,7 +150,7 @@ export function HeroScene() {
 
         {/* The door code */}
         <div
-          className={`${styles.floaty} rounded-lg border-[1.5px] border-ink bg-ink p-4 text-paper shadow-hard-accent lg:absolute lg:bottom-24 lg:right-4 lg:w-[14.5rem]`}
+          className={`${styles.floaty} rounded-lg border-[1.5px] border-ink bg-ink p-4 text-paper shadow-hard-accent xl:absolute xl:bottom-24 xl:right-4 xl:w-[14.5rem]`}
           style={tilt(-1.5, 6.5, 750)}
         >
           <div className="flex items-center gap-2 text-[11px] uppercase tracking-widest text-paper/60">
@@ -165,7 +165,7 @@ export function HeroScene() {
 
         {/* Dues, their way */}
         <div
-          className={`${styles.floaty} hidden rounded-lg border-[1.5px] border-ink bg-mustard-tint p-4 shadow-hard sm:block lg:absolute lg:bottom-4 lg:left-10 lg:w-[16rem]`}
+          className={`${styles.floaty} hidden rounded-lg border-[1.5px] border-ink bg-mustard-tint p-4 shadow-hard sm:block xl:absolute xl:bottom-4 xl:left-10 xl:w-[16rem]`}
           style={tilt(1.5, 7.5, 1050)}
         >
           <div className="flex flex-wrap items-center justify-between gap-1">
