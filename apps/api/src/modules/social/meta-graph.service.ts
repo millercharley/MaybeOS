@@ -67,6 +67,15 @@ export class MetaGraphService {
   get redirectUri() {
     return this.config.get<string>('META_REDIRECT_URI') ?? '';
   }
+  /**
+   * The Facebook Login for Business configuration. That product asks for
+   * permissions through a configuration saved in the App Dashboard, and
+   * refuses `scope`: requesting Page and Instagram permissions by `scope`
+   * fails with "Invalid Scopes".
+   */
+  private get configId() {
+    return this.config.get<string>('META_CONFIG_ID') ?? '';
+  }
 
   get isConfigured(): boolean {
     return Boolean(this.appId && this.appSecret && this.redirectUri);
@@ -80,7 +89,13 @@ export class MetaGraphService {
     }
   }
 
-  /** Where to send the admin to grant access. */
+  /**
+   * Where to send the admin to grant access.
+   *
+   * With a configuration id the permissions come from that configuration,
+   * and the code flow has to be asked for explicitly. Without one, `scope` is
+   * used, which works for a classic Facebook Login app.
+   */
   authUrl(state: string): string {
     this.assertConfigured();
     const params = new URLSearchParams({
@@ -88,8 +103,13 @@ export class MetaGraphService {
       redirect_uri: this.redirectUri,
       state,
       response_type: 'code',
-      scope: META_SCOPES.join(','),
     });
+    if (this.configId) {
+      params.set('config_id', this.configId);
+      params.set('override_default_response_type', 'true');
+    } else {
+      params.set('scope', META_SCOPES.join(','));
+    }
     return `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth?${params}`;
   }
 

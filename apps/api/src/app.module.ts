@@ -61,6 +61,8 @@ import { HealthModule } from './modules/health/health.module';
         META_APP_ID: Joi.string().allow('').default(''),
         META_APP_SECRET: Joi.string().allow('').default(''),
         META_REDIRECT_URI: Joi.string().allow('').default(''),
+        // Facebook Login for Business configuration id. Required by apps using that product.
+        META_CONFIG_ID: Joi.string().allow('').default(''),
         POSTMARK_API_TOKEN: Joi.string().allow('').default(''),
         // The site's own domain. It was maybeos.app here and maybeos.com in
         // EmailService — neither is a domain MaybeOS owns, so neither could

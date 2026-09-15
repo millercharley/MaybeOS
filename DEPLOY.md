@@ -121,7 +121,7 @@ in the repo. The ones production needs:
 | `EMAIL_FROM` | must be a Postmark-verified sender; defaults to `noreply@maybeos.org` |
 | `SENTRY_DSN` | error tracking |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | optional; calendar sync refuses with 503 naming whichever are unset. All three count — Google rejects an empty or unregistered `redirect_uri` on its own page, so two out of three fails in exactly the way the refusal exists to prevent |
-| `META_APP_ID`, `META_APP_SECRET`, `META_REDIRECT_URI` | optional; lets hosts share public events to a co-op's Facebook Page and Instagram (SOC-01). Unset, Settings → Integrations says so and the Connect button is disabled. See **Facebook & Instagram** below |
+| `META_APP_ID`, `META_APP_SECRET`, `META_REDIRECT_URI`, `META_CONFIG_ID` | optional; lets hosts share public events to a co-op's Facebook Page and Instagram (SOC-01). Unset, Settings → Integrations says so and the Connect button is disabled. See **Facebook & Instagram** below |
 
 Dev and prod Supabase credentials are **not interchangeable**, and the two
 dashboards look identical. Check the project name before pasting anything.
@@ -159,14 +159,24 @@ Settings → Integrations, and the Page token is stored sealed.
 
 1. At developers.facebook.com, create an app of type **Business**, and add
    **Facebook Login for Business**.
-2. Under Facebook Login → Settings, add the Valid OAuth Redirect URI, which
-   must be byte-identical to `META_REDIRECT_URI`:
+2. Under Facebook Login for Business → Settings, add the Valid OAuth Redirect
+   URI, which must be byte-identical to `META_REDIRECT_URI`:
    - production: `https://maybeos.org/api/social/meta/callback`
    - local: `http://localhost:3001/api/social/meta/callback`
-3. Settings → Basic gives the App ID and App Secret. Put them in Netlify as
+3. Add the permissions to the app (App Dashboard → Use cases → Customize, or
+   App Review → Permissions and Features): `pages_show_list`,
+   `pages_read_engagement`, `pages_manage_posts`, `business_management`,
+   `instagram_basic`, `instagram_content_publish`. A permission the app has
+   not added is refused at login as "Invalid Scopes".
+4. Facebook Login for Business → **Configurations** → Create configuration:
+   a **User access token** that **never expires**, assets **Pages** and
+   **Instagram accounts**, and the six permissions above. Facebook Login for
+   Business asks for permissions through this configuration, not `scope`.
+   Its **Configuration ID** is `META_CONFIG_ID`.
+5. Settings → Basic gives the App ID and App Secret. Put them in Netlify as
    `META_APP_ID` and `META_APP_SECRET` (secret: Functions scope only), set
-   `META_REDIRECT_URI`, and redeploy.
-4. The Instagram account must be a **Business** (or Creator) account linked to
+   `META_REDIRECT_URI` and `META_CONFIG_ID`, and redeploy.
+6. The Instagram account must be a **Business** (or Creator) account linked to
    the Facebook Page, in Meta Business Suite → Settings → Linked accounts.
 
 **Development mode is enough for one co-op.** A Meta app in development mode
