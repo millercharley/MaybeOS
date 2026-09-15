@@ -295,7 +295,7 @@ export default function HomePage() {
             }}
             aria-hidden="true"
           />
-          <div className="relative mx-auto grid max-w-container items-center gap-14 px-6 pb-20 pt-14 md:pt-20 lg:grid-cols-[1.05fr_1fr] lg:gap-10 lg:pb-28">
+          <div className="relative mx-auto grid max-w-container items-center gap-14 px-6 pb-20 pt-14 md:pt-20 xl:grid-cols-[1.05fr_1fr] xl:gap-10 xl:pb-28">
             <div>
               <p className={`${styles.enter} font-mono text-xs uppercase tracking-[0.2em] text-ink-soft`}>
                 Open source · for member-run communities
