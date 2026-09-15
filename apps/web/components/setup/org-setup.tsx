@@ -4,6 +4,7 @@ import { useState, FormEvent } from 'react';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { Wordmark } from '@/components/brand/wordmark';
+import { takePlanIntent } from '@/lib/plan-intent';
 
 export function OrgSetup() {
   const token = useAuthStore((s) => s.token);
@@ -42,6 +43,20 @@ export function OrgSetup() {
       setCurrentOrg(org.id);
       const refreshed = await api.auth.refresh(token);
       setToken(refreshed.accessToken);
+
+      // A paid plan chosen on the landing page (PAY-09). The refreshed token is
+      // the one that knows they are this community's organiser.
+      const intent = takePlanIntent();
+      if (intent) {
+        try {
+          const { url } = await api.billing.planCheckout(org.id, intent, refreshed.accessToken);
+          window.location.href = url;
+          return;
+        } catch {
+          // The community exists either way; the plan can be chosen in Settings.
+        }
+      }
+
       await loadProfile();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to create organization';

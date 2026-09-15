@@ -4,6 +4,7 @@ import { CommonsService } from '../commons/commons.service';
 import { ReportService } from '../impact/report.service';
 import { BuddyService } from '../belonging/buddy.service';
 import { DoorService } from '../door/door.service';
+import { StripeService } from '../stripe/stripe.service';
 import { HostBriefingService } from '../service/host-briefing.service';
 
 export interface TaskResult {
@@ -48,6 +49,7 @@ export class SchedulerService {
     private readonly buddies: BuddyService,
     private readonly hosting: HostBriefingService,
     private readonly door: DoorService,
+    private readonly stripe: StripeService,
   ) {}
 
   async runDueTasks(now: Date = new Date()): Promise<RunResult> {
@@ -66,6 +68,7 @@ export class SchedulerService {
       { name: 'advance-buddy-pairings', run: () => this.advanceBuddyPairings(now) },
       { name: 'send-host-briefings', run: () => this.sendHostBriefings(now) },
       { name: 'sync-door-codes', run: () => this.syncDoorCodes() },
+      { name: 'remove-dues-fees-after-upgrade', run: () => this.removeDuesFees() },
     ]) {
       try {
         tasks.push(await task.run());
@@ -109,6 +112,21 @@ export class SchedulerService {
    * no code, whose code the sheet has not heard about, who has not been told
    * — so a member created by a path written next year is covered too.
    */
+  /**
+   * Take the Free plan's dues fee off members' subscriptions once their co-op
+   * is no longer on Free (PAY-09). Reconciliation, like the door codes: it
+   * catches an upgrade however it arrived, and it is idempotent.
+   */
+  private async removeDuesFees(): Promise<TaskResult> {
+    try {
+      const { removed, failed } = await this.stripe.removeDuesFeesAfterUpgrade();
+      if (removed || failed) this.logger.log(`Dues fees removed after upgrade: ${removed}, failed: ${failed}`);
+      return { task: 'remove-dues-fees-after-upgrade', processed: removed, failed, errors: [] };
+    } catch (error) {
+      return { task: 'remove-dues-fees-after-upgrade', processed: 0, failed: 1, errors: [(error as Error).message] };
+    }
+  }
+
   private async syncDoorCodes(): Promise<TaskResult> {
     try {
       const { issued, synced, emailed } = await this.door.runDue();

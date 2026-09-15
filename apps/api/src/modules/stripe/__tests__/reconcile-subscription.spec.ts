@@ -63,7 +63,8 @@ describe('reconciling a membership against Stripe', () => {
 
   it('stores what Stripe says, including the facts a webhook never delivered', () => {
     return service.reconcileMembership('org-1', 'user-1').then(() => {
-      expect(retrieve).toHaveBeenCalledWith('sub_test');
+      // MaybeOS's own account: the fixture membership has no connected one (PAY-09).
+      expect(retrieve).toHaveBeenCalledWith('sub_test', undefined, undefined);
       expect(written().subscriptionStatus).toBe('ACTIVE');
       expect(written().cancelAtPeriodEnd).toBe(true);
       expect(written().currentPeriodEnd).toEqual(new Date(PERIOD_END * 1000));

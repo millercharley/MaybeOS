@@ -22,21 +22,21 @@ const PLANS: { plan: MaybeOsPlanName; name: string; headline: string; body: stri
     plan: 'FREE',
     name: 'Free',
     headline: 'Free to start',
-    body: 'No subscription. A flat fee is added to each ticket sold or room hired, and nothing else.',
+    body: 'No subscription. Flat fees are added on top only when money moves: on tickets, paid bookings and dues.',
     featured: false,
   },
   {
     plan: 'PLUS',
     name: 'Plus',
     headline: 'Priced per member',
-    body: 'A lower flat fee on each sale. Only members are counted, not guests.',
+    body: 'A lower flat fee on each sale, nothing added to dues, and no member limit. Only members are counted, not guests.',
     featured: true,
   },
   {
     plan: 'UNLIMITED',
     name: 'Unlimited',
     headline: 'One flat price',
-    body: 'The lowest flat fee on each sale, and the same price however many members you have.',
+    body: 'The lowest flat fee on each sale, nothing added to dues, and the same price however many members you have.',
     featured: false,
   },
 ];
@@ -123,19 +123,33 @@ export function PricingPlans() {
                   )}
                 </div>
 
-                <div className="mt-4 rounded-md border border-ink/15 bg-paper px-4 py-3 text-sm text-ink">
+                <div className="mt-4 space-y-1.5 rounded-md border border-ink/15 bg-paper px-4 py-3 text-sm text-ink">
                   {figures ? (
                     <>
-                      <span className="font-mono font-semibold">+ {figures.fee}</span> per ticket or paid booking
+                      <p>
+                        <span className="font-mono font-semibold">+ {figures.fee}</span> per ticket or paid booking
+                      </p>
+                      {figures.duesFee && (
+                        <p>
+                          <span className="font-mono font-semibold">+ {figures.duesFee}</span> per dues payment, if you
+                          charge dues
+                        </p>
+                      )}
                     </>
                   ) : (
-                    'A flat fee per ticket or paid booking'
+                    <p>A flat fee per ticket or paid booking</p>
                   )}
                 </div>
+                {figures?.memberLimit && <p className="mt-3 text-sm font-medium text-ink">{figures.memberLimit}</p>}
 
                 <p className="mt-5 flex-1 text-sm leading-relaxed text-ink-soft">{card.body}</p>
-                <Link href="/register" className={`${card.featured ? 'btn-primary' : 'btn-secondary'} mt-7 justify-center`}>
-                  {card.plan === 'FREE' ? 'Start free' : 'Start free, upgrade when ready'}
+                {/* Plus and Unlimited go to Stripe Checkout for that plan, after
+                    signing up and creating the community (PAY-09). */}
+                <Link
+                  href={card.plan === 'FREE' ? '/register' : `/start?plan=${card.plan.toLowerCase()}&interval=${period}`}
+                  className={`${card.featured ? 'btn-primary' : 'btn-secondary'} mt-7 justify-center`}
+                >
+                  {card.plan === 'FREE' ? 'Start free' : `Get ${card.name}, ${period === 'month' ? 'monthly' : 'yearly'}`}
                 </Link>
               </div>
             </Reveal>
@@ -144,9 +158,9 @@ export function PricingPlans() {
       </div>
 
       <Reveal className="mx-auto mt-10 max-w-3xl text-center text-sm text-ink-faint">
-        Prices in US dollars. MaybeOS’s fee is added on top of the price you set and shown to the buyer, so it never comes
-        out of your price. Stripe’s own processing fees apply, and nothing is taken from dues. An optional written impact
-        report is {pricing ? `${money(pricing.writtenReportCents)} per reporting period` : 'priced separately'}.
+        Prices in US dollars. MaybeOS’s fees are added on top of the price you set and shown to the person paying, so they
+        never come out of your price. On Plus and Unlimited nothing is added to dues. Stripe’s own processing fees apply.
+        An optional written impact report is {pricing ? `${money(pricing.writtenReportCents)} per reporting period` : 'priced separately'}.
         Self-hosting MaybeOS is free, and always will be.
       </Reveal>
     </>

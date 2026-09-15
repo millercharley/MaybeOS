@@ -75,6 +75,11 @@ model Organization {
   // only offers plan switching when it is given an explicit product list,
   // so each org needs its own configuration naming its own tiers.
   stripePortalConfigId String?
+  /// Stripe objects MaybeOS creates on the co-op's own connected account for
+  /// dues (PAY-09): `{ accountId, portalConfigId, feeProductId }`. Kept
+  /// together with the account id they belong to, so reconnecting a different
+  /// account discards them instead of pointing at ids on the old one.
+  stripeConnectObjects Json?
 
   // Off by default: a housing co-op or members' club must not be joinable by
   // anyone with a card. Each org opts in. See D-020.
@@ -337,6 +342,15 @@ model UserOrg {
   tierId                String?
   stripeCustomerId      String?
   stripeSubscriptionId  String?
+  /// The Stripe account this member's customer and subscription live on
+  /// (PAY-09). Null is MaybeOS's own account (dues before PAY-09); a connected
+  /// account id for dues paid to the co-op directly, and for adopted
+  /// subscriptions.
+  stripeDuesAccountId   String?
+  /// The flat MaybeOS fee added on top of this member's dues, in cents (0 when
+  /// none). Set when the subscription starts; cleared when the co-op leaves
+  /// the Free plan and the fee is taken off the subscription.
+  duesFeeCents          Int                @default(0)
   subscriptionStatus    SubscriptionStatus @default(NONE)
   /// Whether this membership is set to end when the paid period does (PLT-06).
   ///
@@ -588,6 +602,11 @@ model MembershipTier {
   maxMembers           Int? // null = unlimited
   benefits             String[] @default([])
   stripePriceIdMonthly String?
+  /// The Stripe account this tier's product and price live on (PAY-09). Null
+  /// is MaybeOS's own account, where tiers were created before dues moved to
+  /// each co-op's connected account; such a tier gets a new product on the
+  /// connected account at its next checkout.
+  stripeDuesAccountId  String?
   stripePriceIdYearly  String?
   // Needed for pay-what-you-can: a member-chosen amount is sent as an
   // inline price_data at checkout, which must attach to this tier's

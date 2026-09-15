@@ -15,14 +15,15 @@ export const metadata: Metadata = {
  * leaves both unsure which sentences apply.
  *
  * Written to match what the product actually does. The fee figures come from
- * D-013; the refund and cancellation behaviour from EVT-06 and SPC-06; the
+ * D-013, as repriced on 2026-08-21 and extended by PAY-09 on 2026-09-15 (the
+ * Free plan's dues fee and member limit); the refund and cancellation behaviour from EVT-06 and SPC-06; the
  * self-hosting right from the Apache 2.0 licence.
  */
 export default function TermsPage() {
   return (
     <LegalPage
       title="Terms of Service"
-      updated="14 August 2026"
+      updated="15 September 2026"
       summary="MaybeOS is software a co-op runs to manage itself. These terms cover two different relationships: the co-op that operates a community here, and the members who use it. Where a rule applies to only one of them, it says so."
     >
       <Section heading="Who these terms are between">
@@ -99,18 +100,29 @@ export default function TermsPage() {
 
       <Section heading="What MaybeOS costs">
         <p>
-          A co-op can run MaybeOS free. When money moves through it, we take a{' '}
-          <strong>flat fee per transaction</strong> — never a percentage of your door:
+          A co-op can run MaybeOS free. When money moves through it, we add a{' '}
+          <strong>flat fee</strong> — never a percentage of your door:
         </p>
         <ul className="list-disc space-y-2 pl-5">
-          <li><strong>Free</strong> — $0/month, 55¢ per transaction</li>
-          <li><strong>Plus</strong> — $100 to set up, $3.65 per user per year, 30¢ per transaction</li>
-          <li><strong>Unlimited</strong> — $299–349/month, 10¢ per transaction</li>
+          <li>
+            <strong>Free</strong> — $0/month, for up to 100 members (guests aren&apos;t
+            counted). $1.00 per ticket or paid booking, and $2.00 per dues payment when the
+            co-op charges dues.
+          </li>
+          <li>
+            <strong>Plus</strong> — $0.50 per member per month, or $3.65 per member per
+            year. 30¢ per ticket or paid booking; nothing added to dues.
+          </li>
+          <li>
+            <strong>Unlimited</strong> — $349/month, or $3,588/year. 10¢ per ticket or
+            paid booking; nothing added to dues.
+          </li>
         </ul>
         <p>
           Fees are <strong>added to</strong> the price a co-op sets, not taken out of
-          it. A co-op charging $10 for a ticket receives $10. The buyer sees the fee
-          as a fee. Stripe charges its own processing fees separately, to the co-op.
+          it. A co-op charging $10 for a ticket, or $10 in dues, receives $10. The person
+          paying sees the fee as a fee. Stripe charges its own processing fees separately,
+          to the co-op.
         </p>
         <p>
           When a booking or ticket is refunded, our fee is refunded too. We do not

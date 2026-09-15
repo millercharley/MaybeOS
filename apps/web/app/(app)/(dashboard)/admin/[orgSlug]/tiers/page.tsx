@@ -78,6 +78,17 @@ export default function AdminTiersPage() {
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const orgId = currentOrgId ?? user?.orgs?.[0]?.orgId;
 
+  // Dues are paid to the co-op's own Stripe account (PAY-09), so until one is
+  // connected no paid tier can be bought. Null while loading.
+  const [takesPayments, setTakesPayments] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!orgId || !token) return;
+    api.orgs
+      .get(orgId, token)
+      .then((org) => setTakesPayments(Boolean(org.stripeChargesEnabled)))
+      .catch(() => setTakesPayments(null));
+  }, [orgId, token]);
+
   const [tiers, setTiers] = useState<AdminTier[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -244,6 +255,16 @@ export default function AdminTiersPage() {
           </button>
         )}
       </div>
+
+      {takesPayments === false && (
+        <div className="card mt-6 border-[var(--warning)] text-sm">
+          <p className="font-medium">Members can’t pay dues yet</p>
+          <p className="mt-1 text-[var(--text-secondary)]">
+            Dues go straight to your community’s own Stripe account. Connect it in Settings, under Payments, and your
+            paid tiers can be bought.
+          </p>
+        </div>
+      )}
 
       {notice && (
         <div className="card mt-6 flex gap-3 border-[var(--success)]">
@@ -466,8 +487,11 @@ export default function AdminTiersPage() {
                   <h3 className="font-semibold">{t.name}</h3>
                   {t.isPayWhatYouCan && <span className="badge-info">Pay what you can</span>}
                   {!t.isActive && <span className="badge-neutral">Hidden</span>}
-                  {!t.stripePriceIdMonthly && !t.isPayWhatYouCan && (
-                    <span className="badge-warning">Not purchasable</span>
+                  {/* Stripe objects are created at the first checkout on the
+                      connected account (PAY-09), so a tier without them is
+                      still purchasable once Stripe is connected. */}
+                  {takesPayments === false && t.priceMonthly > 0 && (
+                    <span className="badge-warning">Not purchasable yet</span>
                   )}
                 </div>
                 {t.description && (

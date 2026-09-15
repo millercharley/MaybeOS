@@ -11,6 +11,7 @@ import {
   Logger,
   InternalServerErrorException,
   NotFoundException,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
@@ -20,6 +21,10 @@ import { CurrentUser, RequestUser } from '../../common/decorators/current-user.d
 import { StripeService } from './stripe.service';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
 import { CreateBillingPortalDto } from './dto/create-billing-portal.dto';
+import { PlanCheckoutDto } from './dto/plan-checkout.dto';
+import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { PrismaService } from '../../config/prisma.service';
 import { BypassRequiredReading } from '../../common/decorators/bypass-required-reading.decorator';
 
@@ -107,6 +112,24 @@ export class StripeController {
     };
   }
 
+  /**
+   * Pay for a MaybeOS plan chosen on the landing page (PAY-09). Admins only:
+   * this is the co-op's own subscription to MaybeOS, not a member's dues.
+   */
+  @Post('orgs/:orgId/billing/plan-checkout')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Start Stripe Checkout for a MaybeOS plan' })
+  async planCheckout(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: PlanCheckoutDto,
+  ) {
+    const url = await this.stripeService.createPlanCheckout(orgId, user.email, dto.plan, dto.interval);
+    return { url };
+  }
+
   // ──────────────────────────────────────────────────────────────
   // Billing Portal
   // ──────────────────────────────────────────────────────────────
@@ -142,6 +165,7 @@ export class StripeController {
       userOrg.stripeCustomerId,
       dto.returnUrl,
       orgId,
+      userOrg.stripeDuesAccountId,
     );
 
     return { url };

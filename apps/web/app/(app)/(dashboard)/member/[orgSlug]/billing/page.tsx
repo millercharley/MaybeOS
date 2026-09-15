@@ -8,6 +8,7 @@ import { formatMinutes } from '@/lib/service-rota';
 import { usePublicApi } from '@/hooks/use-api';
 import { api, MembershipTier, ApiError, type ServicePeriod } from '@/lib/api';
 import { PageHeader } from '@/components/layout/page-header';
+import { duesFeeFor } from '@/lib/fees';
 import { Panel } from '@/components/layout/panel';
 
 /** Cents → "$12" or "$12.50", never "$12.00". */
@@ -56,6 +57,14 @@ export default function MemberBillingPage() {
   const { data: tiers, loading: tiersLoading } = usePublicApi(
     () => (orgId ? api.orgs.listTiers(orgId) : Promise.resolve([])),
     [orgId],
+  );
+
+  // The co-op's MaybeOS plan, which decides whether a fee is added to dues
+  // (PAY-09). Shown beside the price, so the total here matches Stripe's page.
+  const orgSlug = membership?.org?.slug;
+  const { data: publicOrg } = usePublicApi(
+    () => (orgSlug ? api.orgs.getBySlug(orgSlug) : Promise.resolve(null)),
+    [orgSlug],
   );
 
   // Amount entered for a pay-what-you-can tier, keyed by tier id, held as the
@@ -402,6 +411,11 @@ export default function MemberBillingPage() {
                   <div className="whitespace-nowrap text-right">
                     <span className="data text-xl font-semibold">{money(tier.priceMonthly)}</span>
                     <span className="text-sm text-[var(--text-tertiary)]">/month</span>
+                    {publicOrg && duesFeeFor(publicOrg.plan, tier.priceMonthly) > 0 && (
+                      <span className="block text-xs text-[var(--text-tertiary)]">
+                        + {money(duesFeeFor(publicOrg.plan, tier.priceMonthly))} MaybeOS fee
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -441,6 +455,8 @@ export default function MemberBillingPage() {
                     {belowFloor
                       ? `Please enter at least ${money(floorCents)}.`
                       : `Minimum ${money(floorCents)}. Pay more if you can, less if you can't — it's the same membership either way.`}
+                    {publicOrg && duesFeeFor(publicOrg.plan, 1) > 0 &&
+                      ` A ${money(duesFeeFor(publicOrg.plan, 1))} MaybeOS fee is added each month.`}
                   </p>
                 </div>
               )}

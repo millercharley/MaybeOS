@@ -239,4 +239,31 @@ describe('MemberService — invitations with a tier', () => {
       expect(prisma.membershipTier.findFirst).not.toHaveBeenCalled();
     });
   });
+
+  describe('on the Free plan, at 100 members (PAY-09)', () => {
+    beforeEach(() => {
+      prisma.userOrg.count = jest.fn().mockResolvedValue(100);
+      prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Sunrise', plan: 'FREE', slug: 'sunrise', allowPublicJoin: true });
+    });
+
+    it('will not accept an invitation that would make member 101', async () => {
+      await expect(service.acceptInvite('tok', 'user-1')).rejects.toThrow(/full for now/);
+      expect(prisma.userOrg.create).not.toHaveBeenCalled();
+    });
+
+    it('tells the organiser before an invitation is sent', async () => {
+      await expect(service.inviteMember('org-1', 'new@example.org', 'MEMBER', 'admin-1')).rejects.toThrow(/Upgrade to Plus or Unlimited/);
+      expect(prisma.invitation.create).not.toHaveBeenCalled();
+    });
+
+    it('will not let anyone join through the public page', async () => {
+      await expect(service.joinOrg('org-1', 'user-9')).rejects.toThrow(/full for now/);
+      expect(prisma.userOrg.create).not.toHaveBeenCalled();
+    });
+
+    it('still invites a guest, who is not counted', async () => {
+      await service.inviteMember('org-1', 'guest@example.org', 'GUEST', 'admin-1');
+      expect(prisma.invitation.create).toHaveBeenCalled();
+    });
+  });
 });

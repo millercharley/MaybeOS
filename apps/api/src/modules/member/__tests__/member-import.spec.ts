@@ -36,6 +36,11 @@ describe('MemberService — importing a community', () => {
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
       },
+      // The Free plan's member limit (PAY-09) reads the plan first. PLUS here,
+      // so these tests are about importing, not the limit.
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({ plan: 'PLUS', slug: 'maybeitsfate' }),
+      },
     };
     storage = { importAvatarFromUrl: jest.fn().mockResolvedValue('user-1/abc.jpg') };
 

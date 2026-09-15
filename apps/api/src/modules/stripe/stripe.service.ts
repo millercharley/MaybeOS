@@ -15,9 +15,11 @@ import {
   planForSubscriptionItems,
   billsPerMember,
   PER_MEMBER_PRICE_IDS,
+  ADVERTISED_PRICE_IDS,
 } from './maybeos-plans';
 import { ConnectService } from './connect.service';
 import { membershipStatusFor } from './subscription-status';
+import { applicationFeePercent, duesFeeFor } from './dues-pricing';
 import {
   WRITTEN_REPORT_PRICE_CENTS,
   WRITTEN_REPORT_PRODUCT_NAME,
@@ -41,6 +43,18 @@ type PrismaTx = Prisma.TransactionClient;
  * those members can check out again normally.
  */
 const ACTIVE_SUBSCRIPTION_STATUSES = ['ACTIVE', 'TRIALING', 'PAST_DUE'];
+
+/** What MaybeOS keeps on a co-op's connected account for dues (PAY-09). */
+interface ConnectObjects {
+  accountId: string;
+  portalConfigId?: string | null;
+  feeProductId?: string | null;
+}
+
+/** Request options for an account: a connected account id, or MaybeOS's own when null. */
+function onAccount(accountId: string | null | undefined): Stripe.RequestOptions | undefined {
+  return accountId ? { stripeAccount: accountId } : undefined;
+}
 
 @Injectable()
 export class StripeService implements OnModuleInit {
@@ -78,8 +92,16 @@ export class StripeService implements OnModuleInit {
   // ──────────────────────────────────────────────────────────────
 
   /**
-   * Create a Stripe Checkout session for a membership subscription.
-   * Returns the checkout session URL for client-side redirect.
+   * Start a member's dues (PAY-09).
+   *
+   * **On the co-op's own connected Stripe account.** This used to run on
+   * MaybeOS's account, so every member's dues were paid to MaybeOS instead of
+   * to their co-op. D-013 names that as money transmission for any co-op but
+   * MaybeItsFate, and it contradicted everything the product says about dues.
+   * A co-op that has not connected Stripe cannot take dues until it does.
+   *
+   * On the Free plan the flat dues fee is added on top, as a second line the
+   * member sees, and MaybeOS takes it as the subscription's application fee.
    */
   async createCheckoutSession(
     orgId: string,
@@ -93,7 +115,7 @@ export class StripeService implements OnModuleInit {
     // method already received `orgId` and resolved the tier without it, so a
     // member could open a checkout session against *another* co-op's tier:
     // its price, its Stripe product, charged under this org's join flow.
-    const tier = await this.prisma.membershipTier.findFirst({
+    let tier = await this.prisma.membershipTier.findFirst({
       where: { id: tierId, orgId },
     });
 
@@ -101,12 +123,9 @@ export class StripeService implements OnModuleInit {
       throw new NotFoundException('Membership tier not found');
     }
 
-    // 2. Resolve what this member will actually be charged.
-    const lineItem = tier.isPayWhatYouCan
-      ? this.payWhatYouCanLineItem(tier, amountCents)
-      : this.fixedPriceLineItem(tier, amountCents);
+    const org = await this.duesAccountFor(orgId);
 
-    // 3. Look up or create a Stripe Customer for the user
+    // 2. Look up the membership before creating anything at Stripe.
     const userOrg = await this.prisma.userOrg.findUnique({
       where: { userId_orgId: { userId, orgId } },
       include: { user: true },
@@ -133,37 +152,191 @@ export class StripeService implements OnModuleInit {
       );
     }
 
-    let stripeCustomerId = userOrg.stripeCustomerId;
+    // 3. The tier's product and price, on the co-op's account.
+    tier = await this.ensureTierOnAccount(tier, org.accountId);
+
+    // 4. Resolve what this member will actually be charged.
+    const lineItem = tier.isPayWhatYouCan
+      ? this.payWhatYouCanLineItem(tier, amountCents)
+      : this.fixedPriceLineItem(tier, amountCents);
+    const duesCents = tier.isPayWhatYouCan ? (amountCents as number) : tier.priceMonthly;
+    const feeCents = duesFeeFor(org.plan, duesCents);
+
+    // 5. A Stripe customer on the co-op's account. A customer on another
+    // account (MaybeOS's own, from before PAY-09) cannot pay there.
+    let stripeCustomerId =
+      userOrg.stripeCustomerId && userOrg.stripeDuesAccountId === org.accountId
+        ? userOrg.stripeCustomerId
+        : null;
 
     if (!stripeCustomerId) {
-      const customer = await this.stripe.customers.create({
-        email: userOrg.user.email,
-        name: userOrg.user.name ?? undefined,
-        metadata: { orgId, userId },
-      });
-
+      const customer = await this.stripe.customers.create(
+        {
+          email: userOrg.user.email,
+          name: userOrg.user.name ?? undefined,
+          metadata: { orgId, userId },
+        },
+        onAccount(org.accountId),
+      );
       stripeCustomerId = customer.id;
 
       await this.prisma.userOrg.update({
         where: { id: userOrg.id },
-        data: { stripeCustomerId },
+        data: { stripeCustomerId, stripeDuesAccountId: org.accountId },
       });
     }
 
-    // 4. Create the Checkout session
-    const session = await this.stripe.checkout.sessions.create({
-      mode: 'subscription',
-      customer: stripeCustomerId,
-      line_items: [lineItem],
-      metadata: { orgId, userId, tierId },
-      subscription_data: {
-        metadata: { orgId, userId, tierId },
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [lineItem];
+    if (feeCents > 0) {
+      lineItems.push({
+        price_data: {
+          currency: 'usd',
+          product: await this.ensureFeeProduct(orgId, org.accountId),
+          unit_amount: feeCents,
+          recurring: { interval: 'month' },
+        },
+        quantity: 1,
+      });
+    }
+
+    const metadata = { orgId, userId, tierId, duesFeeCents: String(feeCents) };
+
+    // 6. Create the Checkout session on the co-op's account.
+    const session = await this.stripe.checkout.sessions.create(
+      {
+        mode: 'subscription',
+        customer: stripeCustomerId,
+        line_items: lineItems,
+        metadata,
+        subscription_data: {
+          metadata,
+          ...(feeCents > 0 && { application_fee_percent: applicationFeePercent(duesCents, feeCents) }),
+        },
+        success_url: successUrl,
+        cancel_url: cancelUrl,
       },
-      success_url: successUrl,
-      cancel_url: cancelUrl,
+      onAccount(org.accountId),
+    );
+
+    return session.url as string;
+  }
+
+  /**
+   * The co-op's connected account, ready to take dues, and its plan.
+   *
+   * Refuses in words an organiser can act on. The account id is omitted at the
+   * Prisma client, and this select is one of the few places that reads it.
+   */
+  private async duesAccountFor(orgId: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { stripeAccountId: true, stripeChargesEnabled: true, plan: true },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+    if (!org.stripeAccountId || !org.stripeChargesEnabled) {
+      throw new BadRequestException(
+        'This community is not set up to take dues yet. An organiser needs to connect Stripe in Settings.',
+      );
+    }
+    return { accountId: org.stripeAccountId, plan: org.plan };
+  }
+
+  private async connectObjects(orgId: string, accountId: string): Promise<ConnectObjects> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { stripeConnectObjects: true },
+    });
+    const stored = org?.stripeConnectObjects as unknown as ConnectObjects | null;
+    // Ids created on a different account are no use on this one.
+    return stored?.accountId === accountId ? stored : { accountId };
+  }
+
+  private async saveConnectObjects(orgId: string, objects: ConnectObjects) {
+    await this.prisma.organization.update({
+      where: { id: orgId },
+      data: { stripeConnectObjects: objects as unknown as Prisma.InputJsonValue },
+    });
+  }
+
+  /**
+   * The tier's product and price on `accountId`, creating them there if the
+   * tier's live somewhere else: on MaybeOS's own account from before PAY-09,
+   * or not yet at all.
+   *
+   * Existing subscriptions on the old price are untouched and keep billing.
+   * The portal configuration on the account is rebuilt next visit, because it
+   * lists tier prices.
+   */
+  private async ensureTierOnAccount<
+    T extends {
+      id: string;
+      orgId: string;
+      name: string;
+      description: string | null;
+      priceMonthly: number;
+      isPayWhatYouCan: boolean;
+      stripeProductId: string | null;
+      stripePriceIdMonthly: string | null;
+      stripeDuesAccountId: string | null;
+    },
+  >(tier: T, accountId: string): Promise<T> {
+    const ready =
+      tier.stripeDuesAccountId === accountId &&
+      tier.stripeProductId &&
+      (tier.isPayWhatYouCan || tier.stripePriceIdMonthly);
+    if (ready) return tier;
+
+    const { productId, priceId } = await this.createStripeObjectsForTier(tier, accountId);
+
+    const updated = await this.prisma.membershipTier.update({
+      where: { id: tier.id },
+      data: { stripeProductId: productId, stripePriceIdMonthly: priceId, stripeDuesAccountId: accountId },
     });
 
-    return session.url;
+    const objects = await this.connectObjects(tier.orgId, accountId);
+    if (objects.portalConfigId) await this.saveConnectObjects(tier.orgId, { ...objects, portalConfigId: null });
+
+    return { ...tier, ...updated };
+  }
+
+  /**
+   * Drop the cached billing portal configurations, on MaybeOS's account and on
+   * the connected one, so the next portal visit rebuilds them from the tiers'
+   * current prices. Only the portal ids: the fee product is what identifies
+   * the fee line on existing subscriptions, so it must survive.
+   */
+  async forgetPortalConfigurations(orgId: string): Promise<void> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { stripeConnectObjects: true },
+    });
+    const objects = org?.stripeConnectObjects as unknown as ConnectObjects | null;
+    await this.prisma.organization.update({
+      where: { id: orgId },
+      data: {
+        stripePortalConfigId: null,
+        ...(objects && {
+          stripeConnectObjects: { ...objects, portalConfigId: null } as unknown as Prisma.InputJsonValue,
+        }),
+      },
+    });
+  }
+
+  /** The co-op's "MaybeOS fee" product, created once per connected account. */
+  private async ensureFeeProduct(orgId: string, accountId: string): Promise<string> {
+    const objects = await this.connectObjects(orgId, accountId);
+    if (objects.feeProductId) return objects.feeProductId;
+
+    const product = await this.stripe.products.create(
+      {
+        name: 'MaybeOS fee',
+        description: 'Added to dues on the MaybeOS Free plan',
+        metadata: { orgId, kind: 'maybeos_dues_fee' },
+      },
+      onAccount(accountId),
+    );
+    await this.saveConnectObjects(orgId, { ...objects, feeProductId: product.id });
+    return product.id;
   }
 
   /**
@@ -269,23 +442,28 @@ export class StripeService implements OnModuleInit {
       name: string;
       stripeProductId: string | null;
       stripePriceIdMonthly: string | null;
+      stripeDuesAccountId?: string | null;
     },
     newPriceCents: number,
     applyToExisting: boolean,
-  ): Promise<{ priceId: string; migrated: number }> {
+  ): Promise<{ priceId: string | null; migrated: number }> {
+    // A tier with no Stripe product yet has nothing to replace: checkout
+    // creates its product and price from the new amount (PAY-09).
     if (!tier.stripeProductId) {
-      throw new NotFoundException(
-        'Tier has no Stripe product yet, so its price cannot be changed. Provision it first.',
-      );
+      return { priceId: null, migrated: 0 };
     }
 
-    const price = await this.stripe.prices.create({
-      product: tier.stripeProductId,
-      unit_amount: newPriceCents,
-      currency: 'usd',
-      recurring: { interval: 'month' },
-      metadata: { tierId: tier.id },
-    });
+    const account = onAccount(tier.stripeDuesAccountId);
+    const price = await this.stripe.prices.create(
+      {
+        product: tier.stripeProductId,
+        unit_amount: newPriceCents,
+        currency: 'usd',
+        recurring: { interval: 'month' },
+        metadata: { tierId: tier.id },
+      },
+      account,
+    );
 
     // Deactivate rather than delete: Stripe keeps historical Prices so past
     // invoices still resolve, and any subscription grandfathered onto the old
@@ -293,7 +471,7 @@ export class StripeService implements OnModuleInit {
     // to anyone new.
     if (tier.stripePriceIdMonthly) {
       try {
-        await this.stripe.prices.update(tier.stripePriceIdMonthly, { active: false });
+        await this.stripe.prices.update(tier.stripePriceIdMonthly, { active: false }, account);
       } catch (err) {
         // Not fatal — the new Price is already live and the tier will point at
         // it. A stale active Price is untidy, not harmful.
@@ -307,7 +485,7 @@ export class StripeService implements OnModuleInit {
 
     let migrated = 0;
     if (applyToExisting) {
-      migrated = await this.migrateSubscribersToPrice(tier.id, price.id);
+      migrated = await this.migrateSubscribersToPrice(tier, price.id, newPriceCents);
     }
 
     this.logger.log(
@@ -327,16 +505,22 @@ export class StripeService implements OnModuleInit {
    * price would surprise every member with a same-day transaction.
    */
   private async migrateSubscribersToPrice(
-    tierId: string,
+    tier: { id: string; stripeProductId: string | null; stripeDuesAccountId?: string | null },
     priceId: string,
+    newPriceCents: number,
   ): Promise<number> {
+    const accountId = tier.stripeDuesAccountId ?? null;
     const subscribers = await this.prisma.userOrg.findMany({
       where: {
-        tierId,
+        tierId: tier.id,
         stripeSubscriptionId: { not: null },
         subscriptionStatus: { in: ['ACTIVE', 'TRIALING', 'PAST_DUE'] },
+        // Only subscriptions on the account the new price lives on. A
+        // subscription on another account cannot use it, and keeps billing on
+        // the price it has.
+        stripeDuesAccountId: accountId,
       },
-      select: { id: true, stripeSubscriptionId: true },
+      select: { id: true, stripeSubscriptionId: true, duesFeeCents: true },
     });
 
     let migrated = 0;
@@ -344,14 +528,28 @@ export class StripeService implements OnModuleInit {
       try {
         const existing = await this.stripe.subscriptions.retrieve(
           sub.stripeSubscriptionId as string,
+          undefined,
+          onAccount(accountId),
         );
-        const item = existing.items.data[0];
+        // The dues line, not the MaybeOS fee line beside it.
+        const item =
+          existing.items.data.find((i) => {
+            const product = typeof i.price.product === 'string' ? i.price.product : i.price.product?.id;
+            return product === tier.stripeProductId;
+          }) ?? (existing.items.data.length === 1 ? existing.items.data[0] : undefined);
         if (!item) continue;
 
-        await this.stripe.subscriptions.update(existing.id, {
-          items: [{ id: item.id, price: priceId }],
-          proration_behavior: 'none',
-        });
+        await this.stripe.subscriptions.update(
+          existing.id,
+          {
+            items: [{ id: item.id, price: priceId }],
+            proration_behavior: 'none',
+            ...(sub.duesFeeCents > 0 && {
+              application_fee_percent: applicationFeePercent(newPriceCents, sub.duesFeeCents),
+            }),
+          },
+          onAccount(accountId),
+        );
         migrated += 1;
       } catch (err) {
         // One member's failure must not abort the rest. They stay on the old
@@ -382,16 +580,23 @@ export class StripeService implements OnModuleInit {
    * member. Cached on the Organization so this is one API call, not one per
    * portal visit.
    */
-  private async ensurePortalConfiguration(orgId: string): Promise<string | undefined> {
+  private async ensurePortalConfiguration(
+    orgId: string,
+    accountId: string | null,
+  ): Promise<string | undefined> {
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
       select: { id: true, name: true, stripePortalConfigId: true },
     });
 
-    if (org?.stripePortalConfigId) return org.stripePortalConfigId;
+    // MaybeOS's own account keeps its configuration on the org as before; a
+    // connected account's lives with the other objects on that account.
+    const objects = accountId ? await this.connectObjects(orgId, accountId) : null;
+    const cached = accountId ? objects?.portalConfigId : org?.stripePortalConfigId;
+    if (cached) return cached;
 
     const tiers = await this.prisma.membershipTier.findMany({
-      where: { orgId, isActive: true, stripeProductId: { not: null } },
+      where: { orgId, isActive: true, stripeProductId: { not: null }, stripeDuesAccountId: accountId },
       select: { stripeProductId: true, stripePriceIdMonthly: true, isPayWhatYouCan: true },
     });
 
@@ -409,31 +614,38 @@ export class StripeService implements OnModuleInit {
       // Nothing switchable. Fall back to the account default so the member can
       // still update a card or cancel.
       this.logger.warn(
-        `Org ${orgId} has no fixed-price tiers with Stripe prices; the billing portal will not offer plan switching.`,
+        `Org ${orgId} has no fixed-price tiers with Stripe prices on ${accountId ?? 'the platform account'}; the billing portal will not offer plan switching.`,
       );
       return undefined;
     }
 
-    const configuration = await this.stripe.billingPortal.configurations.create({
-      business_profile: { headline: `${org?.name ?? 'Your co-op'} — manage your membership` },
-      features: {
-        customer_update: { enabled: true, allowed_updates: ['email', 'address', 'tax_id'] },
-        payment_method_update: { enabled: true },
-        invoice_history: { enabled: true },
-        subscription_cancel: { enabled: true, mode: 'at_period_end' },
-        subscription_update: {
-          enabled: true,
-          default_allowed_updates: ['price'],
-          proration_behavior: 'create_prorations',
-          products,
+    const configuration = await this.stripe.billingPortal.configurations.create(
+      {
+        business_profile: { headline: `${org?.name ?? 'Your co-op'} — manage your membership` },
+        features: {
+          customer_update: { enabled: true, allowed_updates: ['email', 'address', 'tax_id'] },
+          payment_method_update: { enabled: true },
+          invoice_history: { enabled: true },
+          subscription_cancel: { enabled: true, mode: 'at_period_end' },
+          subscription_update: {
+            enabled: true,
+            default_allowed_updates: ['price'],
+            proration_behavior: 'create_prorations',
+            products,
+          },
         },
       },
-    });
+      onAccount(accountId),
+    );
 
-    await this.prisma.organization.update({
-      where: { id: orgId },
-      data: { stripePortalConfigId: configuration.id },
-    });
+    if (accountId && objects) {
+      await this.saveConnectObjects(orgId, { ...objects, portalConfigId: configuration.id });
+    } else {
+      await this.prisma.organization.update({
+        where: { id: orgId },
+        data: { stripePortalConfigId: configuration.id },
+      });
+    }
 
     this.logger.log(
       `Created billing portal configuration ${configuration.id} for org ${orgId} with ${products.length} switchable tier(s)`,
@@ -450,16 +662,21 @@ export class StripeService implements OnModuleInit {
     stripeCustomerId: string,
     returnUrl: string,
     orgId?: string,
+    /** Where the customer lives (PAY-09). Null for MaybeOS's own account. */
+    accountId: string | null = null,
   ): Promise<string> {
     const configuration = orgId
-      ? await this.ensurePortalConfiguration(orgId)
+      ? await this.ensurePortalConfiguration(orgId, accountId)
       : undefined;
 
-    const session = await this.stripe.billingPortal.sessions.create({
-      customer: stripeCustomerId,
-      return_url: returnUrl,
-      ...(configuration ? { configuration } : {}),
-    });
+    const session = await this.stripe.billingPortal.sessions.create(
+      {
+        customer: stripeCustomerId,
+        return_url: returnUrl,
+        ...(configuration ? { configuration } : {}),
+      },
+      onAccount(accountId),
+    );
 
     return session.url;
   }
@@ -490,11 +707,15 @@ export class StripeService implements OnModuleInit {
   async reconcileMembership(orgId: string, userId: string) {
     const membership = await this.prisma.userOrg.findUnique({
       where: { userId_orgId: { userId, orgId } },
-      select: { id: true, stripeSubscriptionId: true },
+      select: { id: true, stripeSubscriptionId: true, stripeDuesAccountId: true },
     });
 
     if (!membership?.stripeSubscriptionId) return null;
-    return this.reconcileBySubscriptionId(membership.id, membership.stripeSubscriptionId);
+    return this.reconcileBySubscriptionId(
+      membership.id,
+      membership.stripeSubscriptionId,
+      membership.stripeDuesAccountId,
+    );
   }
 
   /**
@@ -505,10 +726,14 @@ export class StripeService implements OnModuleInit {
    * `deleted` event never arrived, which is exactly what this exists to
    * repair.
    */
-  private async reconcileBySubscriptionId(userOrgId: string, subscriptionId: string) {
+  private async reconcileBySubscriptionId(
+    userOrgId: string,
+    subscriptionId: string,
+    accountId: string | null = null,
+  ) {
     let subscription: Stripe.Subscription;
     try {
-      subscription = await this.stripe.subscriptions.retrieve(subscriptionId);
+      subscription = await this.stripe.subscriptions.retrieve(subscriptionId, undefined, onAccount(accountId));
     } catch (err) {
       const code = (err as { code?: string })?.code;
       if (code === 'resource_missing') {
@@ -559,7 +784,7 @@ export class StripeService implements OnModuleInit {
     try {
       const stale = await this.prisma.userOrg.findMany({
         where: { stripeSubscriptionId: { not: null }, currentPeriodEnd: null },
-        select: { id: true, stripeSubscriptionId: true },
+        select: { id: true, stripeSubscriptionId: true, stripeDuesAccountId: true },
         take: 100,
       });
       if (stale.length === 0) return;
@@ -570,6 +795,7 @@ export class StripeService implements OnModuleInit {
           await this.reconcileBySubscriptionId(
             membership.id,
             membership.stripeSubscriptionId as string,
+            membership.stripeDuesAccountId,
           );
           repaired += 1;
         } catch (err) {
@@ -732,6 +958,7 @@ export class StripeService implements OnModuleInit {
         await this.handleSubscriptionCreated(
           event.data.object as Stripe.Subscription,
           tx,
+          event.account ?? null,
         );
         break;
 
@@ -739,6 +966,7 @@ export class StripeService implements OnModuleInit {
         await this.handleSubscriptionUpdated(
           event.data.object as Stripe.Subscription,
           tx,
+          event.account ?? null,
         );
         // Same event, two meanings: a member's dues above, a co-op's own
         // MaybeOS plan here. Each ignores what it does not recognise.
@@ -814,8 +1042,10 @@ export class StripeService implements OnModuleInit {
   private async handleSubscriptionCreated(
     subscription: Stripe.Subscription,
     tx: PrismaTx,
+    /** The connected account it happened on, or null for MaybeOS's own (PAY-09). */
+    accountId: string | null = null,
   ) {
-    const { orgId, userId, tierId } = subscription.metadata;
+    const { orgId, userId, tierId, duesFeeCents } = subscription.metadata;
 
     if (!orgId || !userId) {
       this.logger.warn(
@@ -830,6 +1060,11 @@ export class StripeService implements OnModuleInit {
         stripeSubscriptionId: subscription.id,
         subscriptionStatus: 'ACTIVE',
         tierId: tierId || undefined,
+        stripeDuesAccountId: accountId,
+        ...(subscription.customer && {
+          stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
+        }),
+        duesFeeCents: Number(duesFeeCents) > 0 ? Number(duesFeeCents) : 0,
         // From the start, so "renews on" is answerable before anybody cancels.
         ...this.periodFrom(subscription),
       },
@@ -869,6 +1104,7 @@ export class StripeService implements OnModuleInit {
   private async handleSubscriptionUpdated(
     subscription: Stripe.Subscription,
     tx: PrismaTx,
+    accountId: string | null = null,
   ) {
     const mappedStatus = membershipStatusFor(subscription.status);
     if (!mappedStatus) {
@@ -894,6 +1130,13 @@ export class StripeService implements OnModuleInit {
       data: { subscriptionStatus: mappedStatus as any, ...this.periodFrom(subscription) },
     });
 
+    // The Free plan's dues fee is a percentage of the invoice (PAY-09). If the
+    // dues changed underneath it, the percentage has to follow, or MaybeOS
+    // would take more or less than the flat fee.
+    if (userOrg.duesFeeCents > 0 && accountId) {
+      await this.keepDuesFeeFlat(subscription, userOrg.duesFeeCents, accountId);
+    }
+
     // The cancellation is *here*, not in the deleted event. Stripe's portal
     // cancels at period end, so this arrives with `status: active` and
     // `cancel_at_period_end: true` — which is why a status-only handler looked
@@ -902,6 +1145,93 @@ export class StripeService implements OnModuleInit {
       `Subscription ${subscription.id} updated to status ${mappedStatus}` +
         (subscription.cancel_at_period_end ? ' (ending at period end)' : ''),
     );
+  }
+
+  /**
+   * Set the subscription's application fee so it still takes the flat dues fee
+   * after its dues changed (PAY-09). A no-op when it already does.
+   */
+  private async keepDuesFeeFlat(subscription: Stripe.Subscription, feeCents: number, accountId: string) {
+    try {
+      const feeProduct = (await this.feeProductIdForAccount(subscription.metadata?.orgId, accountId)) ?? null;
+      const duesCents = subscription.items.data
+        .filter((i) => {
+          const product = typeof i.price.product === 'string' ? i.price.product : i.price.product?.id;
+          return product !== feeProduct;
+        })
+        .reduce((sum, i) => sum + (i.price.unit_amount ?? 0) * (i.quantity ?? 1), 0);
+      const percent = applicationFeePercent(duesCents, feeCents);
+      if (subscription.application_fee_percent === percent) return;
+
+      await this.stripe.subscriptions.update(subscription.id, { application_fee_percent: percent }, onAccount(accountId));
+      this.logger.log(`Dues fee on ${subscription.id} set to ${percent}% of ${duesCents + feeCents}c`);
+    } catch (err) {
+      // Not fatal to the webhook: the membership is already up to date, and the
+      // fee sweep will try again.
+      this.logger.error(`Could not keep the dues fee flat on ${subscription.id}: ${(err as Error).message}`);
+    }
+  }
+
+  private async feeProductIdForAccount(orgId: string | undefined, accountId: string): Promise<string | null> {
+    if (!orgId) return null;
+    return (await this.connectObjects(orgId, accountId)).feeProductId ?? null;
+  }
+
+  /**
+   * Take the Free plan's dues fee off every subscription of a co-op that is no
+   * longer on Free (PAY-09). Run by the scheduler, so it catches an upgrade
+   * however it happened; idempotent, and a subscription that fails is left for
+   * the next pass.
+   *
+   * No proration: the member's next invoice simply stops including the fee.
+   */
+  async removeDuesFeesAfterUpgrade(): Promise<{ removed: number; failed: number }> {
+    const memberships = await this.prisma.userOrg.findMany({
+      where: {
+        duesFeeCents: { gt: 0 },
+        stripeSubscriptionId: { not: null },
+        stripeDuesAccountId: { not: null },
+        org: { plan: { not: 'FREE' } },
+      },
+      select: { id: true, orgId: true, stripeSubscriptionId: true, stripeDuesAccountId: true },
+      take: 200,
+    });
+
+    let removed = 0;
+    let failed = 0;
+    for (const m of memberships) {
+      const accountId = m.stripeDuesAccountId as string;
+      try {
+        const feeProduct = await this.feeProductIdForAccount(m.orgId, accountId);
+        const subscription = await this.stripe.subscriptions.retrieve(
+          m.stripeSubscriptionId as string,
+          undefined,
+          onAccount(accountId),
+        );
+        const feeItem = subscription.items.data.find((i) => {
+          const product = typeof i.price.product === 'string' ? i.price.product : i.price.product?.id;
+          return feeProduct && product === feeProduct;
+        });
+
+        if (subscription.status !== 'canceled') {
+          await this.stripe.subscriptions.update(
+            subscription.id,
+            {
+              ...(feeItem && { items: [{ id: feeItem.id, deleted: true }] }),
+              application_fee_percent: '',
+              proration_behavior: 'none',
+            },
+            onAccount(accountId),
+          );
+        }
+        await this.prisma.userOrg.update({ where: { id: m.id }, data: { duesFeeCents: 0 } });
+        removed += 1;
+      } catch (err) {
+        failed += 1;
+        this.logger.error(`Could not remove the dues fee from membership ${m.id}: ${(err as Error).message}`);
+      }
+    }
+    return { removed, failed };
   }
 
   private async handleSubscriptionDeleted(
@@ -989,45 +1319,123 @@ export class StripeService implements OnModuleInit {
   // ──────────────────────────────────────────────────────────────
 
   /**
-   * Create a Stripe Product and a recurring monthly Price for a membership tier.
-   * Returns the Stripe price ID so it can be stored on the tier.
+   * Create a tier's Stripe product, and its monthly price unless it is
+   * pay-what-you-can, on `accountId` (null for MaybeOS's own account).
    */
-  async createStripePricesForTier(tier: {
-    id: string;
-    name: string;
-    description?: string;
-    priceMonthly: number;
-    orgId: string;
-  }): Promise<string> {
-    const product = await this.stripe.products.create({
-      name: tier.name,
-      description: tier.description ?? undefined,
-      metadata: { tierId: tier.id, orgId: tier.orgId },
-    });
-
-    const price = await this.stripe.prices.create({
-      product: product.id,
-      unit_amount: tier.priceMonthly, // already in cents
-      currency: 'usd',
-      recurring: { interval: 'month' },
-      metadata: { tierId: tier.id, orgId: tier.orgId },
-    });
-
-    // Store the product id too: pay-what-you-can checkouts build an inline
-    // price against it, and without it PWYC has nothing to attach to.
-    await this.prisma.membershipTier.update({
-      where: { id: tier.id },
-      data: { stripeProductId: product.id },
-    });
-
-    this.logger.log(
-      `Created Stripe product ${product.id} and price ${price.id} for tier ${tier.id}`,
+  async createStripeObjectsForTier(
+    tier: { id: string; name: string; description?: string | null; priceMonthly: number; orgId: string; isPayWhatYouCan?: boolean },
+    accountId: string | null,
+  ): Promise<{ productId: string; priceId: string | null }> {
+    const product = await this.stripe.products.create(
+      {
+        name: tier.name,
+        description: tier.description ?? undefined,
+        metadata: { tierId: tier.id, orgId: tier.orgId },
+      },
+      onAccount(accountId),
     );
 
-    return price.id;
+    // Pay-what-you-can has no shared price: checkout builds one inline from
+    // what the member chose, against this product.
+    const price = tier.isPayWhatYouCan
+      ? null
+      : await this.stripe.prices.create(
+          {
+            product: product.id,
+            unit_amount: tier.priceMonthly, // already in cents
+            currency: 'usd',
+            recurring: { interval: 'month' },
+            metadata: { tierId: tier.id, orgId: tier.orgId },
+          },
+          onAccount(accountId),
+        );
+
+    this.logger.log(
+      `Created Stripe product ${product.id}${price ? ` and price ${price.id}` : ''} for tier ${tier.id}` +
+        (accountId ? ` on ${accountId}` : ''),
+    );
+
+    return { productId: product.id, priceId: price?.id ?? null };
+  }
+
+  /**
+   * Provision a new tier on the co-op's connected account, when it has one
+   * that can take payments. Returns null otherwise; checkout creates the
+   * objects later, on whichever account the co-op has connected by then.
+   */
+  async provisionTierOnConnectedAccount(tier: {
+    id: string;
+    name: string;
+    description?: string | null;
+    priceMonthly: number;
+    orgId: string;
+    isPayWhatYouCan?: boolean;
+  }): Promise<{ productId: string; priceId: string | null; accountId: string } | null> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: tier.orgId },
+      select: { stripeAccountId: true, stripeChargesEnabled: true },
+    });
+    if (!org?.stripeAccountId || !org.stripeChargesEnabled) return null;
+    const created = await this.createStripeObjectsForTier(tier, org.stripeAccountId);
+    return { ...created, accountId: org.stripeAccountId };
   }
 
   /* ─── The co-op's own MaybeOS plan (PLT-02) ─────────────────── */
+
+  /**
+   * Stripe Checkout for a paid MaybeOS plan, straight from the landing page's
+   * Plus and Unlimited buttons (PAY-09).
+   *
+   * The same subscription the pricing table in Settings creates: the plan's
+   * advertised price on MaybeOS's own account, with `client_reference_id`
+   * carrying the org, so `applyPlanFromCheckout` sets the plan when it
+   * completes. Per-member plans start at the co-op's current member count,
+   * so the first invoice is right without the proration the pricing table
+   * needs.
+   */
+  async createPlanCheckout(
+    orgId: string,
+    adminEmail: string,
+    plan: 'PLUS' | 'UNLIMITED',
+    interval: 'month' | 'year',
+  ): Promise<string> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: {
+        slug: true,
+        planStatus: true,
+        billingWaived: true,
+        stripePlanSubscriptionId: true,
+        stripePlanCustomerId: true,
+      },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    if (org.billingWaived) {
+      throw new ConflictException('MaybeOS is free for your community, so there is nothing to pay for.');
+    }
+    if (org.stripePlanSubscriptionId && ['active', 'trialing', 'past_due'].includes(org.planStatus ?? '')) {
+      throw new ConflictException('Your community already has a MaybeOS plan. Change it in Settings, under Billing.');
+    }
+
+    const price = ADVERTISED_PRICE_IDS[plan][interval];
+    const quantity = PER_MEMBER_PRICE_IDS.has(price)
+      ? Math.max(1, await this.prisma.userOrg.count({ where: { orgId, role: { in: ['ADMIN', 'STAFF', 'MEMBER'] } } }))
+      : 1;
+
+    const web = (this.configService.get<string>('WEB_URL') || 'https://maybeos.org').split(',')[0].trim().replace(/\/$/, '');
+
+    const session = await this.stripe.checkout.sessions.create({
+      mode: 'subscription',
+      line_items: [{ price, quantity }],
+      client_reference_id: orgId,
+      ...(org.stripePlanCustomerId ? { customer: org.stripePlanCustomerId } : { customer_email: adminEmail }),
+      success_url: `${web}/admin/${org.slug}/settings?subscribed=1`,
+      cancel_url: `${web}/admin/${org.slug}/settings?tab=billing`,
+    });
+
+    return session.url as string;
+  }
 
   /**
    * A co-op has paid for a MaybeOS plan.

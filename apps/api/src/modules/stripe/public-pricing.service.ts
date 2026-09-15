@@ -5,6 +5,7 @@ import Stripe from 'stripe';
 import { ADVERTISED_PRICE_IDS, PER_MEMBER_PRICE_IDS } from './maybeos-plans';
 import { PLATFORM_FEE_CENTS } from './ticket-pricing';
 import { WRITTEN_REPORT_PRICE_CENTS } from '../impact/report-pricing';
+import { DUES_FEE_CENTS, FREE_PLAN_MEMBER_LIMIT } from './dues-pricing';
 
 export interface PublicPlan {
   plan: MaybeOsPlan;
@@ -15,6 +16,10 @@ export interface PublicPlan {
   perMember: boolean;
   /** MaybeOS's flat fee on each ticket or paid booking. */
   transactionFeeCents: number;
+  /** Added to each dues payment, when the co-op charges dues (PAY-09). 0 for none. */
+  duesFeeCents: number;
+  /** Members allowed, not counting guests. Null for no limit. */
+  memberLimit: number | null;
 }
 
 export interface PublicPricing {
@@ -98,6 +103,8 @@ export class PublicPricingService {
           yearlyCents,
           perMember: PER_MEMBER_PRICE_IDS.has(ids.month),
           transactionFeeCents: PLATFORM_FEE_CENTS[plan],
+          duesFeeCents: DUES_FEE_CENTS[plan],
+          memberLimit: plan === 'FREE' ? FREE_PLAN_MEMBER_LIMIT : null,
         };
       }),
     );
