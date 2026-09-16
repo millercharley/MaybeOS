@@ -71,9 +71,11 @@ export class DoorService {
    * Give a code to every member of this co-op who may open the door and has
    * not got one. A cancelled member or a guest is not issued one.
    *
-   * The unique index on `(orgId, doorPin)` decides, not a check-then-write:
-   * two passes running at once would otherwise both find the same code free.
-   * A collision is retried with new letters.
+   * Codes are words (DOR-01), so the words this co-op already uses are read
+   * once and the next code is drawn from what is left. The unique index on
+   * `(orgId, doorPin)` still decides, not a check-then-write: two passes
+   * running at once would otherwise both draw the same word. A collision
+   * simply marks that word taken and draws again.
    */
   async issuePins(orgId: string): Promise<number> {
     const waiting = await this.prisma.userOrg.findMany({
@@ -81,21 +83,27 @@ export class DoorService {
       select: { id: true },
       take: BATCH,
     });
+    if (waiting.length === 0) return 0;
+
+    const taken = await this.codesInUse(orgId);
 
     let issued = 0;
     for (const membership of waiting) {
       for (let attempt = 0; attempt < 5; attempt += 1) {
+        const doorPin = generateDoorPin(taken);
         try {
           await this.prisma.userOrg.update({
             where: { id: membership.id },
-            data: { doorPin: generateDoorPin(), doorPinIssuedAt: new Date() },
+            data: { doorPin, doorPinIssuedAt: new Date() },
           });
+          taken.add(doorPin);
           issued += 1;
           break;
         } catch (error) {
-          // P2002 is the unique index doing its job: those five letters are
-          // taken in this co-op. Anything else is a real failure.
+          // P2002 is the unique index doing its job: that word is taken in
+          // this co-op. Anything else is a real failure.
           if ((error as { code?: string }).code !== 'P2002') throw error;
+          taken.add(doorPin);
           if (attempt === 4) {
             this.logger.error(
               `Could not find a free door code for membership ${membership.id} in five tries.`,
@@ -106,6 +114,15 @@ export class DoorService {
     }
 
     return issued;
+  }
+
+  /** Every code this co-op has already given out, so a new one is not one of them. */
+  private async codesInUse(orgId: string): Promise<Set<string>> {
+    const rows = await this.prisma.userOrg.findMany({
+      where: { orgId, doorPin: { not: null } },
+      select: { doorPin: true },
+    });
+    return new Set(rows.map((row) => row.doorPin as string));
   }
 
   /**
@@ -344,8 +361,12 @@ export class DoorService {
     });
     if (!membership) throw new NotFoundException('Member not found in this organization');
 
+    // Their own current code counts as taken: a replacement that is the same
+    // word has replaced nothing.
+    const taken = await this.codesInUse(orgId);
+
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      const doorPin = generateDoorPin();
+      const doorPin = generateDoorPin(taken);
       try {
         await this.prisma.userOrg.update({
           where: { id: membership.id },
@@ -359,6 +380,7 @@ export class DoorService {
         return { doorPin };
       } catch (error) {
         if ((error as { code?: string }).code !== 'P2002') throw error;
+        taken.add(doorPin);
       }
     }
 
