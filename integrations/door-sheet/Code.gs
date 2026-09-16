@@ -75,6 +75,16 @@ const PROP_ORG_SLUG = 'MAYBEOS_ORG_SLUG';
 const PROP_MAYBEOS_URL = 'MAYBEOS_URL';
 /** Optional. A number of feet; when set, the door only opens that close. */
 const PROP_REQUIRE_NEARBY_FEET = 'REQUIRE_NEARBY_FEET';
+/**
+ * Optional. Minutes a member may hold every door unlocked for their guests
+ * (Charley, 2026-09-16). Unset or 0 hides the button and refuses the call.
+ *
+ * **Only switch this on if the door hardware is rated to stay unlocked.** A
+ * one-second pulse is what the door normally gets; a strike built for that
+ * duty can overheat if it is held energised for half an hour. A maglock, or a
+ * strike marked continuous duty, is fine.
+ */
+const PROP_HOLD_MINUTES = 'HOLD_OPEN_MINUTES';
 
 /**
  * Five capital letters — MaybeOS's format. Codes are real words, and I and L
@@ -89,6 +99,8 @@ const BRAND_CACHE_SECONDS = 21600;
 const MEMBERS_CACHE_KEY = 'members_index_v1';
 const DOORS_CACHE_KEY = 'doors_index_v1';
 const INDEX_CACHE_SECONDS = 600;
+/** The most a hold can be, whatever the property says. */
+const HOLD_MINUTES_MAX = 240;
 const MAX_FAILURES = 5;
 const FAILURE_WINDOW_SECONDS = 900;
 /** How old a signed MaybeOS request may be before it is refused. */
@@ -123,6 +135,7 @@ function doGet(e) {
   template.doorFound = Boolean(door);
   // The other doors, for the picker. One door needs no choosing.
   template.doors = doors.length > 1 ? doors.map(function (d) { return { id: d.id, name: d.name }; }) : [];
+  template.holdMinutes = holdMinutes_();
   template.orgName = brand.name;
   template.logoUrl = brand.logoUrl;
   template.accent = brand.accent;
@@ -140,35 +153,18 @@ function doGet(e) {
  * so the page cannot be used to find out who is a member.
  */
 function unlockDoor(email, code, lat, lon, doorIdRaw) {
-  const cleanEmail = normaliseEmail_(email).slice(0, 254);
-  const cleanCode = String(code == null ? '' : code).trim().toUpperCase().slice(0, 32);
   const doorId = normaliseDoorId_(doorIdRaw, DEFAULT_DOOR_ID);
   const location = parseLocation_(lat, lon);
 
-  if (!cleanEmail || !cleanCode) {
-    return result_(false, 'Enter your email and your door code.');
-  }
-
   const door = findDoor_(doorId);
   if (!door) {
-    log_(cleanEmail, doorId, 'Error', 'Unknown door', location, null);
+    log_(normaliseEmail_(email), doorId, 'Error', 'Unknown door', location, null);
     return result_(false, 'This door link is not set up. Ask an organiser for the right one.');
   }
 
-  if (tooManyFailures_(cleanEmail)) {
-    log_(cleanEmail, door.name, 'Denied', 'Too many attempts', location, null);
-    return result_(false, 'Too many attempts. Try again in 15 minutes.');
-  }
-
-  const member = membersIndex_()[cleanEmail];
-  const valid = Boolean(member) && !member.revoked && safeEqual_(member.code, cleanCode);
-
-  if (!valid) {
-    recordFailure_(cleanEmail);
-    const reason = !member ? 'Unknown email' : member.revoked ? 'Revoked' : 'Wrong code';
-    log_(cleanEmail, door.name, 'Denied', reason, location, null);
-    return result_(false, 'Access denied. Check your email and door code.');
-  }
+  const who = authorise_(email, code, door.name, location);
+  if (!who.ok) return who.answer;
+  const cleanEmail = who.email;
 
   const distance = distanceFeet_(location, door);
   const requireFeet = Number(scriptProperty_(PROP_REQUIRE_NEARBY_FEET));
@@ -182,8 +178,6 @@ function unlockDoor(email, code, lat, lon, doorIdRaw) {
       return result_(false, 'You need to be at the door to open it.');
     }
   }
-
-  clearFailures_(cleanEmail);
 
   const opened = pulseShelly_(door);
   if (!opened.ok) {
@@ -261,6 +255,149 @@ function readableOn_(hex) {
   };
   const luminance = 0.2126 * channel(0) + 0.7152 * channel(1) + 0.0722 * channel(2);
   return luminance > 0.45 ? '#211c16' : '#ffffff';
+}
+
+/**
+ * Hold every door unlocked, for a member letting guests in (Charley,
+ * 2026-09-16).
+ *
+ * The same email and code as an unlock, because this is the larger favour:
+ * one entry becomes half an hour of open doors, and the Access Log names who
+ * asked for it.
+ *
+ * **Two things re-lock the doors**, deliberately. The relay is told to switch
+ * itself back after the hold, so the door re-locks even if this script is
+ * never reached again; and a one-off trigger turns the doors off at the same
+ * moment, in case a device ignores a timer that long. Whichever lands first,
+ * the other is harmless.
+ */
+function holdDoorsOpen(email, code, lat, lon) {
+  const minutes = holdMinutes_();
+  const location = parseLocation_(lat, lon);
+  if (minutes <= 0) {
+    return result_(false, 'Holding the doors open is switched off here.');
+  }
+
+  const doors = doorList_();
+  if (doors.length === 0) {
+    return result_(false, 'No doors are set up yet.');
+  }
+
+  const who = authorise_(email, code, 'All doors', location);
+  if (!who.ok) return who.answer;
+
+  const held = [];
+  const failed = [];
+  doors.forEach(function (door) {
+    const result = setShelly_(door, true, minutes * 60);
+    (result.ok ? held : failed).push(door.name);
+  });
+
+  if (held.length === 0) {
+    log_(who.email, 'All doors', 'Error', 'Could not hold open', location, null);
+    return result_(false, 'The doors did not respond. Try again, or tell an organiser.');
+  }
+
+  scheduleRelock_(minutes);
+  const until = Utilities.formatDate(new Date(Date.now() + minutes * 60000), Session.getScriptTimeZone(), 'h:mm a');
+  log_(who.email, held.join(', '), 'Held open', minutes + ' minutes, until ' + until, location, null);
+
+  return result_(
+    true,
+    (failed.length ? held.join(', ') + ' unlocked (' + failed.join(', ') + ' did not respond)' : 'Doors unlocked') +
+      ' until ' + until + '. Lock them sooner if your guests are all in.',
+  );
+}
+
+/** End a hold early: the member who opened the doors closing them again. */
+function lockDoorsNow(email, code, lat, lon) {
+  const location = parseLocation_(lat, lon);
+  const who = authorise_(email, code, 'All doors', location);
+  if (!who.ok) return who.answer;
+
+  const doors = doorList_();
+  let locked = 0;
+  doors.forEach(function (door) {
+    if (setShelly_(door, false, null).ok) locked += 1;
+  });
+
+  cancelRelock_();
+  log_(who.email, 'All doors', locked > 0 ? 'Locked' : 'Error', 'Locked by member', location, null);
+
+  return locked > 0
+    ? result_(true, 'The doors are locked again.')
+    : result_(false, 'The doors did not respond. Try again, or tell an organiser.');
+}
+
+/** The scheduled half of the re-lock. Public because a trigger has to call it. */
+function relockDoors() {
+  doorList_().forEach(function (door) {
+    setShelly_(door, false, null);
+  });
+  cancelRelock_();
+  log_('', 'All doors', 'Locked', 'Hold ended', { lat: null, lon: null, note: '' }, null);
+}
+
+/** How long a hold may last here, or 0 when an organiser has not allowed one. */
+function holdMinutes_() {
+  const minutes = Math.floor(Number(scriptProperty_(PROP_HOLD_MINUTES)));
+  if (!isFinite(minutes) || minutes <= 0) return 0;
+  return Math.min(minutes, HOLD_MINUTES_MAX);
+}
+
+function scheduleRelock_(minutes) {
+  try {
+    cancelRelock_();
+    ScriptApp.newTrigger('relockDoors').timeBased().after(minutes * 60 * 1000).create();
+  } catch (err) {
+    // The relay was already told to switch itself back, so a trigger that
+    // cannot be made costs the belt, not the braces.
+    Logger.log('Could not schedule the re-lock: ' + err.message);
+  }
+}
+
+function cancelRelock_() {
+  try {
+    ScriptApp.getProjectTriggers().forEach(function (trigger) {
+      if (trigger.getHandlerFunction() === 'relockDoors') ScriptApp.deleteTrigger(trigger);
+    });
+  } catch (err) {
+    Logger.log('Could not clear the re-lock trigger: ' + err.message);
+  }
+}
+
+/**
+ * Is this email and code a member who may open the door right now?
+ *
+ * One place, so the hold and the early lock cannot drift from the unlock: the
+ * same rate limit, the same refusal, and the same single message whether the
+ * email is unknown, the code is wrong or the membership is revoked.
+ */
+function authorise_(email, code, doorLabel, location) {
+  const cleanEmail = normaliseEmail_(email).slice(0, 254);
+  const cleanCode = String(code == null ? '' : code).trim().toUpperCase().slice(0, 32);
+
+  if (!cleanEmail || !cleanCode) {
+    return { ok: false, answer: result_(false, 'Enter your email and your door code.') };
+  }
+
+  if (tooManyFailures_(cleanEmail)) {
+    log_(cleanEmail, doorLabel, 'Denied', 'Too many attempts', location, null);
+    return { ok: false, answer: result_(false, 'Too many attempts. Try again in 15 minutes.') };
+  }
+
+  const member = membersIndex_()[cleanEmail];
+  const valid = Boolean(member) && !member.revoked && safeEqual_(member.code, cleanCode);
+
+  if (!valid) {
+    recordFailure_(cleanEmail);
+    const reason = !member ? 'Unknown email' : member.revoked ? 'Revoked' : 'Wrong code';
+    log_(cleanEmail, doorLabel, 'Denied', reason, location, null);
+    return { ok: false, answer: result_(false, 'Access denied. Check your email and door code.') };
+  }
+
+  clearFailures_(cleanEmail);
+  return { ok: true, email: cleanEmail, member: member };
 }
 
 /**
@@ -638,6 +775,14 @@ function shellyServer_(value) {
 
 /** A one-second pulse on channel 0, as the door has always been opened. */
 function pulseShelly_(door) {
+  return setShelly_(door, true, 1);
+}
+
+/**
+ * Switch a door's relay. `seconds` is when Shelly should switch it back — one
+ * second for an ordinary entry, the hold for guests, or null to leave it.
+ */
+function setShelly_(door, on, seconds) {
   const key = scriptProperty_(PROP_SHELLY_KEY);
   if (!key) return { ok: false, reason: 'SHELLY_AUTH_KEY is not set' };
   if (!door.server) return { ok: false, reason: 'Door has no valid Shelly Server' };
@@ -647,11 +792,14 @@ function pulseShelly_(door) {
     'https://' + door.server + '.shelly.cloud/v2/devices/api/set/switch?auth_key=' +
     encodeURIComponent(key);
 
+  const payload = { id: door.deviceId, channel: 0, on: on };
+  if (seconds) payload.toggle_after = seconds;
+
   try {
     const response = UrlFetchApp.fetch(url, {
       method: 'post',
       contentType: 'application/json',
-      payload: JSON.stringify({ id: door.deviceId, channel: 0, on: true, toggle_after: 1 }),
+      payload: JSON.stringify(payload),
       muteHttpExceptions: true,
     });
     const status = response.getResponseCode();
