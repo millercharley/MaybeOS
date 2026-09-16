@@ -62,6 +62,10 @@ const LOG_HEADERS = ['Time', 'Email', 'Door', 'Result', 'Reason', 'Latitude', 'L
 // ── Script Properties (Project Settings → Script Properties) ─────────────
 const PROP_SHELLY_KEY = 'SHELLY_AUTH_KEY';
 const PROP_MAYBEOS_SECRET = 'MAYBEOS_SECRET';
+/** Optional. The co-op's slug in MaybeOS, which brands the door page. */
+const PROP_ORG_SLUG = 'MAYBEOS_ORG_SLUG';
+/** Optional. Where MaybeOS lives, if not the hosted service. */
+const PROP_MAYBEOS_URL = 'MAYBEOS_URL';
 /** Optional. A number of feet; when set, the door only opens that close. */
 const PROP_REQUIRE_NEARBY_FEET = 'REQUIRE_NEARBY_FEET';
 
@@ -72,6 +76,9 @@ const PROP_REQUIRE_NEARBY_FEET = 'REQUIRE_NEARBY_FEET';
  */
 const CODE_PATTERN = /^[A-Z]{5}$/;
 
+const BRAND_CACHE_KEY = 'brand_v1';
+/** The door page is the co-op's front door, so its branding is worth a daily read. */
+const BRAND_CACHE_SECONDS = 21600;
 const MEMBERS_CACHE_KEY = 'members_index_v1';
 const DOORS_CACHE_KEY = 'doors_index_v1';
 const INDEX_CACHE_SECONDS = 600;
@@ -90,14 +97,19 @@ function doGet(e) {
   const doorId = normaliseDoorId_(requested, DEFAULT_DOOR_ID);
   const door = findDoor_(doorId);
 
+  const brand = brand_();
   const template = HtmlService.createTemplateFromFile('Index');
   template.doorId = doorId;
   template.doorName = door ? door.name : '';
   template.doorFound = Boolean(door);
+  template.orgName = brand.name;
+  template.logoUrl = brand.logoUrl;
+  template.accent = brand.accent;
+  template.accentInk = brand.accentInk;
 
   return template
     .evaluate()
-    .setTitle(door ? door.name + ' · Door access' : 'Door access')
+    .setTitle([brand.name, door ? door.name : 'Door access'].filter(String).join(' · '))
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
@@ -160,6 +172,74 @@ function unlockDoor(email, code, lat, lon, doorIdRaw) {
 
   log_(cleanEmail, door.name, 'Granted', '', location, distance);
   return result_(true, door.name + ' is unlocked.');
+}
+
+/**
+ * The co-op's name, logo and colour, so the door page looks like their front
+ * door rather than a form (Charley, 2026-09-16).
+ *
+ * Read from MaybeOS's public page for the co-op — the same details its own
+ * website shows — and cached for six hours, because a door that waits on
+ * another service to open is a worse door. Anything missing or unreadable
+ * simply leaves the page plain; branding is never allowed to fail an unlock.
+ *
+ * **Everything here is checked before it reaches the page.** These values
+ * arrive over the network and are put into HTML and CSS: a colour must be a
+ * hex colour, and a logo must be an `https` address with nothing in it that
+ * could close an attribute.
+ */
+function brand_() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get(BRAND_CACHE_KEY);
+  if (cached) return JSON.parse(cached);
+
+  const blank = { name: '', logoUrl: '', accent: '#211c16', accentInk: '#ffffff' };
+  const slug = String(scriptProperty_(PROP_ORG_SLUG) || '').trim().toLowerCase();
+  if (!/^[a-z0-9-]{1,80}$/.test(slug)) return blank;
+
+  const base = String(scriptProperty_(PROP_MAYBEOS_URL) || 'https://maybeos.org').replace(/\/+$/, '');
+  if (!/^https:\/\/[a-z0-9.-]+$/i.test(base)) return blank;
+
+  let org;
+  try {
+    const response = UrlFetchApp.fetch(base + '/api/orgs/by-slug/' + encodeURIComponent(slug), {
+      muteHttpExceptions: true,
+      followRedirects: true,
+    });
+    if (response.getResponseCode() !== 200) return blank;
+    org = JSON.parse(response.getContentText());
+  } catch (err) {
+    return blank;
+  }
+
+  const accent = /^#[0-9a-f]{6}$/i.test(String(org.brandColor || '')) ? String(org.brandColor) : blank.accent;
+  const logo = String(org.logoUrl || '');
+  const brand = {
+    name: String(org.name || '').slice(0, 80),
+    // https only, and no quote or angle bracket that could end the attribute.
+    logoUrl: /^https:\/\/[^"'<>\s]+$/.test(logo) ? logo : '',
+    accent: accent,
+    accentInk: readableOn_(accent),
+  };
+
+  cache.put(BRAND_CACHE_KEY, JSON.stringify(brand), BRAND_CACHE_SECONDS);
+  return brand;
+}
+
+/**
+ * Black or white, whichever can be read on this colour.
+ *
+ * A co-op picks its colour for its own reasons, and plenty of them are pale.
+ * White text on a pale blue button is a button nobody can read, so the text
+ * follows the colour rather than the other way round.
+ */
+function readableOn_(hex) {
+  const channel = function (i) {
+    const v = parseInt(hex.substr(1 + i * 2, 2), 16) / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  };
+  const luminance = 0.2126 * channel(0) + 0.7152 * channel(1) + 0.0722 * channel(2);
+  return luminance > 0.45 ? '#211c16' : '#ffffff';
 }
 
 /**
@@ -256,6 +336,9 @@ function onEdit(e) {
     const cache = CacheService.getScriptCache();
     if (name === MEMBERS_TAB) cache.remove(MEMBERS_CACHE_KEY);
     if (name === DOORS_TAB) cache.remove(DOORS_CACHE_KEY);
+    // An organiser editing the sheet is also how the branding gets refreshed
+    // before its six hours are up.
+    cache.remove(BRAND_CACHE_KEY);
   } catch (err) {
     // No real edit event — nothing to clear.
   }
