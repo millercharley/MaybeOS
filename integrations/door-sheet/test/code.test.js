@@ -52,6 +52,7 @@ function env(props) {
       base64Encode: bytes => Buffer.from(bytes.map(b => b & 255)).toString('base64'),
       computeDigest: (alg, v) => [...crypto.createHash('sha256').update(v, 'utf8').digest()].map(b => b > 127 ? b - 256 : b),
       base64EncodeWebSafe: bytes => Buffer.from(bytes.map(b => b & 255)).toString('base64url'),
+      formatDate: (date, tz, fmt) => `formatted(${date.toISOString()})`,
     },
     UrlFetchApp: {
       fetch: (url, opts) => {
@@ -65,6 +66,24 @@ function env(props) {
       },
     },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
+    Session: { getScriptTimeZone: () => 'America/New_York' },
+    ScriptApp: {
+      __triggers: [],
+      newTrigger: (fn) => ({
+        timeBased: () => ({
+          after: (ms) => ({
+            create: () => {
+              ctx.ScriptApp.__triggers.push({ fn, ms });
+              return { getHandlerFunction: () => fn };
+            },
+          }),
+        }),
+      }),
+      getProjectTriggers: () => ctx.ScriptApp.__triggers.map((t) => ({ ...t, getHandlerFunction: () => t.fn })),
+      deleteTrigger: (trigger) => {
+        ctx.ScriptApp.__triggers = ctx.ScriptApp.__triggers.filter((t) => t.fn !== trigger.getHandlerFunction());
+      },
+    },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ setMimeType: () => JSON.parse(s) }) },
     Date, JSON, Math, Number, String, Object, Array, Boolean, isFinite, parseFloat, encodeURIComponent, RegExp,
   };
@@ -206,6 +225,103 @@ t('Shelly failure is reported, not granted; key never logged', () => {
   assert.ok(!JSON.stringify(sheets['Access Log'].rows).includes('shelly-key'));
   ctx.__shellyStatus = 200;
 });
+
+// ── Holding the doors open for guests (Charley, 2026-09-16) ──────────────
+{
+  const held = (props = {}) => {
+    const e = env({ SHELLY_AUTH_KEY: 'k', MAYBEOS_SECRET: SECRET, HOLD_OPEN_MINUTES: '30', ...props });
+    e.ctx.setupDoorSheet();
+    e.sheets.Doors.rows[1] = ['side', 'Side Door', 'shelly-1-eu', 'd1', '', '', true, true];
+    e.sheets.Doors.rows[2] = ['ada', 'Rear ADA Door', 'shelly-1-eu', 'd2', '', '', true, false];
+    e.cache.delete('doors_index_v1');
+    post(e.ctx, { action: 'upsert', members: [{ email: 'priya@example.com', code: 'RIVER', name: 'Priya' }] });
+    return e;
+  };
+  const payloads = (e) => e.fetches.map((f) => JSON.parse(f.opts.payload));
+
+  t('is switched off until an organiser allows it', () => {
+    const e = held({ HOLD_OPEN_MINUTES: undefined });
+    assert.strictEqual(e.ctx.doGet({}).template.holdMinutes ?? e.ctx.__template.holdMinutes, 0);
+    const res = e.ctx.holdDoorsOpen('priya@example.com', 'RIVER', '', '');
+    assert.strictEqual(res.ok, false);
+    assert.match(res.message, /switched off/);
+    assert.strictEqual(e.fetches.length, 0);
+  });
+
+  t('holds every door, and tells the relay to lock itself again', () => {
+    const e = held();
+    const res = e.ctx.holdDoorsOpen('priya@example.com', 'RIVER', '', '');
+    assert.strictEqual(res.ok, true);
+    assert.deepStrictEqual(payloads(e), [
+      { id: 'd1', channel: 0, on: true, toggle_after: 1800 },
+      { id: 'd2', channel: 0, on: true, toggle_after: 1800 },
+    ]);
+  });
+
+  t('also schedules a re-lock, in case a relay ignores a long timer', () => {
+    const e = held();
+    e.ctx.holdDoorsOpen('priya@example.com', 'RIVER', '', '');
+    assert.deepStrictEqual(e.ctx.ScriptApp.__triggers, [{ fn: 'relockDoors', ms: 1800000 }]);
+  });
+
+  t('needs the same email and code as an unlock', () => {
+    const e = held();
+    assert.strictEqual(e.ctx.holdDoorsOpen('priya@example.com', 'WRONG', '', '').ok, false);
+    assert.strictEqual(e.ctx.holdDoorsOpen('', '', '', '').ok, false);
+    assert.strictEqual(e.fetches.length, 0);
+  });
+
+  t('will not hold the doors for somebody revoked', () => {
+    const e = held();
+    post(e.ctx, { action: 'upsert', members: [{ email: 'priya@example.com', code: 'RIVER', name: 'Priya', revoked: true }] });
+    assert.strictEqual(e.ctx.holdDoorsOpen('priya@example.com', 'RIVER', '', '').ok, false);
+    assert.strictEqual(e.fetches.length, 0);
+  });
+
+  t('caps a hold however long the property says', () => {
+    const e = held({ HOLD_OPEN_MINUTES: '5000' });
+    e.ctx.holdDoorsOpen('priya@example.com', 'RIVER', '', '');
+    assert.strictEqual(payloads(e)[0].toggle_after, 240 * 60);
+  });
+
+  t('lets the member lock the doors again early, and drops the trigger', () => {
+    const e = held();
+    e.ctx.holdDoorsOpen('priya@example.com', 'RIVER', '', '');
+    const res = e.ctx.lockDoorsNow('priya@example.com', 'RIVER', '', '');
+    assert.strictEqual(res.ok, true);
+    assert.deepStrictEqual(payloads(e).slice(-2), [
+      { id: 'd1', channel: 0, on: false },
+      { id: 'd2', channel: 0, on: false },
+    ]);
+    assert.deepStrictEqual(e.ctx.ScriptApp.__triggers, []);
+  });
+
+  t('the scheduled re-lock closes every door and clears itself', () => {
+    const e = held();
+    e.ctx.holdDoorsOpen('priya@example.com', 'RIVER', '', '');
+    e.ctx.relockDoors();
+    assert.deepStrictEqual(payloads(e).slice(-2), [
+      { id: 'd1', channel: 0, on: false },
+      { id: 'd2', channel: 0, on: false },
+    ]);
+    assert.deepStrictEqual(e.ctx.ScriptApp.__triggers, []);
+  });
+
+  t('writes the hold into the Access Log, with who asked for it', () => {
+    const e = held();
+    e.ctx.holdDoorsOpen('priya@example.com', 'RIVER', '', '');
+    const row = e.sheets['Access Log'].rows.at(-1);
+    assert.strictEqual(row[1], 'priya@example.com');
+    assert.strictEqual(row[3], 'Held open');
+    assert.match(row[4], /30 minutes/);
+  });
+
+  t('an ordinary unlock is still a one-second pulse', () => {
+    const e = held();
+    e.ctx.unlockDoor('priya@example.com', 'RIVER', '', '', 'side');
+    assert.deepStrictEqual(payloads(e).at(-1), { id: 'd1', channel: 0, on: true, toggle_after: 1 });
+  });
+}
 
 // ── Which door the page opens on (Charley, 2026-09-16) ───────────────────
 {

@@ -76,6 +76,12 @@
         border: 0; border-radius: 12px; background: var(--accent); color: var(--on-accent);
       }
       button:disabled { opacity: 0.55; }
+      /* Letting guests in: a plainer button than Unlock, because it is the
+         rarer thing and the bigger favour. */
+      button.secondary {
+        margin-top: 10px; background: #fff; color: var(--ink);
+        border: 1px solid var(--line); font-size: 16px; font-weight: 600;
+      }
       #status { min-height: 1.5em; margin-top: 18px; font-weight: 600; text-align: center; }
       #status.ok { color: #1f7a4d; }
       #status.bad { color: #b3261e; }
@@ -118,6 +124,12 @@
             <input id="code" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="5" required>
 
             <button id="go" type="submit">Unlock</button>
+            <? if (holdMinutes > 0) { ?>
+              <button id="hold" class="secondary" type="button">
+                Hold doors open <?= holdMinutes ?> min for guests
+              </button>
+              <button id="lock" class="secondary" type="button" hidden>Lock the doors now</button>
+            <? } ?>
           </form>
           <div id="status" role="status" aria-live="polite"></div>
           <p class="help">Your door code is on your My Profile page in MaybeOS.</p>
@@ -199,33 +211,82 @@
             .unlockDoor(email.value, code.value, lat, lon, doorId);
         }
 
+        // Holding every door open for guests, and ending that early. Both ask
+        // for the same email and code as an unlock.
+        var hold = document.getElementById('hold');
+        var lock = document.getElementById('lock');
+
+        function guestAction(trigger, working, call, onDone) {
+          trigger.addEventListener('click', function () {
+            if (!email.value.trim() || !code.value.trim()) {
+              show('Enter your email and your door code first.', 'bad');
+              return;
+            }
+            var was = trigger.textContent;
+            trigger.disabled = true;
+            trigger.textContent = working;
+            show('Checking…');
+            withLocation(function (lat, lon) {
+              google.script.run
+                .withSuccessHandler(function (res) {
+                  trigger.disabled = false;
+                  trigger.textContent = was;
+                  show((res && res.message) || 'Something went wrong. Try again.', res && res.ok ? 'ok' : 'bad');
+                  if (res && res.ok) onDone();
+                })
+                .withFailureHandler(function () {
+                  trigger.disabled = false;
+                  trigger.textContent = was;
+                  show('Could not reach the door. Check your signal and try again.', 'bad');
+                })
+                [call](email.value, code.value, lat, lon);
+            });
+          });
+        }
+
+        if (hold && lock) {
+          guestAction(hold, 'Unlocking…', 'holdDoorsOpen', function () {
+            hold.hidden = true;
+            lock.hidden = false;
+            code.value = '';
+          });
+          guestAction(lock, 'Locking…', 'lockDoorsNow', function () {
+            lock.hidden = true;
+            hold.hidden = false;
+            code.value = '';
+          });
+        }
+
+        /** The member's position, or blanks: the same answer an unlock uses. */
+        function withLocation(then) {
+          if (!navigator.geolocation) { then('', ''); return; }
+          var settled = false;
+          var fallback = setTimeout(function () {
+            if (!settled) { settled = true; then('', ''); }
+          }, 8000);
+          navigator.geolocation.getCurrentPosition(
+            function (pos) {
+              if (settled) return;
+              settled = true; clearTimeout(fallback);
+              then(pos.coords.latitude, pos.coords.longitude);
+            },
+            function (err) {
+              if (settled) return;
+              settled = true; clearTimeout(fallback);
+              then(err && err.code === 1 ? 'denied' : '', '');
+            },
+            { enableHighAccuracy: true, timeout: 7000, maximumAge: 30000 }
+          );
+        }
+
         form.addEventListener('submit', function (event) {
           event.preventDefault();
           if (button.disabled) return;
           button.disabled = true;
           button.textContent = 'Unlocking…';
 
-          if (!navigator.geolocation) { send('', ''); return; }
-
           show('Finding your location…');
-          var settled = false;
-          var fallback = setTimeout(function () {
-            if (!settled) { settled = true; send('', ''); }
-          }, 8000);
-
-          navigator.geolocation.getCurrentPosition(
-            function (pos) {
-              if (settled) return;
-              settled = true; clearTimeout(fallback);
-              send(pos.coords.latitude, pos.coords.longitude);
-            },
-            function (err) {
-              if (settled) return;
-              settled = true; clearTimeout(fallback);
-              send(err && err.code === 1 ? 'denied' : '', '');
-            },
-            { enableHighAccuracy: true, timeout: 7000, maximumAge: 30000 }
-          );
+          withLocation(send);
         });
       })();
     </script>
