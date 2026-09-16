@@ -25,6 +25,8 @@ relay.
 - **Denied attempts are logged**, not only successful ones.
 - **MaybeOS writes through a signed web request.** It is never given access to
   the spreadsheet.
+- **One door link, with a picker.** Members get one address; the admin decides
+  which door it opens on.
 - **The door page wears your branding.** Your logo, name and colour, read from
   your public page in MaybeOS. Nothing about the branding can stop the door
   opening: if MaybeOS cannot be reached, the page is simply plain.
@@ -49,10 +51,15 @@ MaybeOS only changes rows whose email it manages.
 
 **Doors** — one row per door.
 
-| A Door ID | B Name | C Shelly Server | D Shelly Device ID | E Latitude | F Longitude | G Active |
-| --- | --- | --- | --- | --- | --- | --- |
+| A Door ID | B Name | C Shelly Server | D Shelly Device ID | E Latitude | F Longitude | G Active | H Default |
+| --- | --- | --- | --- | --- | --- | --- | --- |
 
-- The Door ID goes in the link: `…/exec?door=side`. A link with no door opens `side`.
+- **One link is enough for members.** The page opens on the door ticked
+  **Default**, and offers the others as buttons when there is more than one.
+  Whichever a member picks is remembered on their phone.
+- The Door ID can still name a door outright: `…/exec?door=ada`. That is what
+  a QR code stuck beside that door should point at, so scanning it goes
+  straight there. A link naming a door you do not have opens nothing.
 - Shelly Server is the name from the Shelly Cloud control panel, for example
   `shelly-103-eu`; `.shelly.cloud` is optional.
 - Untick Active to take a door offline.

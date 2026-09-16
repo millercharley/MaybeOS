@@ -36,7 +36,10 @@ const MEMBERS_TAB = 'Members';
 const DOORS_TAB = 'Doors';
 const LOG_TAB = 'Access Log';
 
-/** The door a link with no `?door=` opens. An *unknown* id opens nothing. */
+/**
+ * The door a link with no `?door=` opens, when the Doors tab names no default.
+ * An *unknown* id in the link opens nothing.
+ */
 const DEFAULT_DOOR_ID = 'side';
 
 // ── Members: columns A–E (1-based) ───────────────────────────────────────
@@ -55,7 +58,11 @@ const D_DEVICE = 4;
 const D_LAT = 5;
 const D_LON = 6;
 const D_ACTIVE = 7;
-const DOOR_HEADERS = ['Door ID', 'Name', 'Shelly Server', 'Shelly Device ID', 'Latitude', 'Longitude', 'Active'];
+/** Which door the page opens on when the link does not name one. */
+const D_DEFAULT = 8;
+const DOOR_HEADERS = [
+  'Door ID', 'Name', 'Shelly Server', 'Shelly Device ID', 'Latitude', 'Longitude', 'Active', 'Default',
+];
 
 const LOG_HEADERS = ['Time', 'Email', 'Door', 'Result', 'Reason', 'Latitude', 'Longitude', 'Distance'];
 
@@ -91,17 +98,31 @@ const SIGNATURE_WINDOW_MS = 5 * 60 * 1000;
 // Public entry points
 // ═════════════════════════════════════════════════════════════════════════
 
-/** The door page. `?door=side` picks the door; no parameter means the default. */
+/**
+ * The door page.
+ *
+ * **One link for everybody** (Charley, 2026-09-16). A member should not have
+ * to know which address is which door: the page opens on the door the Doors
+ * tab marks as Default and, when the co-op has more than one, offers the
+ * others as a choice.
+ *
+ * `?door=ada` still picks a door outright, which is what a QR code stuck
+ * beside that door should say. An id naming no door opens nothing, rather
+ * than quietly opening a different one.
+ */
 function doGet(e) {
   const requested = e && e.parameter ? e.parameter.door : '';
-  const doorId = normaliseDoorId_(requested, DEFAULT_DOOR_ID);
-  const door = findDoor_(doorId);
+  const doors = doorList_();
+  const door = requested ? findDoor_(normaliseDoorId_(requested, '')) : defaultDoor_(doors);
+  const doorId = door ? door.id : normaliseDoorId_(requested, DEFAULT_DOOR_ID);
 
   const brand = brand_();
   const template = HtmlService.createTemplateFromFile('Index');
   template.doorId = doorId;
   template.doorName = door ? door.name : '';
   template.doorFound = Boolean(door);
+  // The other doors, for the picker. One door needs no choosing.
+  template.doors = doors.length > 1 ? doors.map(function (d) { return { id: d.id, name: d.name }; }) : [];
   template.orgName = brand.name;
   template.logoUrl = brand.logoUrl;
   template.accent = brand.accent;
@@ -376,8 +397,16 @@ function setupDoorSheet() {
 
   if (doors.getLastRow() < 2) {
     doors.getRange(2, 1, 1, DOOR_HEADERS.length).setValues([[
-      DEFAULT_DOOR_ID, 'Side Door', '', '', '', '', true,
+      DEFAULT_DOOR_ID, 'Side Door', '', '', '', '', true, true,
     ]]);
+  }
+
+  // The Default column arrived after the first sheets were made, so its
+  // heading is written in if it is missing. Nothing else on the tab is
+  // touched: an organiser's own columns beyond it are theirs.
+  const defaultHeader = doors.getRange(1, D_DEFAULT);
+  if (!String(defaultHeader.getValue() || '').trim()) {
+    defaultHeader.setValue(DOOR_HEADERS[D_DEFAULT - 1]).setFontWeight('bold');
   }
 
   const blank = ss.getSheetByName('Sheet1');
@@ -519,8 +548,13 @@ function lastMemberRow_(sheet) {
 
 /** Checkbox TRUE, or the words people type: yes, y, true, revoked. */
 function isRevoked_(value) {
+  return isYes_(value) || /^revoked$/i.test(String(value == null ? '' : value).trim());
+}
+
+/** A ticked checkbox, or a typed yes. An empty cell is no. */
+function isYes_(value) {
   if (value === true) return true;
-  return /^(true|yes|y|revoked)$/i.test(String(value == null ? '' : value).trim());
+  return /^(true|yes|y)$/i.test(String(value == null ? '' : value).trim());
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -530,6 +564,24 @@ function isRevoked_(value) {
 function findDoor_(doorId) {
   const index = doorsIndex_();
   return Object.prototype.hasOwnProperty.call(index, doorId) ? index[doorId] : null;
+}
+
+/** Every door that is switched on, in the order of the sheet. */
+function doorList_() {
+  const index = doorsIndex_();
+  return Object.keys(index).map(function (id) { return index[id]; });
+}
+
+/**
+ * The door a bare link opens: the one an organiser ticked Default, or the
+ * first in the sheet, or nothing at all when the Doors tab is empty.
+ */
+function defaultDoor_(doors) {
+  const list = doors || doorList_();
+  for (let i = 0; i < list.length; i += 1) {
+    if (list[i].isDefault) return list[i];
+  }
+  return list[0] || null;
 }
 
 /** door id → config, cached. Holds nothing secret: the key is not in the sheet. */
@@ -558,6 +610,7 @@ function doorsIndex_() {
           deviceId: String(row[D_DEVICE - 1] == null ? '' : row[D_DEVICE - 1]).trim(),
           lat: toNumber_(row[D_LAT - 1]),
           lon: toNumber_(row[D_LON - 1]),
+          isDefault: isYes_(row[D_DEFAULT - 1]),
         };
       });
   }

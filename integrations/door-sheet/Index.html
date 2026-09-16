@@ -49,6 +49,16 @@
         padding: 24px 20px 26px; box-shadow: 0 10px 30px rgba(29, 27, 24, 0.07);
       }
       h1 { font-size: 22px; margin: 0 0 4px; }
+      /* The doors, when there is more than one. Buttons rather than a select:
+         it is one tap at a door, in the cold, holding a bag. */
+      .doors { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
+      .doors button {
+        width: auto; margin: 0; flex: 1 1 auto; padding: 10px 14px; font-size: 15px; font-weight: 600;
+        border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink);
+      }
+      .doors button[aria-pressed='true'] {
+        background: var(--accent); color: var(--on-accent); border-color: transparent;
+      }
       p.sub { margin: 0 0 22px; color: var(--muted); font-size: 14px; }
       label { display: block; font-size: 14px; font-weight: 600; margin: 16px 0 6px; }
       input {
@@ -87,8 +97,18 @@
 
       <div class="card">
         <? if (doorFound) { ?>
-          <h1><?= doorName ?></h1>
+          <h1 id="door-name"><?= doorName ?></h1>
           <p class="sub">Enter your email and your five-letter door code.</p>
+
+          <? if (doors.length > 1) { ?>
+            <div class="doors" role="group" aria-label="Which door">
+              <? for (var i = 0; i < doors.length; i++) { ?>
+                <button type="button" class="door-choice" data-door="<?= doors[i].id ?>" aria-pressed="<?= doors[i].id === doorId ? 'true' : 'false' ?>">
+                  <?= doors[i].name ?>
+                </button>
+              <? } ?>
+            </div>
+          <? } ?>
 
           <form id="unlock" autocomplete="on">
             <label for="email">Email</label>
@@ -114,6 +134,33 @@
         if (!form) return;
 
         var doorId = document.querySelector('main').getAttribute('data-door');
+        var DOOR_KEY = 'door_choice';
+
+        // Which door, when the co-op has more than one. The page opens on the
+        // one an organiser made default, then remembers what this phone chose
+        // last: most people come in the same way every time.
+        var choices = [].slice.call(document.querySelectorAll('.door-choice'));
+        if (choices.length) {
+          var remembered = null;
+          try { remembered = localStorage.getItem(DOOR_KEY); } catch (e) {}
+          var match = choices.filter(function (b) { return b.getAttribute('data-door') === remembered; })[0];
+          if (match) pick(match);
+
+          choices.forEach(function (button) {
+            button.addEventListener('click', function () {
+              pick(button);
+              try { localStorage.setItem(DOOR_KEY, doorId); } catch (e) {}
+              show('');
+            });
+          });
+        }
+
+        function pick(button) {
+          doorId = button.getAttribute('data-door');
+          choices.forEach(function (b) { b.setAttribute('aria-pressed', String(b === button)); });
+          var heading = document.getElementById('door-name');
+          if (heading) heading.textContent = button.textContent.trim();
+        }
         var email = document.getElementById('email');
         var code = document.getElementById('code');
         var button = document.getElementById('go');
