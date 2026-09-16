@@ -46,6 +46,17 @@ describe('plan checkout', () => {
     expect(count).toHaveBeenCalledWith({ where: { orgId: 'org-1', role: { in: ['ADMIN', 'STAFF', 'MEMBER'] } } });
   });
 
+  it('charges tax the way the pricing table in Settings does', () => {
+    // Stripe Tax is active on the account, so a plan bought from the landing
+    // page must not be cheaper than the same plan bought in Settings.
+    return service.createPlanCheckout('org-1', 'a@b.co', 'PLUS', 'month').then(() => {
+      expect(create.mock.calls[0][0]).toMatchObject({
+        automatic_tax: { enabled: true },
+        billing_address_collection: 'required',
+      });
+    });
+  });
+
   it('bills Unlimited at a quantity of one, whatever the member count', async () => {
     await service.createPlanCheckout('org-1', 'a@b.co', 'UNLIMITED', 'month');
     expect(create.mock.calls[0][0].line_items).toEqual([{ price: ADVERTISED_PRICE_IDS.UNLIMITED.month, quantity: 1 }]);
@@ -67,7 +78,11 @@ describe('plan checkout', () => {
   it('reuses the co-op’s existing MaybeOS customer', async () => {
     org.stripePlanCustomerId = 'cus_plan';
     await service.createPlanCheckout('org-1', 'a@b.co', 'PLUS', 'month');
-    expect(create.mock.calls[0][0]).toMatchObject({ customer: 'cus_plan' });
+    expect(create.mock.calls[0][0]).toMatchObject({
+      customer: 'cus_plan',
+      // Without this, automatic tax has no address to work from.
+      customer_update: { address: 'auto', name: 'auto' },
+    });
     expect(create.mock.calls[0][0]).not.toHaveProperty('customer_email');
   });
 });
