@@ -37,9 +37,11 @@
       }
       main { max-width: 420px; margin: 0 auto; padding: 40px 20px 32px; }
       .masthead { text-align: center; margin-bottom: 28px; }
+      /* The whole logo, whatever shape it is: a crop to a circle cuts the
+         corners off a wordmark or a square mark (Charley, 2026-09-16). */
       .logo {
-        width: 84px; height: 84px; object-fit: cover; border-radius: 50%;
-        border: 3px solid var(--accent); background: #fff; display: block; margin: 0 auto 14px;
+        display: block; margin: 0 auto 14px;
+        max-width: 240px; max-height: 110px; width: auto; height: auto; object-fit: contain;
       }
       .org { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
       .card {
@@ -74,9 +76,11 @@
     <main data-door="<?= doorId ?>">
       <div class="masthead">
         <? if (logoUrl) { ?>
-          <img class="logo" src="<?= logoUrl ?>" alt="">
+          <img class="logo" src="<?= logoUrl ?>" alt="<?= orgName ?>">
         <? } ?>
-        <? if (orgName) { ?>
+        <? if (orgName && !logoUrl) { ?>
+          <!-- Only when there is no logo: most are a wordmark, and printing the
+               name under one says it twice. The logo carries it as alt text. -->
           <div class="org"><?= orgName ?></div>
         <? } ?>
       </div>
