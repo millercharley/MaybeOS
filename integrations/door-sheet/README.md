@@ -38,8 +38,9 @@ relay.
 | A Email | B Door Code | C Full Name | D Revoked | E Updated by MaybeOS |
 | --- | --- | --- | --- | --- |
 
-Codes are real five-letter words, in capitals, with no I and no L — a word
-is easier to remember and survives being read aloud. A ticked or "yes" in Revoked
+Codes are real five-letter words, in capitals — easier to remember, and they
+survive being read aloud. Members see them in a serif face, where I and L
+cannot be mistaken for a 1. A ticked or "yes" in Revoked
 denies the door. Organisers can add a row by hand, for example for a cleaner.
 MaybeOS only changes rows whose email it manages.
 

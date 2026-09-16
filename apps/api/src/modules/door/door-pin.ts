@@ -8,9 +8,12 @@ import { DOOR_WORDS } from './door-words';
  * remember is a code they write on their phone or ask an organiser for at the
  * door. A word also survives being read aloud, where a random string does not.
  *
- * Charley's original rule still holds inside the words: five capital letters,
- * no I and no L. Both are there for the keypad and the phone screen rather
- * than the alphabet — I against 1 and l, L against 1.
+ * **The whole alphabet**, I and L included. They were left out while codes
+ * were random letters, where `I`, `l` and `1` are genuinely hard to tell
+ * apart. Charley, 2026-09-16: a code is always shown in capitals in a serif
+ * face, which separates them, and being a word settles whatever the letters
+ * leave open — nobody reads TABLE as TAB1E. Everywhere a code is shown keeps
+ * that bargain: capitals, serif, letter-spaced.
  *
  * **This is not a secret to be guessed at leisure**, and the word list makes
  * that plainer than 7,962,624 random codes did: a few hundred words is nothing
@@ -18,7 +21,7 @@ import { DOOR_WORDS } from './door-words';
  * one email address and the door rate-limits attempts — five tries, then
  * fifteen minutes (`integrations/door-sheet/Code.gs`).
  */
-export const PIN_ALPHABET = 'ABCDEFGHJKMNOPQRSTUVWXYZ';
+export const PIN_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 export const PIN_LENGTH = 5;
 
 /** How many words a code can be. Worth stating: it is the ceiling on one co-op. */

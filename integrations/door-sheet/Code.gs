@@ -65,8 +65,12 @@ const PROP_MAYBEOS_SECRET = 'MAYBEOS_SECRET';
 /** Optional. A number of feet; when set, the door only opens that close. */
 const PROP_REQUIRE_NEARBY_FEET = 'REQUIRE_NEARBY_FEET';
 
-/** Five capital letters, no I and no L — MaybeOS's format. */
-const CODE_PATTERN = /^[ABCDEFGHJKMNOPQRSTUVWXYZ]{5}$/;
+/**
+ * Five capital letters — MaybeOS's format. Codes are real words, and I and L
+ * are allowed: a member always sees a code in capitals in a serif face, where
+ * neither can be mistaken for a 1 (Charley, 2026-09-16).
+ */
+const CODE_PATTERN = /^[A-Z]{5}$/;
 
 const MEMBERS_CACHE_KEY = 'members_index_v1';
 const DOORS_CACHE_KEY = 'doors_index_v1';

@@ -166,7 +166,7 @@ describe('DoorService', () => {
         doorPin: null,
         ...DOOR_ACCESS_WHERE,
       });
-      expect(prisma.userOrg.update.mock.calls[0][0].data.doorPin).toMatch(/^[ABCDEFGHJKMNOPQRSTUVWXYZ]{5}$/);
+      expect(prisma.userOrg.update.mock.calls[0][0].data.doorPin).toMatch(/^[A-Z]{5}$/);
     });
 
     it('gives each member a word they can remember (DOR-01)', async () => {
@@ -352,7 +352,8 @@ describe('DoorService', () => {
   it('replacing a code queues a rewrite of the sheet and a fresh email', async () => {
     prisma.userOrg.findFirst.mockResolvedValue({ id: 'm1' });
     const { doorPin } = await service.regenerate(ORG, 'user-1');
-    expect(doorPin).toMatch(/^[ABCDEFGHJKMNOPQRSTUVWXYZ]{5}$/);
+    expect(doorPin).toMatch(/^[A-Z]{5}$/);
+    expect(DOOR_WORDS).toContain(doorPin);
     expect(prisma.userOrg.update.mock.calls[0][0].data).toMatchObject({
       doorPinSyncedAt: null,
       doorPinEmailedAt: null,

@@ -279,7 +279,7 @@ export class EmailService {
             <h1>Your door code</h1>
             <p>Hello ${escapeHtml(data.memberName)},</p>
             <p>This is the code to open the door at ${escapeHtml(data.orgName)}:</p>
-            <p style="font-size:32px;letter-spacing:6px;font-weight:700;margin:24px 0;">${escapeHtml(data.pin)}</p>
+            <p style="font-family:Georgia,'Times New Roman',serif;font-size:32px;letter-spacing:6px;font-weight:700;margin:24px 0;">${escapeHtml(data.pin)}</p>
             <p>Five letters, typed on the keypad. It is yours alone — please do not pass it on.</p>
             <p>If you forget it, it is always on your profile:
               <a href="${escapeHtml(data.profileUrl)}">${escapeHtml(data.profileUrl)}</a>
