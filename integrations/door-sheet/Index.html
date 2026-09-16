@@ -12,7 +12,8 @@
       p.sub { margin: 0 0 24px; color: var(--muted); }
       label { display: block; font-size: 14px; font-weight: 600; margin: 16px 0 6px; }
       input { width: 100%; font-size: 18px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); }
-      input#code { letter-spacing: 0.3em; text-transform: uppercase; font-family: ui-monospace, Menlo, monospace; }
+      /* Capitals in a serif face, letter-spaced, so I and L read as themselves (DOR-01). */
+      input#code { letter-spacing: 0.3em; text-transform: uppercase; font-family: Georgia, 'Times New Roman', serif; }
       button { width: 100%; margin-top: 24px; padding: 16px; font-size: 18px; font-weight: 600; border: 0; border-radius: 12px; background: var(--ink); color: #fff; }
       button:disabled { opacity: 0.55; }
       #status { min-height: 1.5em; margin-top: 18px; font-weight: 600; text-align: center; }

@@ -311,7 +311,9 @@ export default function MyProfilePage() {
           {doorPin && (
             <p className="ml-auto self-start text-right text-sm font-medium text-[var(--text-primary)]">
               Door Access Pin Code:{' '}
-              <span className="font-mono tracking-[0.2em]">{doorPin}</span>
+              {/* Capitals in the display serif, letter-spaced: the shape that lets a code
+                  carry I and L without being misread (DOR-01). */}
+              <span className="font-display uppercase tracking-[0.2em]">{doorPin}</span>
             </p>
           )}
         </div>

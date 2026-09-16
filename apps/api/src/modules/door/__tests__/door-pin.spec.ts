@@ -6,9 +6,9 @@ import { DOOR_WORDS } from '../door-words';
  * remember one and read it back correctly.
  */
 describe('the door word list', () => {
-  it('is five capital letters, with no I and no L', () => {
+  it('is five capital letters', () => {
     for (const word of DOOR_WORDS) {
-      expect([word, /^[ABCDEFGHJKMNOPQRSTUVWXYZ]{5}$/.test(word)]).toEqual([word, true]);
+      expect([word, /^[A-Z]{5}$/.test(word)]).toEqual([word, true]);
       expect(word).toBe(word.toUpperCase());
       expect(word).toHaveLength(PIN_LENGTH);
     }
@@ -18,8 +18,13 @@ describe('the door word list', () => {
     expect(new Set(DOOR_WORDS).size).toBe(DOOR_WORDS.length);
   });
 
-  it('is long enough for a community of a few hundred', () => {
-    expect(WORD_SPACE).toBeGreaterThanOrEqual(300);
+  it('is long enough for a community of several hundred', () => {
+    expect(WORD_SPACE).toBeGreaterThanOrEqual(700);
+  });
+
+  it('uses I and L, which a serif capital settles (Charley, 2026-09-16)', () => {
+    // The ordinary words that were unreachable while I and L were left out.
+    for (const word of ['TABLE', 'LIGHT', 'RIVER', 'MUSIC']) expect(DOOR_WORDS).toContain(word);
   });
 
   it('holds nothing unkind, clinical or brand-shaped', () => {
@@ -74,8 +79,8 @@ describe('a door code', () => {
     expect(isDoorPin(generateDoorPin())).toBe(true);
     expect(isDoorPin('ABCDEF')).toBe(false);
     expect(isDoorPin('ABCD')).toBe(false);
-    expect(isDoorPin('ABCIE')).toBe(false); // I is not in the alphabet
-    expect(isDoorPin('abcde')).toBe(false);
+    expect(isDoorPin('ABC1E')).toBe(false); // a digit is not a letter
+    expect(isDoorPin('abcde')).toBe(false); // codes are shown, and typed, in capitals
     expect(isDoorWord('ZZZZZ')).toBe(false);
   });
 });
