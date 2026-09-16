@@ -105,7 +105,7 @@ export default function TermsPage() {
         </p>
         <ul className="list-disc space-y-2 pl-5">
           <li>
-            <strong>Free</strong> — $0/month, for up to 100 members (guests aren&apos;t
+            <strong>Free</strong> — $0/month, for up to 1,000 members (guests aren&apos;t
             counted). $1.00 per ticket or paid booking, and $2.00 per dues payment when the
             co-op charges dues.
           </li>

@@ -2,7 +2,7 @@ import { bestYearlySaving, money, planFigures } from '../lib/pricing-format';
 import type { PublicPlan } from '../lib/api';
 
 /** The live prices on 2026-09-15, as the API returns them. The page itself holds no amounts. */
-const FREE: PublicPlan = { plan: 'FREE', monthlyCents: 0, yearlyCents: 0, perMember: false, transactionFeeCents: 100, duesFeeCents: 200, memberLimit: 100 };
+const FREE: PublicPlan = { plan: 'FREE', monthlyCents: 0, yearlyCents: 0, perMember: false, transactionFeeCents: 100, duesFeeCents: 200, memberLimit: 1000 };
 const PLUS: PublicPlan = { plan: 'PLUS', monthlyCents: 50, yearlyCents: 365, perMember: true, transactionFeeCents: 30, duesFeeCents: 0, memberLimit: null };
 const UNLIMITED: PublicPlan = { plan: 'UNLIMITED', monthlyCents: 34900, yearlyCents: 358800, perMember: false, transactionFeeCents: 10, duesFeeCents: 0, memberLimit: null };
 
@@ -22,7 +22,7 @@ describe('pricing words', () => {
       note: null,
       fee: '$1.00',
       duesFee: '$2.00',
-      memberLimit: 'Up to 100 members',
+      memberLimit: 'Up to 1,000 members',
     });
     expect(planFigures(PLUS, 'month')).toEqual({
       amount: '$0.50',
