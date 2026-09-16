@@ -12,8 +12,8 @@ describe('dues pricing', () => {
     expect(duesFeeFor('FREE', 0)).toBe(0);
   });
 
-  it('caps Free at 100 members', () => {
-    expect(FREE_PLAN_MEMBER_LIMIT).toBe(100);
+  it('caps Free at 1,000 members (Charley, 2026-09-16)', () => {
+    expect(FREE_PLAN_MEMBER_LIMIT).toBe(1000);
   });
 
   it('takes within a cent of the flat fee for any dues from $0.50 to $200', () => {

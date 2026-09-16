@@ -1,9 +1,11 @@
 import { ForbiddenException } from '@nestjs/common';
 import { assertMemberRoom, countsAsMember, memberRoom } from '../member-capacity';
+import { FREE_PLAN_MEMBER_LIMIT as LIMIT } from '../../stripe/dues-pricing';
 
 /**
- * The Free plan's member limit (PAY-09, Charley 2026-09-15): up to 100
- * members, guests not counted, a hard stop.
+ * The Free plan's member limit (PAY-09): guests not counted, a hard stop.
+ * Written against the constant rather than the number, so raising the limit —
+ * as Charley did on 2026-09-16 — does not mean editing arithmetic here.
  */
 describe('member capacity on the Free plan', () => {
   const db = (plan: string, members: number, slug = 'a-coop') => ({
@@ -21,24 +23,24 @@ describe('member capacity on the Free plan', () => {
     expect(countsAsMember('STAFF')).toBe(true);
   });
 
-  it('leaves room up to 100 on Free, and no limit on Plus or Unlimited', async () => {
-    expect(await memberRoom(db('FREE', 97) as never, 'o')).toBe(3);
-    expect(await memberRoom(db('FREE', 100) as never, 'o')).toBe(0);
+  it('leaves room up to the limit on Free, and no limit on Plus or Unlimited', async () => {
+    expect(await memberRoom(db('FREE', LIMIT - 3) as never, 'o')).toBe(3);
+    expect(await memberRoom(db('FREE', LIMIT) as never, 'o')).toBe(0);
     expect(await memberRoom(db('PLUS', 5000) as never, 'o')).toBeNull();
     expect(await memberRoom(db('UNLIMITED', 5000) as never, 'o')).toBeNull();
   });
 
   it('never limits the organisers’ forum, which is not a customer', async () => {
-    expect(await memberRoom(db('FREE', 900, 'community') as never, 'o')).toBeNull();
+    expect(await memberRoom(db('FREE', LIMIT + 50, 'community') as never, 'o')).toBeNull();
   });
 
-  it('lets member 100 in and stops member 101', async () => {
-    await expect(assertMemberRoom(db('FREE', 99) as never, 'o', 1, 'joiner')).resolves.toBeUndefined();
-    await expect(assertMemberRoom(db('FREE', 100) as never, 'o', 1, 'joiner')).rejects.toThrow(ForbiddenException);
+  it('lets the last member in and stops the one after', async () => {
+    await expect(assertMemberRoom(db('FREE', LIMIT - 1) as never, 'o', 1, 'joiner')).resolves.toBeUndefined();
+    await expect(assertMemberRoom(db('FREE', LIMIT) as never, 'o', 1, 'joiner')).rejects.toThrow(ForbiddenException);
   });
 
   it('tells a joiner the community is full, and an organiser how to make room', async () => {
-    await expect(assertMemberRoom(db('FREE', 100) as never, 'o', 1, 'joiner')).rejects.toThrow(/full for now/);
-    await expect(assertMemberRoom(db('FREE', 100) as never, 'o', 1, 'organiser')).rejects.toThrow(/Upgrade to Plus or Unlimited/);
+    await expect(assertMemberRoom(db('FREE', LIMIT) as never, 'o', 1, 'joiner')).rejects.toThrow(/full for now/);
+    await expect(assertMemberRoom(db('FREE', LIMIT) as never, 'o', 1, 'organiser')).rejects.toThrow(/Upgrade to Plus or Unlimited/);
   });
 });

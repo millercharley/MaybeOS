@@ -1,4 +1,5 @@
 import { assertMemberRoom, countsAsMember, memberRoom } from './member-capacity';
+import { FREE_PLAN_MEMBER_LIMIT } from '../stripe/dues-pricing';
 import {
   Injectable,
   Logger,
@@ -1162,7 +1163,8 @@ export class MemberService {
     // The Free plan's limit (PAY-09). Rows past it are reported, not imported,
     // so the organiser sees exactly who did not come across and why.
     let room = await memberRoom(this.prisma, orgId);
-    const FULL = 'Not imported: the Free plan allows up to 100 members. Upgrade in Settings to add more.';
+    const FULL =
+      `Not imported: the Free plan allows up to ${FREE_PLAN_MEMBER_LIMIT} members. Upgrade in Settings to add more.`;
 
     for (const row of rows) {
       const email = row.email.toLowerCase().trim();

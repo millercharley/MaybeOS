@@ -99,7 +99,9 @@ export function PricingPlans() {
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-mono text-xs uppercase tracking-[0.2em] text-ink-soft">{card.name}</p>
-                  <p className="text-sm font-medium text-ink">{card.headline}</p>
+                  {/* What the plan is, in a few words — or, where there is one,
+                      how many members it covers (Charley, 2026-09-16). */}
+                  <p className="text-sm font-medium text-ink">{figures?.memberLimit ?? card.headline}</p>
                 </div>
 
                 <div className="mt-5 min-h-[5.5rem]" aria-live="polite">
@@ -140,7 +142,6 @@ export function PricingPlans() {
                     <p>A flat fee per ticket or paid booking</p>
                   )}
                 </div>
-                {figures?.memberLimit && <p className="mt-3 text-sm font-medium text-ink">{figures.memberLimit}</p>}
 
                 <p className="mt-5 flex-1 text-sm leading-relaxed text-ink-soft">{card.body}</p>
                 {/* Plus and Unlimited go to Stripe Checkout for that plan, after

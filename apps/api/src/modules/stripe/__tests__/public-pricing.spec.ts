@@ -45,7 +45,7 @@ describe('PublicPricingService', () => {
       currency: 'usd',
       writtenReportCents: 5000,
       plans: [
-        { plan: 'FREE', monthlyCents: 0, yearlyCents: 0, perMember: false, transactionFeeCents: 100, duesFeeCents: 200, memberLimit: 100 },
+        { plan: 'FREE', monthlyCents: 0, yearlyCents: 0, perMember: false, transactionFeeCents: 100, duesFeeCents: 200, memberLimit: 1000 },
         { plan: 'PLUS', monthlyCents: 50, yearlyCents: 365, perMember: true, transactionFeeCents: 30, duesFeeCents: 0, memberLimit: null },
         { plan: 'UNLIMITED', monthlyCents: 34900, yearlyCents: 358800, perMember: false, transactionFeeCents: 10, duesFeeCents: 0, memberLimit: null },
       ],

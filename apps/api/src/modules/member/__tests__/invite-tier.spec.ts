@@ -1,3 +1,4 @@
+import { FREE_PLAN_MEMBER_LIMIT } from '../../stripe/dues-pricing';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { MemberService } from '../member.service';
@@ -240,9 +241,9 @@ describe('MemberService — invitations with a tier', () => {
     });
   });
 
-  describe('on the Free plan, at 100 members (PAY-09)', () => {
+  describe('on the Free plan, at its member limit (PAY-09)', () => {
     beforeEach(() => {
-      prisma.userOrg.count = jest.fn().mockResolvedValue(100);
+      prisma.userOrg.count = jest.fn().mockResolvedValue(FREE_PLAN_MEMBER_LIMIT);
       prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', name: 'Sunrise', plan: 'FREE', slug: 'sunrise', allowPublicJoin: true });
     });
 
