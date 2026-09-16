@@ -16,6 +16,8 @@ function makeSheet(name) {
         protect: () => ({ setDescription() { return this; }, setWarningOnly() { return this; } }) };
       if (typeof r === 'string') return chain;
       return Object.assign(chain, {
+        getValue: () => (rows[r - 1] || [])[c - 1] ?? '',
+        setValue: (v) => { rows[r - 1] = rows[r - 1] || []; rows[r - 1][c - 1] = v; return chain; },
         getValues: () => Array.from({ length: nr }, (_, i) => Array.from({ length: nc }, (_, j) => { const row = rows[r-1+i] || []; const v = row[c-1+j]; return v == null ? '' : v; })),
         setValues: vals => vals.forEach((vr, i) => { rows[r-1+i] = rows[r-1+i] || []; vr.forEach((v, j) => {
           if (typeof v === 'string' && /^=/.test(v)) v = { FORMULA: v };
@@ -31,6 +33,16 @@ function env(props) {
   const ss = { getSheetByName: n => sheets[n] || null, insertSheet: n => (sheets[n] = makeSheet(n)), getSheets: () => Object.values(sheets), deleteSheet: s => delete sheets[s.getName()] };
   const ctx = {
     console, Logger: { log() {} },
+    HtmlService: {
+      createTemplateFromFile: (name) => {
+        const template = {
+          __file: name,
+          evaluate: () => ({ setTitle: (t) => ({ addMetaTag: () => ({ title: t, template }) }) }),
+        };
+        ctx.__template = template;
+        return template;
+      },
+    },
     SpreadsheetApp: { getActiveSpreadsheet: () => ss, ProtectionType: { RANGE: 'RANGE' } },
     CacheService: { getScriptCache: () => ({ get: k => cache.has(k) ? cache.get(k) : null, put: (k, v) => cache.set(k, v), remove: k => cache.delete(k), removeAll: ks => ks.forEach(k => cache.delete(k)) }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => props[k] == null ? null : props[k] }) },
@@ -194,6 +206,66 @@ t('Shelly failure is reported, not granted; key never logged', () => {
   assert.ok(!JSON.stringify(sheets['Access Log'].rows).includes('shelly-key'));
   ctx.__shellyStatus = 200;
 });
+
+// ── Which door the page opens on (Charley, 2026-09-16) ───────────────────
+{
+  const twoDoors = (defaults = [false, false]) => {
+    const e = env({ SHELLY_AUTH_KEY: 'k' });
+    e.ctx.setupDoorSheet();
+    e.sheets.Doors.rows[1] = ['side', 'Side Door', 'shelly-1-eu', 'd1', 38.2, -85.7, true, defaults[0]];
+    e.sheets.Doors.rows[2] = ['ada', 'Rear ADA Door', 'shelly-1-eu', 'd2', 38.2, -85.7, true, defaults[1]];
+    e.cache.delete('doors_index_v1');
+    return e;
+  };
+  const page = (e, parameter) => {
+    e.ctx.doGet(parameter ? { parameter } : {});
+    return e.ctx.__template;
+  };
+
+  t('opens on the door an organiser marked Default', () => {
+    const t1 = page(twoDoors([false, true]));
+    assert.strictEqual(t1.doorId, 'ada');
+    assert.strictEqual(t1.doorName, 'Rear ADA Door');
+    assert.strictEqual(t1.doorFound, true);
+  });
+
+  t('opens on the first door when none is marked', () => {
+    assert.strictEqual(page(twoDoors()).doorId, 'side');
+  });
+
+  t('offers the other doors, so one link serves everybody', () => {
+    assert.deepStrictEqual(
+      JSON.parse(JSON.stringify(page(twoDoors([true, false])).doors)),
+      [{ id: 'side', name: 'Side Door' }, { id: 'ada', name: 'Rear ADA Door' }],
+    );
+  });
+
+  t('offers no choice when there is only one door', () => {
+    const e = env({ SHELLY_AUTH_KEY: 'k' });
+    e.ctx.setupDoorSheet();
+    e.sheets.Doors.rows[1] = ['side', 'Side Door', 'shelly-1-eu', 'd1', '', '', true, true];
+    e.cache.delete('doors_index_v1');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(page(e).doors)), []);
+  });
+
+  t('a link naming a door still opens that one, for a QR by the door', () => {
+    assert.strictEqual(page(twoDoors([true, false]), { door: 'ada' }).doorId, 'ada');
+  });
+
+  t('a link naming no door of theirs opens nothing, rather than another door', () => {
+    const t1 = page(twoDoors([true, false]), { door: 'basement' });
+    assert.strictEqual(t1.doorFound, false);
+  });
+
+  t('an inactive door is neither offered nor opened', () => {
+    const e = twoDoors([true, false]);
+    e.sheets.Doors.rows[2][6] = false; // ADA switched off
+    e.cache.delete('doors_index_v1');
+    const t1 = page(e);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(t1.doors)), []);
+    assert.strictEqual(e.ctx.unlockDoor('a@b.co', 'RIVER', '', '', 'ada').ok, false);
+  });
+}
 
 // ── The co-op's branding on the door page (Charley, 2026-09-16) ──────────
 {
