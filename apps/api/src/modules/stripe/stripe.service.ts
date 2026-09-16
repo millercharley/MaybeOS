@@ -1429,7 +1429,17 @@ export class StripeService implements OnModuleInit {
       mode: 'subscription',
       line_items: [{ price, quantity }],
       client_reference_id: orgId,
-      ...(org.stripePlanCustomerId ? { customer: org.stripePlanCustomerId } : { customer_email: adminEmail }),
+      ...(org.stripePlanCustomerId
+        ? // An existing customer's address may be older than Stripe Tax; let
+          // Checkout update it, or automatic tax has nothing to work from.
+          { customer: org.stripePlanCustomerId, customer_update: { address: 'auto', name: 'auto' } }
+        : { customer_email: adminEmail }),
+      // Stripe Tax is switched on for this account, and the pricing table in
+      // Settings charges tax. A co-op buying the same plan from the landing
+      // page must be charged the same, so this asks for an address and lets
+      // Stripe work the tax out.
+      automatic_tax: { enabled: true },
+      billing_address_collection: 'required',
       success_url: `${web}/admin/${org.slug}/settings?subscribed=1`,
       cancel_url: `${web}/admin/${org.slug}/settings?tab=billing`,
     });
