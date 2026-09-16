@@ -41,7 +41,17 @@ function env(props) {
       computeDigest: (alg, v) => [...crypto.createHash('sha256').update(v, 'utf8').digest()].map(b => b > 127 ? b - 256 : b),
       base64EncodeWebSafe: bytes => Buffer.from(bytes.map(b => b & 255)).toString('base64url'),
     },
-    UrlFetchApp: { fetch: (url, opts) => { fetches.push({ url, opts }); return { getResponseCode: () => ctx.__shellyStatus || 200 }; } },
+    UrlFetchApp: {
+      fetch: (url, opts) => {
+        fetches.push({ url, opts });
+        if (ctx.__http && ctx.__http[url] !== undefined) {
+          const reply = ctx.__http[url];
+          if (reply instanceof Error) throw reply;
+          return { getResponseCode: () => reply.status ?? 200, getContentText: () => reply.body ?? '' };
+        }
+        return { getResponseCode: () => ctx.__shellyStatus || 200, getContentText: () => '' };
+      },
+    },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ setMimeType: () => JSON.parse(s) }) },
     Date, JSON, Math, Number, String, Object, Array, Boolean, isFinite, parseFloat, encodeURIComponent, RegExp,
@@ -85,7 +95,7 @@ t('upsert adds members, rejects bad codes and duplicates, neutralises formulas',
   const r = post(ctx, { action: 'upsert', members: [
     { email: 'Ada@Example.com', code: 'abcde', name: 'Ada Lovelace', revoked: false },
     { email: 'bob@example.com', code: 'QWERT', name: '=IMPORTDATA("https://evil")', revoked: false },
-    { email: 'bad@example.com', code: 'ABCDI', name: 'Has an I' },
+    { email: 'bad@example.com', code: 'ABC1E', name: 'Has a digit' },
     { email: 'short@example.com', code: 'ABCD', name: 'Too short' },
     { email: 'ada@example.com', code: 'ZZZZZ', name: 'Dupe' },
     { email: 'noat', code: 'ABCDE', name: 'No at' },
@@ -184,5 +194,75 @@ t('Shelly failure is reported, not granted; key never logged', () => {
   assert.ok(!JSON.stringify(sheets['Access Log'].rows).includes('shelly-key'));
   ctx.__shellyStatus = 200;
 });
+
+// ── The co-op's branding on the door page (Charley, 2026-09-16) ──────────
+{
+  // Objects made inside the script's own context carry its prototypes, so
+  // they are compared by their contents.
+  const plain = (value) => JSON.parse(JSON.stringify(value));
+  const ORG = 'https://maybeos.org/api/orgs/by-slug/riverside';
+  const brandEnv = (body, props = {}) => {
+    const e = env({ MAYBEOS_ORG_SLUG: 'riverside', SHELLY_AUTH_KEY: 'k', ...props });
+    e.ctx.__http = { [ORG]: body };
+    return e;
+  };
+  const org = (over = {}) =>
+    ({ status: 200, body: JSON.stringify({ name: 'Riverside', logoUrl: 'https://cdn.example/logo.jpg', brandColor: '#afd2e9', ...over }) });
+
+  t('dresses the door in the co-op’s name, logo and colour', () => {
+    const e = brandEnv(org());
+    assert.deepStrictEqual(plain(e.ctx.brand_()), {
+      name: 'Riverside',
+      logoUrl: 'https://cdn.example/logo.jpg',
+      accent: '#afd2e9',
+      // Dark text, because that blue is pale — white on it is unreadable.
+      accentInk: '#211c16',
+    });
+    assert.strictEqual(e.fetches.at(-1).url, ORG);
+  });
+
+  t('puts white on a dark colour and dark on a pale one', () => {
+    assert.strictEqual(brandEnv(org({ brandColor: '#1b3a2f' })).ctx.brand_().accentInk, '#ffffff');
+    assert.strictEqual(brandEnv(org({ brandColor: '#f7e7a1' })).ctx.brand_().accentInk, '#211c16');
+  });
+
+  t('refuses a colour or logo that is not one', () => {
+    // Both are written straight into CSS and HTML on the page.
+    const bad = brandEnv(org({ brandColor: 'red; } body { display:none } .x {', logoUrl: 'javascript:alert(1)' })).ctx.brand_();
+    assert.strictEqual(bad.accent, '#211c16');
+    assert.strictEqual(bad.logoUrl, '');
+    const quoted = brandEnv(org({ logoUrl: 'https://cdn.example/a.jpg" onerror="alert(1)' })).ctx.brand_();
+    assert.strictEqual(quoted.logoUrl, '');
+  });
+
+  t('leaves the page plain when MaybeOS cannot be reached', () => {
+    for (const reply of [{ status: 500, body: '' }, { status: 200, body: 'not json' }, new Error('network down')]) {
+      const brand = plain(brandEnv(reply).ctx.brand_());
+      assert.deepStrictEqual(brand, { name: '', logoUrl: '', accent: '#211c16', accentInk: '#ffffff' });
+    }
+  });
+
+  t('asks MaybeOS once, then remembers for six hours', () => {
+    const e = brandEnv(org());
+    e.ctx.brand_();
+    const asked = e.fetches.length;
+    e.ctx.brand_();
+    assert.strictEqual(e.fetches.length, asked);
+  });
+
+  t('does not call out at all when no co-op is named', () => {
+    const e = env({ SHELLY_AUTH_KEY: 'k' });
+    assert.strictEqual(e.ctx.brand_().name, '');
+    assert.strictEqual(e.fetches.length, 0);
+  });
+
+  t('refuses a slug or MaybeOS address that could point somewhere else', () => {
+    const e = env({ MAYBEOS_ORG_SLUG: '../../evil', SHELLY_AUTH_KEY: 'k' });
+    assert.strictEqual(e.ctx.brand_().name, '');
+    const f = env({ MAYBEOS_ORG_SLUG: 'riverside', MAYBEOS_URL: 'http://evil.example.com', SHELLY_AUTH_KEY: 'k' });
+    assert.strictEqual(f.ctx.brand_().name, '');
+    assert.strictEqual(e.fetches.length + f.fetches.length, 0);
+  });
+}
 
 console.log(`\n${passed} passed`);
