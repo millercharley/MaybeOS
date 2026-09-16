@@ -1,3 +1,4 @@
+import { DOOR_WORDS } from '../door-words';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
@@ -166,6 +167,30 @@ describe('DoorService', () => {
         ...DOOR_ACCESS_WHERE,
       });
       expect(prisma.userOrg.update.mock.calls[0][0].data.doorPin).toMatch(/^[ABCDEFGHJKMNOPQRSTUVWXYZ]{5}$/);
+    });
+
+    it('gives each member a word they can remember (DOR-01)', async () => {
+      prisma.userOrg.findMany
+        .mockResolvedValueOnce([{ id: 'm1' }, { id: 'm2' }])
+        .mockResolvedValueOnce([]);
+
+      await service.issuePins(ORG);
+
+      for (const call of prisma.userOrg.update.mock.calls) {
+        expect(DOOR_WORDS).toContain(call[0].data.doorPin);
+      }
+    });
+
+    it('never hands out a word the co-op is already using', async () => {
+      // Everything but one word is taken, so there is only one answer left.
+      const free = DOOR_WORDS[DOOR_WORDS.length - 1];
+      prisma.userOrg.findMany
+        .mockResolvedValueOnce([{ id: 'm1' }])
+        .mockResolvedValueOnce(DOOR_WORDS.slice(0, -1).map((doorPin) => ({ doorPin })));
+
+      await service.issuePins(ORG);
+
+      expect(prisma.userOrg.update.mock.calls[0][0].data.doorPin).toBe(free);
     });
 
     it('tries again when the letters are already taken in this co-op', async () => {
