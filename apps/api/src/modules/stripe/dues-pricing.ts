@@ -21,9 +21,10 @@ export const DUES_FEE_CENTS: Record<MaybeOsPlan, number> = {
  * Members a co-op on Free may have. Guests are not counted, matching how Plus
  * counts members for billing.
  *
- * Charley set this at 100 on 2026-09-15 and raised it to 1,000 the next day.
+ * Charley set this at 100 on 2026-09-15, raised it to 1,000 the next day, and
+ * returned it to 100 on 2026-09-18 after feedback.
  */
-export const FREE_PLAN_MEMBER_LIMIT = 1000;
+export const FREE_PLAN_MEMBER_LIMIT = 100;
 
 export function duesFeeFor(plan: MaybeOsPlan, duesCents: number): number {
   return duesCents > 0 ? DUES_FEE_CENTS[plan] : 0;
