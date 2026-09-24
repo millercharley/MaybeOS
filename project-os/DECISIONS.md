@@ -24,6 +24,59 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-036 — Hosts share public events without anyone approving the post
+
+- **Date:** 2026-09-14
+- **Status:** Active
+- **Area:** Product / SOC-01 / Integrations
+- **Decision (Charley, 2026-09-14):** A host shares a **published, public, upcoming** event from My Events to the co-op's Facebook Page and its linked Instagram Business account, and **nobody approves the post**. Control is exercised by switches, not by a queue: `organizations.socialSharingEnabled` is off until an admin turns it on; `socialShareMembersByDefault` says whether members may share without being named individually; and `UserOrg.socialShareAllowed` overrides that for one member either way. **Feed posts only — no Stories.** Every post credits the host: a text credit on Facebook, and on Instagram a collaborator invite plus an @mention taken from the member's own `instagramHandle`. Page tokens are sealed and omitted at the Prisma client, so they are read by the sharing service and nowhere else. Permissions are requested through a Meta **Login for Business configuration** (`config_id`), not a scope list.
+- **Alternatives rejected:** **An admin approval queue** — the obvious safe answer, and the reason it was rejected is that it is safe in a way nobody experiences: a queue is emptied enthusiastically for a week and then becomes the reason events are not shared. The honest version of the same control is deciding *who* may post, once, rather than *what* may be posted, forever. **A single co-op-wide switch with no per-member override** — the co-op that needs this feature most is the one with one member it does not want posting, and a blunt switch turns that into an all-or-nothing argument. **Stories** — deliberately out of v1: they expire, they need different media, and no part of the problem Charley described needs them. **Posting under a MaybeOS-branded account** — it is the co-op's audience, not MaybeOS's.
+- **Rationale:** the feature exists so that a member hosting a public event can put it in front of the co-op's followers in the moment they publish it. An approval step spends the only thing the feature has — immediacy — to buy a safety the switches already provide. Attribution is what makes it safe socially: every post says whose event it is, so the co-op's feed reads as its members rather than as an automaton.
+- **Operational consequence:** the Meta app is in **development mode**, which covers MaybeItsFate because the connecting admin holds a role on the app. **Any other co-op sharing to Facebook or Instagram requires Meta App Review**, which is a launch-scope decision rather than a build one.
+- **Supersedes:** none.
+
+---
+
+### D-035 — The door opens without MaybeOS holding a key to the building or to the co-op's Google account
+
+- **Date:** 2026-09-16
+- **Status:** Active
+- **Area:** Security / AccessOS / Integrations
+- **Decision:** The door sheet and the Apps Script that owns it **belong to the co-op's Google account**. MaybeOS holds no Google credentials: it writes members through a **signed `doPost`** whose shared secret is sealed with `secret-box` in `organizations.doorScriptSecret` and omitted at the Prisma client. The **Shelly auth key lives in Script Properties** and never reaches the page. Door codes are **real five-letter words** drawn from a 719-word list, always shown in serif capitals — which is what makes `I` and `L` usable. Access is decided by membership status: admins and staff always; a member unless their subscription is `CANCELED`; **past due keeps access**; guests never. The door page wears the co-op's branding, fetched from the public org endpoint and **validated before use** (a hex colour, an https logo) because both are written straight into CSS and HTML; a co-op with no branding gets the plain page. Holding every door open for guests is `HOLD_OPEN_MINUTES` — `0` hides the button, capped at 240 — implemented as a Shelly `toggle_after` with a backup relock trigger.
+- **The threat this replaced was real and specific:** the previous sheet, built by a trusted outside member, **exposed the Shelly auth key through `google.script.run`**, which means anyone who could open the door page could read the key that opens the doors.
+- **On the codes not being secrets:** a few hundred words is nothing to a machine, and saying so plainly is better than implying otherwise. What keeps the door shut is that a code is checked **against one email address** and the script locks that email out after **5 failures in 15 minutes**. The word list buys memorability — a code a member cannot remember is a code they write down or ask an organiser for at the door — and costs a guessing margin that was never doing the work.
+- **Alternatives rejected:** **MaybeOS holding the co-op's Google or Shelly credentials** — it would make MaybeOS the custodian of a physical building's keys for every co-op that ever uses this, which is a liability no feature is worth. **Numeric codes**, as D-006 originally scoped — a keypad-shaped assumption that the hardware does not actually impose, and numbers are harder to remember and to read aloud than words. **Random letters** — the original implementation; `I`, `l` and `1` are genuinely confusable and the words settle it. **MaybeOS driving the relays directly** — it would put the door on MaybeOS's uptime rather than the co-op's, and a door that cannot open because a SaaS deploy failed is worse than any feature it enables.
+- **Supersedes:** none. **Amends D-006**, whose "admin-issued **numeric** door codes" no longer describes what is issued. The rest of D-006 stands: codes only, no NFC or smart-lock vendor integration in v1.
+
+---
+
+### D-034 — What Free costs: $2.00 a dues payment, added on top, and a hard cap of 100 members
+
+- **Date:** 2026-09-15, amended 2026-09-18
+- **Status:** Active
+- **Area:** Pricing / Payments
+- **Decision (Charley):** A co-op on **Free** that charges dues or a membership subscription pays **$2.00 per dues payment**, **added on top for the member** rather than deducted from the co-op's dues — separate from, and in addition to, D-030's $1.00 per ticket or paid booking. Plus and Unlimited add nothing to dues. **Free covers up to 100 members**, and the cap is **hard**: joining, an invitation sent or accepted, an admin adding a member, a guest promoted to member, a CSV import and Stripe adoption are all **refused** at the limit rather than billed for. **Guests are not counted**, matching how Plus counts members for billing, and the product forum org is exempt. The number lives in one constant, `FREE_PLAN_MEMBER_LIMIT`, and every surface — the landing page, the Terms, the refusal messages — reads it rather than stating it.
+- **Amendment, 2026-09-18:** the cap was raised to **1,000** on 09-16 and **returned to 100** on 09-18 after feedback. Both moves cost four edits, because the constant is the only place the number exists.
+- **Alternatives rejected:** **A percentage of dues** — the landing page promises flat fees, and a percentage makes MaybeOS's take grow with a co-op's own pricing decisions. **Deducting the fee from the co-op's dues** — it would quietly reduce what a co-op believes it charges, and D-030 already settled that fees are added, never deducted. **Charging the co-op rather than the member** — the co-op on Free is the one least able to absorb it, and the member paying dues is the person the transaction is actually for. **A soft cap that warns and keeps going** — a limit that does not refuse is a suggestion, and it would leave MaybeOS carrying co-ops of any size for nothing while telling them monthly that they should pay. **1,000 members** — tried for two days; a free plan that carries a 1,000-member co-op carries nearly every co-op MaybeOS exists to serve, which makes Plus a tier for nobody.
+- **Rationale:** Free has to be genuinely free to start and has to end somewhere legible. A fee on dues is the same lever D-030 chose for tickets, applied to the other thing money moves for; the cap is what stops "free to start" from meaning "free forever at any size". Both are visible before a co-op commits, and both are arithmetic a co-op can do in its head.
+- **Supersedes:** none. **Extends D-030** to dues, which it priced only for tickets and bookings.
+
+---
+
+### D-033 — Member dues are charged on each co-op's own Stripe account, never on MaybeOS's
+
+- **Date:** 2026-09-15
+- **Status:** Active
+- **Area:** Billing / Payments / Security
+- **Trigger:** PAY-09. Reading the dues path while pricing it revealed that **member dues were being charged on MaybeOS's platform Stripe account** — the co-op's members paying, the co-op's money, arriving in MaybeOS's account. Every test passed; the code did exactly what it said. **D-013 had already named this as money transmission** in 2026-08-10, for tickets, and dues had never been brought across.
+- **Decision:** Every dues subscription is created **on the co-op's connected account** (`onAccount(accountId)`), and so is everything it depends on: the customer, the tier's Product and Price, and the billing portal configuration. The account is **recorded on both sides** — `MembershipTier.stripeDuesAccountId` and `UserOrg.stripeDuesAccountId` — so nothing is ever read, re-priced or cancelled against the wrong account. A tier is **provisioned on the connected account lazily**, at the first checkout that needs it (`ensureTierOnAccount`). MaybeOS's dues fee is taken as an **`application_fee_percent`** on that subscription with a separate **"MaybeOS fee"** line item beside the dues, so the member sees what is MaybeOS's and what is the co-op's. A subscription already billing on another account keeps billing there and is only ever re-priced against prices on its own account.
+- **Alternatives rejected:** **Leaving dues on the platform account** — the status quo, and the thing D-013 exists to forbid; it also makes every co-op's dues MaybeOS's problem in a dispute, a chargeback or an audit. **Migrating the existing subscriptions in one script** — Stripe cannot move a subscription between accounts: the customer, the payment method and the price all belong to the account they were created on. Existing subscriptions therefore stay where they are and the next one is created correctly, which is why `stripeDuesAccountId` is stored per membership rather than assumed per co-op. **Provisioning every tier on the connected account eagerly at link time** — it would create Products and Prices in a co-op's Stripe account for tiers nobody has bought, and fail loudly for co-ops that never take dues at all.
+- **Rationale:** it is the co-op's money and it should never touch MaybeOS's balance. Connect with a direct charge and an application fee is the arrangement D-013 described, and dues were simply the half that had not been built that way. The per-membership account id is the part worth remembering: the alternative — inferring the account from the co-op — is correct until the day a co-op changes accounts, and then it is silently wrong for every subscription that predates the change.
+- **Operational consequence:** MaybeItsFate's five tiers still carry `stripeDuesAccountId = null`; their Stripe objects live on the platform account from before this decision. The first real dues checkout after the move will create them on MaybeItsFate's own account, and **that has never run in production** — see STATE.md's 2026-10-01 list.
+- **Supersedes:** none. **Implements for dues** what D-013 required for tickets; extends **D-026**, whose `stripeAccountApi` distinction applies unchanged.
+
+---
+
 ### D-032 — MaybeOS supplies no default value for a volunteer hour
 
 - **Date:** 2026-09-03
