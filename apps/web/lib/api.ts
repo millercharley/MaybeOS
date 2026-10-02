@@ -364,6 +364,43 @@ class ApiClient {
         `/orgs/${orgId}/rooms/${roomId}/calendar`,
         { method: 'DELETE', token },
       ),
+
+    // ── Importing a co-op's existing calendars (CAL-02) ──
+    // Org-level rather than per-room, unlike everything above: one connected
+    // account can read all of a co-op's calendars, and the import reads them
+    // together so it can keep rooms and events apart in one pass.
+
+    /**
+     * The calendars the connected account can read, each saying whether it is
+     * already a room's own. An admin picks the events one by name here, so
+     * `room` is what stops them pointing it at reservations.
+     */
+    importableCalendars: (orgId: string, token: string) =>
+      this.request<ImportableCalendar[]>(`/orgs/${orgId}/calendar/import/calendars`, { token }),
+
+    /** Null clears it, which stops the import producing events at all. */
+    selectEventsCalendar: (orgId: string, calendarId: string | null, token: string) =>
+      this.request<{ eventsCalendarId: string | null }>(
+        `/orgs/${orgId}/calendar/import/events-calendar`,
+        { method: 'PUT', token, body: JSON.stringify({ calendarId }) },
+      ),
+
+    /**
+     * Import, or say what an import would do.
+     *
+     * `dryRun` defaults to true in the API, so a caller that forgets gets the
+     * preview rather than writing the events a whole community will see.
+     */
+    runImport: (
+      orgId: string,
+      body: { dryRun?: boolean; monthsBack?: number },
+      token: string,
+    ) =>
+      this.request<CalendarImportSummary>(`/orgs/${orgId}/calendar/import`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify(body),
+      }),
   };
 
   // ── Auth ─────────────────────────────────────────
@@ -3602,6 +3639,47 @@ export interface Closure {
   startTime: string;
   endTime: string;
   allDay: boolean;
+}
+
+/** One calendar the connected Google account can read, for CAL-02's picker. */
+export interface ImportableCalendar {
+  id: string;
+  name: string;
+  primary: boolean;
+  /**
+   * The room this calendar already belongs to, when it is one. A room calendar
+   * is reservations — holds, maintenance, somebody's rehearsal — so choosing
+   * one as the events calendar would put "DO NOT BOOK" in front of the whole
+   * community. The API refuses it; the screen says so before they try.
+   */
+  room: string | null;
+  /** Whether this is the calendar currently set as the events one. */
+  selected: boolean;
+}
+
+/** What an import did, or what a dry run says it would do (CAL-02). */
+export interface CalendarImportSummary {
+  /**
+   * Per calendar, named so an admin can see where each number came from, and
+   * carrying its Google id so two rooms of the same name stay apart.
+   *
+   * `shared` is a room pointed at the events calendar: its entries are
+   * imported once, as events. Reported rather than dropped, because an admin
+   * counting eight rooms and finding seven reads that as a bug.
+   */
+  calendars: {
+    id: string;
+    name: string;
+    kind: 'events' | 'room' | 'shared';
+    found: number;
+    written: number;
+    /** Why this one produced nothing, where that needs saying. */
+    note?: string;
+  }[];
+  events: number;
+  bookings: number;
+  skipped: number;
+  dryRun: boolean;
 }
 
 export interface SlotsResponse {

@@ -21,6 +21,8 @@ import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { CalendarService } from './calendar.service';
+import { CalendarImportService } from './calendar-import.service';
+import { RunCalendarImportDto, SelectEventsCalendarDto } from './dto/calendar-import.dto';
 import { PrismaService } from '../../config/prisma.service';
 import { decodeState } from '../../common/oauth-state';
 import { SelectCalendarDto } from './dto/select-calendar.dto';
@@ -32,9 +34,46 @@ export class CalendarController {
 
   constructor(
     private readonly calendarService: CalendarService,
+    private readonly importer: CalendarImportService,
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
   ) {}
+
+  // ──────────────────────────────────────────────────────────────
+  // Importing a co-op's existing calendars (CAL-02)
+  // ──────────────────────────────────────────────────────────────
+
+  @Get('orgs/:orgId/calendar/import/calendars')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Calendars this community can read, to pick its events one' })
+  availableCalendars(@Param('orgId') orgId: string) {
+    return this.importer.available(orgId);
+  }
+
+  @Put('orgs/:orgId/calendar/import/events-calendar')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Which calendar holds the events members should see' })
+  selectEventsCalendar(
+    @Param('orgId') orgId: string,
+    @Body() dto: SelectEventsCalendarDto,
+  ) {
+    return this.importer.selectEventsCalendar(orgId, dto.calendarId ?? null);
+  }
+
+  @Post('orgs/:orgId/calendar/import')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Import events and room reservations from Google' })
+  runImport(@Param('orgId') orgId: string, @Body() dto: RunCalendarImportDto) {
+    // Defaults to a dry run in the service: this writes the events members
+    // will see, and looking before writing is the habit here.
+    return this.importer.run(orgId, dto);
+  }
 
   // ──────────────────────────────────────────────────────────────
   // OAuth: Connect Google Calendar

@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { CalendarController } from '../calendar.controller';
 import { CalendarService } from '../calendar.service';
+import { CalendarImportService } from '../calendar-import.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { encodeState } from '../../../common/oauth-state';
 
@@ -38,6 +39,9 @@ describe('CalendarController — where Google sends the admin back to', () => {
       controllers: [CalendarController],
       providers: [
         { provide: CalendarService, useValue: service },
+        // The import routes live on this controller now (CAL-02); these
+        // suites are about where Google sends an admin back to.
+        { provide: CalendarImportService, useValue: {} },
         {
           provide: PrismaService,
           useValue: {
