@@ -1155,16 +1155,41 @@ export class SpaceService {
     });
   }
 
-  async listUserBookings(userId: string, orgId: string) {
+  /**
+   * Somebody's own bookings (SPC-23).
+   *
+   * `when` is `upcoming` by default, because a booking is a thing you are
+   * about to do: the list opens on what is ahead, and what has already
+   * happened is a deliberate second look rather than the first eight rows.
+   *
+   * Co-op holds are never here. A room reservation imported from the co-op's
+   * own Google calendar is filed under whichever account the automation
+   * keeps it with — MaybeItsFate's import put all 3,017 under one person —
+   * and it holds the room without being anybody's booking.
+   */
+  async listUserBookings(
+    userId: string,
+    orgId: string,
+    when: 'upcoming' | 'past' = 'upcoming',
+  ) {
+    const now = new Date();
+
     return this.prisma.booking.findMany({
       where: {
         userId,
         room: { orgId },
+        isCoopHold: false,
+        // On `endTime`, not `startTime`: a booking you are in the middle of
+        // is not a past booking, and dropping off the list at the moment it
+        // starts is the opposite of useful.
+        ...(when === 'past' ? { endTime: { lt: now } } : { endTime: { gte: now } }),
       },
       include: {
         room: { select: { id: true, name: true, locationId: true } },
       },
-      orderBy: { startTime: 'desc' },
+      // Soonest first when looking ahead; most recent first when looking
+      // back. Both are "nearest to now".
+      orderBy: { startTime: when === 'past' ? 'desc' : 'asc' },
     });
   }
 

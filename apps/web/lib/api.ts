@@ -1655,8 +1655,15 @@ class ApiClient {
     day: (orgId: string, date: string, token: string) =>
       this.request<DaySchedule>(`/orgs/${orgId}/bookings/day?date=${date}`, { token }),
 
-    myBookings: (orgId: string, token: string) =>
-      this.request<Booking[]>(`/orgs/${orgId}/my-bookings`, { token }),
+    /**
+     * Your own bookings (SPC-23).
+     *
+     * Upcoming by default, because a booking is a thing you are about to do.
+     * Holds the co-op imported from its own Google calendar are never here —
+     * MaybeItsFate's import filed all 3,017 under one person.
+     */
+    myBookings: (orgId: string, token: string, when: 'upcoming' | 'past' = 'upcoming') =>
+      this.request<Booking[]>(`/orgs/${orgId}/my-bookings?when=${when}`, { token }),
 
     reschedule: (
       orgId: string,

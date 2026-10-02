@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, AlertCircle, CheckCircle2, DoorOpen, CalendarClock, Megaphone, X } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle2, Copy, DoorOpen, CalendarClock, Megaphone, X } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Booking, ApiError } from '@/lib/api';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
@@ -68,15 +68,27 @@ export default function MemberBookingsPage() {
   const [published, setPublished] = useState<Record<string, string>>({});
   const [newStart, setNewStart] = useState('');
   const [newEnd, setNewEnd] = useState('');
+  /** The booking being copied forward, and when the copy would be (SPC-24). */
+  const [cloning, setCloning] = useState<{ booking: Booking; start: string; end: string } | null>(null);
+
+  /**
+   * Upcoming or past (SPC-23).
+   *
+   * A booking is a thing you are about to do, so the page opens on what is
+   * ahead; what has already happened is a deliberate second look. Charley's
+   * list ran to 3,017 after the calendar import, almost all of it years of
+   * other people's room holds.
+   */
+  const [showing, setShowing] = useState<'upcoming' | 'past'>('upcoming');
 
   const load = useCallback(async () => {
     if (!token || !orgId) return;
     try {
-      setBookings(await api.rooms.myBookings(orgId, token));
+      setBookings(await api.rooms.myBookings(orgId, token, showing));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not load your bookings.');
     }
-  }, [token, orgId]);
+  }, [token, orgId, showing]);
 
   useEffect(() => {
     load();
@@ -126,6 +138,66 @@ export default function MemberBookingsPage() {
     setNewEnd(toLocalInput(b.endTime));
     setNotice(null);
     setError(null);
+  }
+
+  /**
+   * Book the same room again, same length, next week (SPC-24).
+   *
+   * Most of what a member books is something they have booked before — the
+   * same room, the same two hours, a week later — and the booking they are
+   * looking at already holds every answer the form would ask for. A week is
+   * the default because the thing being cloned is usually a weekly one; the
+   * dates are editable before anything is sent.
+   */
+  function startClone(b: Booking) {
+    const start = new Date(b.startTime);
+    const end = new Date(b.endTime);
+    const week = 7 * 24 * 60 * 60 * 1000;
+
+    // Forward from the original, then forward again until it is in the
+    // future — cloning a booking from last March should not propose a date
+    // that has also already happened.
+    let nextStart = new Date(start.getTime() + week);
+    while (nextStart.getTime() < Date.now()) {
+      nextStart = new Date(nextStart.getTime() + week);
+    }
+    const nextEnd = new Date(nextStart.getTime() + (end.getTime() - start.getTime()));
+
+    setCloning({ booking: b, start: toLocalInput(nextStart.toISOString()), end: toLocalInput(nextEnd.toISOString()) });
+    setMovingId(null);
+    setPublishingId(null);
+    setNotice(null);
+    setError(null);
+  }
+
+  async function submitClone() {
+    if (!token || !orgId || !cloning) return;
+    const { booking, start, end } = cloning;
+    setBusyId(booking.id);
+    setError(null);
+    try {
+      await api.rooms.createBooking(
+        orgId,
+        booking.room?.id ?? booking.roomId,
+        {
+          title: booking.title,
+          startTime: new Date(start).toISOString(),
+          endTime: new Date(end).toISOString(),
+        },
+        token,
+      );
+      setCloning(null);
+      setNotice('Booked. It is in your upcoming list.');
+      // Back to upcoming, because that is where the new one is — cloning a
+      // past booking and being left staring at the past one looks like
+      // nothing happened.
+      setShowing('upcoming');
+      load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not book that.');
+    } finally {
+      setBusyId(null);
+    }
   }
 
   async function submitMove(b: Booking) {
@@ -209,9 +281,35 @@ export default function MemberBookingsPage() {
         </div>
       )}
 
+      {/* What is ahead, or what has been (SPC-23). */}
+      <div className="mt-6 flex gap-2" role="tablist" aria-label="Which bookings">
+        {(['upcoming', 'past'] as const).map((which) => (
+          <button
+            key={which}
+            role="tab"
+            aria-selected={showing === which}
+            onClick={() => {
+              setShowing(which);
+              setBookings(null);
+              setCloning(null);
+              setMovingId(null);
+            }}
+            className={
+              showing === which
+                ? 'rounded-full bg-[var(--surface-strong,#1f2937)] px-4 py-1.5 text-sm font-medium text-white'
+                : 'rounded-full border border-[var(--border)] px-4 py-1.5 text-sm text-[var(--text-secondary)] hover:bg-[var(--surface-muted,#f3f4f6)]'
+            }
+          >
+            {which === 'upcoming' ? 'Upcoming' : 'Past'}
+          </button>
+        ))}
+      </div>
+
       {bookings?.length === 0 && (
         <p className="mt-8 text-[var(--text-secondary)]">
-          You haven&apos;t booked anything yet.
+          {showing === 'past'
+            ? 'Nothing here yet — your past bookings will appear once you have had some.'
+            : 'Nothing booked yet. Book a room and it will show up here.'}
         </p>
       )}
 
@@ -259,15 +357,70 @@ export default function MemberBookingsPage() {
                         View event
                       </Link>
                     )}
-                    <button onClick={() => startMove(b)} disabled={busy} className="btn-secondary">
-                      Reschedule
+                    {/* The same room again, which is most of what anybody
+                        books (SPC-24). Offered on a past booking too — that
+                        is exactly when somebody wants it. */}
+                    <button onClick={() => startClone(b)} disabled={busy} className="btn-secondary inline-flex items-center gap-1.5">
+                      <Copy size={14} aria-hidden="true" />
+                      Book again
                     </button>
-                    <button onClick={() => cancel(b)} disabled={busy} className="btn-ghost">
-                      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Cancel'}
-                    </button>
+                    {showing === 'upcoming' && (
+                      <>
+                        <button onClick={() => startMove(b)} disabled={busy} className="btn-secondary">
+                          Reschedule
+                        </button>
+                        <button onClick={() => cancel(b)} disabled={busy} className="btn-ghost">
+                          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Cancel'}
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
+
+              {cloning?.booking.id === b.id && (
+                <div className="mt-4 border-t border-[var(--border)] pt-4">
+                  <p className="text-sm font-medium">
+                    Book {b.room?.name ?? 'this room'} again
+                  </p>
+                  <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                    Same room, same length. Change the date and time if you need to.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-3">
+                    <label className="text-sm">
+                      <span className="block text-[var(--text-secondary)]">From</span>
+                      <input
+                        type="datetime-local"
+                        className="input mt-1"
+                        value={cloning.start}
+                        onChange={(e) => setCloning({ ...cloning, start: e.target.value })}
+                      />
+                    </label>
+                    <label className="text-sm">
+                      <span className="block text-[var(--text-secondary)]">To</span>
+                      <input
+                        type="datetime-local"
+                        className="input mt-1"
+                        value={cloning.end}
+                        onChange={(e) => setCloning({ ...cloning, end: e.target.value })}
+                      />
+                    </label>
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={submitClone}
+                      disabled={busy || !cloning.start || !cloning.end}
+                      className="btn-primary inline-flex items-center gap-2"
+                    >
+                      {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+                      Book it
+                    </button>
+                    <button onClick={() => setCloning(null)} className="btn-ghost">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {movingId === b.id && (
                 <div className="mt-4 border-t border-[var(--border)] pt-4">

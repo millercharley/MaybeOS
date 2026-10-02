@@ -149,8 +149,22 @@ export default function MyEventsPage() {
     );
   }
 
-  const upcoming = events.filter((e) => !e.isPast);
-  const past = events.filter((e) => e.isPast);
+  /*
+    Both nearest to now, in opposite directions (EVT-26).
+
+    The API hands these back newest-first, which is right for a past list and
+    backwards for a future one: with 209 upcoming events — which is what a
+    co-op looks like after importing its calendar — "Coming up" opened on
+    2028 and buried tomorrow's event at the bottom of the page. A list headed
+    "Coming up" that starts two years out and reads backwards is one somebody
+    reasonably describes as showing them the past.
+  */
+  const upcoming = events
+    .filter((e) => !e.isPast)
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+  const past = events
+    .filter((e) => e.isPast)
+    .sort((a, b) => b.startTime.localeCompare(a.startTime));
 
   return (
     <div className="space-y-6">

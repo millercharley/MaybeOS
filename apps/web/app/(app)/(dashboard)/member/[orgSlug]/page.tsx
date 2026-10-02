@@ -308,9 +308,13 @@ export default function MemberPortalPage() {
                     booking.status === 'confirmed';
 
                   return (
-                    <div
+                    /* A row that goes somewhere (SPC-23). This was a dead
+                       list: the dates were there and there was no way to
+                       reach the booking they described. */
+                    <Link
                       key={booking.id}
-                      className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 p-4"
+                      href={`/member/${orgSlug}/bookings`}
+                      className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 p-4 transition-colors hover:border-gray-300 hover:bg-gray-50"
                     >
                       {/* Room, date and time take the whole row on a phone and
                           the status wraps under them. Sharing one row at 375px
@@ -349,9 +353,18 @@ export default function MemberPortalPage() {
                           </span>
                         )}
                       </div>
-                    </div>
+                    </Link>
                   );
                 })
+              )}
+
+              {bookings && bookings.length > 0 && (
+                <Link
+                  href={`/member/${orgSlug}/bookings`}
+                  className="block pt-1 text-sm font-medium text-brand-600 hover:underline"
+                >
+                  Manage your bookings
+                </Link>
               )}
             </div>
           </Panel>
