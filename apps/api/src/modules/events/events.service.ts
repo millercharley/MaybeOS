@@ -1091,6 +1091,80 @@ export class EventsService {
     }));
   }
 
+  /**
+   * Take an event off the members' lists without destroying it (EVT-30).
+   *
+   * The opposite of publishing, and the right answer for most of what an
+   * organiser wants gone: a duplicate from an import, something announced
+   * early, an event that needs reworking. It keeps its RSVPs, its history and
+   * its link, and it stops appearing anywhere members look.
+   */
+  async unpublish(orgId: string, eventId: string) {
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, orgId },
+      select: { id: true, isPublished: true },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+
+    await this.prisma.event.update({
+      where: { id: eventId },
+      data: { isPublished: false },
+    });
+
+    return { hidden: true };
+  }
+
+  /**
+   * Destroy an event (EVT-30).
+   *
+   * MaybeItsFate's calendar import brought across duplicates that were
+   * duplicated in Google, and there is nothing to keep about those. But a
+   * delete is the one action here that cannot be taken back, so it refuses
+   * anything somebody is expecting:
+   *
+   * - a confirmed RSVP means a member has it in their diary;
+   * - a ticket means somebody paid.
+   *
+   * Both want cancelling, which tells those people, rather than deleting,
+   * which does not. The refusal says which it is and how many, because
+   * "cannot delete" with no number is a dead end.
+   */
+  async deleteEvent(orgId: string, eventId: string) {
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, orgId },
+      select: {
+        id: true,
+        _count: {
+          select: {
+            rsvps: { where: { status: { in: ['CONFIRMED', 'WAITLISTED'] } } },
+            tickets: true,
+          },
+        },
+      },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+
+    const { rsvps, tickets } = event._count;
+
+    if (tickets > 0) {
+      throw new BadRequestException(
+        `${tickets} ${tickets === 1 ? 'ticket has' : 'tickets have'} been sold for this event, so it cannot be deleted. ` +
+          'Cancel it instead — that tells the people who bought them.',
+      );
+    }
+
+    if (rsvps > 0) {
+      throw new BadRequestException(
+        `${rsvps} ${rsvps === 1 ? 'member is' : 'members are'} expecting this event, so it cannot be deleted. ` +
+          'Cancel it instead, or hide it if it was never meant to be there.',
+      );
+    }
+
+    await this.prisma.event.delete({ where: { id: eventId } });
+
+    return { deleted: true };
+  }
+
   /* ─── Cancel RSVP ──────────────────────────────────────────── */
 
   async cancelRsvp(orgId: string, eventId: string, userId: string) {

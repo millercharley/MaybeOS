@@ -4,9 +4,10 @@ import { useParams } from 'next/navigation';
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Plus, MapPin, Users, Clock, Eye, EyeOff, X, Lock, Pencil } from 'lucide-react';
+import { Plus, MapPin, Users, Clock, Eye, EyeOff, X, Lock, Pencil, Trash2 } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
 import { useAuthStore } from '@/lib/auth-store';
+import { adminEventWindow } from '@/lib/event-list';
 import { api, Event } from '@/lib/api';
 import { toUpdatePayload } from '@/lib/events';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
@@ -35,12 +36,23 @@ export default function EventsPage() {
   const eventFormRef = useReveal<HTMLElement>(creating ? 'new' : (editing?.id ?? null));
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
+  /** Which event is a click away from being destroyed (EVT-30). */
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const token = useAuthStore((s) => s.token);
   const orgId = useAuthStore((s) => s.currentOrgId);
 
+  /*
+    The tab decides which stretch of the calendar to ask for (EVT-27).
+
+    This asked for the default — twenty events, ascending from the start of
+    the co-op's history — and filtered them here. After MaybeItsFate imported
+    777, Upcoming filtered twenty evenings from November 2024 and found
+    nothing, on a console whose whole job is showing an organiser their
+    events.
+  */
   const { data: eventsData, loading, error, refetch } = useApi(
-    (token, orgId) => api.events.list(orgId, token),
-    [],
+    (token, orgId) => api.events.list(orgId, token, adminEventWindow(activeTab, new Date())),
+    [activeTab],
   );
 
   // The form quotes real ticket fees, so it needs the co-op's plan and whether
@@ -113,6 +125,38 @@ export default function EventsPage() {
 
   const events = eventsData?.data ?? [];
   const now = new Date();
+
+  /** Hiding and deleting (EVT-30). */
+  async function hideEvent(eventId: string) {
+    if (!token || !orgId) return;
+    setBusy(true);
+    setFormError('');
+    try {
+      await api.events.unpublish(orgId, eventId, token);
+      refetch();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Could not hide that event');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteEvent(eventId: string) {
+    if (!token || !orgId) return;
+    setBusy(true);
+    setFormError('');
+    try {
+      await api.events.remove(orgId, eventId, token);
+      setConfirmDelete(null);
+      refetch();
+    } catch (err) {
+      // The API refuses one somebody is expecting and says how many. That
+      // sentence is the whole value of the refusal.
+      setFormError(err instanceof Error ? err.message : 'Could not delete that event');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   const filtered = events.filter((event) => {
     const isPast = new Date(event.startTime) < now;
@@ -268,6 +312,70 @@ export default function EventsPage() {
               >
                 <Pencil className="h-3 w-3" /> Edit
               </button>
+
+              {/* Hiding and deleting (EVT-30). Inside the card's <Link>, so
+                  both handlers have to stop the navigation the way Edit
+                  above does. */}
+              {event.isPublished && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    hideEvent(event.id);
+                  }}
+                  disabled={busy}
+                  className="ml-4 mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-brand-600 disabled:opacity-50"
+                >
+                  <EyeOff className="h-3 w-3" /> Hide
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setFormError('');
+                  setConfirmDelete(confirmDelete === event.id ? null : event.id);
+                }}
+                disabled={busy}
+                className="ml-4 mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-red-700 disabled:opacity-50"
+              >
+                <Trash2 className="h-3 w-3" /> Delete
+              </button>
+
+              {confirmDelete === event.id && (
+                <div
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3"
+                >
+                  <p className="text-xs text-red-900">
+                    Delete “{event.title}” for good? This cannot be undone. If anyone is
+                    expecting it, hide or cancel it instead.
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => deleteEvent(event.id)}
+                      disabled={busy}
+                      className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {busy ? 'Deleting…' : 'Delete it'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(null)}
+                      className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700"
+                    >
+                      Keep it
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="mt-2 flex items-center gap-2 border-t border-gray-100 pt-3">
                 {/* Three visibilities, and this drew two: everything that was

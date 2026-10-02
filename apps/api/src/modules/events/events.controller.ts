@@ -472,6 +472,43 @@ export class EventsController {
     });
   }
 
+  /**
+   * Take it off the members' lists, keeping everything about it (EVT-30).
+   *
+   * Organisers only. Publishing is open to a host, because it is their own
+   * event going live; un-publishing somebody else's is a moderation decision.
+   */
+  @Post('orgs/:orgId/events/:eventId/unpublish')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Hide an event from members without deleting it' })
+  async unpublish(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+  ) {
+    return this.eventsService.unpublish(orgId, eventId);
+  }
+
+  /**
+   * Destroy it (EVT-30).
+   *
+   * ADMIN only, and not STAFF: this is the one action on an event that cannot
+   * be undone. The service refuses anything with a ticket sold or a member
+   * expecting it, which want cancelling instead.
+   */
+  @Delete('orgs/:orgId/events/:eventId')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete an event outright' })
+  async deleteEvent(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+  ) {
+    return this.eventsService.deleteEvent(orgId, eventId);
+  }
+
   /* ─── Cancel Event ──────────────────────────────────────────── */
 
   @Post('orgs/:orgId/events/:eventId/cancel')

@@ -201,3 +201,29 @@ export function eventWindow(now: Date, daysBack: number): { from: string; perPag
     perPage: 100,
   };
 }
+
+/**
+ * Which stretch an organiser's console asks for, per tab (EVT-27).
+ *
+ * The admin Events page filtered its tabs over whatever the API's default
+ * page happened to hold — twenty events, ascending from the start of the
+ * co-op's history. With 777 imported events, Upcoming filtered twenty
+ * evenings from November 2024 and found none, on the one page whose job is
+ * showing an organiser their events.
+ *
+ * Drafts are the exception: an unpublished event is as likely to be in the
+ * past as the future — that is often why it is still a draft — so that tab
+ * asks for the lot and filters here.
+ */
+export function adminEventWindow(
+  tab: 'all' | 'upcoming' | 'past' | 'draft',
+  now: Date,
+): { from?: string; to?: string; perPage: number } {
+  const midnight = new Date(now);
+  midnight.setHours(0, 0, 0, 0);
+
+  if (tab === 'upcoming') return { from: midnight.toISOString(), perPage: 100 };
+  if (tab === 'past') return { to: now.toISOString(), perPage: 100 };
+
+  return { perPage: 100 };
+}
