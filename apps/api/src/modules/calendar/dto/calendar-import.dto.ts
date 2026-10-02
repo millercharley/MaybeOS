@@ -1,6 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
+  MaxLength,
+  ValidateIf,
   IsInt,
   IsOptional,
   IsString,
@@ -17,6 +19,25 @@ export class ImportCursorDto {
   @Min(0)
   @Max(500)
   calendar!: number;
+
+  /**
+   * Google's own page token for the page being read (CAL-06).
+   *
+   * This is handed straight back to Google rather than interpreted here, so
+   * it is bounded and nothing more: a token is opaque, and a validator that
+   * pretended to understand its shape would reject a valid one the first
+   * time Google changed it.
+   *
+   * It was missing from this DTO when the cursor gained it, and the
+   * whitelist did exactly what it is for — "resumeFrom.property page should
+   * not exist", which stopped the import on its second request.
+   */
+  @ApiPropertyOptional({ example: 'CiAKGjBpNDd2Nmp2Zml2cXRwYjBpOXA' })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(2048)
+  page?: string | null;
 
   @ApiPropertyOptional({ example: 150 })
   @IsInt()
