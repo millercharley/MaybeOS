@@ -115,6 +115,43 @@ describe('a subscription set to end', () => {
     expect(written().currentPeriodEnd).toEqual(new Date(PERIOD_END * 1000));
   });
 
+  /**
+   * The same failure, through a door nobody was watching.
+   *
+   * Charley cancelled a real $4.50 subscription on MaybeItsFate's connected
+   * account on 2026-10-02 — the first cancellation ever to round-trip on a
+   * connected account — and `cancelAtPeriodEnd` stayed false. Stripe's
+   * **flexible billing mode**, which every subscription created now uses,
+   * cancels through the portal by setting `cancel_at` and leaving
+   * `cancel_at_period_end` false; only classic billing mode sets the boolean.
+   * So the fix for PLT-06 was reading a field that the current billing mode
+   * no longer sets, and a leaving member was told their dues were up to date.
+   */
+  it('treats cancel_at alone as ending, which is what flexible billing sends', async () => {
+    await updated(subscription({ cancel_at_period_end: false, cancel_at: PERIOD_END }));
+
+    expect(written().cancelAtPeriodEnd).toBe(true);
+    expect(written().currentPeriodEnd).toEqual(new Date(PERIOD_END * 1000));
+  });
+
+  it('prints the day the membership actually ends, not the period end', async () => {
+    // A cancellation can be scheduled before the period ends. The honest date
+    // is the one the member stops being a member on.
+    const EARLY = PERIOD_END - 5 * 24 * 60 * 60;
+    await updated(subscription({ cancel_at_period_end: false, cancel_at: EARLY }));
+
+    expect(written().currentPeriodEnd).toEqual(new Date(EARLY * 1000));
+  });
+
+  it('goes back to staying when a member undoes the cancellation', async () => {
+    // Renewing in the portal clears both signals. Leaving either one latched
+    // would tell somebody who changed their mind that they are still leaving.
+    await updated(subscription({ cancel_at_period_end: false, cancel_at: null }));
+
+    expect(written().cancelAtPeriodEnd).toBe(false);
+    expect(written().currentPeriodEnd).toEqual(new Date(PERIOD_END * 1000));
+  });
+
   it('stops saying "ending" once it has ended', async () => {
     // The period-end event. Leaving the flag true would keep announcing a
     // future end date for a membership that is already over.

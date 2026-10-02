@@ -1100,16 +1100,32 @@ export class StripeService implements OnModuleInit {
    *
    * Both are optional in practice, so neither is allowed to throw: a missing
    * date shows nothing rather than failing a webhook.
+   *
+   * **A scheduled cancellation does not always set `cancel_at_period_end`.**
+   * Stripe's flexible billing mode — what a subscription created today gets —
+   * cancels through the customer portal by setting `cancel_at` and leaving
+   * `cancel_at_period_end` **false**; only classic billing mode sets the
+   * boolean. Reading the boolean alone therefore recorded a cancelling member
+   * as staying, which is PLT-06 exactly: the member is told their dues are up
+   * to date on the day they left. Found on 2026-10-02 by cancelling a real
+   * subscription on MaybeItsFate's connected account and seeing the column
+   * stay false — the first time this had ever round-tripped in production.
+   *
+   * So either signal means ending, and the date shown is `cancel_at` when
+   * there is one: the period may be cut short, and the day the membership
+   * actually ends is the honest thing to print.
    */
   private periodFrom(subscription: Stripe.Subscription): {
     cancelAtPeriodEnd: boolean;
     currentPeriodEnd: Date | null;
   } {
-    const seconds =
-      subscription.items?.data?.[0]?.current_period_end ?? subscription.cancel_at ?? null;
+    const periodEnd = subscription.items?.data?.[0]?.current_period_end ?? null;
+    const cancelAt = subscription.cancel_at ?? null;
+    const ending = subscription.cancel_at_period_end === true || cancelAt !== null;
+    const seconds = (ending ? cancelAt : null) ?? periodEnd ?? cancelAt;
 
     return {
-      cancelAtPeriodEnd: subscription.cancel_at_period_end === true,
+      cancelAtPeriodEnd: ending,
       currentPeriodEnd: seconds ? new Date(seconds * 1000) : null,
     };
   }
