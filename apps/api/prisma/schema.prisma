@@ -2247,6 +2247,11 @@ model ArticleComment {
 }
 
 enum BelongingEmailKind {
+  /// The welcome a new member gets (MEM-17). Here rather than in a table of
+  /// its own: this is already the place a co-op writes its own words for an
+  /// email MaybeOS sends, and a second template system is how one of them
+  /// ends up weaker than the other.
+  WELCOME
   BUDDY_INVITATION
   OFF_THE_HOOK
   INTRO_TO_BUDDY

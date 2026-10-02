@@ -16,6 +16,7 @@
  */
 
 export type BelongingEmailKindName =
+  | 'WELCOME'
   | 'BUDDY_INVITATION'
   | 'OFF_THE_HOOK'
   | 'INTRO_TO_BUDDY'
@@ -34,6 +35,7 @@ export const LINK_VARIABLES: Record<string, string> = {
   dm_url: 'Say hello',
   opt_out_url: 'Change my buddy settings',
   article_url: 'Read and agree',
+  member_url: 'Open your member page',
 };
 
 /**
@@ -44,6 +46,9 @@ export const LINK_VARIABLES: Record<string, string> = {
  * later, for a member who is trying to say yes.
  */
 export const REQUIRED_VARIABLES: Record<BelongingEmailKindName, string[]> = {
+  // A welcome with nowhere to go is a dead end, so the link is not optional
+  // however a co-op rewrites the words around it.
+  WELCOME: ['member_url'],
   BUDDY_INVITATION: ['accept_url', 'decline_url'],
   OFF_THE_HOOK: [],
   INTRO_TO_BUDDY: ['dm_url'],
@@ -53,6 +58,7 @@ export const REQUIRED_VARIABLES: Record<BelongingEmailKindName, string[]> = {
 
 /** Everything a co-op may use in each email, for the editor's help text. */
 export const AVAILABLE_VARIABLES: Record<BelongingEmailKindName, string[]> = {
+  WELCOME: ['member_name', 'community_name', 'member_url'],
   BUDDY_INVITATION: ['new_member_name', 'community_name', 'accept_url', 'decline_url', 'timeout_hours'],
   OFF_THE_HOOK: ['new_member_name', 'community_name', 'opt_out_url'],
   INTRO_TO_BUDDY: ['new_member_name', 'buddy_name', 'community_name', 'dm_url'],
@@ -64,6 +70,17 @@ export const DEFAULT_TEMPLATES: Record<
   BelongingEmailKindName,
   { subject: string; body: string }
 > = {
+  WELCOME: {
+    subject: 'Welcome to {{community_name}}',
+    body: `Hello {{member_name}}, you're a member of {{community_name}}.
+
+Your member page is where everything lives — what's on, the rooms, the handbook, and your own details.
+
+{{member_url}}
+
+If you have a question, asking another member is usually faster than asking the internet.`,
+  },
+
   BUDDY_INVITATION: {
     subject: 'Would you welcome {{new_member_name}} to {{community_name}}?',
     body: `{{new_member_name}} has just joined {{community_name}}, and we are looking for one person to be their first point of contact.

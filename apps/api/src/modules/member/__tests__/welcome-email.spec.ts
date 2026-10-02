@@ -36,8 +36,10 @@ describe('welcoming a new member', () => {
     prisma = {
       organization: { findUnique: jest.fn().mockResolvedValue({ ...ORG, welcomeEmailEnabled: true }) },
       user: { findUnique: jest.fn().mockResolvedValue(USER) },
+      // No custom wording unless a test says so, which is the common case.
+      belongingEmailTemplate: { findUnique: jest.fn().mockResolvedValue(null) },
     };
-    email = { sendWelcome: jest.fn().mockResolvedValue(undefined) };
+    email = { sendRaw: jest.fn().mockResolvedValue(true) };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -62,11 +64,41 @@ describe('welcoming a new member', () => {
     welcome();
     await settle();
 
-    expect(email.sendWelcome).toHaveBeenCalledWith('ada@example.com', {
-      orgName: 'MaybeItsFate',
-      memberName: 'Ada',
-      // A welcome with no link is a dead end.
-      memberUrl: 'https://maybeos.org/member/maybeitsfate',
+    const [to, subject, html] = email.sendRaw.mock.calls[0];
+
+    expect(to).toBe('ada@example.com');
+    expect(subject).toBe('Welcome to MaybeItsFate');
+    expect(html).toContain('Ada');
+    // A welcome with no link is a dead end, which is why `member_url` is a
+    // required variable however a co-op rewrites the words around it.
+    expect(html).toContain('https://maybeos.org/member/maybeitsfate');
+  });
+
+  it('uses the co-op’s own words when it has written some', async () => {
+    prisma.belongingEmailTemplate.findUnique.mockResolvedValue({
+      subject: 'You are in, {{member_name}}',
+      body: 'Come by on a Tuesday. {{member_url}}',
+    });
+
+    welcome();
+    await settle();
+
+    const [, subject, html] = email.sendRaw.mock.calls[0];
+
+    expect(subject).toBe('You are in, Ada');
+    expect(html).toContain('Come by on a Tuesday');
+    expect(html).toContain('https://maybeos.org/member/maybeitsfate');
+  });
+
+  it('keeps using the shipped wording when a co-op has written none', async () => {
+    // Absence means "use the default" rather than a stored copy of it, so a
+    // co-op that never opens the editor gets improvements to the wording
+    // rather than a snapshot of the day they joined.
+    welcome();
+    await settle();
+
+    expect(prisma.belongingEmailTemplate.findUnique).toHaveBeenCalledWith({
+      where: { orgId_kind: { orgId: 'org-1', kind: 'WELCOME' } },
     });
   });
 
@@ -76,7 +108,7 @@ describe('welcoming a new member', () => {
     welcome();
     await settle();
 
-    expect(email.sendWelcome).not.toHaveBeenCalled();
+    expect(email.sendRaw).not.toHaveBeenCalled();
   });
 
   it('is off until somebody turns it on, which is what makes that true', () => {
@@ -96,7 +128,7 @@ describe('welcoming a new member', () => {
     welcome();
     await settle();
 
-    expect(email.sendWelcome.mock.calls[0][1].memberName).toBe('there');
+    expect(email.sendRaw.mock.calls[0][2]).toContain('there');
   });
 
   it('sends nothing to somebody with no email address', async () => {
@@ -105,7 +137,7 @@ describe('welcoming a new member', () => {
     welcome();
     await settle();
 
-    expect(email.sendWelcome).not.toHaveBeenCalled();
+    expect(email.sendRaw).not.toHaveBeenCalled();
   });
 
   it('never fails the join it is attached to', async () => {
