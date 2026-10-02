@@ -6,6 +6,7 @@ import { Calendar, MessageSquare, DoorOpen, Users } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { usePublicApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
+import { eventWindow } from '@/lib/event-list';
 import { useAuthStore } from '@/lib/auth-store';
 import { HappeningNow } from '@/components/live/happening-now';
 import { WelcomeCard } from '@/components/live/welcome-card';
@@ -17,7 +18,8 @@ export default function PortalHomePage() {
   const basePath = `/portal/${orgSlug}`;
 
   const { data: events } = usePublicApi(
-    () => (org ? api.events.listPublic(org.id) : Promise.resolve([])),
+    // What is on, not the first twenty of all time (EVT-27).
+    () => (org ? api.events.listPublic(org.id, eventWindow(new Date(), 0)) : Promise.resolve([])),
     [org?.id],
   );
 

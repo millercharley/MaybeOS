@@ -22,7 +22,7 @@ import { api } from '@/lib/api';
 import { Panel } from '@/components/layout/panel';
 import { MemberSpotlight } from '@/components/member/member-spotlight';
 import { InterestPrompt } from '@/components/member/interest-prompt';
-import { happeningToday, whenLabel, startsIn } from '@/lib/event-list';
+import { eventWindow, happeningToday, whenLabel, startsIn } from '@/lib/event-list';
 
 const quickLinksFor = (orgSlug: string) => [
   { label: 'My RSVPs', href: `/member/${orgSlug}/rsvps`, icon: Calendar },
@@ -71,8 +71,13 @@ export default function MemberPortalPage() {
 
   // The co-op's own list, not the public one: a new event defaults to
   // MEMBERS_ONLY, and this is a member reading their own co-op's dashboard.
+  //
+  // From today onwards (EVT-27). The API lists ascending from the start of a
+  // co-op's history, twenty at a time, so after MaybeItsFate's 777-event
+  // import this panel was handed twenty evenings from November 2024 and said
+  // "Nothing on today" with tonight's event on the calendar.
   const { data: events, loading: eventsLoading } = useApi(
-    (token, orgId) => api.events.listVisible(orgId, token),
+    (token, orgId) => api.events.listVisible(orgId, token, eventWindow(new Date(), 0)),
     [],
   );
 
