@@ -34,11 +34,13 @@ export default function PortalEventsPage() {
     () =>
       !org
         ? Promise.resolve([])
-        : // A window, not the first twenty of everything (EVT-27). Ninety
-          // days back covers the recent-past list below, which shows ten.
+        : // From midnight today (EVT-27, EVT-28). This asked for ninety days
+          // back while the page still showed an "Already happened" list; now
+          // that it does not, fetching the past only to discard it would
+          // spend the hundred-row budget on rows nobody can act on.
           isMember && token
-          ? api.events.listVisible(org.id, token, eventWindow(new Date(), 90))
-          : api.events.listPublic(org.id, eventWindow(new Date(), 90)),
+          ? api.events.listVisible(org.id, token, eventWindow(new Date(), 0))
+          : api.events.listPublic(org.id, eventWindow(new Date(), 0)),
     [org?.id, isMember, token],
   );
 
@@ -165,9 +167,6 @@ export default function PortalEventsPage() {
   const now = new Date();
   const timeZone = eventList[0]?.timezone ?? 'America/New_York';
   const { next, months } = groupUpcoming(eventList, timeZone, now);
-  const past = eventList
-    .filter((e) => new Date(e.startTime) <= now)
-    .sort((a, b) => b.startTime.localeCompare(a.startTime));
 
   const actions: EventActions = {
     orgSlug: org?.slug ?? '',
@@ -251,7 +250,7 @@ export default function PortalEventsPage() {
         </div>
       )}
 
-      {!next && past.length === 0 && (
+      {!next && months.length === 0 && (
         <p className="py-12 text-center text-[var(--text-secondary)]">
           Nothing on the calendar yet.
         </p>
@@ -279,15 +278,16 @@ export default function PortalEventsPage() {
         </Panel>
       ))}
 
-      {past.length > 0 && (
-        <Panel title={<span className="text-[var(--text-secondary)]">Already happened</span>}>
-          <ul className="-mx-5 -mb-5 border-t border-[var(--border)] opacity-70">
-            {past.slice(0, 10).map((event) => (
-              <EventRow key={event.id} event={event} actions={actions} />
-            ))}
-          </ul>
-        </Panel>
-      )}
+      {/*
+        No "Already happened" list (EVT-28). Charley: this page is for
+        deciding what to come to, and every row on it should be something a
+        member can still say yes to. A past event here offers an RSVP button
+        that cannot do anything, and after the calendar import it offered
+        hundreds of them.
+
+        Nothing is lost: a past event keeps its own page and its own link, and
+        a host still sees theirs under My Events.
+      */}
     </div>
   );
 }
