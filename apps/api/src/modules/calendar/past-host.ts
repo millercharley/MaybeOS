@@ -62,3 +62,53 @@ export function hostFields(
     hostName: hostLabel(organiserName, organiserEmail),
   };
 }
+
+/**
+ * A calendar is not a person (CAL-07).
+ *
+ * Google names the *calendar* as the organiser of anything created directly
+ * on a shared one. MaybeItsFate's first complete import produced 777 events
+ * "hosted by MaybeItsFate Main Events" — which is both wrong and worse than
+ * saying nothing, because it looks like an answer.
+ *
+ * A calendar's own address is either the calendar id being read or one of
+ * Google's generated group addresses; neither belongs to anybody.
+ */
+export function isCalendarItself(email: string | null, calendarId: string | null): boolean {
+  const key = hostKey(email);
+  if (!key) return false;
+
+  if (calendarId && key === calendarId.trim().toLowerCase()) return true;
+
+  return key.endsWith('@group.calendar.google.com') || key.endsWith('@group.v.calendar.google.com');
+}
+
+/**
+ * The person behind an entry, if there is one.
+ *
+ * The organiser first, because that is who an invitation says is running it.
+ * The creator when the organiser turns out to be the calendar — on a shared
+ * calendar that is the common case, and the creator is the member who typed
+ * it in. Null when both are the calendar, which is honest: a co-op's own
+ * calendar entry often has no host, and "hosted by the calendar" is not a
+ * better answer than none.
+ */
+export function personFor(
+  entry: {
+    organiserEmail: string | null;
+    organiserName: string | null;
+    creatorEmail: string | null;
+    creatorName: string | null;
+  },
+  calendarId: string | null,
+): { email: string | null; name: string | null } {
+  if (entry.organiserEmail && !isCalendarItself(entry.organiserEmail, calendarId)) {
+    return { email: entry.organiserEmail, name: entry.organiserName };
+  }
+
+  if (entry.creatorEmail && !isCalendarItself(entry.creatorEmail, calendarId)) {
+    return { email: entry.creatorEmail, name: entry.creatorName };
+  }
+
+  return { email: null, name: null };
+}

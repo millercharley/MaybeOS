@@ -36,6 +36,14 @@ export interface ImportedEntry {
   organiserEmail: string | null;
   /** As Google has it — the display name on the invitation (CAL-03). */
   organiserName: string | null;
+  /** Who created the entry, which on a shared calendar is the person (CAL-07). */
+  creatorEmail: string | null;
+  creatorName: string | null;
+  /**
+   * Who the host actually is, decided where the calendar id is known
+   * (CAL-07). Absent until the importer has looked.
+   */
+  hostPerson?: { email: string | null; name: string | null };
   location: string | null;
 }
 
@@ -96,6 +104,12 @@ export function toEntry(
     allDay,
     organiserEmail: raw.organizer?.email?.toLowerCase().trim() || null,
     organiserName: raw.organizer?.displayName?.trim() || null,
+    // Who actually made it (CAL-07). On a shared calendar Google names the
+    // *calendar* as the organiser — all 777 of MaybeItsFate's imported
+    // events came back organised by "MaybeItsFate Main Events" — and the
+    // person who created the entry is here instead.
+    creatorEmail: raw.creator?.email?.toLowerCase().trim() || null,
+    creatorName: raw.creator?.displayName?.trim() || null,
     location: raw.location?.trim() || null,
   };
 }

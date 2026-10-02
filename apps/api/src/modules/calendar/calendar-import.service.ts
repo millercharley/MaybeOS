@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { calendar_v3 } from 'googleapis';
 import { PrismaService } from '../../config/prisma.service';
 import { CalendarService } from './calendar.service';
-import { hostFields, hostKey, hostLabel } from './past-host';
+import { hostFields, hostKey, hostLabel, personFor } from './past-host';
 import { slugCandidates } from './event-slug';
 import { deadline, nextCursor, startOf, type ImportCursor } from './import-cursor';
 import { ImportedEntry, importWindow, toEntry } from './calendar-import';
@@ -372,7 +372,9 @@ export class CalendarImportService {
     let skipped = 0;
     for (const raw of data.items ?? []) {
       const entry = toEntry(raw, timeZone);
-      if (entry && !entry.cancelled) entries.push(entry);
+      // A shared calendar names itself as the organiser, so who the person
+      // is can only be decided here, where the calendar id is known (CAL-07).
+      if (entry && !entry.cancelled) entries.push({ ...entry, hostPerson: personFor(entry, calendarId) });
       else skipped += 1;
     }
 
@@ -410,7 +412,7 @@ export class CalendarImportService {
 
       for (const raw of data.items ?? []) {
         const entry = toEntry(raw, timeZone);
-        if (entry && !entry.cancelled) entries.push(entry);
+        if (entry && !entry.cancelled) entries.push({ ...entry, hostPerson: personFor(entry, calendarId) });
         else skipped += 1;
       }
 
@@ -432,7 +434,7 @@ export class CalendarImportService {
     entries: ImportedEntry[],
   ): Promise<Map<string, string>> {
     const emails = [
-      ...new Set(entries.map((e) => e.organiserEmail).filter((e): e is string => Boolean(e))),
+      ...new Set(entries.map((e) => e.hostPerson?.email).filter((e): e is string => Boolean(e))),
     ];
     if (emails.length === 0) return new Map();
 
@@ -512,10 +514,11 @@ export class CalendarImportService {
       if (outOfTime()) break;
 
       try {
-      const matched = entry.organiserEmail ? (hosts.get(entry.organiserEmail) ?? null) : null;
+      const person = entry.hostPerson ?? { email: null, name: null };
+      const matched = person.email ? (hosts.get(person.email) ?? null) : null;
       // A host who is not a member still ran it (CAL-03). Their name goes on
       // the event; their address is kept to match them if they come back.
-      const host = hostFields(matched, entry.organiserEmail, entry.organiserName);
+      const host = hostFields(matched, person.email, person.name);
 
       await this.prisma.event.upsert({
         where: { orgId_googleEventId: { orgId: org.id, googleEventId: entry.googleEventId } },
@@ -595,15 +598,16 @@ export class CalendarImportService {
     for (const entry of entries) {
       if (outOfTime()) break;
 
-      const matched = entry.organiserEmail ? (hosts.get(entry.organiserEmail) ?? null) : null;
+      const person = entry.hostPerson ?? { email: null, name: null };
+      const matched = person.email ? (hosts.get(person.email) ?? null) : null;
       // `userId` is required, so an unmatched reservation still has to be
       // filed under somebody — but it no longer *claims* to be theirs.
       const userId = matched ?? fallback.userId;
       const bookedFor = matched
         ? { bookedForEmail: null, bookedForName: null }
         : {
-            bookedForEmail: hostKey(entry.organiserEmail),
-            bookedForName: hostLabel(entry.organiserName, entry.organiserEmail),
+            bookedForEmail: hostKey(person.email),
+            bookedForName: hostLabel(person.name, person.email),
           };
 
       const existing = already.get(entry.googleEventId);
