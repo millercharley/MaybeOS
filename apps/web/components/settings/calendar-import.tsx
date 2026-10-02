@@ -109,14 +109,25 @@ export function CalendarImport({ org }: { org: Org }) {
    * asking, and shows the running total rather than a spinner that either
    * finishes or does not.
    */
+  /** Where the last run stopped, so the next press continues (CAL-06). */
+  const [stoppedAt, setStoppedAt] = useState<{
+    calendar: number;
+    page?: string | null;
+    entry: number;
+  } | null>(null);
+
   async function importNow() {
     if (!token || busy) return;
     setBusy(true);
     setError('');
     setConfirming(false);
 
-    let total: CalendarImportSummary | null = null;
-    let resumeFrom: { calendar: number; entry: number } | null = null;
+    // Carried across presses (CAL-06). Pressing Import again used to start
+    // from the first calendar, so a run that had stopped part way spent its
+    // requests re-reading what it had already written and stopped in exactly
+    // the same place — twice, for Charley, at the same 274 reservations.
+    let total: CalendarImportSummary | null = result;
+    let resumeFrom = stoppedAt;
 
     try {
       // Bounded, because a server answering with the same cursor every time
@@ -130,20 +141,21 @@ export function CalendarImport({ org }: { org: Org }) {
 
         total = mergeSummaries(total, chunk);
         setResult(total);
+        setStoppedAt(chunk.next ?? null);
 
         if (!chunk.next) return;
         resumeFrom = chunk.next;
       }
 
       setError(
-        'The import is taking more requests than expected. Everything below is already imported — press Import again to carry on from here.',
+        'Still going — everything below is imported and saved. Press Import again to carry on from where it stopped.',
       );
     } catch (err) {
       // Whatever was written stays written, and a re-run is an upsert, so the
       // honest instruction is "press it again".
       setError(
         `${err instanceof Error ? err.message : 'That did not import'}${
-          total ? ' — everything below was imported. Press Import again to carry on.' : ''
+          total ? ' — everything below was imported and is saved. Press Import again to carry on.' : ''
         }`,
       );
     } finally {

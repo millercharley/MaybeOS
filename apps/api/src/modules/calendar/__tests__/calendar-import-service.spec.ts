@@ -68,6 +68,9 @@ function build(overrides: Record<string, unknown> = {}) {
       findFirst: jest.fn().mockResolvedValue(null),
     },
     booking: {
+      // Which of this page's entries the room already holds — one query for
+      // the batch (CAL-06).
+      findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({}),
       update: jest.fn().mockResolvedValue({}),
