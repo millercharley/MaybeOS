@@ -387,11 +387,18 @@ export class SpaceController {
   }
 
   @Get('my-bookings')
-  @ApiOperation({ summary: 'List current user\'s bookings for this organization' })
+  @ApiOperation({ summary: "List current user's bookings for this organization" })
+  @ApiQuery({ name: 'when', required: false, enum: ['upcoming', 'past'] })
   listUserBookings(
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @CurrentUser() user: RequestUser,
+    @Query('when') when?: string,
   ) {
-    return this.spaceService.listUserBookings(user.userId, orgId);
+    // Anything that is not "past" is the list of what is ahead (SPC-23).
+    return this.spaceService.listUserBookings(
+      user.userId,
+      orgId,
+      when === 'past' ? 'past' : 'upcoming',
+    );
   }
 }

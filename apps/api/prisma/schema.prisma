@@ -1132,6 +1132,13 @@ model Booking {
   /// member turns up.
   bookedForEmail String?
   bookedForName  String?
+  /// A hold the co-op made, not a booking a member made (SPC-23).
+  ///
+  /// An imported room reservation created by the account the co-op's
+  /// automation runs on belongs to the co-op: it blocks the room, organisers
+  /// see it, and it is in nobody's My Bookings. MaybeItsFate's import filed
+  /// 3,017 of them under one person, which is how this was found.
+  isCoopHold     Boolean @default(false)
   title          String
   description    String?
 
@@ -1196,6 +1203,8 @@ model Booking {
   @@index([userId])
   /// Finding the reservations somebody made, the day they (re)join (CAL-03).
   @@index([bookedForEmail])
+  /// Somebody's own bookings, without the co-op's holds (SPC-23).
+  @@index([userId, isCoopHold])
   @@map("bookings")
 }
 

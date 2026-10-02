@@ -438,16 +438,25 @@ export class CalendarImportService {
     ];
     if (emails.length === 0) return new Map();
 
+    // Either address a member reads (MEM-19). MaybeItsFate's organisers put
+    // their co-op addresses on the calendar and joined under personal ones;
+    // matching only the account's own address left twelve events hosted by
+    // "r" and "e" and no way for a re-import to improve on it.
     const memberships = await this.prisma.userOrg.findMany({
-      where: { orgId, user: { email: { in: emails } } },
-      select: { userId: true, user: { select: { email: true } } },
+      where: {
+        orgId,
+        OR: [{ user: { email: { in: emails } } }, { altEmail: { in: emails } }],
+      },
+      select: { userId: true, altEmail: true, user: { select: { email: true } } },
     });
 
-    return new Map(
-      memberships
-        .filter((m) => m.user.email)
-        .map((m) => [m.user.email.toLowerCase(), m.userId]),
-    );
+    const byEmail = new Map<string, string>();
+    for (const membership of memberships) {
+      if (membership.user.email) byEmail.set(membership.user.email.toLowerCase(), membership.userId);
+      if (membership.altEmail) byEmail.set(membership.altEmail.toLowerCase(), membership.userId);
+    }
+
+    return byEmail;
   }
 
   /**
@@ -546,9 +555,21 @@ export class CalendarImportService {
           startTime: entry.start,
           endTime: entry.end,
           canceledAt: null,
-          // A re-run must not wipe a host an organiser has since set by hand,
-          // but it may fill one that is still unknown.
-          ...(host.hostId || host.hostEmail ? host : {}),
+          /*
+            Only a matched member, and only ever as a fill.
+
+            This read `...(host.hostId || host.hostEmail ? host : {})`, which
+            spreads `hostId: null` whenever the organiser is not a member —
+            so a re-import would have silently un-hosted every event an
+            organiser had assigned by hand, including the twelve Charley and
+            I had just matched to Rebecca and Eddie. The comment said it must
+            not wipe a host; the code wiped it.
+
+            An unmatched organiser is still recorded, but only on the way in:
+            the create branch above. There is no safe way to fill a blank
+            name from an upsert without also being able to clear a real one.
+          */
+          ...(host.hostId ? { hostId: host.hostId, hostEmail: null, hostName: null } : {}),
         },
       });
 
@@ -603,6 +624,24 @@ export class CalendarImportService {
       // `userId` is required, so an unmatched reservation still has to be
       // filed under somebody — but it no longer *claims* to be theirs.
       const userId = matched ?? fallback.userId;
+
+      /*
+        Whose booking is this, really (SPC-23)?
+
+        A co-op's room calendar is kept by whatever account its automation
+        runs on. MaybeItsFate's is c@maybeitsfate.com, which is also an
+        organiser's own address, so the import matched all 3,017 reservations
+        to one person and put the entire history of eight rooms in his My
+        Bookings.
+
+        A reservation is somebody's only when it matched a member who is not
+        the organiser it would have fallen back to anyway. Everything else is
+        the co-op's: it holds the room, organisers see it, and it is in
+        nobody's personal list. Under-claiming on purpose — a member missing
+        an imported hold from their own list still sees the room is taken,
+        while over-claiming hands one person three thousand bookings.
+      */
+      const isCoopHold = matched === null || matched === fallback.userId;
       const bookedFor = matched
         ? { bookedForEmail: null, bookedForName: null }
         : {
@@ -615,13 +654,20 @@ export class CalendarImportService {
       if (existing) {
         await this.prisma.booking.update({
           where: { id: existing },
-          data: { title: entry.title, startTime: entry.start, endTime: entry.end, ...bookedFor },
+          data: {
+            title: entry.title,
+            startTime: entry.start,
+            endTime: entry.end,
+            isCoopHold,
+            ...bookedFor,
+          },
         });
       } else {
         await this.prisma.booking.create({
           data: {
             roomId,
             userId,
+            isCoopHold,
             ...bookedFor,
             googleEventId: entry.googleEventId,
             title: entry.title,
