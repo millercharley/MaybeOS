@@ -14,6 +14,8 @@ import { EventsModule } from './modules/events/events.module';
 import { DoorModule } from './modules/door/door.module';
 import { SocialModule } from './modules/social/social.module';
 import { RadarModule } from './modules/radar/radar.module';
+import { RecapModule } from './modules/recap/recap.module';
+import { UnsubscribeModule } from './modules/unsubscribe/unsubscribe.module';
 import { SpaceModule } from './modules/space/space.module';
 import { ServiceModule } from './modules/service/service.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
@@ -137,6 +139,8 @@ import { HealthModule } from './modules/health/health.module';
     DoorModule,
     SocialModule,
     RadarModule,
+    RecapModule,
+    UnsubscribeModule,
     SpaceModule,
     ServiceModule,
     OnboardingModule,

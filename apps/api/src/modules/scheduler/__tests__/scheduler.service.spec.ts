@@ -7,6 +7,7 @@ import { BuddyService } from '../../belonging/buddy.service';
 import { DoorService } from '../../door/door.service';
 import { StripeService } from '../../stripe/stripe.service';
 import { RadarService } from '../../radar/radar.service';
+import { RecapService } from '../../recap/recap.service';
 import { HostBriefingService } from '../../service/host-briefing.service';
 
 /**
@@ -74,6 +75,11 @@ describe('SchedulerService', () => {
         {
           provide: RadarService,
           useValue: { sendDue: jest.fn().mockResolvedValue({ processed: 0, failed: 0, errors: [] }) },
+        },
+        // RCP-01. The monthly recap drafts on the 1st; no co-op is due here.
+        {
+          provide: RecapService,
+          useValue: { draftDue: jest.fn().mockResolvedValue({ processed: 0, failed: 0, errors: [] }) },
         },
       ],
     }).compile();
@@ -236,6 +242,11 @@ describe('SchedulerService — compose-pending-reports', () => {
         {
           provide: RadarService,
           useValue: { sendDue: jest.fn().mockResolvedValue({ processed: 0, failed: 0, errors: [] }) },
+        },
+        // RCP-01. The monthly recap drafts on the 1st; no co-op is due here.
+        {
+          provide: RecapService,
+          useValue: { draftDue: jest.fn().mockResolvedValue({ processed: 0, failed: 0, errors: [] }) },
         },
       ],
     }).compile();

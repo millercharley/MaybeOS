@@ -128,6 +128,21 @@ model Organization {
   /// morning is only a starting guess at the weekend ahead.
   radarDigestDay              Int               @default(4)
   radarDigestHour             Int               @default(9)
+  /// Whether the monthly recap is on for this co-op (RCP-01): what the month
+  /// just ended added up to, drafted on the 1st for an organiser to send.
+  /// Plus and Unlimited, like Radar.
+  recapEnabled                Boolean           @default(false)
+  /// The hour on the 1st when the draft is prepared, in the co-op's own time.
+  recapDraftHour              Int               @default(8)
+  /// Whether the members' copy carries money (Charley, 2026-10-01). On by
+  /// default — a co-op is member-owned and the point of the recap is that
+  /// dues paid for something — but a co-op whose finances are organiser
+  /// business can turn it off without losing the rest.
+  recapShowMoney              Boolean           @default(true)
+  /// When dues already charged were read back from Stripe (RCP-01). MaybeOS
+  /// recorded no dues payment before that ticket, so without this a co-op's
+  /// first recap would report a year of dues as zero. Null means never run.
+  duesBackfilledAt            DateTime?
   /// The co-op's MaybeOS plan (D-013). Everyone starts on FREE.
   plan                        MaybeOsPlan       @default(FREE)
   /// The co-op's own Stripe account, from Connect onboarding. Ticket money is
@@ -207,6 +222,8 @@ model Organization {
   locations       Location[]
   users           UserOrg[]
   interestTags    InterestTag[]
+  duesPayments    DuesPayment[]
+  recaps          MonthlyRecap[]
   directMessages  DirectMessage[]
   tiers           MembershipTier[]
   events          Event[]
@@ -448,6 +465,11 @@ model UserOrg {
   /// false here. `emailOptIn: false` silences Radar regardless — a member who
   /// has unsubscribed from the co-op has unsubscribed from this too.
   radarEmails         Boolean   @default(true)
+  /// Whether this member gets the monthly recap (RCP-01). Its own switch,
+  /// separate from Radar: one is "here is something you might like" and the
+  /// other is "here is what your dues did", and a member may well want the
+  /// second without the first.
+  recapEmails         Boolean   @default(true)
   /// When the last digest went out, so a run that happens twice in an hour
   /// does not send twice. What stops an *event* repeating is `RadarSend`.
   radarLastSentAt     DateTime?
@@ -467,8 +489,9 @@ model UserOrg {
   org  Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
   tier MembershipTier? @relation(fields: [tierId], references: [id])
 
-  interests  MemberInterest[]
-  radarSends RadarSend[]
+  interests    MemberInterest[]
+  radarSends   RadarSend[]
+  duesPayments DuesPayment[]
 
   // Belonging Support. A membership, not a person: someone in two co-ops has
   // two buddy histories and two sets of acknowledgments.
@@ -2709,4 +2732,108 @@ model RadarSend {
   @@unique([userOrgId, eventId])
   @@index([userOrgId, sentAt])
   @@map("radar_sends")
+}
+
+/// ---------------------------------------------------------------------------
+/// The monthly recap (RCP-01): what the month just ended added up to.
+/// ---------------------------------------------------------------------------
+
+/// One dues payment that actually cleared.
+///
+/// **MaybeOS recorded none of this before RCP-01**, which is the whole reason
+/// this table exists. `invoice.paid` was not a handled event: a member's dues
+/// went through, Stripe knew, and MaybeOS's database learned nothing — so the
+/// one figure that makes "your membership sustains this" true was the one
+/// figure the product could not state. Subscription *status* was stored all
+/// along, and a status is not a payment.
+///
+/// Written from the webhook going forward and backfilled once from Stripe for
+/// the months already gone. `stripeInvoiceId` is unique, so a redelivered
+/// event and the backfill cannot both count the same money.
+///
+/// Amounts are the co-op's, in the co-op's currency: `amountCents` is what the
+/// member paid and `feeCents` what MaybeOS took of it (PAY-09's application
+/// fee, zero on Plus and Unlimited). Stripe's own processing fee is not here —
+/// MaybeOS never sees it on a direct charge, and guessing it would turn a
+/// recorded figure into an estimate.
+model DuesPayment {
+  id              String    @id @default(uuid())
+  orgId           String
+  /// The membership it was for, where MaybeOS can tell. Null for a payment on
+  /// a subscription it no longer recognises — somebody who has since left, or
+  /// one adopted before MaybeOS saw it. The money was still real.
+  userOrgId       String?
+  stripeInvoiceId String    @unique
+  /// Which Stripe account took it. Dues moved to each co-op's own account in
+  /// PAY-09, and a co-op mid-move has payments on both.
+  stripeAccountId String?
+  amountCents     Int
+  feeCents        Int       @default(0)
+  currency        String    @default("usd")
+  paidAt          DateTime
+  /// Set when the payment was later refunded, so a recap that has already
+  /// gone out can be read against a figure that changed afterwards.
+  refundedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  membership UserOrg?     @relation(fields: [userOrgId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, paidAt])
+  @@map("dues_payments")
+}
+
+/// The recap for one month, drafted on the 1st and sent by an organiser.
+///
+/// **Frozen at generation**, the same bargain `ImpactReport` makes: `figures`
+/// holds what was true when the month closed, and nothing recomputes it. A
+/// recap that quietly read differently in March from the copy in a member's
+/// inbox would make every number in it worthless.
+///
+/// Drafted rather than sent (Charley, 2026-10-01): a monthly letter to the
+/// whole community carrying real money is worth one pair of human eyes, and
+/// the organiser's own note is usually the part people actually read.
+model MonthlyRecap {
+  id            String             @id @default(uuid())
+  orgId         String
+  /// The first instant of the month being reported, in the co-op's timezone.
+  periodStart   DateTime
+  periodEnd     DateTime
+  status        RecapStatus        @default(DRAFT)
+  /// Every figure, frozen. Shaped by `recap-figures.ts`.
+  figures       Json
+  /// The organiser's own words, at the top of the email. Optional, and the
+  /// recap sends without it.
+  note          String?
+  /// A paragraph composed from the frozen figures by the same service that
+  /// writes impact reports, where the co-op has it configured.
+  composed      String?
+  composeStatus RecapComposeStatus @default(PENDING)
+  composeNote   String?
+  sentAt        DateTime?
+  sentById      String?
+  /// How many members it actually went to, recorded at send.
+  sentCount     Int                @default(0)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, periodStart])
+  @@map("monthly_recaps")
+}
+
+enum RecapStatus {
+  DRAFT
+  SENT
+}
+
+enum RecapComposeStatus {
+  PENDING
+  COMPOSING
+  READY
+  /// Composition is a nicety, never a blocker: a recap with no composed
+  /// paragraph still has every figure and the organiser's note.
+  SKIPPED
+  FAILED
 }

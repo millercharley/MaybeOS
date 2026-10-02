@@ -6,6 +6,7 @@ import { BuddyService } from '../belonging/buddy.service';
 import { DoorService } from '../door/door.service';
 import { StripeService } from '../stripe/stripe.service';
 import { RadarService } from '../radar/radar.service';
+import { RecapService } from '../recap/recap.service';
 import { HostBriefingService } from '../service/host-briefing.service';
 
 export interface TaskResult {
@@ -52,6 +53,7 @@ export class SchedulerService {
     private readonly door: DoorService,
     private readonly stripe: StripeService,
     private readonly radar: RadarService,
+    private readonly recap: RecapService,
   ) {}
 
   async runDueTasks(now: Date = new Date()): Promise<RunResult> {
@@ -72,6 +74,7 @@ export class SchedulerService {
       { name: 'sync-door-codes', run: () => this.syncDoorCodes() },
       { name: 'remove-dues-fees-after-upgrade', run: () => this.removeDuesFees() },
     { name: 'send-radar-digests',             run: () => this.sendRadarDigests(now) },
+    { name: 'draft-monthly-recaps',           run: () => this.draftMonthlyRecaps(now) },
     ]) {
       try {
         tasks.push(await task.run());
@@ -145,6 +148,25 @@ export class SchedulerService {
       return { task: 'send-radar-digests', processed, failed, errors };
     } catch (error) {
       return { task: 'send-radar-digests', processed: 0, failed: 1, errors: [(error as Error).message] };
+    }
+  }
+
+  /**
+   * Draft the monthly recap on the 1st (RCP-01).
+   *
+   * Drafts only. Sending is an organiser pressing a button, because a monthly
+   * letter to a whole community carrying real money figures is worth one pair
+   * of human eyes. A co-op is due in the hour it chose on the 1st of its own
+   * month, and the unique index on `(orgId, periodStart)` is what stops four
+   * runs in that hour drafting four recaps.
+   */
+  private async draftMonthlyRecaps(now: Date): Promise<TaskResult> {
+    try {
+      const { processed, failed, errors } = await this.recap.draftDue(now);
+      if (processed > 0) this.logger.log(`Drafted ${processed} monthly recap(s)`);
+      return { task: 'draft-monthly-recaps', processed, failed, errors };
+    } catch (error) {
+      return { task: 'draft-monthly-recaps', processed: 0, failed: 1, errors: [(error as Error).message] };
     }
   }
 

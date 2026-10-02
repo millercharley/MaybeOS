@@ -19,6 +19,7 @@ import {
   HandHelping,
   ListChecks,
   ClipboardCheck,
+  Newspaper,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -80,6 +81,10 @@ const adminNav = (slug: string): NavItem[] => [
   { href: `/admin/${slug}/serving`, label: 'Serving', icon: ListChecks },
   { href: `/admin/${slug}/handbook`, label: 'Handbook', icon: BookOpen },
   { href: `/admin/${slug}/belonging`, label: 'Belonging', icon: HeartHandshake },
+  // The month just ended, drafted for an organiser to read and send (RCP-01).
+  // The address is fixed by the "your recap is ready" email, which links
+  // straight to it — this entry is for everybody who did not get that email.
+  { href: `/admin/${slug}/recap`, label: 'Monthly recap', icon: Newspaper },
   { href: `/admin/${slug}/settings`, label: 'Settings', icon: Settings },
 ];
 

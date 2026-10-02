@@ -39,7 +39,9 @@ export interface EmailJobData {
     | 'booking-canceled'
     | 'booking-rescheduled'
     | 'door-code'
-    | 'radar-digest';
+    | 'radar-digest'
+    | 'recap'
+    | 'recap-ready';
   to: string;
   data: Record<string, any>;
 }
@@ -64,6 +66,34 @@ export interface RadarDigestEvent {
    */
   ticketed: boolean;
   rsvpUrl: string;
+}
+
+/** What the monthly recap prints (RCP-01). Mirrors `RecapFigures`. */
+export interface RecapEmailData {
+  memberName: string;
+  orgName: string;
+  monthLabel: string;
+  /** The organiser's own words, at the top. Usually the part people read. */
+  note: string | null;
+  /** A paragraph composed from the frozen figures, where the co-op has it. */
+  composed: string | null;
+  /** Whether this co-op shows its members money at all. */
+  showMoney: boolean;
+  figures: {
+    members: { total: number; joined: number; imported: number };
+    events: { hosted: number; checkedIn: number; eventsWithDoor: number; expected: number };
+    money: { month: { totalCents: number }; year: { totalCents: number } };
+    service: { hours: number; members: number; valueCents: number | null } | null;
+    impact: { category: string; average: number; respondents: number }[];
+  };
+  unsubscribeUrl: string;
+}
+
+export interface RecapReadyData {
+  organiserName: string;
+  orgName: string;
+  monthLabel: string;
+  reviewUrl: string;
 }
 
 export interface RadarDigestData {
@@ -211,6 +241,16 @@ export class EmailService {
   async sendRadarDigest(to: string, d: RadarDigestData) {
     if (d.events.length === 0) return;
     await this.send({ type: 'radar-digest', to, data: d });
+  }
+
+  /** The monthly recap, to a member (RCP-01). */
+  async sendRecap(to: string, d: RecapEmailData) {
+    await this.send({ type: 'recap', to, data: d });
+  }
+
+  /** The nudge to an organiser that a draft is waiting (RCP-01). */
+  async sendRecapReady(to: string, d: RecapReadyData) {
+    await this.send({ type: 'recap-ready', to, data: d });
   }
 
   async sendInvite(to: string, orgName: string, inviteUrl: string, inviterName?: string) {
@@ -383,6 +423,105 @@ export class EmailService {
         };
       }
 
+      case 'recap-ready': {
+        const d = data as RecapReadyData;
+        return {
+          subject: `${d.orgName}: ${d.monthLabel} is ready to send`,
+          htmlBody: `
+            <h1>${escapeHtml(d.monthLabel)} is ready</h1>
+            <p>Hello ${escapeHtml(d.organiserName)}, MaybeOS has added up what ${escapeHtml(d.orgName)} did last month.</p>
+            <p>Nothing has gone out yet. Read it, add a note from the community if you want one, and send it when you are happy.</p>
+            <p><a href="${escapeHtml(d.reviewUrl)}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:#fff;border-radius:6px;text-decoration:none;">Read the draft</a></p>
+          `,
+        };
+      }
+
+      case 'recap': {
+        const d = data as RecapEmailData;
+        const f = d.figures;
+
+        const row = (label: string, value: string) => `
+          <tr>
+            <td style="padding:8px 0;color:#6b665e;">${escapeHtml(label)}</td>
+            <td style="padding:8px 0;text-align:right;font-weight:600;">${escapeHtml(value)}</td>
+          </tr>`;
+
+        const rows = [
+          row('Members', String(f.members.total)),
+          f.members.joined > 0 ? row('Joined last month', String(f.members.joined)) : '',
+          f.events.hosted > 0 ? row('Events held', String(f.events.hosted)) : '',
+          // Which number this is, said plainly. A check-in is somebody who was
+          // there; an RSVP is somebody who meant to be, and a month that mixes
+          // the two silently is a month nobody can check.
+          f.events.checkedIn > 0
+            ? row(
+                `People at the door${
+                  f.events.eventsWithDoor < f.events.hosted
+                    ? ` (across ${f.events.eventsWithDoor} of them)`
+                    : ''
+                }`,
+                String(f.events.checkedIn),
+              )
+            : f.events.expected > 0
+              ? row('People who said they were coming', String(f.events.expected))
+              : '',
+          f.service ? row('Hours members served', `${f.service.hours} by ${f.service.members} people`) : '',
+          f.service?.valueCents
+            ? row('What those hours were worth', dollars(f.service.valueCents))
+            : '',
+          d.showMoney && f.money.month.totalCents > 0
+            ? row('Taken through MaybeOS', dollars(f.money.month.totalCents))
+            : '',
+          d.showMoney && f.money.year.totalCents > 0
+            ? row('So far this year', dollars(f.money.year.totalCents))
+            : '',
+        ]
+          .filter(Boolean)
+          .join('');
+
+        const impact = f.impact.length
+          ? `<h2 style="font-size:16px;margin:24px 0 8px;">What members are telling us</h2>
+             <table style="width:100%;border-collapse:collapse;">${f.impact
+               .map((m) =>
+                 row(
+                   `${m.category.replace(/_/g, ' ')} (${m.respondents} members)`,
+                   `${m.average} out of 5`,
+                 ),
+               )
+               .join('')}</table>`
+          : '';
+
+        return {
+          subject: `${d.orgName}: ${d.monthLabel}`,
+          htmlBody: `
+            <h1>${escapeHtml(d.orgName)} in ${escapeHtml(d.monthLabel)}</h1>
+            <p>Hello ${escapeHtml(d.memberName)},</p>
+            ${d.note ? `<p style="white-space:pre-wrap;">${escapeHtml(d.note)}</p>` : ''}
+            ${d.composed ? `<p>${escapeHtml(d.composed)}</p>` : ''}
+            <table style="width:100%;border-collapse:collapse;margin-top:16px;">${rows}</table>
+            ${impact}
+            ${
+              d.showMoney && f.money.month.totalCents > 0
+                ? `<p style="color:#6b665e;font-size:13px;margin-top:16px;">Money figures cover dues, tickets and room hire taken through MaybeOS. Anything handled outside it — cash, grants, donations — is not counted here.</p>`
+                : ''
+            }
+            ${
+              // D-032: wherever MaybeOS prints a dollar value for volunteer
+              // hours, it says whose rate that is. The co-op is making a claim
+              // to its own members here, and the product must not look like
+              // the source of a number it did not choose.
+              f.service?.valueCents
+                ? `<p style="color:#6b665e;font-size:13px;">Hours are valued at the rate ${escapeHtml(d.orgName)} set for itself. MaybeOS does not supply one.</p>`
+                : ''
+            }
+            <p style="color:#6b665e;font-size:13px;margin-top:24px;">
+              You get this because you are a member of ${escapeHtml(d.orgName)}.
+              <a href="${escapeHtml(d.unsubscribeUrl)}">Stop these monthly emails</a>
+            </p>
+          `,
+        };
+      }
+
       case 'magic-link':
         return {
           subject: 'Your sign-in link',
@@ -529,4 +668,12 @@ export class EmailService {
 function clamp(text: string, max: number): string {
   const clean = text.trim();
   return clean.length <= max ? clean : `${clean.slice(0, max - 1).trimEnd()}…`;
+}
+
+/** Cents as a member would read them. */
+function dollars(cents: number): string {
+  return `$${(cents / 100).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }

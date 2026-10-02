@@ -536,15 +536,29 @@ export class RadarService {
       where: {
         orgId: org.id,
         radarEmails: true,
-        // A member who has unsubscribed from the co-op's email has
-        // unsubscribed from this too. Null means never asked, which is not a
-        // refusal — the same reading the rest of MaybeOS gives it.
-        emailOptIn: { not: false },
         role: { in: ['ADMIN', 'STAFF', 'MEMBER'] },
         interests: { some: { OR: [{ declared: true }, { rsvpCount: { gt: 0 } }] } },
-        OR: [
-          { radarLastSentAt: null },
-          { radarLastSentAt: { lt: daysAgo(now, MIN_DAYS_BETWEEN_DIGESTS) } },
+        // Two independent either-ors, so they are spelled as an AND of two.
+        // Written as two `OR` keys on one object the second silently replaces
+        // the first — a JavaScript object literal keeps the last duplicate —
+        // and the condition that disappears is whichever was written first.
+        AND: [
+          {
+            // A member who has unsubscribed from the co-op's email has
+            // unsubscribed from this too. `emailOptIn` is three-valued: true
+            // opted in, false opted out, null never asked. Written as
+            // `{ not: false }` this excluded the nulls, because `NULL <> false`
+            // is NULL in SQL rather than true — so every member who had never
+            // been asked was skipped, which on a real co-op is almost
+            // everybody, and it looked exactly like a week with no matches.
+            OR: [{ emailOptIn: null }, { emailOptIn: true }],
+          },
+          {
+            OR: [
+              { radarLastSentAt: null },
+              { radarLastSentAt: { lt: daysAgo(now, MIN_DAYS_BETWEEN_DIGESTS) } },
+            ],
+          },
         ],
       },
       select: {
