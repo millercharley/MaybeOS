@@ -139,12 +139,64 @@ describe('every member-facing list says which stretch it wants', () => {
     expect(page).toMatch(/listPublic\(org\.id, eventWindow\(new Date\(\), 0\)\)/);
   });
 
-  it('the events page reaches back, because it shows a past list', () => {
+  it('the events page asks for today onwards, on both branches', () => {
+    // It reached ninety days back while it still drew an "already happened"
+    // list; EVT-28 removed that, so the past would only be discarded.
     const page = read('app', '(app)', 'portal', '[orgSlug]', 'events', 'page.tsx');
 
-    expect(page).toMatch(/eventWindow\(new Date\(\), 90\)/);
     // Both branches: a member sees MEMBERS_ONLY too, and a visitor does not.
-    expect(page).toMatch(/listVisible\(org\.id, token, eventWindow/);
-    expect(page).toMatch(/listPublic\(org\.id, eventWindow/);
+    expect(page).toMatch(/listVisible\(org\.id, token, eventWindow\(new Date\(\), 0\)\)/);
+    expect(page).toMatch(/listPublic\(org\.id, eventWindow\(new Date\(\), 0\)\)/);
+  });
+});
+
+/**
+ * The events page is for deciding what to come to (EVT-28).
+ *
+ * Charley: every row should be something a member can still say yes to. The
+ * page carried an "Already happened" list, which offered an RSVP button that
+ * cannot do anything — and after MaybeItsFate's 777-event import it offered
+ * hundreds of them.
+ */
+describe('the portal events page', () => {
+  const page = readFileSync(
+    join(__dirname, '..', 'app', '(app)', 'portal', '[orgSlug]', 'events', 'page.tsx'),
+    'utf8',
+  );
+
+  it('has no past list to render', () => {
+    // The panel itself, not the comment above it explaining why it went.
+    expect(page).not.toMatch(/past\.slice\(/);
+    expect(page).not.toMatch(/<Panel title=\{<span[^>]*>Already happened/);
+  });
+
+  it('does not compute a past list at all', () => {
+    expect(page).not.toMatch(/const past = /);
+  });
+
+  it('does not ask the API for the past it would only discard', () => {
+    expect(page).toMatch(/eventWindow\(new Date\(\), 0\)/);
+    expect(page).not.toMatch(/eventWindow\(new Date\(\), 90\)/);
+  });
+
+  it('still says when a calendar is genuinely empty', () => {
+    // The empty state used to depend on the past list being empty too.
+    expect(page).toMatch(/!next && months\.length === 0/);
+    expect(page).toMatch(/Nothing on the calendar yet/);
+  });
+});
+
+describe('what counts as upcoming', () => {
+  it('leaves out anything that has already started', () => {
+    const now = new Date('2026-10-02T19:00:00Z');
+    const event = (id: string, startTime: string) => ({ id, startTime, timezone: 'UTC' });
+    const { next, months } = groupUpcoming(
+      [event('over', '2026-10-01T19:00:00Z'), event('soon', '2026-10-02T22:00:00Z')],
+      'UTC',
+      now,
+    );
+
+    expect(next?.id).toBe('soon');
+    expect(months.flatMap((m) => m.events.map((e) => e.id))).not.toContain('over');
   });
 });
