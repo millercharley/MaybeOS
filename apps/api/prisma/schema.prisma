@@ -2832,6 +2832,17 @@ model DuesPayment {
   /// Set when the payment was later refunded, so a recap that has already
   /// gone out can be read against a figure that changed afterwards.
   refundedAt      DateTime?
+  /// Who paid, copied onto the payment rather than looked up through
+  /// `userOrgId` (PAY-10). That relation is `SetNull`, so removing a member
+  /// detaches their payments and the co-op keeps the money with nobody
+  /// attached to it. A payment is a historical fact; a fact that depends on a
+  /// row somebody can delete is not one you can rely on afterwards.
+  ///
+  /// PII. Never returned to a member or an organiser — the ledger and the
+  /// member card show no addresses (D-020) — and only here so that a receipt
+  /// or a refund can be traced after the membership is gone.
+  payerName       String?
+  payerEmail      String?
   createdAt       DateTime  @default(now())
 
   org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
