@@ -4,6 +4,7 @@ import { calendar_v3 } from 'googleapis';
 import { PrismaService } from '../../config/prisma.service';
 import { CalendarService } from './calendar.service';
 import { hostFields, hostKey, hostLabel, personFor } from './past-host';
+import { guestFrom } from './booking-guest';
 import { slugCandidates } from './event-slug';
 import { deadline, nextCursor, startOf, type ImportCursor } from './import-cursor';
 import { ImportedEntry, importWindow, toEntry } from './calendar-import';
@@ -600,7 +601,27 @@ export class CalendarImportService {
 
     let written = 0;
 
-    const hosts = await this.hostsFor(orgId, entries);
+    /*
+      Who the room is actually for (SPC-25).
+
+      Every entry on a co-op's room calendar has the same creator — the
+      account the booking automation runs on — so the creator says nothing
+      about whose booking it is. The description does: MaybeItsFate's
+      automation writes "Guest • Abby Ferree (abby.m.ferree@gmail.com)", and
+      2,348 of its 3,017 reservations carry that line naming 216 people.
+
+      The guest wins where there is one. The creator is the fallback, for a
+      calendar kept by hand rather than by a booking tool.
+    */
+    const guests = new Map(entries.map((e) => [e.googleEventId, guestFrom(e.description)]));
+    const withGuests = entries.map((entry) => {
+      const guest = guests.get(entry.googleEventId);
+      return guest
+        ? { ...entry, hostPerson: { email: guest.email, name: guest.name } }
+        : entry;
+    });
+
+    const hosts = await this.hostsFor(orgId, withGuests);
 
     // Which of these the room already holds — one query for the batch, not
     // one per reservation (CAL-06).
@@ -616,7 +637,7 @@ export class CalendarImportService {
       ).map((row) => [row.googleEventId as string, row.id]),
     );
 
-    for (const entry of entries) {
+    for (const entry of withGuests) {
       if (outOfTime()) break;
 
       const person = entry.hostPerson ?? { email: null, name: null };
@@ -641,7 +662,18 @@ export class CalendarImportService {
         an imported hold from their own list still sees the room is taken,
         while over-claiming hands one person three thousand bookings.
       */
-      const isCoopHold = matched === null || matched === fallback.userId;
+      /*
+        A reservation is somebody's when it names somebody who is a member
+        here. Everything else is the co-op's: it holds the room, organisers
+        see it, and it is in nobody's personal list.
+
+        The guest line is what makes this safe. Before it, the only signal
+        was the creator — identical on every entry — so "matched" meant
+        "matched the automation's account", which is how one person was
+        handed three thousand bookings.
+      */
+      const named = Boolean(guests.get(entry.googleEventId));
+      const isCoopHold = matched === null || (!named && matched === fallback.userId);
       const bookedFor = matched
         ? { bookedForEmail: null, bookedForName: null }
         : {
