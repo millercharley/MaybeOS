@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { Org, api } from '@/lib/api';
+import { useCallback, useEffect, useState } from 'react';
+import { BelongingEmailTemplate, Org, api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
+import { EmailEditor } from '@/components/belonging/email-editor';
 
 /**
  * Whether MaybeOS welcomes a new member itself (MEM-17).
@@ -22,6 +23,23 @@ export function WelcomeEmail({ org, onSaved }: { org: Org; onSaved: () => void }
   const token = useAuthStore((s) => s.token);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [template, setTemplate] = useState<BelongingEmailTemplate | null>(null);
+
+  /*
+    The co-op's own wording, edited here beside the switch that decides
+    whether it is ever sent. It is the same editor and the same store the
+    Belonging emails use — the welcome is simply another kind — so an admin
+    who rewrites it there sees it here and the other way round.
+  */
+  const loadTemplate = useCallback(async () => {
+    if (!token) return;
+    const all = await api.belonging.emailTemplates(org.id, token);
+    setTemplate(all.find((t) => t.kind === 'WELCOME') ?? null);
+  }, [org.id, token]);
+
+  useEffect(() => {
+    loadTemplate().catch(() => setTemplate(null));
+  }, [loadTemplate]);
 
   const on = org.welcomeEmailEnabled ?? false;
 
@@ -72,6 +90,29 @@ export function WelcomeEmail({ org, onSaved }: { org: Org; onSaved: () => void }
       <button type="button" onClick={toggle} disabled={busy} className="btn-secondary text-sm">
         {on ? 'Stop sending the welcome' : 'Send a welcome to new members'}
       </button>
+
+      {template && (
+        <div className="border-t border-gray-100 pt-4">
+          <p className="mb-3 text-sm text-gray-500">
+            Your words, if you want them. Leave it alone and it uses MaybeOS&rsquo;s wording —
+            which means you also get any improvements to it, rather than a copy frozen on the day
+            you wrote it.
+          </p>
+          <EmailEditor
+            template={template}
+            onSave={async (subject, body) => {
+              if (!token) return;
+              await api.belonging.saveEmailTemplate(org.id, 'WELCOME', { subject, body }, token);
+              await loadTemplate();
+            }}
+            onReset={async () => {
+              if (!token) return;
+              await api.belonging.resetEmailTemplate(org.id, 'WELCOME', token);
+              await loadTemplate();
+            }}
+          />
+        </div>
+      )}
     </section>
   );
 }

@@ -14,6 +14,7 @@ import { OrgRole } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { PUBLIC_TIER_SELECT } from './tier-view';
 import { EmailService } from '../email/email.service';
+import { DEFAULT_TEMPLATES, renderTemplate } from '../belonging/belonging-emails';
 import { StripeService } from '../stripe/stripe.service';
 import { StorageService } from '../storage/storage.service';
 import { BuddyService } from '../belonging/buddy.service';
@@ -1117,14 +1118,26 @@ export class MemberService {
 
       if (!org?.welcomeEmailEnabled || !user?.email) return;
 
-      await this.emailService.sendWelcome(user.email, {
-        orgName: org.name,
-        memberName: user.name ?? 'there',
+      // The co-op's own words where it has written them, MaybeOS's where it
+      // has not — the same store and the same renderer the Belonging emails
+      // use. Absence means "use the default" rather than a stored copy of it,
+      // so a co-op that never opens the editor keeps getting improvements to
+      // the wording instead of a snapshot of whatever shipped the day they
+      // joined.
+      const custom = await this.prisma.belongingEmailTemplate.findUnique({
+        where: { orgId_kind: { orgId, kind: 'WELCOME' } },
+      });
+
+      const { subject, html } = renderTemplate(custom ?? DEFAULT_TEMPLATES.WELCOME, {
+        member_name: user.name ?? 'there',
+        community_name: org.name,
         // `WEB_URL`, which is what the invitation email already uses in this
         // service. `APP_URL` is the other half of the same inconsistency,
         // used by EventOS and Radar; worth settling one day, not today.
-        memberUrl: `${this.configService.get<string>('WEB_URL') ?? 'https://maybeos.org'}/member/${org.slug}`,
+        member_url: `${this.configService.get<string>('WEB_URL') ?? 'https://maybeos.org'}/member/${org.slug}`,
       });
+
+      await this.emailService.sendRaw(user.email, subject, html);
     })().catch((err) => {
       this.logger.error(`Could not welcome ${userId} to ${orgId}: ${(err as Error).message}`);
     });
