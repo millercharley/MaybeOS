@@ -517,6 +517,7 @@ export class MemberService {
     // the tool on, and deliberately not awaited into the join's success: a
     // Postmark outage must not stop somebody becoming a member.
     this.startBuddySearch(orgId, membership.id);
+    this.sendWelcome(orgId, userId);
 
     return { membership, alreadyMember: false };
   }
@@ -1054,7 +1055,10 @@ export class MemberService {
       where: { userId_orgId: { userId, orgId: invitation.orgId } },
       select: { id: true },
     });
-    if (membership) this.startBuddySearch(invitation.orgId, membership.id);
+    if (membership) {
+      this.startBuddySearch(invitation.orgId, membership.id);
+      this.sendWelcome(invitation.orgId, userId);
+    }
 
     // The tier travels back so the web app knows whether to hand off to
     // checkout. Returning only the org is what made the invitation path stop
@@ -1082,6 +1086,50 @@ export class MemberService {
    * to a real person, and every one of them wrong. An import is a co-op
    * moving house, not 314 arrivals.
    */
+  /**
+   * Welcome somebody who has just become a member (MEM-17).
+   *
+   * **Deliberately not awaited, and deliberately not on the bulk importer or
+   * the Stripe adoption** — the same two rules as the buddy search above, for
+   * the same reason. An import is a co-op moving house, not 364 arrivals, and
+   * welcoming a roster to a place they have belonged to for three years is
+   * the most embarrassing possible first email. Adoption is the same event
+   * seen from the money's side.
+   *
+   * Off until a co-op turns it on. MaybeItsFate had a Zapier automation
+   * sending this from Stripe, and it welcomed Charley to the old system in
+   * the middle of testing the new one; two welcomes is worse than none, so
+   * this waits for the other one to be switched off.
+   *
+   * A member who arrives through an invitation gets this *as well as* the
+   * invitation — the invitation asked them to come, and this one is the first
+   * thing that treats them as having arrived.
+   */
+  private sendWelcome(orgId: string, userId: string): void {
+    void (async () => {
+      const [org, user] = await Promise.all([
+        this.prisma.organization.findUnique({
+          where: { id: orgId },
+          select: { name: true, slug: true, welcomeEmailEnabled: true },
+        }),
+        this.prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } }),
+      ]);
+
+      if (!org?.welcomeEmailEnabled || !user?.email) return;
+
+      await this.emailService.sendWelcome(user.email, {
+        orgName: org.name,
+        memberName: user.name ?? 'there',
+        // `WEB_URL`, which is what the invitation email already uses in this
+        // service. `APP_URL` is the other half of the same inconsistency,
+        // used by EventOS and Radar; worth settling one day, not today.
+        memberUrl: `${this.configService.get<string>('WEB_URL') ?? 'https://maybeos.org'}/member/${org.slug}`,
+      });
+    })().catch((err) => {
+      this.logger.error(`Could not welcome ${userId} to ${orgId}: ${(err as Error).message}`);
+    });
+  }
+
   private startBuddySearch(orgId: string, membershipId: string): void {
     void this.buddies.onMemberJoined(orgId, membershipId).catch((err) => {
       this.logger.error(

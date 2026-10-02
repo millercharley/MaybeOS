@@ -512,6 +512,8 @@ class ApiClient {
         /** Door access (DOR-01): issuing codes, the sheet, and the emails. */
         doorAccessEnabled?: boolean;
         doorCodeEmailsEnabled?: boolean;
+        /** Whether MaybeOS welcomes a new member itself (MEM-17). */
+        welcomeEmailEnabled?: boolean;
         /** A full Google Sheets address is accepted; the API keeps the id. */
         /** The co-op's own fee per ticket, in cents (D-013 ticketing). */
         ticketFeeCents?: number;
@@ -2793,6 +2795,8 @@ export interface Org {
   socialSharingEnabled?: boolean;
   doorAccessEnabled?: boolean;
   doorCodeEmailsEnabled?: boolean;
+  /** Whether MaybeOS welcomes a new member itself (MEM-17). */
+  welcomeEmailEnabled?: boolean;
   /**
    * Only `GET /orgs/by-slug/:slug` includes these — the public org page's
    * single call. `GET /orgs/:orgId` returns the bare row, so anything reading

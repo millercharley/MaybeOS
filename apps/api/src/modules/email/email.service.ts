@@ -96,6 +96,14 @@ export interface RecapReadyData {
   reviewUrl: string;
 }
 
+/** The first email a new member gets, in the co-op's name (MEM-17). */
+export interface WelcomeData {
+  orgName: string;
+  memberName: string;
+  /** Their member page. A welcome with nowhere to go is a dead end. */
+  memberUrl: string;
+}
+
 export interface RadarDigestData {
   memberName: string;
   orgName: string;
@@ -146,8 +154,16 @@ export class EmailService {
 
   // ─── Public API (signatures unchanged from the queued version) ───
 
-  async sendWelcome(to: string, orgName: string, memberName: string) {
-    await this.send({ type: 'welcome', to, data: { orgName, memberName } });
+  /**
+   * Welcome somebody who has just become a member (MEM-17).
+   *
+   * This method existed from the beginning with **no caller anywhere** —
+   * MaybeOS has never sent a welcome email, and MaybeItsFate's came from a
+   * Zapier automation wired to Stripe. The signature changed when it was
+   * finally wired up, because a welcome with nowhere to go is a dead end.
+   */
+  async sendWelcome(to: string, d: WelcomeData) {
+    await this.send({ type: 'welcome', to, data: d });
   }
 
   /**
@@ -344,15 +360,20 @@ export class EmailService {
     data: Record<string, any>,
   ): { subject: string; htmlBody: string } {
     switch (type) {
-      case 'welcome':
+      case 'welcome': {
+        const d = data as WelcomeData;
         return {
-          subject: `Welcome to ${data.orgName}!`,
+          // The co-op's name, not MaybeOS's: this is the first thing a new
+          // member gets, and it is from the people they just joined.
+          subject: `Welcome to ${d.orgName}`,
           htmlBody: `
-            <h1>Welcome, ${data.memberName}!</h1>
-            <p>You've successfully joined <strong>${data.orgName}</strong>.</p>
-            <p>We're excited to have you as a member. Explore your new community dashboard to get started.</p>
+            <h1>Welcome to ${escapeHtml(d.orgName)}</h1>
+            <p>Hello ${escapeHtml(d.memberName)}, you're a member.</p>
+            <p>Your member page is where everything lives — what's on, the rooms, the handbook, and your own details.</p>
+            <p><a href="${escapeHtml(d.memberUrl)}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:#fff;border-radius:6px;text-decoration:none;">Open your member page</a></p>
           `,
         };
+      }
 
       case 'door-code':
         return {
