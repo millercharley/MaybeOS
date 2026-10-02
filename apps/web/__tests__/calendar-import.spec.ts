@@ -3,12 +3,14 @@ import { join } from 'path';
 import type { CalendarImportSummary, ImportableCalendar } from '@/lib/api';
 import {
   DEFAULT_MONTHS_BACK,
+  MAX_REQUESTS,
   MONTHS_BACK_CHOICES,
   calendarNote,
   confirmationLine,
   isSelectable,
   kindLabel,
   selectableCalendars,
+  mergeSummaries,
   summaryLine,
 } from '@/lib/calendar-import';
 
@@ -239,5 +241,108 @@ describe('an imported event whose host has left', () => {
     const fallback = page.slice(page.indexOf('event.hostName'), page.indexOf('event.hostName') + 700);
 
     expect(fallback).not.toMatch(/<MemberName/);
+  });
+});
+
+/**
+ * An import that arrives in pieces (CAL-05).
+ *
+ * MaybeItsFate's first real import returned 504: nine calendars and a year of
+ * entries do not fit in a Lambda's ten seconds, and when it ran out the whole
+ * run was lost — along with any way of telling whether it had got nowhere or
+ * nearly all the way. The run now stops before the clock does and says where
+ * it got to; the screen keeps asking and adds up what it is told.
+ */
+describe('adding up the chunks', () => {
+  const chunk = (over: Partial<CalendarImportSummary> = {}): CalendarImportSummary => ({
+    calendars: [],
+    events: 0,
+    bookings: 0,
+    skipped: 0,
+    dryRun: false,
+    next: null,
+    ...over,
+  });
+
+  it('is the first chunk when there is nothing yet', () => {
+    const first = chunk({ events: 120 });
+
+    expect(mergeSummaries(null, first)).toBe(first);
+  });
+
+  it('adds the totals', () => {
+    const merged = mergeSummaries(
+      chunk({ events: 120, bookings: 4, skipped: 2, failed: 1 }),
+      chunk({ events: 95, bookings: 7, skipped: 1, failed: 2 }),
+    );
+
+    expect(merged).toMatchObject({ events: 215, bookings: 11, skipped: 3, failed: 3 });
+  });
+
+  it('adds what each calendar wrote', () => {
+    const row = (written: number) => ({ id: 'cal-1', name: 'Events', kind: 'events' as const, found: 420, written });
+    const merged = mergeSummaries(chunk({ calendars: [row(150)] }), chunk({ calendars: [row(140)] }));
+
+    expect(merged.calendars).toHaveLength(1);
+    expect(merged.calendars[0].written).toBe(290);
+  });
+
+  it('does not multiply how many entries a calendar holds', () => {
+    // `found` is the whole calendar every time it is read, not a slice of it.
+    // Adding it would tell an organiser their 420-entry calendar holds 1,680.
+    const row = { id: 'cal-1', name: 'Events', kind: 'events' as const, found: 420, written: 150 };
+    const merged = mergeSummaries(chunk({ calendars: [row] }), chunk({ calendars: [row] }));
+
+    expect(merged.calendars[0].found).toBe(420);
+  });
+
+  it('keeps a calendar the later chunk never touched', () => {
+    const events = { id: 'cal-1', name: 'Events', kind: 'events' as const, found: 420, written: 420 };
+    const attic = { id: 'cal-2', name: 'Attic', kind: 'room' as const, found: 30, written: 30 };
+    const merged = mergeSummaries(chunk({ calendars: [events] }), chunk({ calendars: [attic] }));
+
+    expect(merged.calendars.map((c) => c.id)).toEqual(['cal-1', 'cal-2']);
+  });
+
+  it('carries the newest cursor, which is what the loop reads', () => {
+    expect(mergeSummaries(chunk(), chunk({ next: { calendar: 2, entry: 40 } })).next).toEqual({
+      calendar: 2,
+      entry: 40,
+    });
+    expect(mergeSummaries(chunk({ next: { calendar: 1, entry: 0 } }), chunk()).next).toBeNull();
+  });
+});
+
+describe('the screen keeps asking until it is done', () => {
+  const component = readFileSync(
+    join(__dirname, '..', 'components', 'settings', 'calendar-import.tsx'),
+    'utf8',
+  );
+
+  it('sends the cursor back', () => {
+    expect(component).toMatch(/resumeFrom/);
+  });
+
+  it('stops when there is no cursor', () => {
+    expect(component).toMatch(/if \(!chunk\.next\) return;/);
+  });
+
+  it('shows the running total rather than only the last reply', () => {
+    expect(component).toMatch(/total = mergeSummaries\(total, chunk\)/);
+    expect(component).toMatch(/setResult\(total\)/);
+  });
+
+  it('cannot ask forever', () => {
+    // A server answering with the same cursor every time would otherwise
+    // keep a browser in a loop with no way out.
+    expect(component).toMatch(/MAX_REQUESTS/);
+    expect(MAX_REQUESTS).toBeGreaterThan(1);
+    expect(MAX_REQUESTS).toBeLessThan(200);
+  });
+
+  it('says what survived when a chunk fails part way', () => {
+    // Everything written stays written, and a re-run is an upsert, so the
+    // honest instruction is to press it again.
+    expect(component).toMatch(/Press Import again to carry on/);
   });
 });

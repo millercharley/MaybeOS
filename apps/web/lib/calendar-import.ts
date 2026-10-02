@@ -141,3 +141,56 @@ export function confirmationLine(preview: CalendarImportSummary): string {
     'room',
   )}, which members are not invited to attend. Nobody is emailed, and running it again updates what it wrote rather than adding it twice.`;
 }
+
+/**
+ * How many requests the screen will make before giving up (CAL-05).
+ *
+ * A co-op's whole calendar at roughly a few hundred entries a request; forty
+ * is far more than MaybeItsFate needs and still a bound, so a server that
+ * answered with the same cursor every time could not keep a browser asking
+ * forever.
+ */
+export const MAX_REQUESTS = 40;
+
+/**
+ * Adding one chunk of an import to what has already run (CAL-05).
+ *
+ * A real import arrives in pieces now — nine calendars and a year of entries
+ * do not fit in one request, which is how the first one returned 504 — so the
+ * screen has to add up what it has been told so far rather than show the last
+ * reply.
+ */
+export function mergeSummaries(
+  done: CalendarImportSummary | null,
+  chunk: CalendarImportSummary,
+): CalendarImportSummary {
+  if (!done) return chunk;
+
+  const calendars = [...done.calendars];
+  for (const row of chunk.calendars) {
+    const existing = calendars.findIndex((c) => c.id === row.id && c.kind === row.kind);
+    if (existing === -1) {
+      calendars.push(row);
+      continue;
+    }
+    // `found` is the whole calendar every time it is read, not a slice of it,
+    // so it is replaced rather than added — otherwise a calendar that took
+    // four chunks would report four times as many entries as it holds.
+    calendars[existing] = {
+      ...calendars[existing],
+      found: row.found,
+      written: calendars[existing].written + row.written,
+      note: row.note ?? calendars[existing].note,
+    };
+  }
+
+  return {
+    calendars,
+    events: done.events + chunk.events,
+    bookings: done.bookings + chunk.bookings,
+    skipped: done.skipped + chunk.skipped,
+    failed: (done.failed ?? 0) + (chunk.failed ?? 0),
+    dryRun: chunk.dryRun,
+    next: chunk.next ?? null,
+  };
+}
