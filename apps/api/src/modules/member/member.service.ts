@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { assertMemberRoom, countsAsMember, memberRoom } from './member-capacity';
 import { tierIdFor } from './import-tier';
+import { pageWindow } from './page-window';
 import { FREE_PLAN_MEMBER_LIMIT } from '../stripe/dues-pricing';
 import {
   Injectable,
@@ -130,7 +131,8 @@ export class MemberService {
     perPage: number = 20,
     search?: string,
   ) {
-    const skip = (page - 1) * perPage;
+    // Clamped, not trusted: these arrive from a query string (MEM-22).
+    const window = pageWindow(page, perPage);
 
     const where: any = { orgId };
 
@@ -165,8 +167,8 @@ export class MemberService {
     const [data, total] = await this.prisma.$transaction([
       this.prisma.userOrg.findMany({
         where,
-        skip,
-        take: perPage,
+        skip: window.skip,
+        take: window.take,
         orderBy: { memberSince: 'desc' },
         // Lifts the client-level omission on the door code, for organisers
         // (Charley's call: admins can see them, which makes helping somebody
@@ -198,9 +200,9 @@ export class MemberService {
       data: data.map((member) => toMemberView(member, viewer)),
       meta: {
         total,
-        page,
-        perPage,
-        totalPages: Math.ceil(total / perPage),
+        page: window.page,
+        perPage: window.perPage,
+        totalPages: Math.ceil(total / window.perPage),
       },
     };
   }

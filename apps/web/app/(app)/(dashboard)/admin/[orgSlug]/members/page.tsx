@@ -6,6 +6,13 @@ import { useParams } from 'next/navigation';
 import { PieChart, Search, Plus, MoreHorizontal, Clock, RefreshCw, Mail, Upload } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
 import { MENU_WIDTH, menuPosition, payingDues } from '@/lib/member-removal';
+import {
+  PER_PAGE,
+  SEARCH_DEBOUNCE_MS,
+  appendPage,
+  hasMore,
+  rosterCount,
+} from '@/lib/member-roster';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, type Member } from '@/lib/api';
 import { Modal } from '@/components/ui/modal';
@@ -28,6 +35,19 @@ const statusBadge: Record<string, string> = {
 export default function MembersPage() {
   const orgSlug = useParams<{ orgSlug: string }>().orgSlug;
   const [search, setSearch] = useState('');
+  /**
+   * The roster, a page at a time (MEM-22).
+   *
+   * `query` lags `search` by a moment so typing is not one request per
+   * keystroke, and it is the server that searches: filtering the rows the
+   * browser was holding meant a 426-member co-op searched 50 of them and
+   * answered "No members found".
+   */
+  const [query, setQuery] = useState('');
+  const [more, setMore] = useState<Member[]>([]);
+  const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState('');
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('MEMBER');
@@ -70,10 +90,26 @@ export default function MembersPage() {
   const token = useAuthStore((s) => s.token);
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
 
+  useEffect(() => {
+    const id = setTimeout(() => setQuery(search.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [search]);
+
   const { data, loading, error, refetch } = useApi(
-    (token, orgId) => api.members.list(orgId, token, 1, 50),
-    [],
+    (token, orgId) => api.members.list(orgId, token, 1, PER_PAGE, query || undefined),
+    [query],
   );
+
+  // A new first page replaces everything after it; the pages that followed
+  // belonged to the old search.
+  useEffect(() => {
+    setMore([]);
+    setPage(1);
+    setMoreError('');
+  }, [data]);
+
+  /** Everyone loaded so far: the first page, plus every page since. */
+  const shown = [...(data?.data ?? []), ...more];
 
   const { data: tiers } = useApi(
     (token, orgId) => api.members.listTiersForAdmin(orgId, token),
@@ -137,7 +173,10 @@ export default function MembersPage() {
     setResendingId(null);
   }
 
-  if (loading) {
+  // Only while there is nothing to show yet. Searching refetches, and a
+  // spinner in place of the page would unmount the search box and take the
+  // cursor with it on every keystroke that reaches the server (MEM-22).
+  if (loading && !data) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
@@ -145,7 +184,7 @@ export default function MembersPage() {
     );
   }
 
-  if (error) {
+  if (error && !data) {
     return (
       <div className="py-12 text-center text-sm text-red-600">
         Failed to load members: {error}
@@ -153,16 +192,12 @@ export default function MembersPage() {
     );
   }
 
-  const members = data?.data ?? [];
   const pendingInvites = (invitations ?? []).filter(
     (inv) => !inv.acceptedAt,
   );
 
-  const filtered = members.filter(
-    (m) =>
-      (m.user.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
-      (m.user.email ?? '').toLowerCase().includes(search.toLowerCase()),
-  );
+  const filtered = shown;
+
 
   async function changeRole(userId: string, role: string) {
     if (!token || !currentOrgId) return;
@@ -212,6 +247,34 @@ export default function MembersPage() {
    * cancel fails, so a failure here means they are still a member and still
    * paying — which is the state the message has to describe.
    */
+  /** The next page, appended to what is already on screen. */
+  async function loadMore() {
+    if (!token || !currentOrgId || loadingMore) return;
+    setLoadingMore(true);
+    setMoreError('');
+    try {
+      const next = await api.members.list(
+        currentOrgId,
+        token,
+        page + 1,
+        PER_PAGE,
+        query || undefined,
+      );
+      // Deduplicated: the roster is ordered by join date, so somebody
+      // joining while this page is open shifts every later row down one and
+      // page 2 legitimately repeats a name from page 1.
+      const first = data?.data ?? [];
+      setMore((current) =>
+        appendPage([...first, ...current], next.data ?? []).slice(first.length),
+      );
+      setPage((current) => current + 1);
+    } catch (err) {
+      setMoreError(err instanceof Error ? err.message : 'Could not load any more');
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
   async function removeMember(member: Member) {
     if (!token || !currentOrgId) return;
     setRemoving(true);
@@ -650,13 +713,45 @@ export default function MembersPage() {
             {filtered.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-500">
-                  No members found matching your search.
+                  {query
+                    ? 'No members match that search.'
+                    : 'No members yet.'}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {/* The roster's own size, always stated (MEM-22). A list that stops at
+          fifty and says nothing is how an organiser concludes the import
+          dropped the other 376. */}
+      {data && (
+        <div className="flex flex-col items-center gap-3 py-2">
+          <p className="text-sm text-gray-500">
+            {loading ? 'Searching…' : rosterCount(filtered.length, data.meta, query !== '')}
+          </p>
+
+          {moreError && (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {moreError}
+            </p>
+          )}
+
+          {hasMore(filtered.length, data.meta) && (
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {loadingMore
+                ? 'Loading…'
+                : `Show ${Math.min(PER_PAGE, data.meta.total - filtered.length)} more`}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
