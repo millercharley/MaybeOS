@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Check, ChevronDown, CreditCard, ExternalLink, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
+import { billedElsewhere } from '@/lib/legacy-billing';
 import { formatMinutes } from '@/lib/service-rota';
 import { usePublicApi } from '@/hooks/use-api';
 import { api, MembershipTier, ApiError, type ServicePeriod } from '@/lib/api';
@@ -218,6 +219,12 @@ export default function MemberBillingPage() {
     membership.subscriptionStatus,
   );
 
+  // Imported, and still paying wherever they always did (MIG-03). MaybeOS
+  // holds no subscription for them, so nothing on this page was about the
+  // money that is already going out every month.
+  const legacyUrl = membership.org?.legacyBillingUrl ?? null;
+  const payingElsewhere = billedElsewhere(membership, tiers, legacyUrl);
+
   return (
     <div>
       <PageHeader
@@ -257,8 +264,11 @@ export default function MemberBillingPage() {
             <div className="flex items-center gap-3">
               <CreditCard className="h-5 w-5 text-[var(--text-tertiary)]" />
               <span className="font-semibold">Current status</span>
-              <span className={ending ? 'badge-warning' : status.tone}>
-                {ending ? 'Ending' : status.label}
+              <span className={ending ? 'badge-warning' : payingElsewhere ? 'badge-success' : status.tone}>
+                {/* "Not set up" is true of MaybeOS and false of their
+                    membership, and it is the first thing an imported member
+                    reads about their own standing in the co-op (MIG-03). */}
+                {ending ? 'Ending' : payingElsewhere ? 'Active' : status.label}
               </span>
             </div>
             <p className="mt-2 text-sm text-[var(--text-secondary)]">
@@ -266,7 +276,9 @@ export default function MemberBillingPage() {
                 ? endsOn
                   ? `Your membership ends on ${endsOn}. Until then nothing changes, and you can start it again from Manage billing.`
                   : 'Your membership is set to end when the period you have paid for runs out. Until then nothing changes.'
-                : status.detail}
+                : payingElsewhere
+                  ? 'Your dues are collected outside MaybeOS, the way they always have been. Nothing here needs setting up.'
+                  : status.detail}
             </p>
             {/* The same date, asked the other way round: somebody staying
                 wants to know when the money next goes out. */}
@@ -283,6 +295,34 @@ export default function MemberBillingPage() {
           )}
         </div>
       </div>
+
+      {/* Where their money actually goes, for a member the co-op imported
+          (MIG-03). Above the tier chooser on purpose: "you are already
+          paying, here is where" has to be read before "choose a tier", or
+          choosing one looks like the only option and reads as a second bill. */}
+      {payingElsewhere && legacyUrl && (
+        <div className="card mt-6">
+          <div className="flex items-center gap-3">
+            <CreditCard className="h-5 w-5 text-[var(--text-tertiary)]" />
+            <span className="font-semibold">Your membership payment</span>
+          </div>
+          <p className="mt-2 text-sm text-[var(--text-secondary)]">
+            Your dues are still collected the way they always have been, not through
+            MaybeOS — nothing changed when {membership.org?.name ?? 'your co-op'} moved
+            here, and you have not been charged twice. Update your card, change the
+            amount or cancel in the same place as before.
+          </p>
+          <a
+            href={legacyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-secondary mt-4 inline-flex items-center gap-2"
+          >
+            Manage your existing payment
+            <ExternalLink size={14} aria-hidden="true" />
+          </a>
+        </div>
+      )}
 
       {/* Tier chooser. The heading lives on the card below it rather than
           loose on the co-op's colour (BRD-02). */}
@@ -305,7 +345,25 @@ export default function MemberBillingPage() {
         </div>
       ) : (
         <>
-      <Panel className="mt-10" title="Choose a tier">
+      <Panel
+        className="mt-10"
+        title={payingElsewhere ? 'Move your dues to MaybeOS' : 'Choose a tier'}
+      >
+        {/* The one thing that can cost an imported member real money. Picking
+            a tier here starts a *second* subscription; the old one carries on
+            until somebody stops it, and "somebody" is them (MIG-03). */}
+        {payingElsewhere && legacyUrl && (
+          <p className="mb-4 rounded-lg border border-[var(--warning)] bg-[var(--warning-bg,transparent)] p-3 text-sm text-[var(--text-secondary)]">
+            Only if you want to. Your membership is fine as it is, and nothing here
+            expires. If you do move, <strong>cancel your existing payment first</strong>{' '}
+            — <a href={legacyUrl} target="_blank" rel="noopener noreferrer" className="underline">
+              in the same place you always have
+            </a>{' '}
+            — because starting a tier here does not stop it, and the two would run
+            alongside each other.
+          </p>
+        )}
+
         {(!tiers || tiers.length === 0) && (
           <p className="text-sm text-[var(--text-secondary)]">
             {membership.org?.name} hasn&apos;t set up membership tiers yet.

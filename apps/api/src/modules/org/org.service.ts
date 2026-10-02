@@ -385,7 +385,15 @@ export class OrgService {
 
     return this.prisma.organization.update({
       where: { id: orgId },
-      data: dto,
+      data: {
+        ...dto,
+        // An emptied field means "we have finished migrating", and the empty
+        // string would otherwise be stored and then rendered as a link to
+        // nowhere (MIG-03).
+        ...(dto.legacyBillingUrl !== undefined && {
+          legacyBillingUrl: dto.legacyBillingUrl?.trim() || null,
+        }),
+      },
     });
   }
 

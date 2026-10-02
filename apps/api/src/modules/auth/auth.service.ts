@@ -258,6 +258,11 @@ export class AuthService {
                 brandColor: true,
                 bannerUrl: true,
                 memberGoal: true,
+                // Where members the co-op imported still pay, for the one
+                // card on their billing page that is about the money already
+                // leaving their account (MIG-03). The co-op's own address,
+                // not anybody's private data.
+                legacyBillingUrl: true,
                 // What "today" means at this co-op. The member dashboard heads
                 // its list with today's events, and a member reading it from
                 // another timezone is asking what is on at the *space*.
