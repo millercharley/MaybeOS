@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useCallback, useEffect, useState } from 'react';
+import { use, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { DoorOpen, ArrowLeft, Calendar, MapPin, Users, Ticket } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
@@ -16,6 +16,7 @@ import { eventArt } from '@/lib/event-art';
 import { PageHeader } from '@/components/layout/page-header';
 import { maturityBadge } from '@/lib/maturity';
 import { MemberName } from '@/components/member/member-name';
+import { rsvpRequested, shouldRsvpOnArrival, withoutRsvpParam } from '@/lib/radar-rsvp';
 
 /**
  * One event, at the size an event deserves (EVT-08, EVT-11).
@@ -37,6 +38,11 @@ export default function PortalEventPage(props: {
   const { org } = usePortal();
   const token = useAuthStore((s) => s.token);
   const user = useAuthStore((s) => s.user);
+  // The portal layout already holds every page back until the session is
+  // known, but the Radar arrival below acts without being asked — it checks
+  // this itself rather than inheriting the guarantee from a parent that
+  // could reasonably be rearranged later.
+  const authLoading = useAuthStore((s) => s.isLoading);
 
   // A member of *this* co-op, not merely somebody signed in. A member of some
   // other co-op sees exactly what the public sees.
@@ -48,6 +54,37 @@ export default function PortalEventPage(props: {
   const [busy, setBusy] = useState(false);
   const [rsvpStatus, setRsvpStatus] = useState<'CONFIRMED' | 'WAITLISTED' | null>(null);
   const [rsvpError, setRsvpError] = useState('');
+  /** Whether the question "is this member already coming?" has been answered. */
+  const [rsvpKnown, setRsvpKnown] = useState(false);
+
+  /**
+   * Where to come back to after signing in.
+   *
+   * Read in an effect rather than while rendering: the query string only
+   * exists in the browser, and reading `window.location` during the render
+   * would produce different markup from the one the server sent. Null until
+   * then, which is the same on both sides.
+   */
+  const [returnTo, setReturnTo] = useState<string | null>(null);
+  useEffect(() => {
+    setReturnTo(window.location.pathname + window.location.search);
+  }, []);
+
+  /**
+   * Signing in from here has to come back *here*, with everything the address
+   * carried.
+   *
+   * This page is one of the two the portal guard deliberately leaves open
+   * (AUTH-08), so nobody redirected a signed-out visitor to get here and
+   * nothing is holding their place — the link used to be a bare `/login`,
+   * which signed them in and dropped them on their own dashboard. The Radar
+   * digest makes that concrete: `?rsvp=radar` is the thing they clicked, and
+   * losing it means signing in and then having to find the RSVP button
+   * themselves.
+   */
+  const signInHref = returnTo
+    ? `/login?redirect=${encodeURIComponent(returnTo)}`
+    : '/login';
 
   useEffect(() => {
     let cancelled = false;
@@ -82,6 +119,110 @@ export default function PortalEventPage(props: {
       cancelled = true;
     };
   }, [orgSlug, eventSlug, org, token, isMember]);
+
+  /**
+   * Whether this member is already coming.
+   *
+   * The page never asked. `rsvpStatus` started empty on every visit, so a
+   * member who had already RSVPed was shown the button again, and the API
+   * answers a repeat with a 409 — "You have already RSVPed to this event" —
+   * which this page renders as the RSVP error. That was a wart while a
+   * person had to press the button themselves. The Radar digest's RSVP link
+   * makes the page press it unprompted, so the page has to know the answer
+   * before it acts, or opening the second digest greets a member with an
+   * error about a seat they already hold.
+   */
+  useEffect(() => {
+    if (!isMember || !token) {
+      // Nobody who could be holding one. Settled rather than left pending,
+      // or the arrival below waits forever for an answer that is not coming.
+      setRsvpKnown(true);
+      return;
+    }
+    if (!org || !event) return;
+
+    let cancelled = false;
+    api.events
+      .myRsvps(org.id, token)
+      .then((mine) => {
+        if (cancelled) return;
+        const held = mine.find((r) => r.event.id === event.id);
+        // CANCELED is not a seat, and the API revives one rather than
+        // refusing it — somebody who canceled and then followed a fresh
+        // digest link means to come after all.
+        if (held?.status === 'CONFIRMED' || held?.status === 'WAITLISTED') {
+          setRsvpStatus(held.status);
+        }
+      })
+      .catch(() => {
+        // Deliberately quiet. The button still works and the API still
+        // refuses a duplicate, so a failed read costs the page nothing it
+        // did not already live without.
+      })
+      .finally(() => {
+        if (!cancelled) setRsvpKnown(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [org, token, isMember, event]);
+
+  /**
+   * The ref is what makes the arrival below happen once. React re-runs an
+   * effect whenever its inputs move, and the inputs here are loading flags —
+   * without it, a second RSVP would be posted the moment anything else on
+   * the page settled.
+   */
+  const arrivalHandled = useRef(false);
+
+  /**
+   * `?rsvp=radar` — the RSVP button in a Radar digest (RDR-01).
+   *
+   * The digest links to this page rather than to an endpoint, so pressing it
+   * lands the member on the event with their seat already taken: the page is
+   * the confirmation. Which arrivals may act, and why each guard exists,
+   * lives in `lib/radar-rsvp.ts`; this is the plumbing around it.
+   */
+  useEffect(() => {
+    if (arrivalHandled.current) return;
+    if (authLoading || loading) return;
+    // An event that loaded but whose RSVP has not been read yet is not ready.
+    // One that failed to load never will be, and should still clear the flag
+    // off the address.
+    if (event && !rsvpKnown) return;
+    if (!rsvpRequested(window.location.search)) return;
+
+    arrivalHandled.current = true;
+
+    // Cleared as soon as the page commits, rather than after the call
+    // answers — a refresh mid-flight would otherwise start a second one.
+    // `history.replaceState` rather than `router.replace`, matching the rooms
+    // and reports pages: the job is to rewrite the address without re-running
+    // the route, and re-running it would refetch the event underneath us.
+    window.history.replaceState(
+      {},
+      '',
+      withoutRsvpParam(window.location.pathname, window.location.search),
+    );
+
+    const go = shouldRsvpOnArrival({
+      requested: true,
+      ready: Boolean(event && org),
+      canRsvp: isMember && Boolean(token),
+      ticketed: Boolean(event?.priceCents),
+      existing: rsvpStatus,
+    });
+
+    // Declining is not a silent no-op: an RSVP already held is already
+    // rendered as "You're going", a signed-out reader already has the
+    // sign-in prompt, and a ticketed event already shows Buy. Each of those
+    // is the page's own answer to "can I come", which is what the member
+    // followed the link to find out.
+    if (go) rsvp();
+    // Once, on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, loading, rsvpKnown, event, org, isMember, token, rsvpStatus]);
 
   async function rsvp() {
     if (!org || !token || !event) return;
@@ -245,7 +386,7 @@ export default function PortalEventPage(props: {
           ) : (
             <p className="border-t border-gray-200 pt-6 text-sm text-gray-500">
               Members of {org?.name ?? 'this co-op'} can discuss this event.{' '}
-              <Link href="/login" className="text-brand-600 hover:underline">Sign in</Link>.
+              <Link href={signInHref} className="text-brand-600 hover:underline">Sign in</Link>.
             </p>
           )}
         </div>
@@ -333,7 +474,7 @@ export default function PortalEventPage(props: {
                   </button>
                 ) : (
                   <p className="text-center text-sm text-gray-500">
-                    <Link href="/login" className="text-brand-600 hover:underline">
+                    <Link href={signInHref} className="text-brand-600 hover:underline">
                       Sign in
                     </Link>{' '}
                     to RSVP.

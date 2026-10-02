@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { EventsService } from '../events.service';
+import { RadarService } from '../../radar/radar.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { ConnectService } from '../../stripe/connect.service';
 import { EmailService } from '../../email/email.service';
@@ -42,6 +43,8 @@ describe('EventsService — announcing an event', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EventsService,
+        // Radar counts an RSVP toward the member's interests (RDR-01).
+        { provide: RadarService, useValue: { recordRsvp: jest.fn() } },
         { provide: ConnectService, useValue: {} },
         { provide: EmailService, useValue: { send: jest.fn() } },
         { provide: ConfigService, useValue: { get: jest.fn() } },

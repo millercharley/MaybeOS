@@ -4,6 +4,7 @@ import { SpaceService } from '../space.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { EmailService } from '../../email/email.service';
 import { EventsService } from '../../events/events.service';
+import { RadarService } from '../../radar/radar.service';
 import { ConnectService } from '../../stripe/connect.service';
 import { CalendarService } from '../../calendar/calendar.service';
 import { StorageService } from '../../storage/storage.service';
@@ -57,6 +58,9 @@ describe('SpaceService — booking email times', () => {
           },
         },
         { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },
+        // Radar counts an RSVP toward the member's interests (RDR-01); these
+        // suites assert nothing about what it learns.
+        { provide: RadarService, useValue: { recordRsvp: jest.fn() } },
         // SpaceService now keeps a booking's published event in step with it
         // (EVT-05); these tests do not exercise that path.
         { provide: EventsService, useValue: { syncWithBooking: jest.fn() } },

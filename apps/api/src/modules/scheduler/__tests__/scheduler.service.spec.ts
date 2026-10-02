@@ -6,6 +6,7 @@ import { ReportService } from '../../impact/report.service';
 import { BuddyService } from '../../belonging/buddy.service';
 import { DoorService } from '../../door/door.service';
 import { StripeService } from '../../stripe/stripe.service';
+import { RadarService } from '../../radar/radar.service';
 import { HostBriefingService } from '../../service/host-briefing.service';
 
 /**
@@ -68,6 +69,11 @@ describe('SchedulerService', () => {
         {
           provide: StripeService,
           useValue: { removeDuesFeesAfterUpgrade: jest.fn().mockResolvedValue({ removed: 0, failed: 0 }) },
+        },
+        // RDR-01. The weekly Radar digest; due for no co-op in these suites.
+        {
+          provide: RadarService,
+          useValue: { sendDue: jest.fn().mockResolvedValue({ processed: 0, failed: 0, errors: [] }) },
         },
       ],
     }).compile();
@@ -225,6 +231,11 @@ describe('SchedulerService — compose-pending-reports', () => {
         {
           provide: StripeService,
           useValue: { removeDuesFeesAfterUpgrade: jest.fn().mockResolvedValue({ removed: 0, failed: 0 }) },
+        },
+        // RDR-01. The weekly Radar digest; due for no co-op in these suites.
+        {
+          provide: RadarService,
+          useValue: { sendDue: jest.fn().mockResolvedValue({ processed: 0, failed: 0, errors: [] }) },
         },
       ],
     }).compile();

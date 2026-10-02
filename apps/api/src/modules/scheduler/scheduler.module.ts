@@ -6,6 +6,7 @@ import { BelongingModule } from '../belonging/belonging.module';
 import { ServiceModule } from '../service/service.module';
 import { DoorModule } from '../door/door.module';
 import { StripeModule } from '../stripe/stripe.module';
+import { RadarModule } from '../radar/radar.module';
 import { SchedulerService } from './scheduler.service';
 
 /**
@@ -15,7 +16,15 @@ import { SchedulerService } from './scheduler.service';
  * to close every open proposal in the system.
  */
 @Module({
-  imports: [CommonsModule, ImpactModule, BelongingModule, ServiceModule, DoorModule, StripeModule],
+  imports: [
+    CommonsModule,
+    ImpactModule,
+    BelongingModule,
+    ServiceModule,
+    DoorModule,
+    StripeModule,
+    RadarModule,
+  ],
   providers: [PrismaService, SchedulerService],
   exports: [SchedulerService],
 })

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { MATURITY_LEVELS, type MaturityLevel } from '@/lib/maturity';
+import { api } from '@/lib/api';
 
 /**
  * What the booking is for (SPC-21).
@@ -42,12 +43,23 @@ export function BookingDetailsForm({
   busy,
   onBack,
   onConfirm,
+  orgId,
+  token,
 }: {
   when: string;
   roomName: string;
   busy: boolean;
   onBack: () => void;
   onConfirm: (details: BookingDetails) => void;
+  /**
+   * Who is booking and where, so the kinds offered are the co-op's own
+   * interest list (RDR-01) rather than the six MaybeOS shipped with. A
+   * booking becomes an event (EVT-05) carrying these words, so if the two
+   * forms offered different lists, a gathering published from a booking
+   * could be tagged with something no member can ever be matched to.
+   */
+  orgId?: string;
+  token?: string;
 }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -56,6 +68,29 @@ export function BookingDetailsForm({
   const [hasCost, setHasCost] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
   const [maturityLevel, setMaturityLevel] = useState<MaturityLevel>('ALL_AGES');
+  // Falls back to the six constants above whenever the list cannot be read:
+  // a member booking a room must never be blocked by a feature they are not
+  // using.
+  const [options, setOptions] = useState<string[]>([...GATHERING_KINDS]);
+
+  useEffect(() => {
+    if (!orgId || !token) return;
+    let cancelled = false;
+
+    api.radar
+      .tags(orgId, token)
+      .then((tags) => {
+        const names = tags.map((tag) => tag.name);
+        if (!cancelled && names.length > 0) setOptions(names);
+      })
+      .catch(() => {
+        /* The fallback above is already correct. */
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, token]);
 
   // Functional update, because two chips clicked in quick succession both read
   // the same render's `categories` otherwise and the second silently discards
@@ -214,7 +249,7 @@ export function BookingDetailsForm({
       <fieldset className="mt-4">
         <legend className="text-sm font-medium">What kind of gathering?</legend>
         <div className="mt-2 flex flex-wrap gap-2">
-          {GATHERING_KINDS.map((kind) => (
+          {options.map((kind) => (
             <button
               key={kind}
               type="button"

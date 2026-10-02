@@ -929,6 +929,98 @@ class ApiClient {
   };
 
   /**
+   * Radar (RDR-01): the co-op's interest list, what a member says they care
+   * about, and the switch on the weekly digest.
+   */
+  radar = {
+    settings: (orgId: string, token: string) =>
+      this.request<RadarSettings>(`/orgs/${orgId}/radar/settings`, { token }),
+
+    updateSettings: (
+      orgId: string,
+      data: { enabled?: boolean; digestDay?: number; digestHour?: number },
+      token: string,
+    ) =>
+      this.request<RadarSettings>(`/orgs/${orgId}/radar/settings`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    createTag: (orgId: string, data: { name: string; emoji?: string }, token: string) =>
+      this.request<InterestTag>(`/orgs/${orgId}/radar/tags`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    updateTag: (
+      orgId: string,
+      tagId: string,
+      data: { name?: string; emoji?: string; isActive?: boolean },
+      token: string,
+    ) =>
+      this.request<InterestTag>(`/orgs/${orgId}/radar/tags/${tagId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    removeTag: (orgId: string, tagId: string, token: string) =>
+      this.request<InterestTag | null>(`/orgs/${orgId}/radar/tags/${tagId}`, {
+        method: 'DELETE',
+        token,
+      }),
+
+    /** The co-op's interest list, for a host tagging a gathering. */
+    tags: (orgId: string, token: string) =>
+      this.request<InterestTag[]>(`/orgs/${orgId}/radar/tags`, { token }),
+
+    /** The member's own interests, including what MaybeOS inferred for them. */
+    myInterests: (orgId: string, token: string) =>
+      this.request<MyInterests>(`/orgs/${orgId}/radar/interests`, { token }),
+
+    setInterests: (
+      orgId: string,
+      answers: { tagId: string; declared: boolean | null }[],
+      token: string,
+    ) =>
+      this.request<MyInterests>(`/orgs/${orgId}/radar/interests`, {
+        method: 'PATCH',
+        body: JSON.stringify({ answers }),
+        token,
+      }),
+
+    /** The next few interests to ask about, or null when it is not time. */
+    ask: (orgId: string, token: string) =>
+      this.request<InterestAsk | null>(`/orgs/${orgId}/radar/ask`, { token }),
+
+    dismissAsk: (orgId: string, token: string) =>
+      this.request<{ dismissed: boolean }>(`/orgs/${orgId}/radar/ask/dismiss`, {
+        method: 'POST',
+        token,
+      }),
+
+    setEmails: (orgId: string, radarEmails: boolean, token: string) =>
+      this.request<{ radarEmails: boolean }>(`/orgs/${orgId}/radar/emails`, {
+        method: 'PATCH',
+        body: JSON.stringify({ radarEmails }),
+        token,
+      }),
+
+    /**
+     * Stop the emails, from the link in one. No session: the token is the
+     * authorisation, and a login wall in front of an unsubscribe is how an
+     * unsubscribe becomes a spam complaint.
+     */
+    unsubscribe: (token: string) =>
+      this.request<{ ok: boolean; orgName?: string }>(
+        `/radar/unsubscribe?token=${encodeURIComponent(token)}`,
+        { method: 'POST' },
+      ),
+  };
+
+  /**
    * Sharing public events to the co-op's Facebook Page and Instagram (SOC-01).
    */
   social = {
@@ -4525,6 +4617,49 @@ export interface StandingDuty extends DutyAdoption {
   /** When it next falls due. ISO 8601. */
   reviewDueAt?: string;
   reviewedAt?: string | null;
+}
+
+// ── Radar (RDR-01) ─────────────────────────────────────────
+
+export interface InterestTag {
+  id: string;
+  name: string;
+  emoji: string | null;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface RadarSettings {
+  /** Whether the co-op's plan includes Radar at all. */
+  available: boolean;
+  plan: 'FREE' | 'PLUS' | 'UNLIMITED';
+  enabled: boolean;
+  /** 0 = Sunday, in the co-op's own timezone. */
+  digestDay: number;
+  digestHour: number;
+  tags: InterestTag[];
+  /** Counts, never names — an admin never sees who likes what. */
+  subscribed: number;
+  withInterests: number;
+}
+
+export interface MemberInterest {
+  tagId: string;
+  name: string;
+  emoji: string | null;
+  /** true = picked it, false = waved it away, null = never said. */
+  declared: boolean | null;
+  /** How many matching gatherings they have RSVPed to. */
+  rsvpCount: number;
+}
+
+export interface MyInterests {
+  radarEmails: boolean;
+  interests: MemberInterest[];
+}
+
+export interface InterestAsk {
+  interests: { tagId: string; name: string; emoji: string | null }[];
 }
 
 // ── Sharing to Facebook and Instagram (SOC-01) ─────────────

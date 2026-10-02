@@ -5,6 +5,7 @@ import { ReportService } from '../impact/report.service';
 import { BuddyService } from '../belonging/buddy.service';
 import { DoorService } from '../door/door.service';
 import { StripeService } from '../stripe/stripe.service';
+import { RadarService } from '../radar/radar.service';
 import { HostBriefingService } from '../service/host-briefing.service';
 
 export interface TaskResult {
@@ -50,6 +51,7 @@ export class SchedulerService {
     private readonly hosting: HostBriefingService,
     private readonly door: DoorService,
     private readonly stripe: StripeService,
+    private readonly radar: RadarService,
   ) {}
 
   async runDueTasks(now: Date = new Date()): Promise<RunResult> {
@@ -69,6 +71,7 @@ export class SchedulerService {
       { name: 'send-host-briefings', run: () => this.sendHostBriefings(now) },
       { name: 'sync-door-codes', run: () => this.syncDoorCodes() },
       { name: 'remove-dues-fees-after-upgrade', run: () => this.removeDuesFees() },
+    { name: 'send-radar-digests',             run: () => this.sendRadarDigests(now) },
     ]) {
       try {
         tasks.push(await task.run());
@@ -124,6 +127,24 @@ export class SchedulerService {
       return { task: 'remove-dues-fees-after-upgrade', processed: removed, failed, errors: [] };
     } catch (error) {
       return { task: 'remove-dues-fees-after-upgrade', processed: 0, failed: 1, errors: [(error as Error).message] };
+    }
+  }
+
+  /**
+   * The weekly Radar digest (RDR-01).
+   *
+   * Runs on every invocation and almost always does nothing: a co-op is due
+   * only in the hour it chose, on the day it chose, in its own timezone. The
+   * 15-minute cadence means "Thursday at 9" arrives between 9:00 and 9:15,
+   * the same bargain the host briefings make.
+   */
+  private async sendRadarDigests(now: Date): Promise<TaskResult> {
+    try {
+      const { processed, failed, errors } = await this.radar.sendDue(now);
+      if (processed > 0) this.logger.log(`Sent ${processed} radar digest(s)`);
+      return { task: 'send-radar-digests', processed, failed, errors };
+    } catch (error) {
+      return { task: 'send-radar-digests', processed: 0, failed: 1, errors: [(error as Error).message] };
     }
   }
 

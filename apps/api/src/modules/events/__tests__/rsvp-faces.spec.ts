@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../config/prisma.service';
 import { EventsService } from '../events.service';
+import { RadarService } from '../../radar/radar.service';
 import { EmailService } from '../../email/email.service';
 import { CalendarService } from '../../calendar/calendar.service';
 import { ConnectService } from '../../stripe/connect.service';
@@ -31,6 +32,8 @@ describe('RSVP faces', () => {
     const module = await Test.createTestingModule({
       providers: [
         EventsService,
+        // Radar counts an RSVP toward the member's interests (RDR-01).
+        { provide: RadarService, useValue: { recordRsvp: jest.fn() } },
         { provide: PrismaService, useValue: prisma },
         { provide: EmailService, useValue: {} },
         { provide: ConfigService, useValue: { get: () => '' } },

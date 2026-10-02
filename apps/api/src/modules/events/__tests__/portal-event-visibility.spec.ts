@@ -36,7 +36,7 @@ describe('EventsService — what the portal lists', () => {
       },
     };
 
-    const service = new EventsService(prisma as never, {} as never, {} as never);
+    const service = new EventsService(prisma as never, {} as never, {} as never, {} as never, {} as never);
     await service.listPublicEvents('org-1', {}, viewerIsMember);
     return captured[0];
   };

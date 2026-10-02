@@ -22,6 +22,12 @@ const APP_ROUTES = [
   '/calendar',
   '/portal',
   '/invite',
+  // The Radar unsubscribe link (RDR-01). Same category as `/invite` and
+  // `/magic-link`: a page opened from an email, belonging to the app rather
+  // than to a co-op. Without it, a tenant host would rewrite
+  // `sunrise.maybeos.org/radar/unsubscribe` to a portal section that does not
+  // exist, and the member would get a 404 instead of a way to stop the email.
+  '/radar',
 ];
 
 export function middleware(request: NextRequest) {

@@ -37,6 +37,9 @@ const EXPECTED = [
 
   // A token in the URL is the authorisation: 32 random bytes, single use.
   'GET /buddy/:token',
+  // Stopping Radar email from the link in one (RDR-01). HMAC-signed, and it
+  // authorises exactly one thing: switching that membership's digest off.
+  'POST /radar/unsubscribe',
   'GET /invites',
 
   // What a co-op has chosen to publish.

@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EventsService } from '../events.service';
+import { RadarService } from '../../radar/radar.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { ConnectService } from '../../stripe/connect.service';
 import { EmailService } from '../../email/email.service';
@@ -81,6 +82,9 @@ describe('EventsService — member events', () => {
         // Waitlist promotion emails (EVT-16); these suites send none.
         { provide: EmailService, useValue: { sendWaitlistPromoted: jest.fn() } },
         { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },
+        // Radar counts an RSVP toward the member's interests (RDR-01); these
+        // suites assert nothing about what it learns.
+        { provide: RadarService, useValue: { recordRsvp: jest.fn() } },
       ],
     }).compile();
 

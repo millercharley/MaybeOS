@@ -275,6 +275,8 @@ export function RoomBooking({
       <div className="p-6">
         {chosen ? (
           <BookingDetailsForm
+            orgId={orgId}
+            token={token}
             roomName={room.name}
             when={`${dateLabel(chosen.start.slice(0, 10))} at ${timeLabel(chosen.minutes)}`}
             busy={booking !== null}
