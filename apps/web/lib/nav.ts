@@ -60,7 +60,10 @@ export interface NavMembership {
  * `/admin` had to be excluded from tenant routing until now.
  */
 const adminNav = (slug: string): NavItem[] => [
-  { href: `/admin/${slug}`, label: 'Dashboard', icon: LayoutDashboard },
+  // "Admin dashboard", not "Dashboard" (Charley, 2026-10-02). It lives inside
+  // Administration now rather than at the top of the nav, and two entries
+  // called Dashboard on one screen is a riddle rather than a label.
+  { href: `/admin/${slug}`, label: 'Admin dashboard', icon: LayoutDashboard },
   { href: `/admin/${slug}/members`, label: 'Members', icon: Users },
   { href: `/admin/${slug}/tiers`, label: 'Tiers & Dues', icon: CreditCard },
   { href: `/admin/${slug}/events`, label: 'Events', icon: Calendar },
@@ -189,8 +192,13 @@ export function sidebarSections({
   const member = slug ? memberNav(slug) : [];
 
   if (signedIn && slug) {
-    // One dashboard, whichever this person's is.
-    sections.push({ items: [isOrganiser ? admin[0] : member[0]] });
+    // **Always the member's own dashboard, organiser or not** (Charley,
+    // 2026-10-02). It used to be whichever this person's was, which made the
+    // top of the nav mean two different things depending on who was reading
+    // it — and quietly told every organiser that running the co-op was their
+    // home in it. Being a member of the co-op comes first; administering it
+    // is a section you go to, and that is where its dashboard now lives.
+    sections.push({ items: [member[0]] });
   }
 
   // Omitted rather than guessed when there is no slug: `/portal/undefined/...`
@@ -214,7 +222,9 @@ export function sidebarSections({
     // id stays `organizing`: it is what the collapse state is stored under in
     // a member's browser, so changing it would silently reopen every section
     // an organiser had closed.
-    sections.push({ label: 'Administration', id: 'organizing', items: admin.slice(1) });
+    // The whole of `admin`, including its dashboard, which used to be lifted
+    // out to the top of the nav and is now the first thing in this section.
+    sections.push({ label: 'Administration', id: 'organizing', items: admin });
   }
 
   // Last, and labelled as MaybeOS rather than as part of the co-op — because

@@ -38,11 +38,17 @@ describe('which nav section is open', () => {
   });
 
   it('opens the co-op on the dashboard, where everybody lands', () => {
-    // The dashboard is hoisted out and has no header of its own, so no section
-    // matches — and `/admin/<slug>` must not drag Organising open by being a
-    // prefix of its items' hrefs either. What is left is the default, and the
-    // default is the co-op: Welcome, Commons, Directory.
-    expect(openSectionLabel(sections, '/admin/maybeitsfate')).toBe('MaybeItsFate');
+    // The hoisted dashboard is the member's now (Charley, 2026-10-02) and has
+    // no header of its own, so no section matches. What is left is the
+    // default, and the default is the co-op: Welcome, Commons, Directory.
+    expect(openSectionLabel(sections, '/member/maybeitsfate')).toBe('MaybeItsFate');
+  });
+
+  it('opens Administration on the admin dashboard, which is one of its items now', () => {
+    // It used to be hoisted out of the nav, so landing on it opened the
+    // co-op instead — which was the right answer for a page with no section
+    // and the wrong one for somebody who had just gone to Administration.
+    expect(openSectionLabel(sections, '/admin/maybeitsfate')).toBe('Administration');
   });
 
   it('falls back to the co-op off the nav entirely', () => {
