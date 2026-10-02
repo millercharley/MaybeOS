@@ -1014,10 +1014,66 @@ class ApiClient {
      * unsubscribe becomes a spam complaint.
      */
     unsubscribe: (token: string) =>
-      this.request<{ ok: boolean; orgName?: string }>(
+      this.request<{ ok: boolean; orgName?: string; purpose?: 'radar' | 'recap' }>(
         `/radar/unsubscribe?token=${encodeURIComponent(token)}`,
         { method: 'POST' },
       ),
+  };
+
+  /**
+   * The monthly recap (RCP-01): what the month just ended added up to,
+   * drafted on the 1st for an organiser to send.
+   */
+  recap = {
+    settings: (orgId: string, token: string) =>
+      this.request<RecapSettings>(`/orgs/${orgId}/recap/settings`, { token }),
+
+    updateSettings: (
+      orgId: string,
+      data: { enabled?: boolean; draftHour?: number; showMoney?: boolean },
+      token: string,
+    ) =>
+      this.request<RecapSettings>(`/orgs/${orgId}/recap/settings`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    latest: (orgId: string, token: string) =>
+      this.request<RecapDraft | null>(`/orgs/${orgId}/recap/latest`, { token }),
+
+    list: (orgId: string, token: string) =>
+      this.request<RecapSummary[]>(`/orgs/${orgId}/recap`, { token }),
+
+    /** The organiser's own words at the top. Refused once it has been sent. */
+    setNote: (orgId: string, recapId: string, note: string, token: string) =>
+      this.request<RecapDraft>(`/orgs/${orgId}/recap/${recapId}/note`, {
+        method: 'PATCH',
+        body: JSON.stringify({ note }),
+        token,
+      }),
+
+    /** The one action that writes to every member's inbox. Not undoable. */
+    send: (orgId: string, recapId: string, token: string) =>
+      this.request<{ sent: number }>(`/orgs/${orgId}/recap/${recapId}/send`, {
+        method: 'POST',
+        token,
+      }),
+
+    /** Draft last month now rather than waiting for the 1st. */
+    draft: (orgId: string, token: string) =>
+      this.request<RecapDraft | null>(`/orgs/${orgId}/recap/draft`, { method: 'POST', token }),
+
+    /** The member's own switch, read before it is shown. */
+    emails: (orgId: string, token: string) =>
+      this.request<{ recapEmails: boolean }>(`/orgs/${orgId}/recap/emails`, { token }),
+
+    setEmails: (orgId: string, recapEmails: boolean, token: string) =>
+      this.request<{ recapEmails: boolean }>(`/orgs/${orgId}/recap/emails`, {
+        method: 'PATCH',
+        body: JSON.stringify({ recapEmails }),
+        token,
+      }),
   };
 
   /**
@@ -4617,6 +4673,85 @@ export interface StandingDuty extends DutyAdoption {
   /** When it next falls due. ISO 8601. */
   reviewDueAt?: string;
   reviewedAt?: string | null;
+}
+
+// ── The monthly recap (RCP-01) ─────────────────────────────
+
+/** Every figure the recap states, frozen when the month closed. */
+export interface RecapFigures {
+  monthLabel: string;
+  periodStart: string;
+  periodEnd: string;
+  members: { total: number; joined: number };
+  events: {
+    hosted: number;
+    /** People recorded at the door. Zero where nobody worked one. */
+    checkedIn: number;
+    /** How many of the month's events had any check-in at all. */
+    eventsWithDoor: number;
+    /** Confirmed RSVPs plus the guests they said they were bringing. */
+    expected: number;
+  };
+  money: {
+    month: MoneyFigure;
+    year: MoneyFigure;
+    /** When MaybeOS's dues record begins — null before any was recorded. */
+    duesRecordedSince: string | null;
+  };
+  service: { hours: number; members: number; valueCents: number | null } | null;
+  /** All-time, and only where at least five people answered (D-021). */
+  impact: { category: string; average: number; respondents: number }[];
+}
+
+export interface MoneyFigure {
+  duesCents: number;
+  ticketsCents: number;
+  roomsCents: number;
+  totalCents: number;
+}
+
+export interface RecapDraft {
+  id: string;
+  periodStart: string;
+  periodEnd: string;
+  status: 'DRAFT' | 'SENT';
+  figures: RecapFigures;
+  note: string | null;
+  composed: string | null;
+  composeStatus: 'PENDING' | 'COMPOSING' | 'READY' | 'SKIPPED' | 'FAILED';
+  composeNote: string | null;
+  sentAt: string | null;
+  sentCount: number;
+  /** Whether this co-op shows its members money at all. */
+  showMoney: boolean;
+}
+
+export interface RecapSummary {
+  id: string;
+  periodStart: string;
+  status: 'DRAFT' | 'SENT';
+  sentAt: string | null;
+  sentCount: number;
+  note: string | null;
+}
+
+export interface RecapSettings {
+  available: boolean;
+  plan: 'FREE' | 'PLUS' | 'UNLIMITED';
+  enabled: boolean;
+  /** The hour on the 1st, in the co-op's own time. */
+  draftHour: number;
+  showMoney: boolean;
+  timezone: string;
+  duesBackfilledAt: string | null;
+  subscribed: number;
+  latest: {
+    id: string;
+    periodStart: string;
+    status: 'DRAFT' | 'SENT';
+    sentAt: string | null;
+    sentCount: number;
+  } | null;
 }
 
 // ── Radar (RDR-01) ─────────────────────────────────────────

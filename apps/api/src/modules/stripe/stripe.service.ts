@@ -20,6 +20,7 @@ import {
 import { ConnectService } from './connect.service';
 import { membershipStatusFor } from './subscription-status';
 import { applicationFeePercent, duesFeeFor } from './dues-pricing';
+import { duesPaymentFrom } from './dues-ledger';
 import {
   WRITTEN_REPORT_PRICE_CENTS,
   WRITTEN_REPORT_PRODUCT_NAME,
@@ -988,6 +989,18 @@ export class StripeService implements OnModuleInit {
         await this.handleUpcomingInvoice(event.data.object as Stripe.Invoice, tx);
         break;
 
+      case 'invoice.paid':
+        // The event MaybeOS never handled (RCP-01). Dues cleared, Stripe knew,
+        // and the database learned nothing — so "what your membership paid
+        // for" was the one thing the product could not say. Recorded here
+        // going forward; `backfillDues` reads the months that predate this.
+        await this.recordDuesPayment(
+          event.data.object as Stripe.Invoice,
+          tx,
+          event.account ?? null,
+        );
+        break;
+
       case 'invoice.payment_failed':
         await this.handleInvoicePaymentFailed(
           event.data.object as Stripe.Invoice,
@@ -1185,6 +1198,87 @@ export class StripeService implements OnModuleInit {
    *
    * No proration: the member's next invoice simply stops including the fee.
    */
+  /**
+   * Read dues already charged back out of Stripe, once (RCP-01).
+   *
+   * MaybeOS started recording dues payments the day `invoice.paid` was
+   * handled. Everything before that is in Stripe and nowhere else, so a
+   * co-op's first recap would otherwise report a year of dues as zero — which
+   * is worse than reporting nothing, because zero looks like a fact.
+   *
+   * **Per subscription, not per account.** Listing an account's invoices
+   * wholesale would sweep up money that is not dues: on MaybeOS's own
+   * platform account that means every other co-op's plan billing, and on a
+   * co-op's connected account it means whatever else they sell through their
+   * own Stripe. Walking the subscriptions MaybeOS actually knows about costs
+   * one call each and cannot count somebody else's revenue as this co-op's.
+   *
+   * Idempotent twice over: `skipDuplicates` on a unique invoice id, and
+   * `duesBackfilledAt` so it does not run again by accident.
+   */
+  async backfillDues(
+    orgId: string,
+    since: Date,
+  ): Promise<{ invoices: number; recorded: number; failed: number }> {
+    const memberships = await this.prisma.userOrg.findMany({
+      where: { orgId, stripeSubscriptionId: { not: null } },
+      select: { id: true, stripeSubscriptionId: true, stripeDuesAccountId: true },
+    });
+
+    const result = { invoices: 0, recorded: 0, failed: 0 };
+
+    for (const membership of memberships) {
+      try {
+        const invoices = await this.stripe.invoices.list(
+          {
+            subscription: membership.stripeSubscriptionId as string,
+            status: 'paid',
+            created: { gte: Math.floor(since.getTime() / 1000) },
+            limit: 100,
+          },
+          onAccount(membership.stripeDuesAccountId),
+        );
+
+        for (const invoice of invoices.data) {
+          const payment = duesPaymentFrom(invoice);
+          if (!payment) continue;
+          result.invoices += 1;
+
+          const written = await this.prisma.duesPayment.createMany({
+            data: [
+              {
+                orgId,
+                userOrgId: membership.id,
+                stripeInvoiceId: payment.stripeInvoiceId,
+                stripeAccountId: membership.stripeDuesAccountId,
+                amountCents: payment.amountCents,
+                feeCents: payment.feeCents,
+                currency: payment.currency,
+                paidAt: payment.paidAt,
+              },
+            ],
+            skipDuplicates: true,
+          });
+          result.recorded += written.count;
+        }
+      } catch (error) {
+        // One member's subscription failing to read must not cost the co-op
+        // the rest of its history.
+        result.failed += 1;
+        this.logger.warn(
+          `Could not read dues invoices for membership ${membership.id}: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    await this.prisma.organization.update({
+      where: { id: orgId },
+      data: { duesBackfilledAt: new Date() },
+    });
+
+    return result;
+  }
+
   async removeDuesFeesAfterUpgrade(): Promise<{ removed: number; failed: number }> {
     const memberships = await this.prisma.userOrg.findMany({
       where: {
@@ -1260,6 +1354,70 @@ export class StripeService implements OnModuleInit {
     });
 
     this.logger.log(`Subscription ${subscription.id} canceled`);
+  }
+
+  /**
+   * Record a dues payment that cleared (RCP-01).
+   *
+   * Keyed on the invoice id, which is unique in the database: a redelivered
+   * webhook and the Stripe backfill can both reach the same invoice, and only
+   * one of them may count the money. `skipDuplicates` rather than an upsert,
+   * because the first write is the one that was true at the time.
+   *
+   * The membership is resolved by subscription id and may come back empty —
+   * somebody who has since left, or a subscription adopted before MaybeOS saw
+   * it. The payment is still recorded: the co-op's money does not stop being
+   * real because the payer is no longer a member.
+   */
+  private async recordDuesPayment(
+    invoice: Stripe.Invoice,
+    tx: PrismaTx,
+    accountId: string | null,
+  ): Promise<void> {
+    const payment = duesPaymentFrom(invoice);
+    if (!payment) return;
+
+    const membership = await tx.userOrg.findFirst({
+      where: { stripeSubscriptionId: payment.stripeSubscriptionId as string },
+      select: { id: true, orgId: true },
+    });
+
+    // No membership *and* no account means there is nothing to file it under.
+    // A dues payment belongs to a co-op, and guessing which one from a
+    // customer id would be worse than not recording it.
+    const orgId =
+      membership?.orgId ??
+      (accountId
+        ? (
+            await tx.organization.findFirst({
+              where: { stripeAccountId: accountId },
+              select: { id: true },
+            })
+          )?.id
+        : undefined);
+
+    if (!orgId) {
+      this.logger.warn(
+        `Dues payment ${payment.stripeInvoiceId} matched no co-op; not recorded`,
+      );
+      return;
+    }
+
+    await tx.duesPayment.createMany({
+      data: [
+        {
+          orgId,
+          userOrgId: membership?.id ?? null,
+          stripeInvoiceId: payment.stripeInvoiceId,
+          stripeAccountId: accountId,
+          amountCents: payment.amountCents,
+          feeCents: payment.feeCents,
+          currency: payment.currency,
+          paidAt: payment.paidAt,
+        },
+      ],
+      skipDuplicates: true,
+    });
   }
 
   private async handleInvoicePaymentFailed(invoice: Stripe.Invoice, tx: PrismaTx) {

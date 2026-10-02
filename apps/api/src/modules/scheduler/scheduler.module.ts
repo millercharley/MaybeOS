@@ -7,6 +7,7 @@ import { ServiceModule } from '../service/service.module';
 import { DoorModule } from '../door/door.module';
 import { StripeModule } from '../stripe/stripe.module';
 import { RadarModule } from '../radar/radar.module';
+import { RecapModule } from '../recap/recap.module';
 import { SchedulerService } from './scheduler.service';
 
 /**
@@ -24,6 +25,7 @@ import { SchedulerService } from './scheduler.service';
     DoorModule,
     StripeModule,
     RadarModule,
+    RecapModule,
   ],
   providers: [PrismaService, SchedulerService],
   exports: [SchedulerService],

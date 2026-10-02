@@ -14,6 +14,12 @@ import {
   validateComposition,
   violationsAsFeedback,
 } from './report-validation';
+import {
+  RECAP_OUTPUT_SCHEMA,
+  RECAP_SYSTEM_PROMPT,
+  paragraphIsSupported,
+  recapUserMessage,
+} from '../recap/recap-composer';
 
 /**
  * Writing the prose (IMP-23 phase 2).
@@ -85,6 +91,63 @@ export class ComposerService {
 
   get available(): boolean {
     return this.client !== null;
+  }
+
+  /**
+   * The paragraph at the top of a monthly recap (RCP-01).
+   *
+   * Here rather than in a composer of its own because there should be one
+   * place that holds the key, names the model and turns an API failure into
+   * a sentence an organiser can read. A second client would be a second thing
+   * to configure and a second thing to forget.
+   *
+   * Unlike `compose`, there is no retry. The recap already reads correctly
+   * without a paragraph — it is figures and an organiser's own note — so a
+   * second call buys a nicety at the cost of making an organiser wait.
+   *
+   * The composed text is checked for numbers it was not given, and refused
+   * whole if it has any. A paragraph that invents "up 12% on August" reads
+   * exactly like one that does not.
+   */
+  async composeRecap(
+    facts: { label: string; value: string }[],
+  ): Promise<
+    { outcome: 'composed'; paragraph: string } | { outcome: 'gave-up'; reason: string }
+  > {
+    if (!this.client) {
+      return {
+        outcome: 'gave-up',
+        reason: 'MaybeOS is not set up to write these yet — your recap is complete without it.',
+      };
+    }
+
+    try {
+      const response = await this.client.messages.parse({
+        model: ComposerService.MODEL,
+        max_tokens: 1000,
+        system: RECAP_SYSTEM_PROMPT,
+        thinking: { type: 'adaptive' },
+        output_config: { format: jsonSchemaOutputFormat(RECAP_OUTPUT_SCHEMA) },
+        messages: [{ role: 'user', content: recapUserMessage(facts) }],
+      });
+
+      const paragraph = (response.parsed_output as { paragraph?: string } | null)?.paragraph?.trim();
+      if (!paragraph) {
+        return { outcome: 'gave-up', reason: 'Nothing came back to use.' };
+      }
+
+      if (!paragraphIsSupported(paragraph, facts)) {
+        this.logger.warn('Recap paragraph contained a figure it was not given; discarded');
+        return {
+          outcome: 'gave-up',
+          reason: 'What came back used a figure it was not given, so it was discarded.',
+        };
+      }
+
+      return { outcome: 'composed', paragraph };
+    } catch (err) {
+      return { outcome: 'gave-up', reason: ComposerService.humanReason(err) };
+    }
   }
 
   /**

@@ -21,11 +21,20 @@ import { createHmac, timingSafeEqual } from 'crypto';
  * into a general-purpose session.
  */
 
+/** The emails a member can switch off from a link. */
+export type UnsubscribePurpose = 'radar' | 'recap';
+
+const PURPOSES: readonly UnsubscribePurpose[] = ['radar', 'recap'] as const;
+
 export interface UnsubscribeToken {
   /** The membership, not the user: one co-op's email is not another's. */
   userOrgId: string;
-  /** What is being switched off. A token for one never works for another. */
-  purpose: 'radar';
+  /**
+   * What is being switched off. A token for one never works for another:
+   * somebody stopping the monthly recap has not asked to stop hearing about
+   * gatherings they would like, and the reverse is just as true.
+   */
+  purpose: UnsubscribePurpose;
 }
 
 const base64url = (input: Buffer | string) => Buffer.from(input).toString('base64url');
@@ -72,7 +81,8 @@ export function decodeUnsubscribe(
     return null;
   }
 
-  if (typeof parsed?.userOrgId !== 'string' || parsed?.purpose !== 'radar') return null;
+  if (typeof parsed?.userOrgId !== 'string') return null;
+  if (!PURPOSES.includes(parsed?.purpose)) return null;
 
   return parsed;
 }

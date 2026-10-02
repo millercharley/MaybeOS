@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { EmailModule } from '../email/email.module';
 import { RadarController } from './radar.controller';
-import { RadarUnsubscribeController } from './radar-unsubscribe.controller';
 import { RadarService } from './radar.service';
 
 /**
@@ -11,7 +10,7 @@ import { RadarService } from './radar.service';
  */
 @Module({
   imports: [EmailModule],
-  controllers: [RadarController, RadarUnsubscribeController],
+  controllers: [RadarController],
   providers: [RadarService],
   exports: [RadarService],
 })

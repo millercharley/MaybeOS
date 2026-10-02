@@ -20,6 +20,15 @@ import { PublicReportController } from './public-report.controller';
   imports: [StripeModule, ServiceModule],
   controllers: [ImpactController, PublicReportController],
   providers: [PrismaService, ImpactService, TouchpointService, ExpenseService, GoalsService, ReportService, ReportPurchaseService, ComposerService],
-  exports: [ImpactService, TouchpointService, ExpenseService, ReportPurchaseService, ReportService],
+  // ComposerService is exported for the monthly recap (RCP-01), which borrows
+  // the one configured Anthropic client rather than standing up a second.
+  exports: [
+    ImpactService,
+    TouchpointService,
+    ExpenseService,
+    ReportPurchaseService,
+    ReportService,
+    ComposerService,
+  ],
 })
 export class ImpactModule {}

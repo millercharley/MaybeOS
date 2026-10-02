@@ -181,8 +181,18 @@ describe('what a digest leaves out', () => {
 
     const where = prisma.userOrg.findMany.mock.calls[0][0].where;
     expect(where.radarEmails).toBe(true);
-    expect(where.emailOptIn).toEqual({ not: false });
     expect(where.role).toEqual({ in: ['ADMIN', 'STAFF', 'MEMBER'] });
+
+    // Never `{ not: false }`: `NULL <> false` is NULL in SQL, so that shape
+    // skips every member who was never asked about email — which is most of
+    // a real co-op, and indistinguishable from "nothing matched this week".
+    expect(where.emailOptIn).toBeUndefined();
+    expect(where.AND).toContainEqual({ OR: [{ emailOptIn: null }, { emailOptIn: true }] });
+
+    // And the weekly spacing survives beside it. Written as a second `OR` key
+    // on the same object, one of these two conditions vanishes silently.
+    expect(where.AND).toHaveLength(2);
+    expect(where.AND[1].OR[0]).toEqual({ radarLastSentAt: null });
   });
 
   it('ignores an interest the co-op has retired', async () => {
