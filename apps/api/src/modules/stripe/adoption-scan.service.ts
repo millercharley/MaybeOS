@@ -364,7 +364,10 @@ export class AdoptionScanService {
     return {
       id: sub.id,
       status: sub.status,
-      cancelAtPeriodEnd: sub.cancel_at_period_end === true,
+      // Either signal: flexible billing mode schedules a cancellation with
+      // `cancel_at` and leaves the boolean false (see `periodFrom`). An
+      // adopted subscription that is already ending has to arrive knowing it.
+      cancelAtPeriodEnd: sub.cancel_at_period_end === true || sub.cancel_at != null,
       currentPeriodEnd: this.periodEnd(sub),
       customerId: typeof customer === 'string' ? customer : (customer?.id ?? null),
       // Stripe's own record of when this member started paying. Better than a
