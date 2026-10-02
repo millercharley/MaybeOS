@@ -130,7 +130,7 @@ export function NextEventCard({
   actions: EventActions;
   now: Date;
 }) {
-  const soon = startsIn(event.startTime, now);
+  const soon = startsIn(event.startTime, now, event.endTime);
 
   return (
     <article className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
