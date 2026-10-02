@@ -150,7 +150,7 @@ export function confirmationLine(preview: CalendarImportSummary): string {
  * answered with the same cursor every time could not keep a browser asking
  * forever.
  */
-export const MAX_REQUESTS = 40;
+export const MAX_REQUESTS = 60;
 
 /**
  * Adding one chunk of an import to what has already run (CAL-05).
@@ -173,12 +173,12 @@ export function mergeSummaries(
       calendars.push(row);
       continue;
     }
-    // `found` is the whole calendar every time it is read, not a slice of it,
-    // so it is replaced rather than added — otherwise a calendar that took
-    // four chunks would report four times as many entries as it holds.
+    // Both add up now (CAL-06). A chunk reads one page of a calendar rather
+    // than the whole thing, so `found` is this page's entries — the total is
+    // the sum, the same as `written`.
     calendars[existing] = {
       ...calendars[existing],
-      found: row.found,
+      found: calendars[existing].found + row.found,
       written: calendars[existing].written + row.written,
       note: row.note ?? calendars[existing].note,
     };

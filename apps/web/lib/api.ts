@@ -397,7 +397,7 @@ class ApiClient {
         dryRun?: boolean;
         monthsBack?: number;
         /** Where the previous chunk stopped (CAL-05). */
-        resumeFrom?: { calendar: number; entry: number } | null;
+        resumeFrom?: { calendar: number; page?: string | null; entry: number } | null;
       },
       token: string,
     ) =>
@@ -3801,7 +3801,7 @@ export interface CalendarImportSummary {
    * — the first real import returned 504 — so a run stops when it is nearly
    * out of time and says where it got to.
    */
-  next?: { calendar: number; entry: number } | null;
+  next?: { calendar: number; page?: string | null; entry: number } | null;
 }
 
 export interface SlotsResponse {

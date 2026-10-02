@@ -287,13 +287,13 @@ describe('adding up the chunks', () => {
     expect(merged.calendars[0].written).toBe(290);
   });
 
-  it('does not multiply how many entries a calendar holds', () => {
-    // `found` is the whole calendar every time it is read, not a slice of it.
-    // Adding it would tell an organiser their 420-entry calendar holds 1,680.
-    const row = { id: 'cal-1', name: 'Events', kind: 'events' as const, found: 420, written: 150 };
+  it('adds up the entries each page held', () => {
+    // A chunk reads one page rather than the whole calendar (CAL-06), so
+    // `found` is this page's entries and the total is the sum.
+    const row = { id: 'cal-1', name: 'Events', kind: 'events' as const, found: 250, written: 250 };
     const merged = mergeSummaries(chunk({ calendars: [row] }), chunk({ calendars: [row] }));
 
-    expect(merged.calendars[0].found).toBe(420);
+    expect(merged.calendars[0].found).toBe(500);
   });
 
   it('keeps a calendar the later chunk never touched', () => {
@@ -344,5 +344,42 @@ describe('the screen keeps asking until it is done', () => {
     // Everything written stays written, and a re-run is an upsert, so the
     // honest instruction is to press it again.
     expect(component).toMatch(/Press Import again to carry on/);
+  });
+});
+
+/**
+ * Why it stopped in the same place twice (CAL-06).
+ *
+ * Charley ran the import twice and both runs ended at the same 274 Attic
+ * reservations. Two causes, and each alone would have been enough.
+ *
+ * Every chunk re-read the whole calendar from Google before slicing its share
+ * out — roughly six round trips for Attic's 1,365 entries, paid again on
+ * every chunk — so almost all of the request budget went on re-reading. And
+ * pressing Import again started from the first calendar rather than from
+ * where the last run stopped, which is what made it stop in the *same* place
+ * rather than a later one.
+ */
+describe('picking up where it stopped', () => {
+  const component = readFileSync(
+    join(__dirname, '..', 'components', 'settings', 'calendar-import.tsx'),
+    'utf8',
+  );
+
+  it('remembers where the last run stopped', () => {
+    expect(component).toMatch(/setStoppedAt\(chunk\.next \?\? null\)/);
+  });
+
+  it('starts the next press from there, not from the first calendar', () => {
+    expect(component).toMatch(/let resumeFrom = stoppedAt;/);
+  });
+
+  it('keeps what has already been counted, rather than counting it again', () => {
+    expect(component).toMatch(/let total: CalendarImportSummary \| null = result;/);
+  });
+
+  it('does not call a run that is still going a failure', () => {
+    // It is not an error — it is an import bigger than one press.
+    expect(component).toMatch(/Still going/);
   });
 });

@@ -204,30 +204,39 @@ export class CalendarImportService {
 
     for (let position = from0.calendar; position < sequence.length; position++) {
       const step = sequence[position];
-      const startAt = position === from0.calendar ? from0.entry : 0;
+      const resuming = position === from0.calendar;
+      const startAt = resuming ? from0.entry : 0;
+      const fromPage = resuming ? from0.page : null;
 
       // Out of time before this calendar even starts: resume here next time
-      // rather than reading it from Google for nothing.
+      // rather than reading from Google for nothing.
       if (outOfTime()) {
-        next = { calendar: position, entry: startAt };
+        next = { calendar: position, page: fromPage, entry: startAt };
         break;
       }
 
       if (step.kind === 'events') {
-      const { entries, skipped } = await this.read(
-        source,
-        org.eventsCalendarId,
-        from,
-        to,
-        org.timezone,
-      );
+      // A preview reads the lot to count it; a real run takes one page
+      // (CAL-06), because reading every page on every chunk is what spent
+      // forty requests writing 274 rows.
+      const read = dryRun
+        ? { ...(await this.read(source, org.eventsCalendarId, from, to, org.timezone)), nextPageToken: null }
+        : await this.readPage(source, org.eventsCalendarId, from, to, org.timezone, fromPage);
+      const { entries, skipped } = read;
+
       const slice = entries.slice(startAt);
       const failures: Array<{ title: string; reason: string }> = [];
       const written = dryRun ? 0 : await this.writeEvents(org, slice, failures, outOfTime);
 
       next = dryRun
         ? null
-        : nextCursor(position, written + failures.length, entries.length, sequence.length, startAt);
+        : nextCursor(
+            position,
+            sequence.length,
+            { token: fromPage, nextToken: read.nextPageToken, length: entries.length },
+            startAt,
+            written + failures.length,
+          );
 
       summary.calendars.push({
         id: org.eventsCalendarId,
@@ -272,13 +281,21 @@ export class CalendarImportService {
       }
 
       try {
-        const { entries, skipped } = await this.read(
-          source,
-          room.googleCalendarId as string,
-          from,
-          to,
-          org.timezone,
-        );
+        const read = dryRun
+          ? {
+              ...(await this.read(source, room.googleCalendarId as string, from, to, org.timezone)),
+              nextPageToken: null,
+            }
+          : await this.readPage(
+              source,
+              room.googleCalendarId as string,
+              from,
+              to,
+              org.timezone,
+              fromPage,
+            );
+        const { entries, skipped } = read;
+
         const slice = entries.slice(startAt);
         const written = dryRun
           ? 0
@@ -286,7 +303,13 @@ export class CalendarImportService {
 
         next = dryRun
           ? null
-          : nextCursor(position, written, entries.length, sequence.length, startAt);
+          : nextCursor(
+              position,
+              sequence.length,
+              { token: fromPage, nextToken: read.nextPageToken, length: entries.length },
+              startAt,
+              written,
+            );
 
         summary.calendars.push({
           id: room.googleCalendarId as string,
@@ -318,7 +341,45 @@ export class CalendarImportService {
     return { ...summary, next };
   }
 
-  /** Every entry in the window, following Google's paging. */
+  /**
+   * One page of a calendar, and the token for the next (CAL-06).
+   *
+   * The import used to read every page before writing anything, on every
+   * chunk — six round trips to Google for a calendar of 1,365 entries, paid
+   * again each time. Forty requests went on re-reading and 274 reservations
+   * got written. One page in, one page written.
+   */
+  private async readPage(
+    source: { id: string; googleTokens: unknown },
+    calendarId: string,
+    from: Date,
+    to: Date,
+    timeZone: string,
+    pageToken: string | null,
+  ): Promise<{ entries: ImportedEntry[]; skipped: number; nextPageToken: string | null }> {
+    const client = await this.calendar.clientFor(source as never);
+    const { data }: { data: calendar_v3.Schema$Events } = await client.events.list({
+      calendarId,
+      timeMin: from.toISOString(),
+      timeMax: to.toISOString(),
+      singleEvents: true,
+      orderBy: 'startTime',
+      maxResults: PAGE,
+      ...(pageToken ? { pageToken } : {}),
+    });
+
+    const entries: ImportedEntry[] = [];
+    let skipped = 0;
+    for (const raw of data.items ?? []) {
+      const entry = toEntry(raw, timeZone);
+      if (entry && !entry.cancelled) entries.push(entry);
+      else skipped += 1;
+    }
+
+    return { entries, skipped, nextPageToken: data.nextPageToken ?? null };
+  }
+
+  /** Every entry in the window, following Google's paging. For a preview. */
   private async read(
     source: { id: string; googleTokens: unknown },
     calendarId: string,
@@ -517,6 +578,20 @@ export class CalendarImportService {
 
     const hosts = await this.hostsFor(orgId, entries);
 
+    // Which of these the room already holds — one query for the batch, not
+    // one per reservation (CAL-06).
+    const already = new Map(
+      (
+        await this.prisma.booking.findMany({
+          where: {
+            roomId,
+            googleEventId: { in: entries.map((e) => e.googleEventId) },
+          },
+          select: { id: true, googleEventId: true },
+        })
+      ).map((row) => [row.googleEventId as string, row.id]),
+    );
+
     for (const entry of entries) {
       if (outOfTime()) break;
 
@@ -531,14 +606,11 @@ export class CalendarImportService {
             bookedForName: hostLabel(entry.organiserName, entry.organiserEmail),
           };
 
-      const existing = await this.prisma.booking.findFirst({
-        where: { roomId, googleEventId: entry.googleEventId },
-        select: { id: true },
-      });
+      const existing = already.get(entry.googleEventId);
 
       if (existing) {
         await this.prisma.booking.update({
-          where: { id: existing.id },
+          where: { id: existing },
           data: { title: entry.title, startTime: entry.start, endTime: entry.end, ...bookedFor },
         });
       } else {
