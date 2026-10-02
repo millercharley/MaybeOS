@@ -19,6 +19,7 @@ import { Request } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { StripeService } from './stripe.service';
+import { forMember } from './stripe-error';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
 import { CreateBillingPortalDto } from './dto/create-billing-portal.dto';
 import { PlanCheckoutDto } from './dto/plan-checkout.dto';
@@ -65,13 +66,24 @@ export class StripeController {
     @CurrentUser() user: RequestUser,
     @Body() dto: CreateCheckoutDto,
   ) {
-    const url = await this.stripeService.createCheckoutSession(
-      orgId,
-      user.userId,
-      dto.tierId,
-      dto.successUrl,
-      dto.cancelUrl,
-      dto.amountCents,
+    // Wrapped here rather than inside the service, because the step that
+    // fails is often the lazy provisioning underneath it (`ensureTierOnAccount`
+    // creating the tier on the co-op's account), and a member must never be
+    // shown what Stripe says about that — see `stripe-error.ts`.
+    const url = await forMember(
+      () =>
+        this.stripeService.createCheckoutSession(
+          orgId,
+          user.userId,
+          dto.tierId,
+          dto.successUrl,
+          dto.cancelUrl,
+          dto.amountCents,
+        ),
+      (err) =>
+        this.logger.error(
+          `Dues checkout failed for org ${orgId}, tier ${dto.tierId}: [${err.type}] ${err.message}`,
+        ),
     );
 
     return { url };
@@ -161,11 +173,16 @@ export class StripeController {
       );
     }
 
-    const url = await this.stripeService.createBillingPortalSession(
-      userOrg.stripeCustomerId,
-      dto.returnUrl,
-      orgId,
-      userOrg.stripeDuesAccountId,
+    const url = await forMember(
+      () =>
+        this.stripeService.createBillingPortalSession(
+          userOrg.stripeCustomerId as string,
+          dto.returnUrl,
+          orgId,
+          userOrg.stripeDuesAccountId,
+        ),
+      (err) =>
+        this.logger.error(`Billing portal failed for org ${orgId}: [${err.type}] ${err.message}`),
     );
 
     return { url };

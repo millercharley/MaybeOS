@@ -1,4 +1,5 @@
 import {
+  Logger,
   Body,
   Controller,
   Get,
@@ -14,11 +15,14 @@ import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { ConnectService } from './connect.service';
+import { forMember } from './stripe-error';
 import { ConnectOnboardingDto, TicketCheckoutDto } from './dto/connect.dto';
 
 @ApiTags('connect')
 @Controller('orgs/:orgId')
 export class ConnectController {
+  private readonly logger = new Logger(ConnectController.name);
+
   constructor(private readonly connectService: ConnectService) {}
 
   /**
@@ -117,13 +121,22 @@ export class ConnectController {
     @Body() dto: TicketCheckoutDto,
     @CurrentUser() user?: RequestUser,
   ) {
-    return this.connectService.createTicketCheckout({
-      orgId,
-      eventId,
-      successUrl: dto.successUrl,
-      cancelUrl: dto.cancelUrl,
-      buyerEmail: dto.email,
-      userId: user?.userId,
-    });
+    // A ticket buyer may be a stranger who is not even a member, which makes
+    // raw Stripe text on this route the most public of the three.
+    return forMember(
+      () =>
+        this.connectService.createTicketCheckout({
+          orgId,
+          eventId,
+          successUrl: dto.successUrl,
+          cancelUrl: dto.cancelUrl,
+          buyerEmail: dto.email,
+          userId: user?.userId,
+        }),
+      (err) =>
+        this.logger.error(
+          `Ticket checkout failed for org ${orgId}, event ${eventId}: [${err.type}] ${err.message}`,
+        ),
+    );
   }
 }
