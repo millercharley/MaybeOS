@@ -496,7 +496,7 @@ export default function ImportMembersPage(props: { params: Promise<{ orgSlug: st
               </div>
               <p className="mt-2 text-xs text-green-800">
                 Skip it if they were not paying anywhere before. You can set it later in
-                Settings → General.
+                Settings → Migration.
               </p>
               {legacyError && <p className="mt-2 text-xs text-red-700">{legacyError}</p>}
             </div>

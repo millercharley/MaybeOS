@@ -31,8 +31,9 @@ type SettingsTab =
   | 'branding'
   | 'website'
   | 'onboarding'
-  | 'radar'
+  | 'migration'
   | 'integrations'
+  | 'radar'
   | 'billing';
 
 const tabs: { key: SettingsTab; label: string }[] = [
@@ -51,11 +52,19 @@ const tabs: { key: SettingsTab; label: string }[] = [
   // page that had existed since the beginning came to be reported missing.
   { key: 'website', label: 'Join page & embeds' },
   { key: 'onboarding', label: 'Getting started' },
+  // Everything a co-op arriving from somewhere else does once, together
+  // (MIG-04). These three lived at the foot of General — below the name, the
+  // slug, the mission, the timezone, the tiers, the welcome email and the
+  // door — which is several screens down from where somebody mid-migration
+  // is looking, and they are the settings most likely to be wanted in the
+  // same hour. They stop mattering once a co-op has moved, which is why they
+  // get a tab of their own rather than more of General's.
+  { key: 'migration', label: 'Migration' },
+  { key: 'integrations', label: 'Integrations' },
   // Its own tab for the reason the checklist got one: Radar carries the
   // co-op's whole interest list, and a list that long appended to General is
   // a list nobody scrolls to (RDR-01).
   { key: 'radar', label: 'Radar' },
-  { key: 'integrations', label: 'Integrations' },
   { key: 'billing', label: 'Billing' },
 ];
 
@@ -376,9 +385,6 @@ export default function SettingsPage() {
         <MemberChannels orgId={org.id} orgSlug={org.slug} />
       )}
       {activeTab === 'general' && org && <WelcomeEmail org={org} onSaved={refetch} />}
-      {activeTab === 'general' && org && <LegacyBilling org={org} onSaved={refetch} />}
-      {activeTab === 'general' && org && <SignInLinks org={org} />}
-      {activeTab === 'general' && org && <CalendarImport org={org} />}
       {activeTab === 'general' && org && <DoorAccess org={org} onSaved={refetch} />}
       {activeTab === 'general' && org && <Locations orgId={org.id} />}
       {activeTab === 'general' && org && <Support orgName={org.name} />}
@@ -557,6 +563,20 @@ export default function SettingsPage() {
 
       {/* The checklist in every member's sidebar (ONB-01). */}
       {activeTab === 'onboarding' && <GettingStartedSettings />}
+
+      {/* Moving in: the money, the people, and the calendar (MIG-04). In
+          that order, because it is the order a migration happens in — a
+          co-op settles where its members still pay before it writes to any
+          of them, and the calendar is what they should find when they
+          arrive. */}
+      {activeTab === 'migration' && org && <LegacyBilling org={org} onSaved={refetch} />}
+      {activeTab === 'migration' && org && <SignInLinks org={org} />}
+      {activeTab === 'migration' && org && <CalendarImport org={org} />}
+      {activeTab === 'migration' && !org && (
+        <div className="flex items-center justify-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
+        </div>
+      )}
 
       {activeTab === 'radar' && <Radar />}
 
