@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { assertMemberRoom, countsAsMember, memberRoom } from './member-capacity';
+import { tierIdFor } from './import-tier';
 import { FREE_PLAN_MEMBER_LIMIT } from '../stripe/dues-pricing';
 import {
   Injectable,
@@ -1406,6 +1407,13 @@ export class MemberService {
       errors: [] as Array<{ email: string; reason: string }>,
     };
 
+    // The co-op's own tiers, read once: a roster names them, and a per-row
+    // lookup would be 426 queries to answer the same question (MEM-21).
+    const tiers = await this.prisma.membershipTier.findMany({
+      where: { orgId },
+      select: { id: true, name: true },
+    });
+
     // The Free plan's limit (PAY-09). Rows past it are reported, not imported,
     // so the organiser sees exactly who did not come across and why.
     let room = await memberRoom(this.prisma, orgId);
@@ -1416,6 +1424,10 @@ export class MemberService {
       const email = row.email.toLowerCase().trim();
 
       try {
+        // Before any write: an unknown tier name should stop this row, not
+        // leave an account behind with no membership.
+        const tierId = tierIdFor(row.tier, tiers);
+
         let user = await this.prisma.user.findUnique({
           where: { email },
           select: { id: true, avatarUrl: true },
@@ -1448,6 +1460,7 @@ export class MemberService {
           select: {
             id: true,
             altEmail: true,
+            tierId: true,
             bio: true,
             headline: true,
             location: true,
@@ -1469,7 +1482,7 @@ export class MemberService {
           // Only empty fields are filled, so a member who has since written
           // their own bio keeps it, and running the import twice is still a
           // no-op the second time.
-          const filled = enrichment(existing, row);
+          const filled = enrichment(existing, { ...row, tierId });
 
           if (Object.keys(filled).length > 0) {
             await this.prisma.userOrg.update({ where: { id: existing.id }, data: filled });
@@ -1496,6 +1509,9 @@ export class MemberService {
             // A second address the same person reads (MEM-19), lowercased
             // the way every other address here is.
             altEmail: row.altEmail?.trim().toLowerCase() || null,
+            // What they pay, where the roster said. Never a status: that is
+            // Stripe's to tell, and this file cannot know it (MEM-21).
+            ...(tierId && { tierId }),
             bio: row.bio?.trim() || null,
             headline: row.headline?.trim() || null,
             location: row.location?.trim() || null,
@@ -1601,6 +1617,7 @@ export class MemberService {
 export function enrichment(
   existing: {
     altEmail: string | null;
+    tierId: string | null;
     bio: string | null;
     headline: string | null;
     location: string | null;
@@ -1610,6 +1627,7 @@ export function enrichment(
   },
   row: {
     altEmail?: string;
+    tierId?: string;
     bio?: string;
     headline?: string;
     location?: string;
@@ -1627,6 +1645,11 @@ export function enrichment(
   // their own second address outranks whatever a spreadsheet says.
   const altEmail = text(existing.altEmail, row.altEmail?.toLowerCase());
   if (altEmail !== undefined) filled.altEmail = altEmail;
+
+  // A tier already on the membership outranks the file — it came from Stripe,
+  // or from an organiser who set it on purpose, and both know better than a
+  // spreadsheet exported from the system the co-op is leaving.
+  if (!existing.tierId && row.tierId) filled.tierId = row.tierId;
 
   const bio = text(existing.bio, row.bio);
   if (bio !== undefined) filled.bio = bio;

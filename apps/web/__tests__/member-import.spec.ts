@@ -1,4 +1,4 @@
-import { guessMapping, prepareImport, readOptIn, chunk, EMPTY_MAPPING, Mapping } from '@/lib/member-import';
+import { guessMapping, prepareImport, readOptIn, chunk, EMPTY_MAPPING, IMPORT_FIELDS, Mapping } from '@/lib/member-import';
 
 /**
  * Mapping somebody else's export onto MaybeOS's fields (MEM-06).
@@ -160,5 +160,57 @@ describe('chunk', () => {
   it('splits to fit the API’s 100-row ceiling', () => {
     expect(chunk([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
     expect(chunk([], 50)).toEqual([]);
+  });
+});
+
+/**
+ * A roster knows what each member pays (MEM-21).
+ *
+ * MaybeItsFate imported 426 members and every row showed a dash in the Tier
+ * column, because the only thing that had ever set a tier was Stripe and
+ * these memberships have no subscription yet. The answer was in the file the
+ * whole time — it is the column the cap table is built around.
+ */
+describe('the tier column', () => {
+  it('is offered as something a column can map to', () => {
+    expect(IMPORT_FIELDS.map((f) => f.key)).toContain('tier');
+  });
+
+  it('recognises what people actually call it', () => {
+    const tier = IMPORT_FIELDS.find((f) => f.key === 'tier');
+
+    for (const alias of ['tier', 'plan', 'membership', 'level', 'access']) {
+      expect(tier?.aliases).toContain(alias);
+    }
+  });
+
+  it('guesses the column without being told', () => {
+    expect(guessMapping(['Email', 'Plan']).tier).toEqual(['Plan']);
+  });
+
+  it('says in the hint that it is not a payment status', () => {
+    // The whole hazard of this column: "Sustainer" in a spreadsheet is what
+    // somebody signed up for, not proof a card charged this month.
+    expect(IMPORT_FIELDS.find((f) => f.key === 'tier')?.hint).toMatch(/comes from Stripe/i);
+  });
+
+  it('carries the name through to the row, trimmed', () => {
+    const { rows } = prepareImport(
+      ['Email', 'Plan'],
+      [['ada@example.com', '  Sustainer ']],
+      { ...EMPTY_MAPPING, email: ['Email'], tier: ['Plan'] },
+    );
+
+    expect(rows[0].tier).toBe('Sustainer');
+  });
+
+  it('sends nothing when the column is blank', () => {
+    const { rows } = prepareImport(
+      ['Email', 'Plan'],
+      [['ada@example.com', '']],
+      { ...EMPTY_MAPPING, email: ['Email'], tier: ['Plan'] },
+    );
+
+    expect(rows[0].tier).toBeUndefined();
   });
 });
