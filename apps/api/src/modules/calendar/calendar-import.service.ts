@@ -5,6 +5,7 @@ import { PrismaService } from '../../config/prisma.service';
 import { CalendarService } from './calendar.service';
 import { hostFields, hostKey, hostLabel } from './past-host';
 import { slugCandidates } from './event-slug';
+import { deadline, nextCursor, startOf, type ImportCursor } from './import-cursor';
 import { ImportedEntry, importWindow, toEntry } from './calendar-import';
 
 /** A year back is the default; two years ahead is the ceiling (see `importWindow`). */
@@ -40,6 +41,17 @@ export interface ImportSummary {
    */
   failed?: number;
   dryRun: boolean;
+  /**
+   * Where the next request should pick up, or null when the import is done
+   * (CAL-05).
+   *
+   * Nine calendars and a year of entries do not fit in a Lambda's wall clock
+   * — MaybeItsFate's import returned 504 — so a run stops when it is nearly
+   * out of time and says where it got to. The client keeps asking until this
+   * is null, which is also what lets it show progress rather than a spinner
+   * that either finishes or does not.
+   */
+  next?: ImportCursor | null;
 }
 
 /**
@@ -150,7 +162,7 @@ export class CalendarImportService {
    */
   async run(
     orgId: string,
-    options: { dryRun?: boolean; monthsBack?: number } = {},
+    options: { dryRun?: boolean; monthsBack?: number; resumeFrom?: ImportCursor | null } = {},
   ): Promise<ImportSummary> {
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
@@ -170,12 +182,38 @@ export class CalendarImportService {
 
     const source = await this.connectedRoom(orgId);
 
-    // The events calendar first, because it is the one an admin is watching —
-    // and deliberately not wrapped the way the rooms below are. If this one
-    // cannot be read, the import is not the thing the admin pressed the
-    // button for, and reporting the rooms as a success would read as "done"
-    // for a run that silently produced no events at all.
-    if (org.eventsCalendarId) {
+    const rooms = await this.prisma.room.findMany({
+      where: { orgId, googleCalendarId: { not: null } },
+      // Ordered, because a cursor points at a position in this list and a
+      // list that comes back in a different order on the next request would
+      // resume somewhere else entirely (CAL-05).
+      orderBy: { id: 'asc' },
+      select: { id: true, name: true, googleCalendarId: true },
+    });
+
+    // Position 0 is the events calendar when there is one, then each room.
+    const sequence: Array<{ kind: 'events' } | { kind: 'room'; room: (typeof rooms)[number] }> = [
+      ...(org.eventsCalendarId ? [{ kind: 'events' as const }] : []),
+      ...rooms.map((room) => ({ kind: 'room' as const, room })),
+    ];
+
+    const from0 = startOf(options.resumeFrom);
+    // A dry run writes nothing and finishes; only a real import is rationed.
+    const outOfTime = dryRun ? () => false : deadline();
+    let next: ImportCursor | null = null;
+
+    for (let position = from0.calendar; position < sequence.length; position++) {
+      const step = sequence[position];
+      const startAt = position === from0.calendar ? from0.entry : 0;
+
+      // Out of time before this calendar even starts: resume here next time
+      // rather than reading it from Google for nothing.
+      if (outOfTime()) {
+        next = { calendar: position, entry: startAt };
+        break;
+      }
+
+      if (step.kind === 'events') {
       const { entries, skipped } = await this.read(
         source,
         org.eventsCalendarId,
@@ -183,8 +221,13 @@ export class CalendarImportService {
         to,
         org.timezone,
       );
+      const slice = entries.slice(startAt);
       const failures: Array<{ title: string; reason: string }> = [];
-      const written = dryRun ? 0 : await this.writeEvents(org, entries, failures);
+      const written = dryRun ? 0 : await this.writeEvents(org, slice, failures, outOfTime);
+
+      next = dryRun
+        ? null
+        : nextCursor(position, written + failures.length, entries.length, sequence.length, startAt);
 
       summary.calendars.push({
         id: org.eventsCalendarId,
@@ -205,14 +248,13 @@ export class CalendarImportService {
       summary.failed = (summary.failed ?? 0) + failures.length;
       summary.skipped += skipped;
       summary.events += dryRun ? entries.length : written;
-    }
 
-    const rooms = await this.prisma.room.findMany({
-      where: { orgId, googleCalendarId: { not: null } },
-      select: { id: true, name: true, googleCalendarId: true },
-    });
+      if (next && next.calendar === position) break;
+      continue;
+      }
 
-    for (const room of rooms) {
+      const room = step.room;
+
       // A room pointed at the events calendar would import the same entries
       // twice, once as an event and once as a hold on that room. Reported
       // rather than skipped in silence: an admin counting eight rooms and
@@ -237,7 +279,14 @@ export class CalendarImportService {
           to,
           org.timezone,
         );
-        const written = dryRun ? 0 : await this.writeBookings(orgId, room.id, entries);
+        const slice = entries.slice(startAt);
+        const written = dryRun
+          ? 0
+          : await this.writeBookings(orgId, room.id, slice, outOfTime);
+
+        next = dryRun
+          ? null
+          : nextCursor(position, written, entries.length, sequence.length, startAt);
 
         summary.calendars.push({
           id: room.googleCalendarId as string,
@@ -248,6 +297,8 @@ export class CalendarImportService {
         });
         summary.bookings += dryRun ? entries.length : written;
         summary.skipped += skipped;
+
+        if (next && next.calendar === position) break;
       } catch (error) {
         // One room's calendar failing must not cost the co-op the others.
         this.logger.warn(`Could not read ${room.name}'s calendar: ${(error as Error).message}`);
@@ -262,7 +313,9 @@ export class CalendarImportService {
       }
     }
 
-    return summary;
+    // Where the next request should pick up, or nothing when it is done
+    // (CAL-05). The client keeps asking until this is null.
+    return { ...summary, next };
   }
 
   /** Every entry in the window, following Google's paging. */
@@ -306,16 +359,67 @@ export class CalendarImportService {
     return { entries, skipped };
   }
 
-  /** Whoever organised it, if MaybeOS knows them. */
-  private async hostFor(orgId: string, email: string | null): Promise<string | null> {
-    if (!email) return null;
+  /**
+   * Whoever organised each of these, where MaybeOS knows them (CAL-05).
+   *
+   * One query for the batch. This used to be a query per entry, which is
+   * fine for ten events and is a third of the reason a year of a real co-op's
+   * calendar could not finish inside a Lambda.
+   */
+  private async hostsFor(
+    orgId: string,
+    entries: ImportedEntry[],
+  ): Promise<Map<string, string>> {
+    const emails = [
+      ...new Set(entries.map((e) => e.organiserEmail).filter((e): e is string => Boolean(e))),
+    ];
+    if (emails.length === 0) return new Map();
 
-    const membership = await this.prisma.userOrg.findFirst({
-      where: { orgId, user: { email } },
-      select: { userId: true },
+    const memberships = await this.prisma.userOrg.findMany({
+      where: { orgId, user: { email: { in: emails } } },
+      select: { userId: true, user: { select: { email: true } } },
     });
 
-    return membership?.userId ?? null;
+    return new Map(
+      memberships
+        .filter((m) => m.user.email)
+        .map((m) => [m.user.email.toLowerCase(), m.userId]),
+    );
+  }
+
+  /**
+   * A free address for each of these, allocated together (CAL-05).
+   *
+   * One query for the batch, and the ones handed out in this batch are
+   * remembered — two entries of the same name on the same day are in the
+   * same batch, and asking the database about the second would not find the
+   * first, which is not committed yet.
+   */
+  private async slugsFor(
+    orgId: string,
+    entries: ImportedEntry[],
+  ): Promise<Map<string, string>> {
+    const candidates = new Map(
+      entries.map((entry) => [
+        entry.googleEventId,
+        slugCandidates(entry.title, entry.start, entry.googleEventId),
+      ]),
+    );
+
+    const taken = await this.prisma.event.findMany({
+      where: { orgId, slug: { in: [...candidates.values()].flat() } },
+      select: { slug: true },
+    });
+    const used = new Set(taken.map((row) => row.slug));
+
+    const chosen = new Map<string, string>();
+    for (const [id, options] of candidates) {
+      const free = options.find((slug) => !used.has(slug)) ?? options[options.length - 1];
+      used.add(free);
+      chosen.set(id, free);
+    }
+
+    return chosen;
   }
 
   /**
@@ -333,12 +437,21 @@ export class CalendarImportService {
     org: { id: string; timezone: string },
     entries: ImportedEntry[],
     failures: Array<{ title: string; reason: string }>,
+    outOfTime: () => boolean = () => false,
   ): Promise<number> {
     let written = 0;
 
+    // Two queries for the whole batch instead of two per entry (CAL-05).
+    const hosts = await this.hostsFor(org.id, entries);
+    const slugs = await this.slugsFor(org.id, entries);
+
     for (const entry of entries) {
+      // Checked before the write, never during: a chunk that stops here has
+      // written everything it counted, and the cursor it returns is true.
+      if (outOfTime()) break;
+
       try {
-      const matched = await this.hostFor(org.id, entry.organiserEmail);
+      const matched = entry.organiserEmail ? (hosts.get(entry.organiserEmail) ?? null) : null;
       // A host who is not a member still ran it (CAL-03). Their name goes on
       // the event; their address is kept to match them if they come back.
       const host = hostFields(matched, entry.organiserEmail, entry.organiserName);
@@ -349,7 +462,7 @@ export class CalendarImportService {
           orgId: org.id,
           googleEventId: entry.googleEventId,
           title: entry.title,
-          slug: await this.slugFor(org.id, entry),
+          slug: slugs.get(entry.googleEventId) ?? entry.googleEventId,
           description: entry.description,
           startTime: entry.start,
           endTime: entry.end,
@@ -391,6 +504,7 @@ export class CalendarImportService {
     orgId: string,
     roomId: string,
     entries: ImportedEntry[],
+    outOfTime: () => boolean = () => false,
   ): Promise<number> {
     const fallback = await this.prisma.userOrg.findFirst({
       where: { orgId, role: 'ADMIN' },
@@ -401,8 +515,12 @@ export class CalendarImportService {
 
     let written = 0;
 
+    const hosts = await this.hostsFor(orgId, entries);
+
     for (const entry of entries) {
-      const matched = await this.hostFor(orgId, entry.organiserEmail);
+      if (outOfTime()) break;
+
+      const matched = entry.organiserEmail ? (hosts.get(entry.organiserEmail) ?? null) : null;
       // `userId` is required, so an unmatched reservation still has to be
       // filed under somebody — but it no longer *claims* to be theirs.
       const userId = matched ?? fallback.userId;
@@ -460,18 +578,5 @@ export class CalendarImportService {
    * round trip per event, per suffix, is how an import of several thousand
    * entries meets the Lambda's wall clock.
    */
-  private async slugFor(orgId: string, entry: ImportedEntry): Promise<string> {
-    const candidates = slugCandidates(entry.title, entry.start, entry.googleEventId);
 
-    const taken = await this.prisma.event.findMany({
-      where: { orgId, slug: { in: candidates } },
-      select: { slug: true },
-    });
-    const used = new Set(taken.map((row) => row.slug));
-
-    // The last candidate is built from `googleEventId`, which is unique
-    // within a co-op, so this cannot fall through — but if it somehow did,
-    // returning the fingerprint is still better than returning a duplicate.
-    return candidates.find((slug) => !used.has(slug)) ?? candidates[candidates.length - 1];
-  }
 }

@@ -10,6 +10,8 @@ import {
   confirmationLine,
   isSelectable,
   kindLabel,
+  MAX_REQUESTS,
+  mergeSummaries,
   selectableCalendars,
   summaryLine,
 } from '@/lib/calendar-import';
@@ -97,15 +99,53 @@ export function CalendarImport({ org }: { org: Org }) {
     }
   }
 
+  /**
+   * Run the import, in as many requests as it takes (CAL-05).
+   *
+   * One request could not finish it: nine calendars and a year of entries
+   * exceed a Lambda's ten seconds, and the first real attempt returned 504
+   * with nothing to show for the work it had already done. The API now stops
+   * when it is nearly out of time and says where it got to; this keeps
+   * asking, and shows the running total rather than a spinner that either
+   * finishes or does not.
+   */
   async function importNow() {
     if (!token || busy) return;
     setBusy(true);
     setError('');
     setConfirming(false);
+
+    let total: CalendarImportSummary | null = null;
+    let resumeFrom: { calendar: number; entry: number } | null = null;
+
     try {
-      setResult(await api.calendar.runImport(org.id, { dryRun: false, monthsBack }, token));
+      // Bounded, because a server answering with the same cursor every time
+      // would otherwise have the browser ask forever.
+      for (let request = 0; request < MAX_REQUESTS; request++) {
+        const chunk = await api.calendar.runImport(
+          org.id,
+          { dryRun: false, monthsBack, ...(resumeFrom && { resumeFrom }) },
+          token,
+        );
+
+        total = mergeSummaries(total, chunk);
+        setResult(total);
+
+        if (!chunk.next) return;
+        resumeFrom = chunk.next;
+      }
+
+      setError(
+        'The import is taking more requests than expected. Everything below is already imported — press Import again to carry on from here.',
+      );
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'That did not import');
+      // Whatever was written stays written, and a re-run is an upsert, so the
+      // honest instruction is "press it again".
+      setError(
+        `${err instanceof Error ? err.message : 'That did not import'}${
+          total ? ' — everything below was imported. Press Import again to carry on.' : ''
+        }`,
+      );
     } finally {
       setBusy(false);
     }

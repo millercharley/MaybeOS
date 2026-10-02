@@ -54,7 +54,13 @@ function build(overrides: Record<string, unknown> = {}) {
         { id: 'room-2', name: 'Salon', googleCalendarId: 'salon-cal' },
       ]),
     },
-    userOrg: { findFirst: jest.fn().mockResolvedValue({ userId: 'user-1' }) },
+    userOrg: {
+      findFirst: jest.fn().mockResolvedValue({ userId: 'user-1' }),
+      // One lookup for the batch rather than one per entry (CAL-05).
+      findMany: jest
+        .fn()
+        .mockResolvedValue([{ userId: 'user-1', user: { email: 'ada@example.com' } }]),
+    },
     event: {
       upsert: jest.fn().mockResolvedValue({}),
       // Which of the candidate slugs are already taken (CAL-04). None, here.
@@ -182,6 +188,9 @@ describe('what members see', () => {
 
   it('leaves the host empty rather than guessing when nobody matches', async () => {
     const { service, prisma } = build();
+    // `findMany` is the batch lookup (CAL-05); `findFirst` is the fallback
+    // owner for room bookings, which also has to be absent here.
+    prisma.userOrg.findMany.mockResolvedValue([]);
     prisma.userOrg.findFirst.mockResolvedValue(null);
 
     const summary = await service.run('org-1', { dryRun: false });

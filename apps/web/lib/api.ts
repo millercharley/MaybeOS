@@ -393,7 +393,12 @@ class ApiClient {
      */
     runImport: (
       orgId: string,
-      body: { dryRun?: boolean; monthsBack?: number },
+      body: {
+        dryRun?: boolean;
+        monthsBack?: number;
+        /** Where the previous chunk stopped (CAL-05). */
+        resumeFrom?: { calendar: number; entry: number } | null;
+      },
       token: string,
     ) =>
       this.request<CalendarImportSummary>(`/orgs/${orgId}/calendar/import`, {
@@ -3786,7 +3791,17 @@ export interface CalendarImportSummary {
   events: number;
   bookings: number;
   skipped: number;
+  /** Entries the calendar offered that MaybeOS could not write (CAL-04). */
+  failed?: number;
   dryRun: boolean;
+  /**
+   * Where the next request should pick up, or null when it is done (CAL-05).
+   *
+   * Nine calendars and a year of entries do not fit in a Lambda's wall clock
+   * — the first real import returned 504 — so a run stops when it is nearly
+   * out of time and says where it got to.
+   */
+  next?: { calendar: number; entry: number } | null;
 }
 
 export interface SlotsResponse {
