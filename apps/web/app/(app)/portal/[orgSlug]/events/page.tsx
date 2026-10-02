@@ -5,7 +5,7 @@ import { Plus, X } from 'lucide-react';
 import { Panel } from '@/components/layout/panel';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
 import { NextEventCard, EventRow, type EventActions } from '@/components/events/event-cards';
-import { groupUpcoming } from '@/lib/event-list';
+import { eventWindow, groupUpcoming } from '@/lib/event-list';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { usePublicApi } from '@/hooks/use-api';
@@ -34,9 +34,11 @@ export default function PortalEventsPage() {
     () =>
       !org
         ? Promise.resolve([])
-        : isMember && token
-          ? api.events.listVisible(org.id, token)
-          : api.events.listPublic(org.id),
+        : // A window, not the first twenty of everything (EVT-27). Ninety
+          // days back covers the recent-past list below, which shows ten.
+          isMember && token
+          ? api.events.listVisible(org.id, token, eventWindow(new Date(), 90))
+          : api.events.listPublic(org.id, eventWindow(new Date(), 90)),
     [org?.id, isMember, token],
   );
 

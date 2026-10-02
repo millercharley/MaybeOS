@@ -1288,8 +1288,18 @@ class ApiClient {
         token,
       }),
 
-    listPublic: async (orgId: string): Promise<Event[]> => {
-      const res = await this.request<PaginatedResponse<Event>>(`/orgs/${orgId}/events/public`);
+    listPublic: async (
+      orgId: string,
+      window: { from?: string; to?: string; perPage?: number } = {},
+    ): Promise<Event[]> => {
+      const query = new URLSearchParams();
+      if (window.from) query.set('from', window.from);
+      if (window.to) query.set('to', window.to);
+      query.set('perPage', String(window.perPage ?? 20));
+
+      const res = await this.request<PaginatedResponse<Event>>(
+        `/orgs/${orgId}/events/public?${query}`,
+      );
       return res.data;
     },
 
@@ -1300,9 +1310,31 @@ class ApiClient {
      * showing every viewer the public list made a co-op's own events invisible
      * to its own members.
      */
-    listVisible: async (orgId: string, token: string): Promise<Event[]> => {
+    /**
+     * What a member can see, with a window (EVT-27).
+     *
+     * This took no arguments and the API orders by start time ascending from
+     * the beginning of the co-op's history, twenty at a time — so after
+     * MaybeItsFate imported 777 events, every caller got twenty evenings from
+     * November 2024 and the dashboard said "Nothing on today" while tonight's
+     * event sat on the calendar.
+     *
+     * A caller now says which stretch of time it is drawing. The default is
+     * still the whole history, because the Events page shows a past list and
+     * changing the API's own default would empty it.
+     */
+    listVisible: async (
+      orgId: string,
+      token: string,
+      window: { from?: string; to?: string; perPage?: number } = {},
+    ): Promise<Event[]> => {
+      const query = new URLSearchParams();
+      if (window.from) query.set('from', window.from);
+      if (window.to) query.set('to', window.to);
+      query.set('perPage', String(window.perPage ?? 20));
+
       const res = await this.request<PaginatedResponse<Event>>(
-        `/orgs/${orgId}/events/visible`,
+        `/orgs/${orgId}/events/visible?${query}`,
         { token },
       );
       return res.data;

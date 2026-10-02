@@ -152,3 +152,32 @@ export function happeningToday<T extends Datable>(
     })
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 }
+
+/**
+ * The window a list of events should ask the API for (EVT-27).
+ *
+ * The events endpoint orders ascending from the beginning of a co-op's
+ * history, twenty at a time. That was invisible until MaybeItsFate imported
+ * 777 events: every caller then received twenty evenings from November 2024,
+ * and the member dashboard said "Nothing on today" with tonight's event
+ * sitting on the calendar.
+ *
+ * So a caller says which stretch it is drawing. `daysBack` exists because
+ * the Events page shows a recent past alongside what is coming; a dashboard
+ * asking only about today passes 0.
+ */
+export function eventWindow(now: Date, daysBack: number): { from: string; perPage: number } {
+  const from = new Date(now);
+  from.setDate(from.getDate() - daysBack);
+  // Midnight, so "today" is the whole of today however late it is read — a
+  // dashboard opened at 11pm must still show the thing that started at 7.
+  from.setHours(0, 0, 0, 0);
+
+  return {
+    from: from.toISOString(),
+    // The API's ceiling. A co-op with more than a hundred events inside its
+    // window gets the earliest of them, which is the right end to keep: the
+    // next thing on is what every one of these lists is for.
+    perPage: 100,
+  };
+}
