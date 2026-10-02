@@ -192,6 +192,40 @@ export class LedgerService {
     };
   }
 
+  /**
+   * What *you* hold, and where it came from (MEM-24).
+   *
+   * The same lines `getHistory` gives an organiser, for the caller alone.
+   * There is no userId parameter and no way to supply one: the only member
+   * this can describe is the one holding the token, which is the whole
+   * guarantee — a member's holding is theirs to see and nobody else's.
+   *
+   * The co-op's total travels with it, because a number of shares means
+   * nothing without one: 400 shares is a fact, and 0.004% of the co-op is
+   * what somebody actually wanted to know.
+   */
+  async getMine(orgId: string, userId: string) {
+    const enabled = await this.sharesEnabled(orgId);
+    if (!enabled) {
+      return { sharesEnabled: false, shares: 0, totalShares: 0, lines: [] };
+    }
+
+    const [history, grants] = await Promise.all([
+      this.getHistory(orgId, userId),
+      this.readGrants(orgId),
+    ]);
+
+    return {
+      sharesEnabled: true,
+      shares: history.balance,
+      // Every share the co-op has issued, not just the ones that found a
+      // member — otherwise each percentage would quietly overstate itself by
+      // whatever the unmatched part of the cap table holds.
+      totalShares: grants.reduce((sum, grant) => sum + grant.shares, 0),
+      lines: history.lines,
+    };
+  }
+
   /** One member's lines, newest first, with who recorded each (MEM-19). */
   async getHistory(orgId: string, userId: string) {
     await this.requireEnabled(orgId);

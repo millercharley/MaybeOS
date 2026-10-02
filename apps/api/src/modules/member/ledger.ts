@@ -59,16 +59,21 @@ export interface LedgerViewer {
   privileged: boolean;
 }
 
+/**
+ * One row of the co-op's directory (MEM-24).
+ *
+ * No `shares`, no `breakdown` and no `rank`: what a member owns is on their
+ * own profile and nobody else's business. The internal shape below still
+ * carries the numbers, because the ledger has to add up before it is
+ * published — it is the publishing that stops.
+ */
 export interface LedgerHolder {
-  rank: number;
   userId: string;
   isYou: boolean;
   /** Hidden from other members. Only ever true on an organiser's view. */
   isPrivate: boolean;
   role: string;
   memberSince: Date;
-  shares: number;
-  breakdown: Partial<Record<GrantKind, number>>;
   /** Named `user` with `avatarPath` inside, so the global interceptor signs it. */
   user: { id: string; name: string | null; avatarUrl: string | null; avatarPath: string | null };
   headline: string | null;
@@ -79,12 +84,11 @@ export interface LedgerHolder {
 }
 
 export interface Ledger {
-  totalShares: number;
   holders: LedgerHolder[];
   /** Members who hid their profile: counted, not named. */
-  privateMembers: { count: number; shares: number };
+  privateMembers: { count: number };
   /** Holders on the cap table with no MaybeOS membership here yet. */
-  unlinked: { count: number; shares: number };
+  unlinked: { count: number };
   /** Every share in exactly one place. False means the page would lie. */
   reconciled: boolean;
 }
@@ -163,7 +167,11 @@ export function computeLedger(
 ): Ledger {
   const { held, unlinked: stray, totalShares } = attribute(grants, members);
 
-  const holders: Omit<LedgerHolder, 'rank'>[] = [];
+  // Holdings are attributed here and dropped before the return: the sums are
+  // what prove the ledger reconciles.
+  const holders: Array<
+    LedgerHolder & { shares: number; breakdown: Partial<Record<GrantKind, number>> }
+  > = [];
   const privateMembers = { count: 0, shares: 0 };
 
   for (const member of members) {
@@ -204,21 +212,30 @@ export function computeLedger(
   const unlinked = { count: stray.size, shares: 0 };
   for (const holding of stray.values()) unlinked.shares += holding.shares;
 
-  // Largest first, as a cap table reads; ties by name so the order is stable.
-  holders.sort(
-    (a, b) =>
-      b.shares - a.shares ||
-      (a.user.name ?? '￿').localeCompare(b.user.name ?? '￿'),
-  );
+  // Alphabetical (MEM-24).
+  //
+  // This used to sort largest holding first and number the rows, the way a
+  // cap table reads — and that is exactly what was wrong with it. Charley,
+  // 2026-10-02: "it feels like a ranking". A co-op's directory ordered by
+  // how much of the co-op each person owns tells every member where they
+  // come in a league table of their own community, every time they look
+  // somebody up. The holdings themselves have moved to each member's own
+  // profile, where they are nobody else's business.
+  holders.sort((a, b) => (a.user.name ?? '￿').localeCompare(b.user.name ?? '￿'));
 
   const named = holders.reduce((sum, holder) => sum + holder.shares, 0);
+  const reconciled = named + privateMembers.shares + unlinked.shares === totalShares;
 
+  // The arithmetic above is still worth doing — it is how a ledger that does
+  // not add up gets noticed — but none of it is published here any more.
+  // Dropping the numbers from the response rather than hiding the columns:
+  // a directory that ships everybody's holding to every browser has
+  // disclosed it, whatever the table chooses to draw.
   return {
-    totalShares,
-    holders: holders.map((holder, index) => ({ rank: index + 1, ...holder })),
-    privateMembers,
-    unlinked,
-    reconciled: named + privateMembers.shares + unlinked.shares === totalShares,
+    holders: holders.map(({ shares: _shares, breakdown: _breakdown, ...holder }) => holder),
+    privateMembers: { count: privateMembers.count },
+    unlinked: { count: unlinked.count },
+    reconciled,
   };
 }
 
