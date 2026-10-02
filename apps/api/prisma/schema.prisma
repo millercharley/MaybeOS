@@ -133,6 +133,13 @@ model Organization {
   /// co-op at once: on a wave that size, a week means somebody comes back
   /// from a holiday to a dead link and has to ask for another (MEM-18).
   inviteExpiryDays            Int               @default(7)
+  /// The Google calendar whose entries are the co-op's own events (CAL-02).
+  ///
+  /// Separate from the room calendars, which are reservations: a room being
+  /// held is not a thing to attend, and importing every hold as an event
+  /// would put "DO NOT BOOK" in front of the whole community. Null until an
+  /// admin picks one, and the import simply does not offer events without it.
+  eventsCalendarId            String?
   /// Whether Radar is on for this co-op (RDR-01): a weekly digest telling a
   /// member about gatherings open to members that match what they are
   /// interested in. Off until an admin turns it on, and the switch is only
@@ -817,6 +824,11 @@ model Event {
   /// Who it is suitable for (SPC-22) -- from the booking when published from
   /// one, and editable here. Only the restricting answers are ever displayed.
   maturityLevel       MaturityLevel   @default(ALL_AGES)
+  /// The Google calendar entry this came from (CAL-02), where it was
+  /// imported rather than created here. What makes a re-run update an event
+  /// instead of adding a second copy of it — the same job `googleEventId`
+  /// does for a booking.
+  googleEventId       String?
   isPublished         Boolean         @default(false)
   publishedAt         DateTime?
   canceledAt          DateTime?
@@ -848,6 +860,7 @@ model Event {
   socialPosts EventSocialPost[]
 
   @@unique([orgId, slug])
+  @@unique([orgId, googleEventId])
   @@index([orgId, startTime])
   @@index([orgId, visibility, isPublished])
   @@map("events")

@@ -270,6 +270,17 @@ export class CalendarService implements OnModuleInit {
    * Create an authenticated Google Calendar client from a room's stored tokens.
    * Automatically refreshes expired tokens and persists the new tokens.
    */
+  /**
+   * The authenticated client for a connected room's account (CAL-02).
+   *
+   * Exposed for the importer, which reads calendars this room does not own —
+   * the account that connected one room can see the co-op's others, and the
+   * tokens carry `calendar.readonly`.
+   */
+  async clientFor(room: { id: string; googleTokens: unknown }): Promise<calendar_v3.Calendar> {
+    return this.getCalendarClient(room as never);
+  }
+
   private async getCalendarClient(
     room: { id: string; googleTokens: any },
   ): Promise<calendar_v3.Calendar> {
