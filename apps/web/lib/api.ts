@@ -1259,8 +1259,43 @@ class ApiClient {
         token,
       }),
 
-    list: (orgId: string, token: string) =>
-      this.request<PaginatedResponse<Event>>(`/orgs/${orgId}/events`, { token }),
+    /**
+     * Every event an organiser can see, drafts and cancelled included.
+     *
+     * Takes a window for the same reason the member lists do (EVT-27): the
+     * API lists ascending from the start of a co-op's history, twenty at a
+     * time, so after MaybeItsFate's 777-event import the console's Upcoming
+     * tab filtered twenty evenings from November 2024 and found none.
+     */
+    list: (
+      orgId: string,
+      token: string,
+      window: { from?: string; to?: string; perPage?: number } = {},
+    ) => {
+      const query = new URLSearchParams();
+      if (window.from) query.set('from', window.from);
+      if (window.to) query.set('to', window.to);
+      query.set('perPage', String(window.perPage ?? 20));
+
+      return this.request<PaginatedResponse<Event>>(`/orgs/${orgId}/events?${query}`, { token });
+    },
+
+    /** Take it off the members' lists, keeping everything (EVT-30). */
+    unpublish: (orgId: string, eventId: string, token: string) =>
+      this.request<{ hidden: boolean }>(`/orgs/${orgId}/events/${eventId}/unpublish`, {
+        method: 'POST',
+        token,
+      }),
+
+    /**
+     * Destroy it (EVT-30). Refused when a ticket has been sold or a member is
+     * expecting it — both want cancelling, which tells those people.
+     */
+    remove: (orgId: string, eventId: string, token: string) =>
+      this.request<{ deleted: boolean }>(`/orgs/${orgId}/events/${eventId}`, {
+        method: 'DELETE',
+        token,
+      }),
 
     myRsvps: (orgId: string, token: string) =>
       this.request<MyRsvp[]>(`/orgs/${orgId}/events/my-rsvps`, { token }),
