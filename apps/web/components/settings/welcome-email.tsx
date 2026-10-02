@@ -19,11 +19,18 @@ import { EmailEditor } from '@/components/belonging/email-editor';
  * the building. Bundling it into a save-everything button would let an
  * organizer leave the page believing it was on when it was not.
  */
+/**
+ * The three that are about somebody's membership rather than about Belonging
+ * Support's own machinery, kept together because an organiser writing one
+ * usually wants to read the other two beside it.
+ */
+const MEMBER_EMAIL_KINDS = ['SIGN_IN', 'INVITE', 'WELCOME'];
+
 export function WelcomeEmail({ org, onSaved }: { org: Org; onSaved: () => void }) {
   const token = useAuthStore((s) => s.token);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [template, setTemplate] = useState<BelongingEmailTemplate | null>(null);
+  const [templates, setTemplates] = useState<BelongingEmailTemplate[]>([]);
 
   /*
     The co-op's own wording, edited here beside the switch that decides
@@ -34,11 +41,13 @@ export function WelcomeEmail({ org, onSaved }: { org: Org; onSaved: () => void }
   const loadTemplate = useCallback(async () => {
     if (!token) return;
     const all = await api.belonging.emailTemplates(org.id, token);
-    setTemplate(all.find((t) => t.kind === 'WELCOME') ?? null);
+    setTemplates(all.filter((t) => MEMBER_EMAIL_KINDS.includes(t.kind)));
   }, [org.id, token]);
 
   useEffect(() => {
-    loadTemplate().catch(() => setTemplate(null));
+    // A co-op on a plan without these, or an API that cannot answer: the
+    // card still shows its switch, and simply offers no editor.
+    loadTemplate().catch(() => setTemplates([]));
   }, [loadTemplate]);
 
   const on = org.welcomeEmailEnabled ?? false;
@@ -91,26 +100,61 @@ export function WelcomeEmail({ org, onSaved }: { org: Org; onSaved: () => void }
         {on ? 'Stop sending the welcome' : 'Send a welcome to new members'}
       </button>
 
-      {template && (
-        <div className="border-t border-gray-100 pt-4">
-          <p className="mb-3 text-sm text-gray-500">
-            Your words, if you want them. Leave it alone and it uses MaybeOS&rsquo;s wording —
-            which means you also get any improvements to it, rather than a copy frozen on the day
-            you wrote it.
+      <label className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-4 text-sm text-gray-700">
+        <span className="font-medium">An invitation or sign-in link lasts</span>
+        <select
+          value={org.inviteExpiryDays ?? 7}
+          disabled={busy}
+          onChange={async (e) => {
+            if (!token) return;
+            setBusy(true);
+            setError('');
+            try {
+              await api.orgs.update(org.id, { inviteExpiryDays: Number(e.target.value) }, token);
+              onSaved();
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'That did not save');
+            } finally {
+              setBusy(false);
+            }
+          }}
+          className="rounded-lg border border-gray-300 px-3 py-1.5"
+        >
+          {[7, 14, 30, 60, 90].map((days) => (
+            <option key={days} value={days}>
+              {days} days
+            </option>
+          ))}
+        </select>
+        {/* Seven is right for inviting one person and wrong for a whole
+            roster at once, where it means somebody comes back from a holiday
+            to a dead link. */}
+        <span className="text-gray-500">Longer is kinder when you are writing to everybody at once.</span>
+      </label>
+
+      {templates.length > 0 && (
+        <div className="space-y-3 border-t border-gray-100 pt-4">
+          <p className="text-sm text-gray-500">
+            The three emails that reach somebody about their membership, in your words if you
+            want them. Leave one alone and it uses MaybeOS&rsquo;s wording — which means you
+            also get any improvements to it, rather than a copy frozen on the day you wrote it.
           </p>
-          <EmailEditor
-            template={template}
-            onSave={async (subject, body) => {
-              if (!token) return;
-              await api.belonging.saveEmailTemplate(org.id, 'WELCOME', { subject, body }, token);
-              await loadTemplate();
-            }}
-            onReset={async () => {
-              if (!token) return;
-              await api.belonging.resetEmailTemplate(org.id, 'WELCOME', token);
-              await loadTemplate();
-            }}
-          />
+          {templates.map((t) => (
+            <EmailEditor
+              key={t.kind}
+              template={t}
+              onSave={async (subject, body) => {
+                if (!token) return;
+                await api.belonging.saveEmailTemplate(org.id, t.kind, { subject, body }, token);
+                await loadTemplate();
+              }}
+              onReset={async () => {
+                if (!token) return;
+                await api.belonging.resetEmailTemplate(org.id, t.kind, token);
+                await loadTemplate();
+              }}
+            />
+          ))}
         </div>
       )}
     </section>

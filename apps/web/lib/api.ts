@@ -514,6 +514,8 @@ class ApiClient {
         doorCodeEmailsEnabled?: boolean;
         /** Whether MaybeOS welcomes a new member itself (MEM-17). */
         welcomeEmailEnabled?: boolean;
+        /** How long an invitation or a sign-in link stays good (MEM-18). */
+        inviteExpiryDays?: number;
         /** A full Google Sheets address is accepted; the API keeps the id. */
         /** The co-op's own fee per ticket, in cents (D-013 ticketing). */
         ticketFeeCents?: number;
@@ -651,6 +653,24 @@ class ApiClient {
         body: JSON.stringify(data),
         token,
       }),
+
+    /**
+     * Tell imported members how to sign in — the migration send (MEM-18).
+     *
+     * The invitation path refuses anybody who is already a member, which
+     * after an import is everybody. This reaches the people who have an
+     * account and no way into it, in batches, and `dryRun` lists them
+     * without sending.
+     */
+    sendSignInLinks: (
+      orgId: string,
+      data: { limit?: number; dryRun?: boolean },
+      token: string,
+    ) =>
+      this.request<{ sent: number; remaining: number; recipients: string[]; dryRun: boolean }>(
+        `/orgs/${orgId}/members/sign-in-links`,
+        { method: 'POST', body: JSON.stringify(data), token },
+      ),
 
     /**
      * Import a chunk of somebody else's export (MEM-06).
@@ -2797,6 +2817,8 @@ export interface Org {
   doorCodeEmailsEnabled?: boolean;
   /** Whether MaybeOS welcomes a new member itself (MEM-17). */
   welcomeEmailEnabled?: boolean;
+  /** How long an invitation or a sign-in link stays good (MEM-18). */
+  inviteExpiryDays?: number;
   /**
    * Only `GET /orgs/by-slug/:slug` includes these — the public org page's
    * single call. `GET /orgs/:orgId` returns the bare row, so anything reading
