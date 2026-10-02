@@ -51,6 +51,14 @@ describe('PrismaService — secret omission', () => {
       // feeds is read by every member, which is exactly the page the
       // directory promised would never carry an address.
       shareGrant: { holderEmail: true },
+      // The Google organiser of an imported event or room reservation
+      // (CAL-03), kept so somebody who left is reconnected to what they ran
+      // if they come back. Both event reads use `include` — the same shape
+      // that leaked demographics and door codes — and an event page is read
+      // by the whole co-op. The name beside it is published on purpose; the
+      // address belongs to somebody who is not here to be asked.
+      event: { hostEmail: true },
+      booking: { bookedForEmail: true },
     });
   });
 

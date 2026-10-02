@@ -34,6 +34,8 @@ export interface ImportedEntry {
   /** Whether it was an all-day entry, which changes what the times mean. */
   allDay: boolean;
   organiserEmail: string | null;
+  /** As Google has it — the display name on the invitation (CAL-03). */
+  organiserName: string | null;
   location: string | null;
 }
 
@@ -93,6 +95,7 @@ export function toEntry(
     cancelled: raw.status === 'cancelled',
     allDay,
     organiserEmail: raw.organizer?.email?.toLowerCase().trim() || null,
+    organiserName: raw.organizer?.displayName?.trim() || null,
     location: raw.location?.trim() || null,
   };
 }

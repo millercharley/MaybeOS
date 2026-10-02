@@ -344,13 +344,26 @@ export default function PortalEventPage(props: {
         <div className="min-w-0 space-y-6">
           <div>
             <h1 className="font-display text-2xl leading-tight text-ink">{event.title}</h1>
-            {event.host?.name && (
+            {event.host?.name ? (
               <p className="mt-2 flex items-center gap-2 text-sm text-gray-500">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand-100 text-[11px] font-medium text-brand-700">
                   {event.host.name.charAt(0).toUpperCase()}
                 </span>
                 Hosted by <MemberName userId={event.host.id} name={event.host.name} />
               </p>
+            ) : (
+              /* Somebody who ran this and is not a member here (CAL-03) —
+                 usually a past member, on an event imported from the co-op's
+                 own calendar. Their name, with no card to open and no way to
+                 message them, because there is nobody to open or message. */
+              event.hostName && (
+                <p className="mt-2 flex items-center gap-2 text-sm text-gray-500">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gray-100 text-[11px] font-medium text-gray-500">
+                    {event.hostName.charAt(0).toUpperCase()}
+                  </span>
+                  Hosted by <span className="text-gray-700">{event.hostName}</span>
+                </p>
+              )
             )}
           </div>
 

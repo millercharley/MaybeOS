@@ -98,6 +98,20 @@ export class PrismaService
          * directory promised not to be.
          */
         shareGrant: { holderEmail: true },
+        /**
+         * The Google organiser of an imported event, and of an imported room
+         * reservation (CAL-03). Kept so somebody who left the co-op is
+         * reconnected to what they ran if they come back; matched on the
+         * server and nowhere else.
+         *
+         * Both routes that read an event use `include`, which selects every
+         * column — the same shape that leaked demographics and door codes
+         * above — and an event page is read by the whole co-op. The name
+         * beside it is published on purpose; the address never is, because it
+         * belongs to somebody who is not here to be asked.
+         */
+        event: { hostEmail: true },
+        booking: { bookedForEmail: true },
       },
     });
   }

@@ -210,3 +210,34 @@ describe('the screen is wired to something', () => {
     expect(component).toMatch(/setConfirming\(true\)/);
   });
 });
+
+/**
+ * A host who is not a member any more (CAL-03).
+ *
+ * Charley, 2026-10-02: "If a member is missing because they left the co-op,
+ * just note the name of this user in the past event. If the person re-joins
+ * in the future, reconnect them to their past events."
+ */
+describe('an imported event whose host has left', () => {
+  const page = readFileSync(
+    join(__dirname, '..', 'app', '(app)', 'portal', '[orgSlug]', 'events', '[eventSlug]', 'page.tsx'),
+    'utf8',
+  );
+
+  it('still says who ran it', () => {
+    // "A workshop, hosted by nobody" is worse than not importing it.
+    expect(page).toMatch(/event\.hostName/);
+  });
+
+  it('prefers the member when there is one', () => {
+    expect(page.indexOf('event.host?.name')).toBeLessThan(page.indexOf('event.hostName'));
+  });
+
+  it('offers no card and no message for somebody who is not here', () => {
+    // `MemberName` opens a profile. There is no profile to open, and a dead
+    // link on a past event is worse than plain text.
+    const fallback = page.slice(page.indexOf('event.hostName'), page.indexOf('event.hostName') + 700);
+
+    expect(fallback).not.toMatch(/<MemberName/);
+  });
+});

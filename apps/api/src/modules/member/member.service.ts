@@ -409,6 +409,54 @@ export class MemberService {
     return { updated: true, subscriptionStatus: updated.subscriptionStatus };
   }
 
+  /**
+   * Hand somebody back the events and rooms they ran before (CAL-03).
+   *
+   * A co-op's calendar import keeps the Google organiser's address on any
+   * event or reservation it could not match to a member. Somebody joining —
+   * or rejoining, which is the case Charley asked about — picks those up the
+   * moment they have a membership, without an organiser remembering to go
+   * looking.
+   *
+   * Idempotent and safe to call on every join: it only ever touches rows that
+   * are still waiting on this exact address, and clears the address as it
+   * goes, so a second run finds nothing.
+   *
+   * Failure is not allowed to stop a join. Somebody who cannot get into the
+   * co-op because a three-year-old event could not be relinked is a worse
+   * outcome than an event that stays unattached until the next time.
+   */
+  async claimPastHosting(orgId: string, userId: string, email: string) {
+    const address = email.trim().toLowerCase();
+    if (!address) return { events: 0, bookings: 0 };
+
+    try {
+      const [events, bookings] = await this.prisma.$transaction([
+        this.prisma.event.updateMany({
+          where: { orgId, hostId: null, hostEmail: address },
+          data: { hostId: userId, hostEmail: null, hostName: null },
+        }),
+        this.prisma.booking.updateMany({
+          where: { bookedForEmail: address, room: { orgId } },
+          data: { userId, bookedForEmail: null, bookedForName: null },
+        }),
+      ]);
+
+      if (events.count || bookings.count) {
+        this.logger.log(
+          `Reattached ${events.count} events and ${bookings.count} bookings to ${userId} in org ${orgId}`,
+        );
+      }
+
+      return { events: events.count, bookings: bookings.count };
+    } catch (error) {
+      this.logger.error(
+        `Could not reattach past hosting for ${userId} in org ${orgId}: ${(error as Error).message}`,
+      );
+      return { events: 0, bookings: 0 };
+    }
+  }
+
   async updateMemberRole(orgId: string, userId: string, role: OrgRole) {
     const member = await this.prisma.userOrg.findUnique({
       where: { userId_orgId: { userId, orgId } },
@@ -597,6 +645,14 @@ export class MemberService {
         subscriptionStatus: 'NONE',
       },
     });
+
+    // Anything the co-op's calendar import left waiting under this address
+    // (CAL-03) — the rejoining case Charley asked for.
+    const joiner = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    if (joiner?.email) await this.claimPastHosting(orgId, userId, joiner.email);
 
     this.logger.log(`User ${userId} joined org ${orgId} (tier ${tierId ?? 'none'})`);
 
@@ -1146,6 +1202,12 @@ export class MemberService {
     if (membership) {
       this.startBuddySearch(invitation.orgId, membership.id);
       this.sendWelcome(invitation.orgId, userId);
+      // Events and rooms they ran before, waiting under their address
+      // (CAL-03). Not awaited: `claimPastHosting` swallows its own failures,
+      // and nothing about accepting an invitation should wait on it.
+      void this.prisma.user
+        .findUnique({ where: { id: userId }, select: { email: true } })
+        .then((user) => user?.email && this.claimPastHosting(invitation.orgId, userId, user.email));
     }
 
     // The tier travels back so the web app knows whether to hand off to
@@ -1564,6 +1626,11 @@ export class MemberService {
             ...(row.emailOptIn !== undefined && { emailOptIn: row.emailOptIn }),
           },
         });
+
+        // Whatever they ran before they left (CAL-03). Awaited rather than
+        // fired and forgotten: an import is already a batch, and a member who
+        // sees their own events on their first visit is the point.
+        await this.claimPastHosting(orgId, user.id, email);
 
         results.created++;
         if (room !== null) room--;
