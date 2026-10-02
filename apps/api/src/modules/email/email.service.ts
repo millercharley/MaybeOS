@@ -24,6 +24,29 @@ export interface BookingEmailData {
   bookingsUrl: string;
 }
 
+/**
+ * Where one person's mail goes (MEM-19).
+ *
+ * A co-op moving in has people billed at one address and signed up to its
+ * forum at another, and the two have been the same person all along. Both
+ * travel together so that nothing has to choose — getting it wrong is
+ * invisible until somebody says they never received a sign-in link.
+ */
+export interface Addresses {
+  primary: string;
+  also?: string | null;
+}
+
+export function addresses(to: string | Addresses): { primary: string; also?: string } {
+  if (typeof to === 'string') return { primary: to };
+
+  const primary = to.primary.trim();
+  const also = to.also?.trim();
+
+  // Never copy somebody on their own mail.
+  return also && also.toLowerCase() !== primary.toLowerCase() ? { primary, also } : { primary };
+}
+
 export interface EmailJobData {
   type:
     | 'magic-link'
@@ -276,20 +299,34 @@ export class EmailService {
    * silent Postmark failure was a message nobody received and nothing
    * retried. Existing callers ignore the return and are unaffected.
    */
-  async sendRaw(to: string, subject: string, htmlBody: string): Promise<boolean> {
+  async sendRaw(
+    to: string | Addresses,
+    subject: string,
+    htmlBody: string,
+  ): Promise<boolean> {
+    const { primary, also } = addresses(to);
     if (!this.client) {
-      this.logger.log(`[DEV] Would send email to=${to} subject="${subject}"\n${htmlBody}`);
+      this.logger.log(`[DEV] Would send email to=${primary} subject="${subject}"\n${htmlBody}`);
       // True in development: nothing failed, there is simply no provider.
       return true;
     }
 
     try {
-      await this.client.sendEmail({ From: this.emailFrom, To: to, Subject: subject, HtmlBody: htmlBody });
-      this.logger.log(`Email sent successfully to ${to} (raw)`);
+      await this.client.sendEmail({
+        From: this.emailFrom,
+        To: primary,
+        // Copied rather than sent twice: one message, arriving at both
+        // addresses the same person reads, so a reply is one conversation
+        // and a sign-in link is one link (MEM-19).
+        ...(also && { Cc: also }),
+        Subject: subject,
+        HtmlBody: htmlBody,
+      });
+      this.logger.log(`Email sent successfully to ${primary} (raw)`);
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Failed to send email to ${to}: ${message}`);
+      this.logger.error(`Failed to send email to ${primary}: ${message}`);
       return false;
     }
   }

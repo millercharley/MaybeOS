@@ -491,6 +491,18 @@ model UserOrg {
   /// separate from Radar: one is "here is something you might like" and the
   /// other is "here is what your dues did", and a member may well want the
   /// second without the first.
+  /// A second address this member also reads (MEM-19).
+  ///
+  /// A co-op moving in has people billed at one address and signed up to its
+  /// forum at another, and the two have been the same person all along. Mail
+  /// MaybeOS sends a member goes to both, so a migration does not quietly
+  /// pick the wrong one — signing in is the case that matters, because the
+  /// link only arrives at the address somebody still reads.
+  ///
+  /// On the membership rather than the account, like everything else a member
+  /// tells one co-op: what somebody gives one is not consent to use it in
+  /// another (D-020).
+  altEmail            String?
   recapEmails         Boolean   @default(true)
   /// When this member was sent a link to sign in for the first time (MEM-18).
   ///

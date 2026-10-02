@@ -3014,6 +3014,8 @@ export interface ImportMemberRow {
   email: string;
   name?: string;
   joinedAt?: string;
+  /** A second address the same person reads (MEM-19). Mail is copied to it. */
+  altEmail?: string;
   headline?: string;
   location?: string;
   bio?: string;

@@ -28,8 +28,9 @@ describe('sending a roster its way in', () => {
   const ORG = { id: 'org-1', name: 'MaybeItsFate', inviteExpiryDays: 30 };
 
   const waiting = [
-    { id: 'm1', userId: 'u1', user: { email: 'ada@example.com', name: 'Ada' } },
-    { id: 'm2', userId: 'u2', user: { email: 'bo@example.com', name: null } },
+    // The second carries a forum address as well as a billed one (MEM-19).
+    { id: 'm1', userId: 'u1', altEmail: null, user: { email: 'ada@example.com', name: 'Ada' } },
+    { id: 'm2', userId: 'u2', altEmail: 'bo-forum@example.com', user: { email: 'bo@example.com', name: null } },
   ];
 
   beforeEach(async () => {
@@ -79,7 +80,7 @@ describe('sending a roster its way in', () => {
 
     const [to, subject, html] = email.sendRaw.mock.calls[0];
 
-    expect(to).toBe('ada@example.com');
+    expect(to).toEqual({ primary: 'ada@example.com', also: null });
     expect(subject).toBe('Your MaybeItsFate account is ready');
     expect(html).toContain('https://maybeos.org/magic-link?token=');
     // The sentence the whole email exists for.
@@ -154,6 +155,17 @@ describe('sending a roster its way in', () => {
 
     expect(subject).toBe('MaybeItsFate: your account');
     expect(html).toContain('Nothing to do about your payments');
+  });
+
+  it('writes to both addresses where a member has two', async () => {
+    // The send where choosing wrong is worst: a sign-in link that arrives
+    // somewhere they never look reads as MaybeOS being broken.
+    await service.sendSignInLinks('org-1');
+
+    expect(email.sendRaw.mock.calls[1][0]).toEqual({
+      primary: 'bo@example.com',
+      also: 'bo-forum@example.com',
+    });
   });
 
   it('says "there" rather than nothing to somebody with no name', async () => {

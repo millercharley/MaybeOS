@@ -16,6 +16,7 @@ export type FieldKey =
   | 'firstName'
   | 'lastName'
   | 'joinedAt'
+  | 'altEmail'
   | 'headline'
   | 'location'
   | 'bio'
@@ -50,6 +51,12 @@ export const IMPORT_FIELDS: FieldSpec[] = [
     label: 'Joined',
     hint: 'When they joined the community — not the date of this import.',
     aliases: ['join date', 'joined', 'joined at', 'member since', 'created at', 'signup date'],
+  },
+  {
+    key: 'altEmail',
+    label: 'Second email',
+    hint: 'Another address the same person reads. Anything MaybeOS sends them is copied to it.',
+    aliases: ['alt email', 'second email', 'secondary email', 'other email', 'alternate email'],
   },
   { key: 'headline', label: 'Headline', aliases: ['headline', 'tagline', 'title'] },
   { key: 'location', label: 'Location', aliases: ['location', 'city', 'place'] },
@@ -86,7 +93,7 @@ export const IMPORT_FIELDS: FieldSpec[] = [
 export type Mapping = Record<FieldKey, string[]>;
 
 export const EMPTY_MAPPING: Mapping = {
-  email: [], firstName: [], lastName: [], joinedAt: [], headline: [],
+  email: [], firstName: [], lastName: [], joinedAt: [], altEmail: [], headline: [],
   location: [], bio: [], tags: [], avatarUrl: [], emailOptIn: [], link: [],
 };
 
@@ -201,6 +208,12 @@ export function prepareImport(
     const row: ImportMemberRow = { email };
     if (name) row.name = name;
     if (joinedAt) row.joinedAt = joinedAt;
+    // Only when it is a different address — a column that repeats the
+    // primary is the common shape of an export, and copying somebody on
+    // their own mail looks like a bug to whoever receives it.
+    const alt = pick('altEmail').trim().toLowerCase();
+    if (alt && alt !== email.toLowerCase()) row.altEmail = alt;
+
     if (pick('headline').trim()) row.headline = pick('headline').trim();
     if (pick('location').trim()) row.location = pick('location').trim();
     if (pick('bio').trim()) row.bio = pick('bio').trim();

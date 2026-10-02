@@ -45,6 +45,18 @@ export class ImportMemberRowDto {
   @IsISO8601()
   joinedAt?: string;
 
+  /**
+   * A second address the same person reads (MEM-19).
+   *
+   * Export files disagree about which address a member "is": a co-op bills
+   * one and its forum knows another. Rather than choosing and losing the
+   * other, both travel, and MaybeOS copies anything it sends to both.
+   */
+  @ApiPropertyOptional({ example: 'theirother@example.org' })
+  @IsOptional()
+  @IsEmail({}, { message: 'Second address is not an email address' })
+  altEmail?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
