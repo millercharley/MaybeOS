@@ -680,6 +680,19 @@ class ApiClient {
         token,
       }),
 
+    /**
+     * Take somebody out of the co-op, and stop their dues with them (MEM-20).
+     *
+     * The API cancels the subscription before it deletes anything, and
+     * refuses the whole thing if it cannot — removing them regardless would
+     * keep charging somebody for a co-op they have left.
+     */
+    remove: (orgId: string, userId: string, token: string) =>
+      this.request<{ removed: boolean; duesCancelled: boolean }>(
+        `/orgs/${orgId}/members/${userId}`,
+        { method: 'DELETE', token },
+      ),
+
     invite: (
       orgId: string,
       data: { email: string; role?: string; tierId?: string },

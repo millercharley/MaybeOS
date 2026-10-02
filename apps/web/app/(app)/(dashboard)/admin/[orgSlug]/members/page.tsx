@@ -5,8 +5,9 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { PieChart, Search, Plus, MoreHorizontal, Clock, RefreshCw, Mail, Upload } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
+import { payingDues } from '@/lib/member-removal';
 import { useAuthStore } from '@/lib/auth-store';
-import { api } from '@/lib/api';
+import { api, type Member } from '@/lib/api';
 import { Modal } from '@/components/ui/modal';
 import { PageHeader } from '@/components/layout/page-header';
 import { MemberName } from '@/components/member/member-name';
@@ -33,6 +34,18 @@ export default function MembersPage() {
   const [inviteTierId, setInviteTierId] = useState('');
   const [inviting, setInviting] = useState(false);
   const [inviteResult, setInviteResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  /**
+   * Which member's menu is open, and which one is being removed.
+   *
+   * The menu button had no handler at all until 2026-10-02 — it rendered and
+   * did nothing, which is the only reason nobody had met the bug underneath
+   * it: removing a member used to delete the row and leave their dues
+   * running.
+   */
+  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<Member | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState('');
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [savingRole, setSavingRole] = useState<string | null>(null);
   const [roleError, setRoleError] = useState('');
@@ -147,6 +160,30 @@ export default function MembersPage() {
       setRoleError(err instanceof Error ? err.message : 'Could not change that role');
     } finally {
       setSavingRole(null);
+    }
+  }
+
+  /**
+   * Remove somebody from the co-op, and stop their dues (MEM-20).
+   *
+   * The API cancels the subscription first and refuses the whole thing if the
+   * cancel fails, so a failure here means they are still a member and still
+   * paying — which is the state the message has to describe.
+   */
+  async function removeMember(member: Member) {
+    if (!token || !currentOrgId) return;
+    setRemoving(true);
+    setRemoveError('');
+    try {
+      await api.members.remove(currentOrgId, member.user.id, token);
+      setConfirmRemove(null);
+      refetch();
+    } catch (err) {
+      setRemoveError(
+        err instanceof Error ? err.message : 'Could not remove them. Nothing was changed.',
+      );
+    } finally {
+      setRemoving(false);
     }
   }
 
@@ -274,6 +311,57 @@ export default function MembersPage() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        open={confirmRemove !== null}
+        onClose={() => {
+          if (!removing) setConfirmRemove(null);
+        }}
+        title="Remove from the community"
+      >
+        {confirmRemove && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-700">
+              {confirmRemove.user.name ?? confirmRemove.user.email ?? 'This member'} will lose
+              access to everything members see here — events, the directory, bookings and anything
+              behind a membership.
+            </p>
+            {payingDues(confirmRemove) && (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  Their dues are cancelled immediately, not at the end of the period. They are not
+                  refunded for the part of the month they have already paid for.
+                </p>
+            )}
+            <p className="text-sm text-gray-500">
+              This cannot be undone. They would have to be invited again, and would start a new
+              membership if they came back.
+            </p>
+            {removeError && (
+              <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {removeError}
+              </p>
+            )}
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmRemove(null)}
+                disabled={removing}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Keep them
+              </button>
+              <button
+                type="button"
+                onClick={() => removeMember(confirmRemove)}
+                disabled={removing}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {removing ? 'Removing…' : 'Remove and cancel their dues'}
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {pendingInvites.length > 0 && (
@@ -470,10 +558,42 @@ export default function MembersPage() {
                     year: 'numeric',
                   })}
                 </td>
-                <td className="whitespace-nowrap px-6 py-4 text-right">
-                  <button className="text-gray-400 hover:text-gray-600">
+                <td className="relative whitespace-nowrap px-6 py-4 text-right">
+                  <button
+                    type="button"
+                    aria-label={`Actions for ${member.user.name ?? member.user.email ?? 'this member'}`}
+                    aria-expanded={openMenu === member.id}
+                    onClick={() => setOpenMenu(openMenu === member.id ? null : member.id)}
+                    className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                  >
                     <MoreHorizontal className="h-4 w-4" />
                   </button>
+
+                  {openMenu === member.id && (
+                    <>
+                      {/* Clicking anywhere else closes it, which is what
+                          everybody expects of a menu and what nothing else
+                          on this page was doing. */}
+                      <div
+                        className="fixed inset-0 z-10"
+                        onClick={() => setOpenMenu(null)}
+                        aria-hidden
+                      />
+                      <div className="absolute right-6 z-20 mt-1 w-56 rounded-lg border border-gray-200 bg-white py-1 text-left shadow-lg">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenMenu(null);
+                            setRemoveError('');
+                            setConfirmRemove(member);
+                          }}
+                          className="block w-full px-4 py-2 text-left text-sm text-red-700 hover:bg-red-50"
+                        >
+                          Remove from the community
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </td>
               </tr>
             ))}

@@ -1295,6 +1295,45 @@ export class StripeService implements OnModuleInit {
     return result;
   }
 
+  /**
+   * Stop a member's dues, now (MEM-20).
+   *
+   * For an organiser removing somebody from the co-op, which is the one case
+   * where "at period end" is wrong: the member loses access today, and
+   * leaving the subscription running would charge them next month for a
+   * co-op they are no longer in. A member cancelling for themselves still
+   * goes through the portal and still ends at period end — they keep what
+   * they paid for.
+   *
+   * Refunding the rest of the month is deliberately not done here. That is
+   * the co-op's money and the co-op's judgement, and a refund issued
+   * automatically by somebody else's software is harder to explain than one
+   * an organiser chose to make.
+   *
+   * Returns whether anything was cancelled; throws only when Stripe refuses,
+   * because the caller must not delete a membership whose billing it could
+   * not stop.
+   */
+  async cancelDuesNow(subscriptionId: string, accountId: string | null): Promise<boolean> {
+    try {
+      await this.stripe.subscriptions.cancel(subscriptionId, {}, onAccount(accountId));
+      this.logger.log(`Cancelled dues subscription ${subscriptionId}`);
+      return true;
+    } catch (error) {
+      const err = error as { code?: string; message?: string };
+
+      // Already gone is the outcome we wanted. Stripe says so with a 404
+      // rather than a success, and treating that as a failure would leave an
+      // organiser unable to remove somebody whose dues had already stopped.
+      if (err.code === 'resource_missing') {
+        this.logger.log(`Dues subscription ${subscriptionId} was already gone`);
+        return false;
+      }
+
+      throw error;
+    }
+  }
+
   async removeDuesFeesAfterUpgrade(): Promise<{ removed: number; failed: number }> {
     const memberships = await this.prisma.userOrg.findMany({
       where: {

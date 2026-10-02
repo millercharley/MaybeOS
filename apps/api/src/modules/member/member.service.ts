@@ -435,6 +435,22 @@ export class MemberService {
   /**
    * Remove a member from an org.
    */
+  /**
+   * Remove somebody from the co-op, and stop their dues (MEM-20).
+   *
+   * **The dues are cancelled first, and the membership is only deleted if
+   * that worked.** Until this, removing a member deleted the row and said
+   * nothing to Stripe: their subscription carried on billing them, on the
+   * co-op's own account, for a co-op they were no longer in — and the row
+   * that held the subscription id was gone, so nothing in MaybeOS could even
+   * find it again. The failure surfaces months later as a member asking why
+   * they are still paying.
+   *
+   * In this order for the same reason. A delete that succeeds after a failed
+   * cancel is the unrecoverable version; a cancel that succeeds before a
+   * failed delete leaves a member who is still in the co-op and not being
+   * charged, which an organiser can see and fix.
+   */
   async removeMember(orgId: string, userId: string) {
     const member = await this.prisma.userOrg.findUnique({
       where: { userId_orgId: { userId, orgId } },
@@ -446,9 +462,30 @@ export class MemberService {
       );
     }
 
-    return this.prisma.userOrg.delete({
+    let duesCancelled = false;
+
+    if (member.stripeSubscriptionId && member.subscriptionStatus !== 'CANCELED') {
+      try {
+        duesCancelled = await this.stripeService.cancelDuesNow(
+          member.stripeSubscriptionId,
+          member.stripeDuesAccountId,
+        );
+      } catch (error) {
+        // Deliberately fatal. Removing them anyway would charge somebody for
+        // a co-op they have left, and lose the only record of which
+        // subscription to stop.
+        throw new BadRequestException(
+          'Their dues could not be cancelled, so nothing was changed. ' +
+            'Check the subscription in Stripe and try again — removing them now would keep charging them.',
+        );
+      }
+    }
+
+    await this.prisma.userOrg.delete({
       where: { userId_orgId: { userId, orgId } },
     });
+
+    return { removed: true, duesCancelled };
   }
 
   /**
