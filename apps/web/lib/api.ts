@@ -3541,6 +3541,15 @@ export interface Event {
    * which is true of every event created before the column existed.
    */
   host?: { id: string; name?: string; avatarUrl?: string } | null;
+  /**
+   * Who ran it, when they are not a member here (CAL-03).
+   *
+   * A co-op importing years of its own calendar brings events hosted by
+   * people who have since left. Their name is part of what the event was.
+   * Set only when `host` is null; the address behind the match never leaves
+   * the server, and is how somebody rejoining is reconnected to it.
+   */
+  hostName?: string | null;
   /** What a ticket costs, in cents. Null means free — no Stripe involved. */
   priceCents?: number | null;
   currency?: string;

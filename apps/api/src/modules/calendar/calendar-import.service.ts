@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { calendar_v3 } from 'googleapis';
 import { PrismaService } from '../../config/prisma.service';
 import { CalendarService } from './calendar.service';
+import { hostFields, hostKey, hostLabel } from './past-host';
 import { ImportedEntry, importWindow, toEntry } from './calendar-import';
 
 /** A year back is the default; two years ahead is the ceiling (see `importWindow`). */
@@ -304,7 +305,10 @@ export class CalendarImportService {
     let written = 0;
 
     for (const entry of entries) {
-      const hostId = await this.hostFor(org.id, entry.organiserEmail);
+      const matched = await this.hostFor(org.id, entry.organiserEmail);
+      // A host who is not a member still ran it (CAL-03). Their name goes on
+      // the event; their address is kept to match them if they come back.
+      const host = hostFields(matched, entry.organiserEmail, entry.organiserName);
 
       await this.prisma.event.upsert({
         where: { orgId_googleEventId: { orgId: org.id, googleEventId: entry.googleEventId } },
@@ -323,7 +327,7 @@ export class CalendarImportService {
           visibility: 'MEMBERS_ONLY',
           isPublished: true,
           publishedAt: new Date(),
-          hostId,
+          ...host,
         },
         update: {
           // Title and times follow Google; everything a co-op has added here
@@ -332,7 +336,9 @@ export class CalendarImportService {
           startTime: entry.start,
           endTime: entry.end,
           canceledAt: null,
-          ...(hostId ? { hostId } : {}),
+          // A re-run must not wipe a host an organiser has since set by hand,
+          // but it may fill one that is still unknown.
+          ...(host.hostId || host.hostEmail ? host : {}),
         },
       });
 
@@ -357,7 +363,16 @@ export class CalendarImportService {
     let written = 0;
 
     for (const entry of entries) {
-      const userId = (await this.hostFor(orgId, entry.organiserEmail)) ?? fallback.userId;
+      const matched = await this.hostFor(orgId, entry.organiserEmail);
+      // `userId` is required, so an unmatched reservation still has to be
+      // filed under somebody — but it no longer *claims* to be theirs.
+      const userId = matched ?? fallback.userId;
+      const bookedFor = matched
+        ? { bookedForEmail: null, bookedForName: null }
+        : {
+            bookedForEmail: hostKey(entry.organiserEmail),
+            bookedForName: hostLabel(entry.organiserName, entry.organiserEmail),
+          };
 
       const existing = await this.prisma.booking.findFirst({
         where: { roomId, googleEventId: entry.googleEventId },
@@ -367,13 +382,14 @@ export class CalendarImportService {
       if (existing) {
         await this.prisma.booking.update({
           where: { id: existing.id },
-          data: { title: entry.title, startTime: entry.start, endTime: entry.end },
+          data: { title: entry.title, startTime: entry.start, endTime: entry.end, ...bookedFor },
         });
       } else {
         await this.prisma.booking.create({
           data: {
             roomId,
             userId,
+            ...bookedFor,
             googleEventId: entry.googleEventId,
             title: entry.title,
             description: entry.description,
