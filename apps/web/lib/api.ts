@@ -634,9 +634,17 @@ class ApiClient {
 
   // ── Members ──────────────────────────────────────
   members = {
-    list: (orgId: string, token: string, page = 1, perPage = 25) =>
+    /**
+     * One page of a co-op's roster (MEM-22).
+     *
+     * `search` is the server's, not the browser's: the admin page used to
+     * filter the rows it happened to be holding, so searching a 426-member
+     * co-op looked through the first 50 and said nobody matched.
+     */
+    list: (orgId: string, token: string, page = 1, perPage = 25, search?: string) =>
       this.request<PaginatedResponse<Member>>(
-        `/orgs/${orgId}/members?page=${page}&perPage=${perPage}`,
+        `/orgs/${orgId}/members?page=${page}&perPage=${perPage}` +
+          (search?.trim() ? `&search=${encodeURIComponent(search.trim())}` : ''),
         { token },
       ),
 
