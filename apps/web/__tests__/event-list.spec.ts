@@ -186,17 +186,99 @@ describe('the portal events page', () => {
   });
 });
 
+/**
+ * What counts as still to come (EVT-29).
+ *
+ * This cut at the start time, so an event vanished from the page the moment
+ * it began — which is roughly when somebody deciding whether to turn up is
+ * looking at it. Charley: keep them visible until they end.
+ */
 describe('what counts as upcoming', () => {
-  it('leaves out anything that has already started', () => {
-    const now = new Date('2026-10-02T19:00:00Z');
-    const event = (id: string, startTime: string) => ({ id, startTime, timezone: 'UTC' });
+  const now = new Date('2026-10-02T19:00:00Z');
+  const event = (id: string, startTime: string, endTime: string) => ({ id, startTime, endTime });
+  const ids = (months: { events: { id: string }[] }[]) =>
+    months.flatMap((m) => m.events.map((e) => e.id));
+
+  it('leaves out an event that has ended', () => {
     const { next, months } = groupUpcoming(
-      [event('over', '2026-10-01T19:00:00Z'), event('soon', '2026-10-02T22:00:00Z')],
+      [
+        event('over', '2026-10-01T19:00:00Z', '2026-10-01T21:00:00Z'),
+        event('soon', '2026-10-02T22:00:00Z', '2026-10-03T00:00:00Z'),
+      ],
       'UTC',
       now,
     );
 
     expect(next?.id).toBe('soon');
-    expect(months.flatMap((m) => m.events.map((e) => e.id))).not.toContain('over');
+    expect(ids(months)).not.toContain('over');
+  });
+
+  it('keeps one that is happening right now', () => {
+    // A two-hour workshop that started twenty minutes ago is still something
+    // you can go to.
+    const { next } = groupUpcoming(
+      [event('on-now', '2026-10-02T18:40:00Z', '2026-10-02T20:40:00Z')],
+      'UTC',
+      now,
+    );
+
+    expect(next?.id).toBe('on-now');
+  });
+
+  it('puts the one in progress before one that has not started', () => {
+    const { next, months } = groupUpcoming(
+      [
+        event('later', '2026-10-02T22:00:00Z', '2026-10-03T00:00:00Z'),
+        event('on-now', '2026-10-02T18:40:00Z', '2026-10-02T20:40:00Z'),
+      ],
+      'UTC',
+      now,
+    );
+
+    expect(next?.id).toBe('on-now');
+    expect(ids(months)).toEqual(['later']);
+  });
+
+  it('drops one the moment it actually ends', () => {
+    const { next } = groupUpcoming(
+      [event('just-over', '2026-10-02T17:00:00Z', '2026-10-02T19:00:00Z')],
+      'UTC',
+      now,
+    );
+
+    expect(next).toBeNull();
+  });
+
+  it('falls back to the start when nothing says how long it runs', () => {
+    // The old behaviour, and the only honest answer without an end time.
+    const { next } = groupUpcoming(
+      [{ id: 'unknown-length', startTime: '2026-10-02T18:40:00Z' }],
+      'UTC',
+      now,
+    );
+
+    expect(next).toBeNull();
+  });
+});
+
+describe('how an event in progress reads', () => {
+  const now = new Date('2026-10-02T19:00:00Z');
+
+  it('says it is on, not that it starts in no time', () => {
+    // These stay on the page until they end (EVT-29), and "Starts in 0
+    // minutes" is not what somebody deciding whether to walk over needs.
+    expect(startsIn('2026-10-02T18:40:00Z', now, '2026-10-02T20:40:00Z')).toBe('On now');
+  });
+
+  it('says nothing once it has ended', () => {
+    expect(startsIn('2026-10-02T17:00:00Z', now, '2026-10-02T18:00:00Z')).toBeNull();
+  });
+
+  it('still counts down to one that has not started', () => {
+    expect(startsIn('2026-10-02T20:00:00Z', now, '2026-10-02T22:00:00Z')).toBe('Starts in 1 hour');
+  });
+
+  it('says nothing about a started event whose end is unknown', () => {
+    expect(startsIn('2026-10-02T18:40:00Z', now)).toBeNull();
   });
 });

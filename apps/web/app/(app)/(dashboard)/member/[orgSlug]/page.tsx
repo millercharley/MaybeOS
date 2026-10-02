@@ -187,7 +187,7 @@ export default function MemberPortalPage() {
             ) : (
               <ul className="space-y-2">
                 {today.map((event) => {
-                  const soon = startsIn(event.startTime, now);
+                  const soon = startsIn(event.startTime, now, event.endTime);
                   const underway = new Date(event.startTime) <= now;
                   return (
                     <li key={event.id}>

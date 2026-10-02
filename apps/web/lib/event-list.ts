@@ -10,6 +10,11 @@
 export interface Listable {
   id: string;
   startTime: string;
+  /**
+   * Optional, because not every caller of `monthHeading` has one. Where it is
+   * present, it is what decides whether an event is over (EVT-29).
+   */
+  endTime?: string;
 }
 
 /** "September 2026", in the co-op's timezone rather than the reader's. */
@@ -26,6 +31,15 @@ export function monthHeading(iso: string, timeZone: string): string {
  *
  * The next event is removed from its group rather than repeated: showing it
  * twice makes a quiet week look like two events.
+ *
+ * **Over means ended, not started** (EVT-29). This cut at `startTime`, so
+ * tonight's event disappeared from the events page at the moment it began —
+ * which is roughly when somebody deciding whether to turn up is looking at
+ * it. A two-hour workshop that started twenty minutes ago is still something
+ * you can go to; one that finished last night is not.
+ *
+ * An event with no `endTime` falls back to its start, which is the old
+ * behaviour and the only honest answer when nothing says how long it runs.
  */
 export function groupUpcoming<T extends Listable>(
   events: T[],
@@ -33,7 +47,7 @@ export function groupUpcoming<T extends Listable>(
   now: Date,
 ): { next: T | null; months: { heading: string; events: T[] }[] } {
   const upcoming = events
-    .filter((e) => new Date(e.startTime) > now)
+    .filter((e) => new Date(e.endTime ?? e.startTime) > now)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   const [next = null, ...rest] = upcoming;
@@ -57,10 +71,16 @@ export function groupUpcoming<T extends Listable>(
  * today. "Starts in 4 months" is a fact nobody acts on, and a countdown on
  * every card makes the one that matters invisible.
  */
-export function startsIn(iso: string, now: Date): string | null {
+export function startsIn(iso: string, now: Date, endIso?: string): string | null {
   const minutes = Math.round((new Date(iso).getTime() - now.getTime()) / 60_000);
 
-  if (minutes < 0) return null;
+  // Already going (EVT-29). These stay on the page until they end, and
+  // "Starts in 0 minutes" is not what somebody deciding whether to walk over
+  // needs to read.
+  if (minutes <= 0) {
+    if (!endIso) return null;
+    return new Date(endIso) > now ? 'On now' : null;
+  }
   if (minutes < 60) return `Starts in ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
 
   const hours = Math.round(minutes / 60);
