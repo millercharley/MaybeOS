@@ -38,6 +38,8 @@ describe('welcoming a new member', () => {
       user: { findUnique: jest.fn().mockResolvedValue(USER) },
       // No custom wording unless a test says so, which is the common case.
       belongingEmailTemplate: { findUnique: jest.fn().mockResolvedValue(null) },
+      // The membership carries a second address the same person reads (MEM-19).
+      userOrg: { findFirst: jest.fn().mockResolvedValue({ altEmail: null }) },
     };
     email = { sendRaw: jest.fn().mockResolvedValue(true) };
 
@@ -66,7 +68,7 @@ describe('welcoming a new member', () => {
 
     const [to, subject, html] = email.sendRaw.mock.calls[0];
 
-    expect(to).toBe('ada@example.com');
+    expect(to.primary).toBe('ada@example.com');
     expect(subject).toBe('Welcome to MaybeItsFate');
     expect(html).toContain('Ada');
     // A welcome with no link is a dead end, which is why `member_url` is a
@@ -175,5 +177,51 @@ describe('a roster arriving is not 364 arrivals', () => {
 
   it('does not start a buddy search either, which is the precedent for it', () => {
     expect(importer).not.toMatch(/startBuddySearch/);
+  });
+});
+
+describe('a member with two addresses', () => {
+  /**
+   * A co-op moving in has people billed at one address and signed up to its
+   * forum at another, and the two have been the same person all along
+   * (MEM-19). Both are written to, because choosing wrong is invisible until
+   * somebody says they never got the email.
+   */
+  it('copies the welcome to the second address', async () => {
+    const prisma: any = {
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'org-1',
+          name: 'MaybeItsFate',
+          slug: 'maybeitsfate',
+          welcomeEmailEnabled: true,
+        }),
+      },
+      user: { findUnique: jest.fn().mockResolvedValue({ name: 'Ada', email: 'billed@example.com' }) },
+      belongingEmailTemplate: { findUnique: jest.fn().mockResolvedValue(null) },
+      userOrg: { findFirst: jest.fn().mockResolvedValue({ altEmail: 'forum@example.com' }) },
+    };
+    const email = { sendRaw: jest.fn().mockResolvedValue(true) };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        MemberService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: EmailService, useValue: email },
+        { provide: BuddyService, useValue: { onMemberJoined: jest.fn() } },
+        { provide: StripeService, useValue: {} },
+        { provide: StorageService, useValue: {} },
+        { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },
+      ],
+    }).compile();
+
+    const service = module.get(MemberService);
+    (service as unknown as { sendWelcome(o: string, u: string): void }).sendWelcome('org-1', 'user-1');
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(email.sendRaw.mock.calls[0][0]).toEqual({
+      primary: 'billed@example.com',
+      also: 'forum@example.com',
+    });
   });
 });

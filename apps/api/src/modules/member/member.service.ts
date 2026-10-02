@@ -1140,12 +1140,16 @@ export class MemberService {
 
   private sendWelcome(orgId: string, userId: string): void {
     void (async () => {
-      const [org, user] = await Promise.all([
+      const [org, user, membership] = await Promise.all([
         this.prisma.organization.findUnique({
           where: { id: orgId },
           select: { name: true, slug: true, welcomeEmailEnabled: true },
         }),
         this.prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } }),
+        this.prisma.userOrg.findFirst({
+          where: { orgId, userId },
+          select: { altEmail: true },
+        }),
       ]);
 
       if (!org?.welcomeEmailEnabled || !user?.email) return;
@@ -1162,7 +1166,11 @@ export class MemberService {
         member_url: `${this.webUrl()}/member/${org.slug}`,
       });
 
-      await this.emailService.sendRaw(user.email, subject, html);
+      await this.emailService.sendRaw(
+        { primary: user.email, also: membership?.altEmail },
+        subject,
+        html,
+      );
     })().catch((err) => {
       this.logger.error(`Could not welcome ${userId} to ${orgId}: ${(err as Error).message}`);
     });
@@ -1286,7 +1294,12 @@ export class MemberService {
 
     const waiting = await this.prisma.userOrg.findMany({
       where,
-      select: { id: true, userId: true, user: { select: { email: true, name: true } } },
+      select: {
+        id: true,
+        userId: true,
+        altEmail: true,
+        user: { select: { email: true, name: true } },
+      },
       orderBy: { memberSince: 'asc' },
       take: limit,
     });
@@ -1328,7 +1341,14 @@ export class MemberService {
         expiry_days: String(org.inviteExpiryDays),
       });
 
-      await this.emailService.sendRaw(member.user.email, subject, html);
+      // Both addresses (MEM-19). This is the send where choosing wrong is
+      // worst: the link arrives somewhere they never look, and the member
+      // concludes MaybeOS does not work.
+      await this.emailService.sendRaw(
+        { primary: member.user.email, also: member.altEmail },
+        subject,
+        html,
+      );
       sent += 1;
     }
 
@@ -1390,6 +1410,7 @@ export class MemberService {
           where: { userId_orgId: { userId: user.id, orgId } },
           select: {
             id: true,
+            altEmail: true,
             bio: true,
             headline: true,
             location: true,
@@ -1435,6 +1456,9 @@ export class MemberService {
             // The date they actually joined the community, where the export
             // knew it. Falls back to the column default, which is now.
             ...(row.joinedAt && { memberSince: new Date(row.joinedAt) }),
+            // A second address the same person reads (MEM-19), lowercased
+            // the way every other address here is.
+            altEmail: row.altEmail?.trim().toLowerCase() || null,
             bio: row.bio?.trim() || null,
             headline: row.headline?.trim() || null,
             location: row.location?.trim() || null,
@@ -1539,6 +1563,7 @@ export class MemberService {
  */
 export function enrichment(
   existing: {
+    altEmail: string | null;
     bio: string | null;
     headline: string | null;
     location: string | null;
@@ -1547,6 +1572,7 @@ export function enrichment(
     emailOptIn: boolean | null;
   },
   row: {
+    altEmail?: string;
     bio?: string;
     headline?: string;
     location?: string;
@@ -1559,6 +1585,11 @@ export function enrichment(
 
   const text = (current: string | null, incoming?: string) =>
     !current && incoming?.trim() ? incoming.trim() : undefined;
+
+  // Never overwritten, like everything else here: a member who has given
+  // their own second address outranks whatever a spreadsheet says.
+  const altEmail = text(existing.altEmail, row.altEmail?.toLowerCase());
+  if (altEmail !== undefined) filled.altEmail = altEmail;
 
   const bio = text(existing.bio, row.bio);
   if (bio !== undefined) filled.bio = bio;
