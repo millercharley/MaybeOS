@@ -89,8 +89,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const membership =
     user?.orgs?.find((o) => o.org?.slug === urlSlug) ??
     user?.orgs?.find((o) => o.orgId === currentOrgId);
-  const role = membership?.role;
-  const isOrganiser = role === 'ADMIN' || role === 'STAFF';
 
   /**
    * Whose colours, and whether to use them (BRD-01).
@@ -155,8 +153,6 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
           <Breadcrumb
             pathname={pathname}
-            onPortal={onPortal}
-            isOrganiser={isOrganiser}
             coopName={onPortal ? portalOrg?.name : membership?.org?.name}
             coopSlug={onPortal ? urlSlug : membership?.org?.slug}
           />
@@ -228,11 +224,9 @@ const breadcrumbMap: Record<string, string> = {
 };
 
 function Breadcrumb({
-  pathname, onPortal, isOrganiser, coopName, coopSlug,
+  pathname, coopName, coopSlug,
 }: {
   pathname: string | null;
-  onPortal: boolean;
-  isOrganiser: boolean;
   coopName?: string;
   coopSlug?: string;
 }) {
@@ -242,11 +236,20 @@ function Breadcrumb({
   const current =
     breadcrumbMap[last] || (looksLikeId ? 'Details' : last) || 'Dashboard';
 
-  // On the portal and on a member's pages the first crumb is the co-op and
-  // leads to it. On the admin it is the word "Admin", which is a place rather
-  // than a co-op and has nowhere of its own to go.
+  // **Read off the path, not off the reader.** This used to say "Admin"
+  // whenever an organiser was looking at anything outside the portal — so
+  // every organiser on their own member dashboard was told they were in the
+  // admin area. Nobody noticed while organisers landed on the admin dashboard
+  // by default; moving the main Dashboard to the member's own (Charley,
+  // 2026-10-02) put the wrong word on the first page they see.
+  //
+  // On the admin the first crumb is the word "Admin", which is a place rather
+  // than a co-op and has nowhere of its own to go. Everywhere else it is the
+  // co-op, and it leads there.
+  const onAdmin = (pathname ?? '').startsWith('/admin');
+
   const root =
-    onPortal || !isOrganiser ? (
+    !onAdmin ? (
       coopSlug ? (
         <Link href={`/portal/${coopSlug}`} className="text-gray-400 transition-colors hover:text-gray-900">
           {coopName ?? 'My co-op'}

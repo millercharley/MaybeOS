@@ -94,10 +94,22 @@ describe('the sidebar', () => {
       );
     });
 
-    it('lands on the admin dashboard rather than the member one', () => {
+    it('gets the member dashboard at the top and the admin one in Administration', () => {
+      // Reversed on 2026-10-02 (Charley). The top of the nav used to mean two
+      // different things depending on who was reading it, and told every
+      // organiser that running the co-op was their home in it. Both links are
+      // present now; what changed is which one is the main Dashboard.
       const links = hrefs(sections());
+
+      expect(links).toContain('/member/maybeitsfate');
       expect(links).toContain('/admin/maybeitsfate');
-      expect(links).not.toContain('/member/maybeitsfate');
+
+      const admin = sections().find((s) => s.label === 'Administration');
+      expect(admin?.items[0].href).toBe('/admin/maybeitsfate');
+      expect(admin?.items[0].label).toBe('Admin dashboard');
+
+      // And the hoisted one, above every labelled section, is the member's.
+      expect(sections()[0].items.map((i) => i.href)).toEqual(['/member/maybeitsfate']);
     });
 
     it('separates the three with named sections', () => {
