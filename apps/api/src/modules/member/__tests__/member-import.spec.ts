@@ -24,6 +24,9 @@ describe('MemberService — importing a community', () => {
 
   beforeEach(async () => {
     prisma = {
+      // The co-op's tiers, so a roster can name what each member pays
+      // (MEM-21). Empty unless a test sets one.
+      membershipTier: { findMany: jest.fn().mockResolvedValue([]) },
       user: {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockImplementation(({ data }: any) => ({ id: 'user-1', ...data })),

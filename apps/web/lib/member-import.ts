@@ -17,6 +17,7 @@ export type FieldKey =
   | 'lastName'
   | 'joinedAt'
   | 'altEmail'
+  | 'tier'
   | 'headline'
   | 'location'
   | 'bio'
@@ -58,6 +59,12 @@ export const IMPORT_FIELDS: FieldSpec[] = [
     hint: 'Another address the same person reads. Anything MaybeOS sends them is copied to it.',
     aliases: ['alt email', 'second email', 'secondary email', 'other email', 'alternate email'],
   },
+  {
+    key: 'tier',
+    label: 'Tier',
+    hint: 'What they pay, by the name this co-op gives it. Not whether they are paying — that comes from Stripe.',
+    aliases: ['tier', 'plan', 'membership', 'membership tier', 'membership level', 'level', 'access'],
+  },
   { key: 'headline', label: 'Headline', aliases: ['headline', 'tagline', 'title'] },
   { key: 'location', label: 'Location', aliases: ['location', 'city', 'place'] },
   { key: 'bio', label: 'Bio', aliases: ['bio', 'about', 'biography', 'description'] },
@@ -93,8 +100,8 @@ export const IMPORT_FIELDS: FieldSpec[] = [
 export type Mapping = Record<FieldKey, string[]>;
 
 export const EMPTY_MAPPING: Mapping = {
-  email: [], firstName: [], lastName: [], joinedAt: [], altEmail: [], headline: [],
-  location: [], bio: [], tags: [], avatarUrl: [], emailOptIn: [], link: [],
+  email: [], firstName: [], lastName: [], joinedAt: [], altEmail: [], tier: [],
+  headline: [], location: [], bio: [], tags: [], avatarUrl: [], emailOptIn: [], link: [],
 };
 
 /**
@@ -214,6 +221,7 @@ export function prepareImport(
     const alt = pick('altEmail').trim().toLowerCase();
     if (alt && alt !== email.toLowerCase()) row.altEmail = alt;
 
+    if (pick('tier').trim()) row.tier = pick('tier').trim();
     if (pick('headline').trim()) row.headline = pick('headline').trim();
     if (pick('location').trim()) row.location = pick('location').trim();
     if (pick('bio').trim()) row.bio = pick('bio').trim();

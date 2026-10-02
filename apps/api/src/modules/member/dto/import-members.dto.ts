@@ -57,6 +57,25 @@ export class ImportMemberRowDto {
   @IsEmail({}, { message: 'Second address is not an email address' })
   altEmail?: string;
 
+  /**
+   * What they pay, by the name this co-op gives it (MEM-21).
+   *
+   * A name rather than an id: the file is written by a person reading their
+   * old system's export, and a uuid is not something anybody types. A name
+   * the co-op does not have stops that row with a message listing the ones
+   * it does, rather than importing somebody with no tier at all.
+   *
+   * **This says nothing about whether they are paying.** `subscriptionStatus`
+   * comes from Stripe and only from Stripe — a spreadsheet saying "Sustainer"
+   * is a statement about what somebody signed up for, not evidence that a
+   * card charged this month.
+   */
+  @ApiPropertyOptional({ example: 'Sustainer' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  tier?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

@@ -3029,6 +3029,11 @@ export interface ImportMemberRow {
   joinedAt?: string;
   /** A second address the same person reads (MEM-19). Mail is copied to it. */
   altEmail?: string;
+  /**
+   * What they pay, by this co-op's own name for it (MEM-21). Never a status:
+   * whether a card actually charged is Stripe's to say, not a file's.
+   */
+  tier?: string;
   headline?: string;
   location?: string;
   bio?: string;
