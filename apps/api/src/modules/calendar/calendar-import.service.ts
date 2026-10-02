@@ -4,6 +4,7 @@ import { calendar_v3 } from 'googleapis';
 import { PrismaService } from '../../config/prisma.service';
 import { CalendarService } from './calendar.service';
 import { hostFields, hostKey, hostLabel } from './past-host';
+import { slugCandidates } from './event-slug';
 import { ImportedEntry, importWindow, toEntry } from './calendar-import';
 
 /** A year back is the default; two years ahead is the ceiling (see `importWindow`). */
@@ -30,6 +31,14 @@ export interface ImportSummary {
   events: number;
   bookings: number;
   skipped: number;
+  /**
+   * Entries the calendar offered that MaybeOS could not write (CAL-04).
+   *
+   * Distinct from `skipped`, which is a row the importer declined on purpose
+   * — no id, no start, backwards. This is one it meant to take and could
+   * not, and the difference matters to whoever has to go and look.
+   */
+  failed?: number;
   dryRun: boolean;
 }
 
@@ -174,7 +183,8 @@ export class CalendarImportService {
         to,
         org.timezone,
       );
-      const written = dryRun ? 0 : await this.writeEvents(org, entries);
+      const failures: Array<{ title: string; reason: string }> = [];
+      const written = dryRun ? 0 : await this.writeEvents(org, entries, failures);
 
       summary.calendars.push({
         id: org.eventsCalendarId,
@@ -182,7 +192,17 @@ export class CalendarImportService {
         kind: 'events',
         found: entries.length,
         written,
+        // Named, not just counted (CAL-04). The first real import stopped on
+        // one row and reported "request failed", which told the organiser
+        // neither what broke nor that most of it had worked.
+        ...(failures.length > 0 && {
+          note: `${failures.length} ${failures.length === 1 ? 'event' : 'events'} could not be imported: ${failures
+            .slice(0, 5)
+            .map((f) => `“${f.title}”`)
+            .join(', ')}${failures.length > 5 ? ', and others' : ''}`,
+        }),
       });
+      summary.failed = (summary.failed ?? 0) + failures.length;
       summary.skipped += skipped;
       summary.events += dryRun ? entries.length : written;
     }
@@ -298,13 +318,26 @@ export class CalendarImportService {
     return membership?.userId ?? null;
   }
 
+  /**
+   * Write the events, and survive the ones that will not go (CAL-04).
+   *
+   * The first import of MaybeItsFate's calendar stopped on a single row — a
+   * duplicate slug — and took the other nine hundred with it. A failure part
+   * way through a bulk import is not a reason to abandon the rest: the ones
+   * already written stay written, a re-run is an upsert and changes nothing,
+   * and the only thing the organiser could not do was find out which row was
+   * the problem. So a failed entry is counted and named, and the import
+   * carries on.
+   */
   private async writeEvents(
     org: { id: string; timezone: string },
     entries: ImportedEntry[],
+    failures: Array<{ title: string; reason: string }>,
   ): Promise<number> {
     let written = 0;
 
     for (const entry of entries) {
+      try {
       const matched = await this.hostFor(org.id, entry.organiserEmail);
       // A host who is not a member still ran it (CAL-03). Their name goes on
       // the event; their address is kept to match them if they come back.
@@ -342,7 +375,13 @@ export class CalendarImportService {
         },
       });
 
-      written += 1;
+        written += 1;
+      } catch (error) {
+        // Named by title, because that is what the organiser is looking at in
+        // their own calendar when they go to find it.
+        failures.push({ title: entry.title, reason: (error as Error).message });
+        this.logger.warn(`Could not import "${entry.title}": ${(error as Error).message}`);
+      }
     }
 
     return written;
@@ -409,23 +448,30 @@ export class CalendarImportService {
     return written;
   }
 
-  /** A readable, unique slug — the title, then the date if that is taken. */
+  /**
+   * A readable address for an event, and one that is free (CAL-04).
+   *
+   * This used to try the title, then the title with the date, and use the
+   * second whether or not it was taken — so a co-op with two things of the
+   * same name on the same day hit the unique constraint on (orgId, slug) and
+   * the whole import stopped. MaybeItsFate's first import died here.
+   *
+   * One query rather than one per candidate: the shortlist is small and a
+   * round trip per event, per suffix, is how an import of several thousand
+   * entries meets the Lambda's wall clock.
+   */
   private async slugFor(orgId: string, entry: ImportedEntry): Promise<string> {
-    const base =
-      entry.title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '')
-        .slice(0, 60) || 'event';
+    const candidates = slugCandidates(entry.title, entry.start, entry.googleEventId);
 
-    const taken = await this.prisma.event.findFirst({
-      where: { orgId, slug: base },
-      select: { id: true },
+    const taken = await this.prisma.event.findMany({
+      where: { orgId, slug: { in: candidates } },
+      select: { slug: true },
     });
-    if (!taken) return base;
+    const used = new Set(taken.map((row) => row.slug));
 
-    // A weekly gathering imports as many rows with one title, so the date is
-    // what tells them apart in an address.
-    return `${base}-${entry.start.toISOString().slice(0, 10)}`;
+    // The last candidate is built from `googleEventId`, which is unique
+    // within a co-op, so this cannot fall through — but if it somehow did,
+    // returning the fingerprint is still better than returning a duplicate.
+    return candidates.find((slug) => !used.has(slug)) ?? candidates[candidates.length - 1];
   }
 }

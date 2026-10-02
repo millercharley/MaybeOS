@@ -55,7 +55,12 @@ function build(overrides: Record<string, unknown> = {}) {
       ]),
     },
     userOrg: { findFirst: jest.fn().mockResolvedValue({ userId: 'user-1' }) },
-    event: { upsert: jest.fn().mockResolvedValue({}), findFirst: jest.fn().mockResolvedValue(null) },
+    event: {
+      upsert: jest.fn().mockResolvedValue({}),
+      // Which of the candidate slugs are already taken (CAL-04). None, here.
+      findMany: jest.fn().mockResolvedValue([]),
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
     booking: {
       findFirst: jest.fn().mockResolvedValue(null),
       create: jest.fn().mockResolvedValue({}),
@@ -267,5 +272,51 @@ describe('a calendar that cannot be read', () => {
     // reporting success would read as "done" for an import that silently
     // produced no events at all.
     await expect(service.run('org-1', { dryRun: false })).rejects.toThrow('rate limited');
+  });
+});
+
+/**
+ * One bad row must not take the import with it (CAL-04).
+ *
+ * MaybeItsFate's first import stopped on a duplicate slug and reported
+ * "request failed" — which told the organiser neither what broke nor that
+ * most of the calendar had in fact imported before it stopped.
+ */
+describe('an entry that will not go in', () => {
+  it('does not stop the ones after it', async () => {
+    const { service, prisma } = build();
+    prisma.event.upsert
+      .mockRejectedValueOnce(new Error('Unique constraint failed on the fields: (`orgId`,`slug`)'))
+      .mockResolvedValue({});
+
+    const summary = await service.run('org-1', { dryRun: false });
+    const events = summary.calendars.find((c: any) => c.kind === 'events');
+
+    expect(prisma.event.upsert).toHaveBeenCalledTimes(2);
+    expect(events.written).toBe(1);
+  });
+
+  it('counts it as failed, not as skipped', async () => {
+    // `skipped` is a row the importer declined on purpose — no id, no start.
+    // This is one it meant to take and could not, and the difference is what
+    // tells an organiser whether to go and look.
+    const { service, prisma } = build();
+    prisma.event.upsert.mockRejectedValue(new Error('nope'));
+
+    const summary = await service.run('org-1', { dryRun: false });
+
+    expect(summary.failed).toBe(2);
+    expect(summary.skipped).toBe(0);
+  });
+
+  it('names what could not be imported, so somebody can go and find it', async () => {
+    const { service, prisma } = build();
+    prisma.event.upsert.mockRejectedValue(new Error('nope'));
+
+    const summary = await service.run('org-1', { dryRun: false });
+    const events = summary.calendars.find((c: any) => c.kind === 'events');
+
+    expect(events.note).toMatch(/could not be imported/);
+    expect(events.note).toContain('Board Game Night');
   });
 });
