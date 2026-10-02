@@ -1,6 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { payingDues } from '@/lib/member-removal';
+import { MENU_WIDTH, menuPosition, payingDues } from '@/lib/member-removal';
 
 /**
  * Removing a member from the Members page (MEM-20).
@@ -33,6 +33,74 @@ describe('who is warned that their dues stop today', () => {
   });
 });
 
+describe('where the menu is drawn', () => {
+  const viewport = { width: 1280, height: 800 };
+  const button = (top: number) => ({ top, bottom: top + 24, right: 1200 });
+
+  it('opens below the button when there is room', () => {
+    expect(menuPosition(button(300), viewport, 44).top).toBe(328);
+  });
+
+  it('opens upwards on the last row rather than off the bottom', () => {
+    // The last row of a full roster is exactly the row somebody tidying up
+    // reaches for, and the page will not scroll to a menu below the fold.
+    const { top } = menuPosition(button(760), viewport, 44);
+
+    expect(top).toBe(760 - 44 - 4);
+    expect(top).toBeGreaterThanOrEqual(8);
+  });
+
+  it('never puts the menu above the top of the window', () => {
+    expect(menuPosition({ top: 4, bottom: 10, right: 1200 }, { width: 1280, height: 40 }, 44).top)
+      .toBe(8);
+  });
+
+  it('right-aligns to the button', () => {
+    expect(menuPosition(button(300), viewport, 44).left).toBe(1200 - MENU_WIDTH);
+  });
+
+  it('pulls a menu back inside a narrow window', () => {
+    const { left } = menuPosition({ top: 100, bottom: 124, right: 360 }, { width: 375, height: 800 }, 44);
+
+    expect(left).toBeGreaterThanOrEqual(8);
+    expect(left + MENU_WIDTH).toBeLessThanOrEqual(375);
+  });
+});
+
+describe('the table fits without scrolling sideways', () => {
+  const page = readFileSync(
+    join(__dirname, '..', 'app', '(app)', '(dashboard)', 'admin', '[orgSlug]', 'members', 'page.tsx'),
+    'utf8',
+  );
+
+  it('does not carry a separate Email column', () => {
+    // Name and email were two text columns pushing Actions off the screen.
+    expect(page).not.toMatch(/>\s*Email\s*<\/th>/);
+    expect(page).toMatch(/>\s*Member\s*<\/th>/);
+  });
+
+  it('spans the empty-state row across every column that is left', () => {
+    expect(page).toMatch(/colSpan=\{7\}/);
+  });
+
+  it('truncates the name and email rather than widening the row', () => {
+    expect(page).toMatch(/truncate text-sm font-medium text-gray-900/);
+    expect(page).toMatch(/truncate text-xs text-gray-500/);
+  });
+
+  it('caps the text block so one long email cannot set the row width', () => {
+    // An email address is a single unbreakable token, so `truncate` alone
+    // does not stop it deciding how wide the column has to be. Measured in a
+    // browser: capping it took the table's floor from ~980px to ~858px, and
+    // the dashboard renders this page at about 930.
+    expect(page).toMatch(/min-w-0 max-w-\[11rem\] overflow-hidden/);
+  });
+
+  it('does not spend a column heading on a word wider than its button', () => {
+    expect(page).toMatch(/<span className="sr-only">Actions<\/span>/);
+  });
+});
+
 describe('the menu is wired to something', () => {
   const page = readFileSync(
     join(__dirname, '..', 'app', '(app)', '(dashboard)', 'admin', '[orgSlug]', 'members', 'page.tsx'),
@@ -41,7 +109,20 @@ describe('the menu is wired to something', () => {
 
   it('opens on a click', () => {
     // The original button had no onClick. It looked finished.
-    expect(page).toMatch(/setOpenMenu\(openMenu === member\.id \? null : member\.id\)/);
+    expect(page).toMatch(/onClick=\{\(e\) => toggleMenu\(e, member\)\}/);
+  });
+
+  it('is drawn against the viewport, not inside the scrolling table', () => {
+    // The table lives in an `overflow-x-auto` card, which clips an
+    // absolutely-positioned child. That is the bug this replaced.
+    expect(page).toMatch(/className="fixed z-50/);
+    expect(page).not.toMatch(/absolute right-6 z-20/);
+  });
+
+  it('closes when the page moves under it', () => {
+    // A viewport-positioned menu does not travel with its row.
+    expect(page).toMatch(/addEventListener\('scroll', close, true\)/);
+    expect(page).toMatch(/addEventListener\('resize', close\)/);
   });
 
   it('closes when the admin clicks elsewhere', () => {
@@ -50,7 +131,7 @@ describe('the menu is wired to something', () => {
 
   it('asks before removing anybody', () => {
     // No remove call may be reachable from the menu item itself.
-    expect(page).toMatch(/setConfirmRemove\(member\)/);
+    expect(page).toMatch(/setConfirmRemove\(openMenu\.member\)/);
     expect(page).toMatch(/api\.members\.remove\(/);
   });
 

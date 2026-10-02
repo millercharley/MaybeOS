@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent, MouseEvent } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { PieChart, Search, Plus, MoreHorizontal, Clock, RefreshCw, Mail, Upload } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
-import { payingDues } from '@/lib/member-removal';
+import { MENU_WIDTH, menuPosition, payingDues } from '@/lib/member-removal';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, type Member } from '@/lib/api';
 import { Modal } from '@/components/ui/modal';
@@ -42,10 +42,28 @@ export default function MembersPage() {
    * it: removing a member used to delete the row and leave their dues
    * running.
    */
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [openMenu, setOpenMenu] = useState<{
+    member: Member;
+    top: number;
+    left: number;
+  } | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<Member | null>(null);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState('');
+
+  // A viewport-positioned menu does not travel with the row it belongs to, so
+  // anything that moves the row has to close it rather than leave it pointing
+  // at somebody else's name.
+  useEffect(() => {
+    if (!openMenu) return;
+    const close = () => setOpenMenu(null);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [openMenu]);
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [savingRole, setSavingRole] = useState<string | null>(null);
   const [roleError, setRoleError] = useState('');
@@ -161,6 +179,30 @@ export default function MembersPage() {
     } finally {
       setSavingRole(null);
     }
+  }
+
+  /** One item today; the height is pinned so the flip-up maths has a number. */
+  const MENU_HEIGHT = 44;
+
+  /**
+   * Open the row menu against the viewport rather than the cell (UI-02).
+   *
+   * The table scrolls sideways inside its card, and a menu positioned inside
+   * that card is clipped by it — which is what Charley hit: the menu appeared,
+   * mostly past the edge, and nothing would scroll to the rest of it.
+   */
+  function toggleMenu(event: MouseEvent<HTMLButtonElement>, member: Member) {
+    if (openMenu?.member.id === member.id) {
+      setOpenMenu(null);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const where = menuPosition(
+      rect,
+      { width: window.innerWidth, height: window.innerHeight },
+      MENU_HEIGHT,
+    );
+    setOpenMenu({ member, ...where });
   }
 
   /**
@@ -313,6 +355,32 @@ export default function MembersPage() {
         </form>
       </Modal>
 
+      {openMenu && (
+        <>
+          {/* Clicking anywhere else closes it, which is what everybody
+              expects of a menu and what nothing else here was doing. */}
+          <div className="fixed inset-0 z-40" onClick={() => setOpenMenu(null)} aria-hidden />
+          <div
+            role="menu"
+            style={{ top: openMenu.top, left: openMenu.left, width: MENU_WIDTH }}
+            className="fixed z-50 rounded-lg border border-gray-200 bg-white py-1 text-left shadow-lg"
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setConfirmRemove(openMenu.member);
+                setRemoveError('');
+                setOpenMenu(null);
+              }}
+              className="block w-full px-4 py-2 text-left text-sm text-red-700 hover:bg-red-50"
+            >
+              Remove from the community
+            </button>
+          </div>
+        </>
+      )}
+
       <Modal
         open={confirmRemove !== null}
         onClose={() => {
@@ -429,60 +497,66 @@ export default function MembersPage() {
       {/* `overflow-hidden` clipped the table on a narrow screen rather than
           letting it scroll, so the last columns were unreachable on a phone
           (UI-01). `overflow-x-auto` keeps the rounded corners and gives the
-          table somewhere to go; `min-w-[40rem]` stops the columns crushing
-          into each other instead of scrolling. */}
+          table somewhere to go on a phone; `min-w-[44rem]` stops the columns
+          crushing into each other instead of scrolling. On a desktop nothing
+          should scroll sideways at all — an Actions column you have to scroll
+          to is how the row menu became unreachable (UI-02) — so the padding
+          is modest and the two text columns truncate. */}
       <div className="card overflow-x-auto !p-0">
-        <table className="w-full min-w-[40rem]">
+        <table className="w-full min-w-[44rem] table-auto">
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50">
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                Name
+              <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                Member
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                Email
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                 Role
               </th>
               <th
-                className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
                 title="Whether they can share events to the co-op's Facebook and Instagram"
               >
                 Socials
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                 Tier
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                 Status
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                 Joined
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                Actions
+              <th className="px-3 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                {/* The word is wider than the button below it, and the button
+                    announces itself to a screen reader already. */}
+                <span className="sr-only">Actions</span>
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {filtered.map((member) => (
               <tr key={member.id} className="hover:bg-gray-50 transition-colors">
-                <td className="whitespace-nowrap px-6 py-4">
+                <td className="px-3 py-4">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100">
                       <span className="text-xs font-medium text-brand-700">
                         {(member.user.name ?? member.user.email ?? '?').charAt(0).toUpperCase()}
                       </span>
                     </div>
-                    <span className="text-sm font-medium text-gray-900">
-                      <MemberName userId={member.user.id} name={member.user.name ?? member.user.email ?? 'Member'} />
-                    </span>
+                    <div className="min-w-0 max-w-[11rem] overflow-hidden">
+                      <div className="truncate text-sm font-medium text-gray-900">
+                        <MemberName userId={member.user.id} name={member.user.name ?? member.user.email ?? 'Member'} />
+                      </div>
+                      {member.user.email && (
+                        <div className="truncate text-xs text-gray-500" title={member.user.email}>
+                          {member.user.email}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </td>
-                <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                  {member.user.email}
-                </td>
-                <td className="whitespace-nowrap px-6 py-4">
+                <td className="whitespace-nowrap px-3 py-4">
                   {/* Changeable at last (ORG-02). The route has existed since
                       the foundation with nothing calling it, so the only way
                       to make somebody an organiser was to invite them as one
@@ -501,7 +575,7 @@ export default function MembersPage() {
                     <option value="GUEST">GUEST</option>
                   </select>
                 </td>
-                <td className="whitespace-nowrap px-6 py-4 text-xs text-gray-500">
+                <td className="whitespace-nowrap px-3 py-4 text-xs text-gray-500">
                   {/* SOC-01. Admins and staff can always share, and guests
                       never can, so only members get a choice. */}
                   {member.role === 'ADMIN' || member.role === 'STAFF' ? (
@@ -516,16 +590,17 @@ export default function MembersPage() {
                       aria-label={`Sharing to socials for ${member.user.name ?? member.user.email ?? 'member'}`}
                       className="rounded-md border border-gray-200 px-1.5 py-0.5 text-xs text-gray-700"
                     >
-                      <option value="">Co-op default</option>
+                      <option value="">Default</option>
                       <option value="on">Can share</option>
                       <option value="off">Can’t share</option>
                     </select>
                   )}
                 </td>
-                <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                   {member.tier?.name ?? '-'}
                 </td>
-                <td className="whitespace-nowrap px-6 py-4">
+                <td className="whitespace-nowrap px-3 py-4">
+                  <div className="flex flex-col items-start">
                   <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusBadge[member.subscriptionStatus ?? ''] ?? 'badge-info'}`}>
                     {member.subscriptionStatus ?? 'NONE'}
                   </span>
@@ -534,7 +609,7 @@ export default function MembersPage() {
                       to an organiser looking at this list (PLT-06). */}
                   {member.cancelAtPeriodEnd && (
                     <span
-                      className="ml-2 inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-800"
+                      className="mt-1 inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800"
                       title={
                         member.currentPeriodEnd
                           ? `Ends ${new Date(member.currentPeriodEnd).toLocaleDateString()}`
@@ -550,56 +625,31 @@ export default function MembersPage() {
                         : ''}
                     </span>
                   )}
+                  </div>
                 </td>
-                <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                   {new Date(member.memberSince).toLocaleDateString('en-US', {
                     month: 'short',
                     day: 'numeric',
                     year: 'numeric',
                   })}
                 </td>
-                <td className="relative whitespace-nowrap px-6 py-4 text-right">
+                <td className="whitespace-nowrap px-3 py-4 text-right">
                   <button
                     type="button"
                     aria-label={`Actions for ${member.user.name ?? member.user.email ?? 'this member'}`}
-                    aria-expanded={openMenu === member.id}
-                    onClick={() => setOpenMenu(openMenu === member.id ? null : member.id)}
+                    aria-expanded={openMenu?.member.id === member.id}
+                    onClick={(e) => toggleMenu(e, member)}
                     className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
                   >
                     <MoreHorizontal className="h-4 w-4" />
                   </button>
-
-                  {openMenu === member.id && (
-                    <>
-                      {/* Clicking anywhere else closes it, which is what
-                          everybody expects of a menu and what nothing else
-                          on this page was doing. */}
-                      <div
-                        className="fixed inset-0 z-10"
-                        onClick={() => setOpenMenu(null)}
-                        aria-hidden
-                      />
-                      <div className="absolute right-6 z-20 mt-1 w-56 rounded-lg border border-gray-200 bg-white py-1 text-left shadow-lg">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setOpenMenu(null);
-                            setRemoveError('');
-                            setConfirmRemove(member);
-                          }}
-                          className="block w-full px-4 py-2 text-left text-sm text-red-700 hover:bg-red-50"
-                        >
-                          Remove from the community
-                        </button>
-                      </div>
-                    </>
-                  )}
                 </td>
               </tr>
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-6 py-12 text-center text-sm text-gray-500">
+                <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-500">
                   No members found matching your search.
                 </td>
               </tr>
