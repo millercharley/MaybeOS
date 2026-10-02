@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { PieChart, Search, Plus, MoreHorizontal, Clock, RefreshCw, Mail, Upload } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
 import { MENU_WIDTH, menuPosition, payingDues } from '@/lib/member-removal';
+import { MANUAL_STATUSES, STATUS_LABEL, STRIPE_OWNS_IT, canSetStatus } from '@/lib/member-status';
 import {
   PER_PAGE,
   SEARCH_DEBOUNCE_MS,
@@ -86,6 +87,7 @@ export default function MembersPage() {
   }, [openMenu]);
   const [resendingId, setResendingId] = useState<string | null>(null);
   const [savingRole, setSavingRole] = useState<string | null>(null);
+  const [savingStatus, setSavingStatus] = useState<string | null>(null);
   const [roleError, setRoleError] = useState('');
   const token = useAuthStore((s) => s.token);
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
@@ -289,6 +291,27 @@ export default function MembersPage() {
       );
     } finally {
       setRemoving(false);
+    }
+  }
+
+  /**
+   * Set a status by hand (MEM-23).
+   *
+   * The API refuses it for anybody Stripe is billing, so the failure an
+   * organiser can actually hit is worth showing rather than swallowing — it
+   * names who is deciding instead.
+   */
+  async function changeStatus(userId: string, status: string) {
+    if (!token || !currentOrgId) return;
+    setSavingStatus(userId);
+    setRoleError('');
+    try {
+      await api.members.setStatus(currentOrgId, userId, status, token);
+      refetch();
+    } catch (err) {
+      setRoleError(err instanceof Error ? err.message : 'Could not change that status');
+    } finally {
+      setSavingStatus(null);
     }
   }
 
@@ -664,9 +687,32 @@ export default function MembersPage() {
                 </td>
                 <td className="whitespace-nowrap px-3 py-4">
                   <div className="flex flex-col items-start">
-                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusBadge[member.subscriptionStatus ?? ''] ?? 'badge-info'}`}>
-                    {member.subscriptionStatus ?? 'NONE'}
-                  </span>
+                  {/* Settable by hand only where Stripe is not deciding it
+                      (MEM-23). A co-op's $0 members never have a subscription,
+                      and NONE is a sentence about Stripe standing in for a
+                      sentence about whether somebody is a member. */}
+                  {canSetStatus(member) ? (
+                    <select
+                      value={member.subscriptionStatus ?? 'NONE'}
+                      onChange={(e) => changeStatus(member.user.id, e.target.value)}
+                      disabled={savingStatus === member.user.id}
+                      aria-label={`Status for ${member.user.name ?? member.user.email ?? 'member'}`}
+                      className={`rounded-full border-0 px-2.5 py-0.5 text-xs font-medium focus:ring-2 focus:ring-brand-500 ${statusBadge[member.subscriptionStatus ?? ''] ?? 'badge-info'}`}
+                    >
+                      {MANUAL_STATUSES.map((value) => (
+                        <option key={value} value={value}>
+                          {STATUS_LABEL[value]}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span
+                      title={STRIPE_OWNS_IT}
+                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusBadge[member.subscriptionStatus ?? ''] ?? 'badge-info'}`}
+                    >
+                      {STATUS_LABEL[member.subscriptionStatus ?? 'NONE'] ?? member.subscriptionStatus}
+                    </span>
+                  )}
                   {/* Somebody who has cancelled still reads as ACTIVE until
                       their paid period runs out, which is correct and useless
                       to an organiser looking at this list (PLT-06). */}

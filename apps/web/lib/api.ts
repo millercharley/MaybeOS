@@ -701,6 +701,13 @@ class ApiClient {
      * refuses the whole thing if it cannot — removing them regardless would
      * keep charging somebody for a co-op they have left.
      */
+    /** Set a status by hand, where Stripe is not deciding it (MEM-23). */
+    setStatus: (orgId: string, userId: string, status: string, token: string) =>
+      this.request<{ updated: boolean; subscriptionStatus: string }>(
+        `/orgs/${orgId}/members/${userId}/status`,
+        { method: 'PATCH', body: JSON.stringify({ status }), token },
+      ),
+
     remove: (orgId: string, userId: string, token: string) =>
       this.request<{ removed: boolean; duesCancelled: boolean }>(
         `/orgs/${orgId}/members/${userId}`,
@@ -2798,6 +2805,15 @@ export interface UserProfile {
     cancelAtPeriodEnd?: boolean;
     /** When the paid period runs out. ISO 8601, null before any subscription. */
     currentPeriodEnd?: string | null;
+    /**
+     * Whether Stripe is actually behind this membership (MEM-23).
+     *
+     * `subscriptionStatus` stopped being proof of that once an organiser
+     * could set it by hand: a $0 member is Active and has no Stripe customer,
+     * so a billing portal cannot be opened for them. The subscription id
+     * itself stays on the server.
+     */
+    stripeBilled?: boolean;
     memberSince?: string;
     /**
      * The co-op's public identity, carried on the session so a member's pages
@@ -3368,6 +3384,12 @@ export interface Member {
   tier?: MembershipTier;
   /** Another member's billing state is not their business — organisers only. */
   subscriptionStatus?: string;
+  /**
+   * Present only for organisers, who receive the membership row untouched.
+   * Whether it is set is what decides if a status may be edited by hand
+   * (MEM-23): Stripe's own statuses are not an organiser's to overwrite.
+   */
+  stripeSubscriptionId?: string | null;
   /** Ending when the paid period does (PLT-06), and when that is. */
   cancelAtPeriodEnd?: boolean;
   currentPeriodEnd?: string | null;

@@ -215,7 +215,7 @@ export class AuthService {
    * later is not published here by default.
    */
   async getProfile(userId: string) {
-    return this.prisma.user.findUnique({
+    const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
         id: true,
@@ -243,6 +243,14 @@ export class AuthService {
             // a member who is leaving from one who is staying.
             cancelAtPeriodEnd: true,
             currentPeriodEnd: true,
+            // Whether Stripe is actually behind this membership (MEM-23).
+            //
+            // `subscriptionStatus` stopped being proof of that the moment an
+            // organiser could set it by hand: a $0 member is ACTIVE and has
+            // no Stripe customer at all, and offering them "Manage billing"
+            // opens a portal session that cannot be created. The id itself
+            // stays server-side; only whether there is one travels.
+            stripeSubscriptionId: true,
             memberSince: true,
             // `brandColor` and `logoUrl` so a member's own pages can carry
             // their co-op's colours without a second request on every
@@ -273,6 +281,19 @@ export class AuthService {
         },
       },
     });
+
+    if (!user) return user;
+
+    // The id itself does not travel; only the fact that there is one. It is
+    // selected above so this can be answered, and dropped here because the
+    // browser has no use for a Stripe id and every reason not to hold one.
+    return {
+      ...user,
+      orgs: user.orgs.map(({ stripeSubscriptionId, ...membership }) => ({
+        ...membership,
+        stripeBilled: stripeSubscriptionId !== null,
+      })),
+    };
   }
 
   /** Update the fields a member owns about themselves. */
