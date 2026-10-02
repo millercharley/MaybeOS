@@ -38,9 +38,41 @@ export interface EmailJobData {
     | 'booking-rejected'
     | 'booking-canceled'
     | 'booking-rescheduled'
-    | 'door-code';
+    | 'door-code'
+    | 'radar-digest';
   to: string;
   data: Record<string, any>;
+}
+
+/** One gathering as the Radar digest prints it (RDR-01). */
+export interface RadarDigestEvent {
+  title: string;
+  /** Already formatted in the event's own timezone by the caller. */
+  when: string;
+  where: string | null;
+  description: string | null;
+  /** The member's interests that earned it a place — printed as the reason. */
+  matched: string[];
+  /** Of those, the ones the member said out loud rather than MaybeOS inferring. */
+  declaredMatches: string[];
+  /**
+   * Whether a seat costs money.
+   *
+   * A ticketed event has no RSVP button on its page — it has Buy — so a
+   * button promising "RSVP" would land the member somewhere that does not
+   * offer it. The word has to match what they will find.
+   */
+  ticketed: boolean;
+  rsvpUrl: string;
+}
+
+export interface RadarDigestData {
+  memberName: string;
+  orgName: string;
+  /** Strongest match first; the subject line names it. Never empty. */
+  events: RadarDigestEvent[];
+  unsubscribeUrl: string;
+  interestsUrl: string;
 }
 
 /**
@@ -168,6 +200,19 @@ export class EmailService {
     await this.send({ type: 'waitlist-promoted', to, data: d });
   }
 
+  /**
+   * The weekly Radar digest (RDR-01): the gatherings a member would want to
+   * know about, in the co-op's name.
+   *
+   * The subject is the format Charley specified — `[org] radar: [event]` —
+   * carrying the strongest match, with the rest counted after it. An email
+   * naming a real thing gets opened; "your weekly roundup" does not.
+   */
+  async sendRadarDigest(to: string, d: RadarDigestData) {
+    if (d.events.length === 0) return;
+    await this.send({ type: 'radar-digest', to, data: d });
+  }
+
   async sendInvite(to: string, orgName: string, inviteUrl: string, inviterName?: string) {
     await this.send({
       type: 'invite',
@@ -286,6 +331,57 @@ export class EmailService {
             </p>
           `,
         };
+
+      case 'radar-digest': {
+        const d = data as RadarDigestData;
+        const [first, ...rest] = d.events;
+        const subject =
+          rest.length > 0
+            ? `${d.orgName} radar: ${first.title} (and ${rest.length} more)`
+            : `${d.orgName} radar: ${first.title}`;
+
+        // Escaped throughout: every value here was typed by a host or a
+        // member — an event title, a description, somebody's name — and none
+        // of it is markup.
+        const cards = d.events
+          .map(
+            (event) => `
+            <div style="border:1px solid #ddd7cc;border-radius:12px;padding:16px;margin:0 0 16px;">
+              <h2 style="margin:0 0 4px;font-size:18px;">${escapeHtml(event.title)}</h2>
+              <p style="margin:0 0 2px;color:#6b665e;">${escapeHtml(event.when)}</p>
+              ${event.where ? `<p style="margin:0 0 8px;color:#6b665e;">${escapeHtml(event.where)}</p>` : ''}
+              ${event.description ? `<p style="margin:8px 0 12px;">${escapeHtml(clamp(event.description, 400))}</p>` : ''}
+              <p style="margin:0 0 12px;color:#6b665e;font-size:13px;">${
+                event.declaredMatches.length > 0
+                  ? `Because you said you're interested in ${escapeHtml(event.declaredMatches.join(', '))}`
+                  : `Because you've been to ${escapeHtml(event.matched.join(', '))} gatherings before`
+              }</p>
+              <p style="margin:0;"><a href="${escapeHtml(event.rsvpUrl)}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:#fff;border-radius:6px;text-decoration:none;">${
+                event.ticketed ? 'Get a ticket' : 'RSVP'
+              }</a></p>
+            </div>`,
+          )
+          .join('');
+
+        return {
+          subject,
+          htmlBody: `
+            <h1>On your radar at ${escapeHtml(d.orgName)}</h1>
+            <p>Hello ${escapeHtml(d.memberName)}, ${
+              d.events.length === 1
+                ? 'here is something coming up that looks like your sort of thing.'
+                : 'here are a few things coming up that look like your sort of thing.'
+            }</p>
+            ${cards}
+            <p style="color:#6b665e;font-size:13px;margin-top:24px;">
+              ${escapeHtml(d.orgName)} sends this because of the interests on your profile.
+              <a href="${escapeHtml(d.interestsUrl)}">Change your interests</a>
+              &middot;
+              <a href="${escapeHtml(d.unsubscribeUrl)}">Unsubscribe from radar emails</a>
+            </p>
+          `,
+        };
+      }
 
       case 'magic-link':
         return {
@@ -427,4 +523,10 @@ export class EmailService {
         };
     }
   }
+}
+
+/** Keep a host's description to a readable paragraph in the digest. */
+function clamp(text: string, max: number): string {
+  const clean = text.trim();
+  return clean.length <= max ? clean : `${clean.slice(0, max - 1).trimEnd()}…`;
 }

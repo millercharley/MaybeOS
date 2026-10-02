@@ -20,8 +20,16 @@ import { ShareTracking } from '@/components/settings/share-tracking';
 import { MemberChannels } from '@/components/settings/member-channels';
 import { DoorAccess } from '@/components/settings/door-access';
 import { SocialSharing } from '@/components/settings/social-sharing';
+import { Radar } from '@/components/settings/radar';
 
-type SettingsTab = 'general' | 'branding' | 'website' | 'onboarding' | 'integrations' | 'billing';
+type SettingsTab =
+  | 'general'
+  | 'branding'
+  | 'website'
+  | 'onboarding'
+  | 'radar'
+  | 'integrations'
+  | 'billing';
 
 const tabs: { key: SettingsTab; label: string }[] = [
   { key: 'general', label: 'General' },
@@ -39,6 +47,10 @@ const tabs: { key: SettingsTab; label: string }[] = [
   // page that had existed since the beginning came to be reported missing.
   { key: 'website', label: 'Join page & embeds' },
   { key: 'onboarding', label: 'Getting started' },
+  // Its own tab for the reason the checklist got one: Radar carries the
+  // co-op's whole interest list, and a list that long appended to General is
+  // a list nobody scrolls to (RDR-01).
+  { key: 'radar', label: 'Radar' },
   { key: 'integrations', label: 'Integrations' },
   { key: 'billing', label: 'Billing' },
 ];
@@ -537,6 +549,8 @@ export default function SettingsPage() {
 
       {/* The checklist in every member's sidebar (ONB-01). */}
       {activeTab === 'onboarding' && <GettingStartedSettings />}
+
+      {activeTab === 'radar' && <Radar />}
 
       {activeTab === 'integrations' && (
         <div className="space-y-6">

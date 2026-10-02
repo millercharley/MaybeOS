@@ -45,6 +45,10 @@ const OUTSIDE_THE_SHELL = [
   'app/join/',
   'app/billing/thanks/',
   'app/buddy/',
+  // The Radar unsubscribe link (RDR-01). Same shape as the buddy answer: one
+  // card in an empty viewport, opened from an email by somebody with no
+  // session, so there is no shell around it to fill.
+  'app/radar/',
 ];
 
 /**

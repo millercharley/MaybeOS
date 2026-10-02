@@ -51,7 +51,7 @@ describe('EventsService — the website embed', () => {
       ...overrides,
     };
 
-    return { service: new EventsService(prisma as never, {} as never, {} as never), captured };
+    return { service: new EventsService(prisma as never, {} as never, {} as never, {} as never, {} as never), captured };
   };
 
   it('asks only for public, published, uncancelled events', async () => {

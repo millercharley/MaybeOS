@@ -9,6 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../config/prisma.service';
 import { EmailService } from '../email/email.service';
+import { RadarService } from '../radar/radar.service';
 import { ContactViewer } from '../../common/access/contact-visibility';
 import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
@@ -104,6 +105,9 @@ export class EventsService {
     // Somebody moved up off the waitlist has to be told (EVT-16).
     private readonly emailService: EmailService,
     private readonly configService: ConfigService,
+    // An RSVP is the most honest thing a member ever says about what they
+    // are interested in (RDR-01).
+    private readonly radar: RadarService,
   ) {}
 
   /* ─── Create ────────────────────────────────────────────────── */
@@ -973,7 +977,7 @@ export class EventsService {
       // If previously canceled, update instead of create
       if (existing && existing.status === 'CANCELED') {
         const status = this.determineRsvpStatus(event);
-        return this.prisma.rsvp.update({
+        const revived = await this.prisma.rsvp.update({
           where: { id: existing.id },
           data: {
             status,
@@ -983,12 +987,14 @@ export class EventsService {
             checkedInAt: null,
           },
         });
+        await this.radar.recordRsvp(orgId, eventId, userId);
+        return revived;
       }
     }
 
     const status = this.determineRsvpStatus(event);
 
-    return this.prisma.rsvp.create({
+    const created = await this.prisma.rsvp.create({
       data: {
         eventId,
         userId,
@@ -999,6 +1005,13 @@ export class EventsService {
         note: dto.note,
       },
     });
+
+    // Members only: a guest RSVP has no membership to learn against, and an
+    // email address is not somebody MaybeOS gets to form opinions about.
+    // Never allowed to fail the RSVP — see `RadarService.recordRsvp`.
+    if (userId) await this.radar.recordRsvp(orgId, eventId, userId);
+
+    return created;
   }
 
   private determineRsvpStatus(event: {

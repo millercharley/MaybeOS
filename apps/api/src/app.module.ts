@@ -13,6 +13,7 @@ import { MemberModule } from './modules/member/member.module';
 import { EventsModule } from './modules/events/events.module';
 import { DoorModule } from './modules/door/door.module';
 import { SocialModule } from './modules/social/social.module';
+import { RadarModule } from './modules/radar/radar.module';
 import { SpaceModule } from './modules/space/space.module';
 import { ServiceModule } from './modules/service/service.module';
 import { OnboardingModule } from './modules/onboarding/onboarding.module';
@@ -135,6 +136,7 @@ import { HealthModule } from './modules/health/health.module';
     EventsModule,
     DoorModule,
     SocialModule,
+    RadarModule,
     SpaceModule,
     ServiceModule,
     OnboardingModule,

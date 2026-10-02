@@ -39,6 +39,19 @@ const PALETTES: Record<string, [string, string]> = {
   Learning: ['#166534', '#65a30d'],
   'Rehearsal or practice': ['#4c1d95', '#8b5cf6'],
   'Care or support': ['#155e63', '#14b8a6'],
+  // The rest of the starter interest list (RDR-01). A co-op's list is its own
+  // and can hold anything, so an unknown kind still falls through to the
+  // hashed palettes below — these are only the ones MaybeOS ships.
+  Music: ['#581c87', '#a855f7'],
+  'Food and cooking': ['#7c2d12', '#ea580c'],
+  Games: ['#1e40af', '#06b6d4'],
+  Outdoors: ['#14532d', '#22c55e'],
+  'Film and performance': ['#312e81', '#6366f1'],
+  'Making and repair': ['#44403c', '#a8a29e'],
+  'Books and writing': ['#713f12', '#ca8a04'],
+  'Wellbeing and movement': ['#0f766e', '#2dd4bf'],
+  'Family and kids': ['#9d174d', '#fb7185'],
+  Volunteering: ['#065f46', '#34d399'],
 };
 
 const FALLBACKS: [string, string][] = [

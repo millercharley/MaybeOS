@@ -83,52 +83,62 @@ model Organization {
 
   // Off by default: a housing co-op or members' club must not be joinable by
   // anyone with a card. Each org opts in. See D-020.
-  allowPublicJoin          Boolean           @default(false)
+  allowPublicJoin             Boolean           @default(false)
   /// Whether this co-op tracks shares and ownership at all (MEM-19). Off by
   /// default: most co-ops do not keep an equity register, and one that does
   /// decides when members see it.
-  sharesEnabled            Boolean           @default(false)
+  sharesEnabled               Boolean           @default(false)
   /// Whether any member may open a channel in the Commons (CMN-11). Off by
   /// default: a co-op decides for itself whether its Commons is something
   /// members shape or something the organisers do. Channels are open to the
   /// whole co-op either way — see `Channel.isPublic`, which nothing enforces.
-  memberChannelsEnabled    Boolean           @default(false)
+  memberChannelsEnabled       Boolean           @default(false)
   /// Whether this co-op issues door codes at all (DOR-01). Off by default:
   /// most co-ops have no door for MaybeOS to let anybody through.
-  doorAccessEnabled        Boolean           @default(false)
+  doorAccessEnabled           Boolean           @default(false)
   /// The Google Sheet the door application reads. MaybeOS owns the codes and
   /// writes this sheet; the sheet is a mirror, not the record — a code edited
   /// there by hand is overwritten on the next sync.
-  doorSheetId              String?
+  doorSheetId                 String?
   /// The Apps Script web app that owns the door sheet (DOR-01). MaybeOS
   /// writes members to it with a signed request and never holds access to
   /// the spreadsheet itself. Replaces `doorSheetId`, which is no longer read.
-  doorScriptUrl            String?
+  doorScriptUrl               String?
   /// The shared secret that signs those requests, sealed with secret-box.
   /// Omitted at the Prisma client: it is read by the door sync and nowhere
   /// else.
-  doorScriptSecret         Json?
+  doorScriptSecret            Json?
   /// Whether hosts may share this co-op's public events to its Facebook Page
   /// and Instagram account (SOC-01). Off until an admin turns it on.
-  socialSharingEnabled        Boolean @default(false)
+  socialSharingEnabled        Boolean           @default(false)
   /// Whether a member may share without being switched on individually.
   /// `UserOrg.socialShareAllowed` overrides this for one member either way.
-  socialShareMembersByDefault Boolean @default(true)
+  socialShareMembersByDefault Boolean           @default(true)
   /// Whether members are emailed their code as it is issued (DOR-01). Its own
   /// switch, separate from generating them, so a co-op can fill the sheet and
   /// check it before a few hundred people get a door code in their inbox.
-  doorCodeEmailsEnabled    Boolean           @default(false)
+  doorCodeEmailsEnabled       Boolean           @default(false)
+  /// Whether Radar is on for this co-op (RDR-01): a weekly digest telling a
+  /// member about gatherings open to members that match what they are
+  /// interested in. Off until an admin turns it on, and the switch is only
+  /// offered on Plus and Unlimited — see `radar-availability.ts`.
+  radarEnabled                Boolean           @default(false)
+  /// Which day the digest goes out and at what hour, 0 = Sunday, read in the
+  /// co-op's own timezone. A co-op knows when its people read email; Thursday
+  /// morning is only a starting guess at the weekend ahead.
+  radarDigestDay              Int               @default(4)
+  radarDigestHour             Int               @default(9)
   /// The co-op's MaybeOS plan (D-013). Everyone starts on FREE.
-  plan                     MaybeOsPlan       @default(FREE)
+  plan                        MaybeOsPlan       @default(FREE)
   /// The co-op's own Stripe account, from Connect onboarding. Ticket money is
   /// paid here directly and MaybeOS's cut is taken as an application fee —
   /// routing other co-ops' takings through MaybeOS's own account would be
   /// money transmission, not billing (D-013). Null until onboarding completes.
-  stripeAccountId          String?
+  stripeAccountId             String?
   /// Whether Stripe says the account can actually accept charges. Onboarding
   /// can be started and abandoned halfway, and an account that exists is not
   /// the same as one that can be paid.
-  stripeChargesEnabled     Boolean           @default(false)
+  stripeChargesEnabled        Boolean           @default(false)
   /// Which generation of Stripe's Accounts API this account belongs to.
   /// Creating an account uses Accounts v2; linking one the co-op already has
   /// uses Connect OAuth, which always hands back a v1 Standard account because
@@ -136,7 +146,7 @@ model Organization {
   /// "v1 Accounts cannot be used in v2 Account APIs", and nothing in the id
   /// says which generation it is — so it is recorded when the account is
   /// connected rather than guessed at read time. Null only when none is.
-  stripeAccountApi         StripeAccountApi?
+  stripeAccountApi            StripeAccountApi?
   /// The co-op's own subscription to MaybeOS (PLT-02) — not to be confused
   /// with `UserOrg.stripeSubscriptionId`, which is a *member's* dues to their
   /// co-op. Different money, different direction, different Stripe account.
@@ -144,16 +154,16 @@ model Organization {
   /// Matched on when a later subscription event arrives, because a co-op
   /// subscribes through Stripe's hosted pricing table and there is no way to
   /// put our own metadata on what that creates.
-  stripePlanCustomerId     String?
-  stripePlanSubscriptionId String?           @unique
+  stripePlanCustomerId        String?
+  stripePlanSubscriptionId    String?           @unique
   /// Stripe's own word for the subscription — `active`, `past_due`,
   /// `canceled`. Kept verbatim rather than mapped, so a state Stripe adds
   /// later shows up as itself instead of being flattened into a guess.
-  planStatus               String?
+  planStatus                  String?
   /// A fee the co-op adds to its own ticket sales, on top of MaybeOS's, in
   /// cents per ticket. Charley's requirement: org admins set their own fee in
   /// addition. Zero by default — a co-op that has not chosen one charges none.
-  ticketFeeCents           Int               @default(0)
+  ticketFeeCents              Int               @default(0)
   /// What share of ticket money a member who hosts an event keeps, in basis
   /// points (EVT-15). 10000 is all of it, which is the default — MaybeOS's fee
   /// and the co-op's own fee were both added *on top* of the ticket price and
@@ -162,13 +172,13 @@ model Organization {
   /// Basis points rather than a percentage so integer arithmetic does the whole
   /// calculation: a float share lands a fraction of a cent short, and a ledger
   /// that is a cent out is a ledger nobody trusts.
-  hostRevenueShareBps      Int               @default(10000)
+  hostRevenueShareBps         Int               @default(10000)
   /// Suspended by MaybeOS itself (PLT-01). Access stops; nothing is deleted.
   /// What happens to a suspended co-op's *data* is a decision not yet taken,
   /// and this deliberately does not take it — whichever way it goes, nothing
   /// here has to be undone.
-  suspendedAt              DateTime?
-  suspendedReason          String?
+  suspendedAt                 DateTime?
+  suspendedReason             String?
   /// "MaybeOS for free, except ticket sales" (Charley, 2026-08-19).
   ///
   /// Its own flag rather than a plan, because `plan` does double duty: it sets
@@ -176,8 +186,8 @@ model Organization {
   /// moving it to FREE would triple its members' ticket fees — the opposite of
   /// a gift. A comped co-op is set to the plan it should *have*, pays nothing
   /// for it, and its ticket fee follows that plan as normal.
-  billingWaived            Boolean           @default(false)
-  billingWaivedReason      String?
+  billingWaived               Boolean           @default(false)
+  billingWaivedReason         String?
 
   /// MaybeOS's own forum, where every co-op's organisers meet each other
   /// (FRM-01). Exactly one row carries this.
@@ -196,6 +206,7 @@ model Organization {
 
   locations       Location[]
   users           UserOrg[]
+  interestTags    InterestTag[]
   directMessages  DirectMessage[]
   tiers           MembershipTier[]
   events          Event[]
@@ -229,6 +240,8 @@ model Organization {
   /// The co-op's equity ledger (MEM-17).
   shareGrants             ShareGrant[]
   doorSheetEntries        DoorSheetEntry[]
+  socialAccount           OrgSocialAccount?
+  eventSocialPosts        EventSocialPost[]
 
   /// Backs the platform console's org list, which orders by signup date
   /// (PLT-01). Created by that migration but never declared here, so every
@@ -236,8 +249,6 @@ model Organization {
   /// the schema and the database agree.
   @@index([createdAt])
   @@map("organizations")
-  socialAccount    OrgSocialAccount?
-  eventSocialPosts EventSocialPost[]
 }
 
 model Location {
@@ -431,12 +442,33 @@ model UserOrg {
   lastAskedAt   DateTime?
   askDismissals Int       @default(0)
 
+  /// Whether this member gets the Radar digest (RDR-01). True rather than
+  /// null, unlike `emailOptIn`: an admin turning Radar on is the co-op
+  /// deciding, and every digest carries a one-click unsubscribe that writes
+  /// false here. `emailOptIn: false` silences Radar regardless — a member who
+  /// has unsubscribed from the co-op has unsubscribed from this too.
+  radarEmails         Boolean   @default(true)
+  /// When the last digest went out, so a run that happens twice in an hour
+  /// does not send twice. What stops an *event* repeating is `RadarSend`.
+  radarLastSentAt     DateTime?
+  /// When this member was last shown the interest picker, and how many times
+  /// they have waved it away. **Deliberately not the ImpactOS fatigue budget
+  /// (D-021).** That budget buys measurement the member gets nothing back
+  /// from; this question is the member configuring something for themselves,
+  /// and spending the impact budget on it would silence the surveys for a
+  /// month to ask somebody which gatherings they like.
+  interestsAskedAt    DateTime?
+  interestsDismissals Int       @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   user User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   org  Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
   tier MembershipTier? @relation(fields: [tierId], references: [id])
+
+  interests  MemberInterest[]
+  radarSends RadarSend[]
 
   // Belonging Support. A membership, not a person: someone in two co-ops has
   // two buddy histories and two sets of acknowledgments.
@@ -764,11 +796,13 @@ model Event {
   parent      Event?       @relation("EventRecurrence", fields: [parentEventId], references: [id])
   children    Event[]      @relation("EventRecurrence")
   rsvps       Rsvp[]
+  radarSends  RadarSend[]
   attendance  Attendance[]
   tickets     Ticket[]
   attachments Attachment[]
 
   socialPosts EventSocialPost[]
+
   @@unique([orgId, slug])
   @@index([orgId, startTime])
   @@index([orgId, visibility, isPublished])
@@ -2567,16 +2601,16 @@ enum SocialPlatform {
 /// unique slot, and set to PUBLISHED with the post's link after. A failed post
 /// deletes its row so it can be tried again.
 model EventSocialPost {
-  id          String         @id @default(uuid())
-  orgId       String
-  eventId     String
-  platform    SocialPlatform
-  status      String         @default("PENDING")
-  externalId  String?
-  permalink   String?
-  postedById  String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id         String         @id @default(uuid())
+  orgId      String
+  eventId    String
+  platform   SocialPlatform
+  status     String         @default("PENDING")
+  externalId String?
+  permalink  String?
+  postedById String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
 
   org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   event Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
@@ -2584,4 +2618,95 @@ model EventSocialPost {
   @@unique([eventId, platform])
   @@index([orgId, createdAt])
   @@map("event_social_posts")
+}
+
+/// ---------------------------------------------------------------------------
+/// Radar (RDR-01): matching what a member is interested in to the gatherings
+/// their co-op is actually running.
+/// ---------------------------------------------------------------------------
+
+/// One interest in a co-op's own list — the words its members pick from and
+/// its hosts tag gatherings with.
+///
+/// Seeded from a MaybeOS starter set so a co-op is never shown an empty box,
+/// and editable from there: renaming one rewrites the name wherever it is
+/// already written on an event, so a rename is a rename rather than a
+/// quiet un-tagging. The six gathering kinds that EVT-20 hard-coded in the
+/// web form are part of the starter set, which is what keeps every event
+/// tagged before Radar existed meaningful afterwards.
+///
+/// Deactivated rather than deleted where it is in use: a tag nobody can
+/// choose any more still has to explain the events that already carry it.
+model InterestTag {
+  id        String   @id @default(uuid())
+  orgId     String
+  name      String
+  /// Shown beside the name in the picker. Optional, and never load-bearing.
+  emoji     String?
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org     Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  members MemberInterest[]
+
+  @@unique([orgId, name])
+  @@index([orgId, isActive, sortOrder])
+  @@map("interest_tags")
+}
+
+/// What one member is interested in, and how MaybeOS came to think so.
+///
+/// `declared` is the member's own answer and is three-valued on purpose:
+/// true is "yes, this interests me", false is "no, stop suggesting it", and
+/// null means they have never been asked. `rsvpCount` is what MaybeOS
+/// inferred from the gatherings they actually went to. **A declared false
+/// always wins** — an inference is a guess about somebody, and a member who
+/// has said no is not guessing.
+///
+/// Every row is visible to the member it describes and editable by them, and
+/// no view shows one member another's interests.
+model MemberInterest {
+  id         String    @id @default(uuid())
+  userOrgId  String
+  tagId      String
+  declared   Boolean?
+  rsvpCount  Int       @default(0)
+  /// The most recent RSVP that counted toward `rsvpCount`, so an interest a
+  /// member has not acted on in two years can be aged out later without
+  /// having to re-read every RSVP they ever made.
+  lastRsvpAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  membership UserOrg     @relation(fields: [userOrgId], references: [id], onDelete: Cascade)
+  tag        InterestTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([userOrgId, tagId])
+  @@index([userOrgId])
+  @@map("member_interests")
+}
+
+/// An event Radar has already told a member about.
+///
+/// This is the idempotency key for the digest, and the reason it is a row
+/// rather than a timestamp: "have we mentioned this one?" is a question about
+/// a pair, and a scheduler that runs every fifteen minutes will ask it again.
+/// Written before the email is handed to Postmark, because `EmailService`
+/// swallows failures — the same bargain `doorPinEmailedAt` makes, and the
+/// safer direction to fail in: a gathering mentioned once and missed beats one
+/// mentioned every quarter of an hour.
+model RadarSend {
+  id        String   @id @default(uuid())
+  userOrgId String
+  eventId   String
+  sentAt    DateTime @default(now())
+
+  membership UserOrg @relation(fields: [userOrgId], references: [id], onDelete: Cascade)
+  event      Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([userOrgId, eventId])
+  @@index([userOrgId, sentAt])
+  @@map("radar_sends")
 }

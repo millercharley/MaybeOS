@@ -1,9 +1,9 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { Globe, Lock, Users } from 'lucide-react';
 import { EventImagePicker, EventImageValue } from '@/components/events/event-image-picker';
-import { CreateEventData } from '@/lib/api';
+import { CreateEventData, api } from '@/lib/api';
 import { PLATFORM_FEE_CENTS } from '@/lib/fees';
 import { GATHERING_KINDS } from '@/components/rooms/booking-details';
 import { MATURITY_LEVELS, type MaturityLevel } from '@/lib/maturity';
@@ -136,6 +136,33 @@ export function EventForm({
   const [kinds, setKinds] = useState<string[]>(
     initial?.tags?.length ? initial.tags : initial?.category ? [initial.category] : [],
   );
+  /*
+    The co-op's own interest list (RDR-01), which is the same list its members
+    pick from — tagging with anything else would mean a gathering nothing can
+    match. Falls back to the six EVT-20 kinds when the list cannot be read,
+    because a host must never be blocked from describing their event by a
+    feature they are not using.
+  */
+  const [options, setOptions] = useState<string[]>([...GATHERING_KINDS]);
+
+  useEffect(() => {
+    if (!orgId || !token) return;
+    let cancelled = false;
+
+    api.radar
+      .tags(orgId, token)
+      .then((tags) => {
+        const names = tags.map((tag) => tag.name);
+        if (!cancelled && names.length > 0) setOptions(names);
+      })
+      .catch(() => {
+        /* The fallback above is already correct. */
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId, token]);
   const [hasCost, setHasCost] = useState(initial?.hasCost ?? false);
   const [maturityLevel, setMaturityLevel] = useState<MaturityLevel>(
     initial?.maturityLevel ?? 'ALL_AGES',
@@ -151,6 +178,13 @@ export function EventForm({
     if (!startTime || !endTime) return setLocalError('Say when it starts and ends.');
     if (new Date(endTime) <= new Date(startTime)) {
       return setLocalError('It has to end after it starts.');
+    }
+
+    // An untagged gathering is one nobody can be matched to (RDR-01), and the
+    // host is the only person who knows what it is. Asked for only where it
+    // matters: a private booking is nobody else's business.
+    if (visibility !== 'PRIVATE' && kinds.length === 0) {
+      return setLocalError('Pick what kind of gathering it is, so the right people hear about it.');
     }
 
     let priceCents: number | null = null;
@@ -345,7 +379,7 @@ export function EventForm({
           What kind of gathering?
         </legend>
         <div className="flex flex-wrap gap-2">
-          {GATHERING_KINDS.map((kind) => (
+          {options.map((kind) => (
             <button
               key={kind}
               type="button"
@@ -369,7 +403,7 @@ export function EventForm({
           ))}
         </div>
         <p className="mt-1 text-xs text-gray-500">
-          Decides the artwork when the event has no image of its own.
+          Decides the artwork when the event has no image of its own, and who hears about it.
         </p>
       </fieldset>
 

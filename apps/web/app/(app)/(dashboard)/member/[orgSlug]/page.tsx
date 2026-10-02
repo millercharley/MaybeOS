@@ -21,6 +21,7 @@ import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
 import { Panel } from '@/components/layout/panel';
 import { MemberSpotlight } from '@/components/member/member-spotlight';
+import { InterestPrompt } from '@/components/member/interest-prompt';
 import { happeningToday, whenLabel, startsIn } from '@/lib/event-list';
 
 const quickLinksFor = (orgSlug: string) => [
@@ -367,6 +368,10 @@ export default function MemberPortalPage() {
         </div>
 
         <div className="space-y-6">
+          {/* Three or four interests, one tap each (RDR-01). Renders nothing
+              unless Radar is on and this member is actually due a question. */}
+          <InterestPrompt orgSlug={orgSlug} />
+
           {/* Somebody to meet, above the count (MEM-12). A number tells you how
               big the co-op is; a face tells you who is in it, and only one of
               those leads anywhere. Renders nothing when there is nobody else. */}

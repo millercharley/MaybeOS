@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../config/prisma.service';
 import { EventsService } from '../events.service';
+import { RadarService } from '../../radar/radar.service';
 import { EmailService } from '../../email/email.service';
 import { ConfigService } from '@nestjs/config';
 import { CalendarService } from '../../calendar/calendar.service';
@@ -40,6 +41,8 @@ describe('EventsService.hostSummary', () => {
     const module = await Test.createTestingModule({
       providers: [
         EventsService,
+        // Radar counts an RSVP toward the member's interests (RDR-01).
+        { provide: RadarService, useValue: { recordRsvp: jest.fn() } },
         { provide: PrismaService, useValue: prisma },
         { provide: EmailService, useValue: {} },
         { provide: ConfigService, useValue: { get: () => '' } },
