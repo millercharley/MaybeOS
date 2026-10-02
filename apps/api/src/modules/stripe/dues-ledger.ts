@@ -22,6 +22,43 @@ export interface DuesPaymentRecord {
   feeCents: number;
   currency: string;
   paidAt: Date;
+  /** Who Stripe billed, as the invoice recorded it. */
+  invoiceName: string | null;
+  invoiceEmail: string | null;
+}
+
+/** A member, as much of one as a payment needs to remember. */
+export interface Payer {
+  payerName: string | null;
+  payerEmail: string | null;
+}
+
+/**
+ * Who to write on the payment (PAY-10).
+ *
+ * The membership is preferred, because that is who MaybeOS believes the payer
+ * is and what an organiser would recognise. The invoice is the fallback, and
+ * it is the only answer for a payment adopted from a subscription MaybeOS
+ * never issued — the case where the question "who was this?" is hardest and
+ * matters most.
+ *
+ * Nulls all the way down rather than a placeholder: "Unknown" in this column
+ * would be indistinguishable from somebody actually called that, and a blank
+ * is at least honest about being blank.
+ */
+export function payerFrom(
+  member: { name?: string | null; email?: string | null } | null | undefined,
+  invoice: { invoiceName: string | null; invoiceEmail: string | null },
+): Payer {
+  const clean = (value: string | null | undefined) => {
+    const trimmed = (value ?? '').trim();
+    return trimmed === '' ? null : trimmed;
+  };
+
+  return {
+    payerName: clean(member?.name) ?? clean(invoice.invoiceName),
+    payerEmail: clean(member?.email) ?? clean(invoice.invoiceEmail),
+  };
 }
 
 /** The subscription an invoice belongs to, across SDK versions. */
@@ -85,5 +122,7 @@ export function duesPaymentFrom(invoice: Stripe.Invoice): DuesPaymentRecord | nu
     feeCents: feeOf(invoice),
     currency: invoice.currency ?? 'usd',
     paidAt: new Date(paidAtSeconds * 1000),
+    invoiceName: invoice.customer_name ?? null,
+    invoiceEmail: invoice.customer_email ?? null,
   };
 }

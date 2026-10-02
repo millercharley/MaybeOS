@@ -20,7 +20,7 @@ import {
 import { ConnectService } from './connect.service';
 import { membershipStatusFor } from './subscription-status';
 import { applicationFeePercent, duesFeeFor } from './dues-pricing';
-import { duesPaymentFrom } from './dues-ledger';
+import { duesPaymentFrom, payerFrom } from './dues-ledger';
 import {
   WRITTEN_REPORT_PRICE_CENTS,
   WRITTEN_REPORT_PRODUCT_NAME,
@@ -1238,7 +1238,12 @@ export class StripeService implements OnModuleInit {
   ): Promise<{ invoices: number; recorded: number; failed: number }> {
     const memberships = await this.prisma.userOrg.findMany({
       where: { orgId, stripeSubscriptionId: { not: null } },
-      select: { id: true, stripeSubscriptionId: true, stripeDuesAccountId: true },
+      select: {
+        id: true,
+        stripeSubscriptionId: true,
+        stripeDuesAccountId: true,
+        user: { select: { name: true, email: true } },
+      },
     });
 
     const result = { invoices: 0, recorded: 0, failed: 0 };
@@ -1265,6 +1270,7 @@ export class StripeService implements OnModuleInit {
               {
                 orgId,
                 userOrgId: membership.id,
+                ...payerFrom(membership.user, payment),
                 stripeInvoiceId: payment.stripeInvoiceId,
                 stripeAccountId: membership.stripeDuesAccountId,
                 amountCents: payment.amountCents,
@@ -1434,7 +1440,7 @@ export class StripeService implements OnModuleInit {
 
     const membership = await tx.userOrg.findFirst({
       where: { stripeSubscriptionId: payment.stripeSubscriptionId as string },
-      select: { id: true, orgId: true },
+      select: { id: true, orgId: true, user: { select: { name: true, email: true } } },
     });
 
     // No membership *and* no account means there is nothing to file it under.
@@ -1463,6 +1469,9 @@ export class StripeService implements OnModuleInit {
         {
           orgId,
           userOrgId: membership?.id ?? null,
+          // Written now, while the membership still exists. Removing a member
+          // detaches these rows, and this is what survives it (PAY-10).
+          ...payerFrom(membership?.user, payment),
           stripeInvoiceId: payment.stripeInvoiceId,
           stripeAccountId: accountId,
           amountCents: payment.amountCents,
