@@ -869,6 +869,10 @@ class ApiClient {
     get: (orgId: string, token: string) =>
       this.request<MemberLedger>(`/orgs/${orgId}/ledger`, { token }),
 
+    /** Your own shares, and every grant behind them (MEM-24). */
+    mine: (orgId: string, token: string) =>
+      this.request<MyHolding>(`/orgs/${orgId}/ledger/mine`, { token }),
+
     /** Every member with their holding, for the admin's Shares page (MEM-19). */
     adminView: (orgId: string, token: string) =>
       this.request<LedgerAdminView>(`/orgs/${orgId}/ledger/admin`, { token }),
@@ -3085,16 +3089,21 @@ export interface ImportMemberRow {
 }
 
 /** One member's line on the ledger (MEM-17). No email or phone, for any role. */
+/**
+ * One row of the co-op's directory (MEM-24).
+ *
+ * No shares, no breakdown and no rank. The directory used to list every
+ * member largest holding first, numbered — "it feels like a ranking", and it
+ * was one. What a member owns is on their own profile now, and the API does
+ * not send anybody else's.
+ */
 export interface LedgerHolder {
-  rank: number;
   userId: string;
   isYou: boolean;
   /** Hidden from other members. Only ever true on an organiser's view. */
   isPrivate: boolean;
   role: string;
   memberSince: string;
-  shares: number;
-  breakdown: Partial<Record<GrantKind, number>>;
   user: { id: string; name: string | null; avatarUrl: string | null };
   headline: string | null;
   bio: string | null;
@@ -3104,15 +3113,37 @@ export interface LedgerHolder {
 }
 
 export interface MemberLedger {
-  /** Whether this co-op tracks shares at all (MEM-19). When false, shares are all zero and unread. */
+  /** Whether this co-op tracks shares at all (MEM-19). */
   sharesEnabled: boolean;
   /** When the ledger last changed — an import or a grant. Null before either. */
   asOf: string | null;
-  totalShares: number;
   holders: LedgerHolder[];
-  privateMembers: { count: number; shares: number };
-  unlinked: { count: number; shares: number };
+  /** Members who keep their profile private: counted, never named. */
+  privateMembers: { count: number };
+  /** Cap-table holders with no MaybeOS membership here yet. */
+  unlinked: { count: number };
   reconciled: boolean;
+}
+
+/**
+ * What you hold, and every grant behind it (MEM-24).
+ *
+ * Only ever your own: the route takes no userId and has nowhere to put one.
+ */
+export interface MyHolding {
+  sharesEnabled: boolean;
+  shares: number;
+  /** Every share the co-op has issued, so a percentage can be worked out. */
+  totalShares: number;
+  lines: Array<{
+    id: string;
+    kind: GrantKind;
+    shares: number;
+    source: 'IMPORT' | 'MANUAL';
+    note: string | null;
+    recordedAt: string;
+    grantedBy: string | null;
+  }>;
 }
 
 /** One member on the admin's Shares page (MEM-19). Hidden members included. */

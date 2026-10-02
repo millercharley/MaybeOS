@@ -18,7 +18,8 @@ import {
   Github,
   Globe,
 } from 'lucide-react';
-import { api, MemberProfile } from '@/lib/api';
+import { api, MemberProfile, MyHolding } from '@/lib/api';
+import { GRANT_LABELS, formatOwnership, formatShares } from '@/lib/ledger';
 import { useAuthStore } from '@/lib/auth-store';
 import { safeProfileLinks, profileLinkLabel } from '@/lib/profile-links';
 import { commonsPostHref, relativeTime, sinceLabel, socialKind, SocialKind } from '@/lib/member-card';
@@ -33,7 +34,7 @@ const SOCIAL: Record<SocialKind, typeof Globe> = {
   web: Globe,
 };
 
-type Tab = 'about' | 'posts' | 'comments';
+type Tab = 'about' | 'posts' | 'comments' | 'ownership';
 
 /**
  * The member card (MEM-18) — one person, the way Circle shows them.
@@ -43,11 +44,16 @@ type Tab = 'about' | 'posts' | 'comments';
  * written here. The same card on every page, opened by `MemberName` through
  * `MemberCardProvider`.
  *
- * Not on it, deliberately: shares and ownership (the Members page is where
- * those live, when a co-op tracks them), email and phone (nobody's to hand out), and anything MaybeOS
- * does not actually know — there is no "last seen" and no activity score,
- * because neither is recorded, and a card that guesses is worse than one
- * that leaves a gap.
+ * Ownership is here too, on your own card only (MEM-24). It used to be a
+ * column in the Members directory beside everybody's name, ordered largest
+ * first — "it feels like a ranking", which it was. What somebody owns of
+ * their co-op is theirs to look at, so the tab appears on your own card, when
+ * the co-op tracks shares, and nowhere else.
+ *
+ * Not on it, deliberately: anybody else's holding, email and phone (nobody's
+ * to hand out), and anything MaybeOS does not actually know — there is no
+ * "last seen" and no activity score, because neither is recorded, and a card
+ * that guesses is worse than one that leaves a gap.
  */
 export function MemberCard({
   userId,
@@ -65,6 +71,16 @@ export function MemberCard({
   const [gone, setGone] = useState(false);
   const [failure, setFailure] = useState('');
   const [tab, setTab] = useState<Tab>('about');
+  /**
+   * Your own holding (MEM-24), fetched only for your own card.
+   *
+   * There is no endpoint that would answer for anybody else, so opening
+   * somebody's card cannot ask about their shares even by mistake. A co-op
+   * that does not track shares answers `sharesEnabled: false` and the tab
+   * never appears.
+   */
+  const [holding, setHolding] = useState<MyHolding | null>(null);
+  const [holdingFailure, setHoldingFailure] = useState('');
   const closeButton = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -74,6 +90,8 @@ export function MemberCard({
     setGone(false);
     setFailure('');
     setTab('about');
+    setHolding(null);
+    setHoldingFailure('');
     api.members
       .profile(orgId, userId, token)
       .then((result) => live && setProfile(result))
@@ -86,6 +104,25 @@ export function MemberCard({
       live = false;
     };
   }, [orgId, userId, token]);
+
+  useEffect(() => {
+    if (!token || !profile?.isYou) {
+      setHolding(null);
+      return;
+    }
+    let live = true;
+    setHoldingFailure('');
+    api.ledger
+      .mine(orgId, token)
+      .then((result) => live && setHolding(result))
+      .catch((err) => {
+        if (!live) return;
+        setHoldingFailure(err instanceof Error ? err.message : 'Your shares could not be loaded.');
+      });
+    return () => {
+      live = false;
+    };
+  }, [orgId, token, profile?.isYou]);
 
   useEffect(() => {
     closeButton.current?.focus();
@@ -200,11 +237,18 @@ export function MemberCard({
                   <TabButton active={tab === 'comments'} onClick={() => setTab('comments')}>
                     Comments <span className="text-gray-400">{profile.counts?.comments ?? 0}</span>
                   </TabButton>
+                  {/* Your own card, and only when the co-op tracks shares. */}
+                  {profile.isYou && holding?.sharesEnabled && (
+                    <TabButton active={tab === 'ownership'} onClick={() => setTab('ownership')}>
+                      Ownership
+                    </TabButton>
+                  )}
                 </div>
 
                 {tab === 'about' && <About profile={profile} first={first} />}
                 {tab === 'posts' && <Posts profile={profile} first={first} onClose={onClose} />}
                 {tab === 'comments' && <Comments profile={profile} first={first} onClose={onClose} />}
+                {tab === 'ownership' && <Ownership holding={holding} failure={holdingFailure} />}
               </>
             )}
           </section>
@@ -336,6 +380,94 @@ function Posts({ profile, first, onClose }: { profile: MemberProfile; first: str
         <p className="mt-2 text-xs text-gray-400">The latest {posts.length}.</p>
       )}
     </>
+  );
+}
+
+/**
+ * What you own of this co-op, and every grant behind it (MEM-24).
+ *
+ * A log rather than a figure. These numbers arrived from a cap table
+ * somebody else keeps, and the only way a member can check one is to see
+ * what it is made of — a founder bonus here, four annual grants there, an
+ * adjustment that corrected a mistake. A balance with no history is
+ * something to be told; a ledger is something to read.
+ */
+function Ownership({ holding, failure }: { holding: MyHolding | null; failure: string }) {
+  if (failure) {
+    return <p className="text-sm text-red-600">{failure}</p>;
+  }
+
+  if (!holding) {
+    return <p className="text-sm text-gray-500">Loading your shares…</p>;
+  }
+
+  const { shares, totalShares, lines } = holding;
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+          <div>
+            <p className="text-xs uppercase tracking-wide text-gray-500">Your shares</p>
+            <p className="text-2xl font-semibold tabular-nums text-gray-900">
+              {formatShares(shares)}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wide text-gray-500">Of the co-op</p>
+            <p className="text-2xl font-semibold tabular-nums text-gray-900">
+              {formatOwnership(shares, totalShares)}
+            </p>
+          </div>
+        </div>
+        {totalShares > 0 && (
+          <p className="mt-3 text-xs text-gray-500">
+            {formatShares(totalShares)} shares issued in total. Only you can see this.
+          </p>
+        )}
+      </div>
+
+      {lines.length === 0 ? (
+        <p className="text-sm text-gray-500">
+          You don&apos;t hold any shares yet. When the co-op grants you some, every grant
+          shows up here.
+        </p>
+      ) : (
+        <div>
+          <h3 className="mb-2 text-sm font-semibold text-gray-900">Every grant you have received</h3>
+          <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
+            {lines.map((line) => (
+              <li key={line.id} className="flex items-start justify-between gap-4 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900">
+                    {GRANT_LABELS[line.kind] ?? line.kind}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {new Date(line.recordedAt).toLocaleDateString(undefined, {
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                    })}
+                    {line.grantedBy && ` · granted by ${line.grantedBy}`}
+                    {line.source === 'IMPORT' && ' · from the co-op’s cap table'}
+                  </p>
+                  {line.note && <p className="mt-1 text-xs text-gray-600">{line.note}</p>}
+                </div>
+                {/* An adjustment can be negative, and reads as one. */}
+                <span
+                  className={`shrink-0 text-sm font-medium tabular-nums ${
+                    line.shares < 0 ? 'text-red-700' : 'text-gray-900'
+                  }`}
+                >
+                  {line.shares > 0 ? '+' : ''}
+                  {formatShares(line.shares)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 

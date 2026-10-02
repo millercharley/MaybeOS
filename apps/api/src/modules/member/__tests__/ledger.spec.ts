@@ -37,35 +37,73 @@ const MEMBER = { userId: 'u-viewer', privileged: false };
 const ORGANISER = { userId: 'u-viewer', privileged: true };
 
 describe('computeLedger', () => {
-  it('sums each holder and lists the largest first', () => {
+  /**
+   * The directory stopped being a cap table (MEM-24).
+   *
+   * It used to list every member largest holding first, numbered. Charley,
+   * 2026-10-02: "it feels like a ranking" — which it was. A co-op's own
+   * directory told each member where they came in a league table of their
+   * community every time they looked somebody up.
+   *
+   * The numbers moved to each member's own profile. These cases pin that they
+   * are not merely hidden here: a response carrying everybody's holding has
+   * disclosed it whatever the table draws.
+   */
+  it('publishes nobody’s holding', () => {
     const ledger = computeLedger(
       [grant('ada@example.com', 200), grant('bo@example.com', 5000, 'FOUNDER'), grant('ada@example.com', 100)],
       [member(), member({ userId: 'u-bo', email: 'bo@example.com', name: 'Bo' })],
       MEMBER,
     );
+    const json = JSON.stringify(ledger);
 
-    expect(ledger.holders.map((h) => [h.rank, h.user.name, h.shares])).toEqual([
-      [1, 'Bo', 5000],
-      [2, 'Ada', 300],
-    ]);
-    expect(ledger.totalShares).toBe(5300);
+    expect(json).not.toContain('5000');
+    expect(json).not.toMatch(/"shares"/);
+    expect(json).not.toMatch(/"rank"/);
+    expect(json).not.toMatch(/"breakdown"/);
+    expect(json).not.toMatch(/"totalShares"/);
   });
 
-  it('lists a member with no shares at zero, because every member is on it', () => {
+  it('does not publish them to organisers here either', () => {
+    // Organisers have a Shares page of their own. This endpoint is the
+    // directory for everybody, and a second shape for one role is a second
+    // thing to get wrong.
+    const ledger = computeLedger([grant('ada@example.com', 200)], [member()], ORGANISER);
+
+    expect(JSON.stringify(ledger)).not.toMatch(/"shares"/);
+  });
+
+  it('lists members alphabetically, not by what they own', () => {
+    const ledger = computeLedger(
+      [grant('bo@example.com', 5000, 'FOUNDER')],
+      [member({ userId: 'u-bo', email: 'bo@example.com', name: 'Bo' }), member()],
+      MEMBER,
+    );
+
+    expect(ledger.holders.map((h) => h.user.name)).toEqual(['Ada', 'Bo']);
+  });
+
+  it('still lists a member who holds nothing', () => {
+    // Every member is in the directory; it is a directory.
     const ledger = computeLedger([], [member()], MEMBER);
 
     expect(ledger.holders).toHaveLength(1);
-    expect(ledger.holders[0].shares).toBe(0);
   });
 
-  it('matches a grant to a member regardless of case', () => {
-    const ledger = computeLedger([grant(' ADA@Example.com ', 100)], [member()], MEMBER);
-    expect(ledger.holders[0].shares).toBe(100);
+  it('still reconciles, even though it says nothing about the figures', () => {
+    // The arithmetic is how a ledger that does not add up gets noticed. It
+    // keeps running; only the publishing stopped.
+    const ledger = computeLedger(
+      [grant(' ADA@Example.com ', 100), grant('gone@example.com', 750)],
+      [member()],
+      MEMBER,
+    );
+
+    expect(ledger.reconciled).toBe(true);
   });
 
-  it('keeps a hidden member off the page but their shares in the total', () => {
-    // `isPublic` was a promise the directory made. Its replacement keeps it —
-    // and still adds up, because the shares are counted in an unnamed row.
+  it('keeps a hidden member off the page, counted and unnamed', () => {
+    // `isPublic` was a promise the directory made, and it still keeps it.
     const ledger = computeLedger(
       [grant('ada@example.com', 100), grant('cy@example.com', 400)],
       [member(), member({ userId: 'u-cy', email: 'cy@example.com', name: 'Cy', isPublic: false })],
@@ -73,7 +111,7 @@ describe('computeLedger', () => {
     );
 
     expect(ledger.holders.map((h) => h.user.name)).toEqual(['Ada']);
-    expect(ledger.privateMembers).toEqual({ count: 1, shares: 400 });
+    expect(ledger.privateMembers).toEqual({ count: 1 });
     expect(ledger.reconciled).toBe(true);
   });
 
@@ -95,15 +133,16 @@ describe('computeLedger', () => {
   });
 
   it('counts holders without a membership here, without naming them', () => {
-    // The cap table predates most MaybeOS accounts. Those shares are real,
-    // so they are counted; the people have not joined, so they are not named.
+    // The cap table predates most MaybeOS accounts. Those holders have not
+    // joined, so they are not named — and since MEM-24 their shares are not
+    // published either, only the fact that somebody holds some.
     const ledger = computeLedger(
       [grant('ada@example.com', 100), grant('gone@example.com', 700), grant('gone@example.com', 50)],
       [member()],
       MEMBER,
     );
 
-    expect(ledger.unlinked).toEqual({ count: 1, shares: 750 });
+    expect(ledger.unlinked).toEqual({ count: 1 });
     expect(ledger.reconciled).toBe(true);
   });
 
@@ -121,14 +160,15 @@ describe('computeLedger', () => {
     expect(json).not.toMatch(/"email"/);
   });
 
-  it('breaks a holding down by kind', () => {
-    const ledger = computeLedger(
+  it('breaks a holding down by kind, for the member’s own profile', () => {
+    // `attribute` is what the member's own Ownership tab and the organisers'
+    // Shares page both read. The directory no longer publishes any of it.
+    const { held } = attribute(
       [grant('ada@example.com', 400), grant('ada@example.com', 800, 'FOUNDER')],
       [member()],
-      MEMBER,
     );
 
-    expect(ledger.holders[0].breakdown).toEqual({ ANNUAL: 400, FOUNDER: 800 });
+    expect(held.get('u-ada')?.breakdown).toEqual({ ANNUAL: 400, FOUNDER: 800 });
   });
 
   it('carries the avatar path, so the global interceptor can sign it', () => {

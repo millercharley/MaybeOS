@@ -28,6 +28,22 @@ export class LedgerController {
     return this.ledger.getLedger(orgId, viewerFor(user, orgId));
   }
 
+  /**
+   * What the caller holds, and where it came from (MEM-24).
+   *
+   * Above `ledger/admin` is incidental; what matters is that there is no
+   * userId in the path. A member's holding is theirs to see, and a route
+   * that cannot name anybody else cannot be pointed at anybody else.
+   */
+  @Get('ledger/mine')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
+  @Roles('ADMIN', 'STAFF', 'MEMBER')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Your own shares, and every grant behind them' })
+  getMine(@Param('orgId', ParseUUIDPipe) orgId: string, @CurrentUser() user: RequestUser) {
+    return this.ledger.getMine(orgId, user.userId);
+  }
+
   /** Every member with their holding, for the admin's Shares page (MEM-19). */
   @Get('ledger/admin')
   @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
