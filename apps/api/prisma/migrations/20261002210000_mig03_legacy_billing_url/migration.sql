@@ -1,0 +1,21 @@
+-- MIG-03: where imported members still pay.
+--
+-- A co-op migrating into MaybeOS brings its members before it brings its
+-- billing. MaybeItsFate imported 426 people on 2026-10-02; every one of them
+-- is still being charged by the Stripe account they signed up through, and
+-- MaybeOS holds no subscription for any of them. Their Dues & billing page
+-- therefore offered a tier to buy and nothing at all about the money already
+-- leaving their account every month — so the one question an imported member
+-- actually has ("am I paying twice?") had no answer on the page.
+--
+-- The co-op gives MaybeOS the address of wherever that billing is managed —
+-- for MaybeItsFate, its own Stripe customer portal — and members still on the
+-- old arrangement get a link to it.
+--
+-- Nullable, and null is the ordinary case: a co-op that started on MaybeOS has
+-- no previous billing and must not be shown a link to one.
+--
+-- Idempotent: production takes this through the Supabase connector before the
+-- code ships, and dev through `prisma migrate deploy`.
+
+ALTER TABLE "organizations" ADD COLUMN IF NOT EXISTS "legacyBillingUrl" TEXT;

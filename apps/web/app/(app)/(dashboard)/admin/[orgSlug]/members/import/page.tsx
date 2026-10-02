@@ -4,6 +4,7 @@ import { use, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Upload, AlertTriangle, Check, Users, Image as ImageIcon } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
+import { useApi } from '@/hooks/use-api';
 import { api, ImportResult } from '@/lib/api';
 import { parseCsv } from '@/lib/csv';
 import { PageHeader } from '@/components/layout/page-header';
@@ -33,6 +34,44 @@ export default function ImportMembersPage(props: { params: Promise<{ orgSlug: st
   const { orgSlug } = use(props.params);
   const token = useAuthStore((s) => s.token);
   const orgId = useAuthStore((s) => s.currentOrgId);
+
+  /**
+   * Whether this co-op has said where imported members still pay (MIG-03).
+   *
+   * Asked here rather than left in Settings for somebody to find, because
+   * this is the one moment an admin is thinking about where these members
+   * came from — and because every member the import just created can now see
+   * a billing page that says nothing about the dues they are already paying.
+   */
+  const { data: org, refetch: refetchOrg } = useApi(
+    (token, id) => api.orgs.get(id, token),
+    [],
+  );
+  const [legacyUrl, setLegacyUrl] = useState('');
+  const [savingLegacy, setSavingLegacy] = useState(false);
+  const [legacySaved, setLegacySaved] = useState(false);
+  const [legacyError, setLegacyError] = useState('');
+
+  async function saveLegacyUrl() {
+    const token = useAuthStore.getState().token;
+    const value = legacyUrl.trim();
+    if (!token || !orgId || !value) return;
+    if (!/^https:\/\//i.test(value)) {
+      setLegacyError('That needs to be a full https:// address.');
+      return;
+    }
+    setSavingLegacy(true);
+    setLegacyError('');
+    try {
+      await api.orgs.update(orgId, { legacyBillingUrl: value }, token);
+      setLegacySaved(true);
+      refetchOrg();
+    } catch (err) {
+      setLegacyError(err instanceof Error ? err.message : 'Could not save that');
+    } finally {
+      setSavingLegacy(false);
+    }
+  }
 
   const [fileName, setFileName] = useState('');
   const [headers, setHeaders] = useState<string[]>([]);
@@ -424,6 +463,50 @@ export default function ImportMembersPage(props: { params: Promise<{ orgSlug: st
                 </p>
               )}
             </div>
+          )}
+
+          {/* The question only this screen is in a position to ask (MIG-03).
+              These members are already paying somebody; until MaybeOS knows
+              where, their billing page is silent about it, which is how an
+              imported member concludes they are about to be charged twice. */}
+          {!org?.legacyBillingUrl && !legacySaved && result.created > 0 && (
+            <div className="mt-4 border-t border-green-200 pt-4">
+              <p className="text-sm text-green-900">
+                <b>Where do these members pay at the moment?</b> They have no dues set up
+                in MaybeOS, so their billing page will not mention the payment they are
+                already making. Paste the address where they manage it — your old Stripe
+                customer portal, or whatever you were using — and they will see a link to
+                it until their dues move across.
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input
+                  type="url"
+                  value={legacyUrl}
+                  onChange={(e) => setLegacyUrl(e.target.value)}
+                  placeholder="https://billing.stripe.com/p/login/…"
+                  className="min-w-[16rem] flex-1 rounded border border-green-300 px-3 py-2 text-sm"
+                />
+                <button
+                  onClick={saveLegacyUrl}
+                  disabled={savingLegacy || !legacyUrl.trim()}
+                  className="btn-secondary text-sm disabled:opacity-50"
+                >
+                  {savingLegacy ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-green-800">
+                Skip it if they were not paying anywhere before. You can set it later in
+                Settings → General.
+              </p>
+              {legacyError && <p className="mt-2 text-xs text-red-700">{legacyError}</p>}
+            </div>
+          )}
+
+          {legacySaved && (
+            <p className="mt-4 border-t border-green-200 pt-4 text-sm text-green-900">
+              Saved. Imported members now see a link to it on their Dues &amp; billing page,
+              and it disappears for each of them as soon as their dues move to MaybeOS.
+            </p>
           )}
 
           <Link href={`/admin/${orgSlug}/members`} className="btn-primary mt-4 inline-block text-sm">

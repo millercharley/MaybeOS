@@ -566,6 +566,12 @@ class ApiClient {
          * Explicit null clears it; omitting the field leaves it alone.
          */
         volunteerHourValueCents?: number | null;
+        /**
+         * Where members who joined before MaybeOS still manage their billing
+         * (MIG-03). Explicit null clears it, which is what a co-op does once
+         * everyone's dues have moved across.
+         */
+        legacyBillingUrl?: string | null;
       },
       token: string,
     ) =>
@@ -2806,6 +2812,12 @@ export interface UserProfile {
       brandColor?: string | null;
       bannerUrl?: string | null;
       memberGoal?: number | null;
+      /**
+       * Where members who joined before MaybeOS still manage their billing
+       * (MIG-03). Shown only to members MaybeOS is not billing; null for a
+       * co-op that started here.
+       */
+      legacyBillingUrl?: string | null;
       /** What "today" means at this co-op, for the dashboard's event list. */
       timezone?: string;
     };
@@ -2856,6 +2868,11 @@ export interface Org {
    * what the co-op is for, and only the co-op gets to make it.
    */
   memberGoal?: number | null;
+  /**
+   * Where members who joined before MaybeOS still manage their billing
+   * (MIG-03). Absent for a co-op that started here.
+   */
+  legacyBillingUrl?: string | null;
   timezone: string;
   /**
    * Whether a stranger can join from the public page. Off by default: a

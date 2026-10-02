@@ -59,6 +59,15 @@ model Organization {
   /// what the co-op is for.
   memberGoal Int?
 
+  /// Where members who joined before MaybeOS still manage their billing
+  /// (MIG-03). A co-op migrating in brings its members before it brings its
+  /// money: those memberships have no MaybeOS subscription and are still
+  /// charged by whatever was billing them, and this is the address of that.
+  ///
+  /// Null for a co-op that started here, which must not be offered a link to
+  /// a previous arrangement it never had.
+  legacyBillingUrl String?
+
   /// A wide image across the top of the member dashboard (Charley,
   /// 2026-09-04). Public identity like the logo, and stored in the same public
   /// bucket. Null unless an admin uploads one, and then the dashboard simply

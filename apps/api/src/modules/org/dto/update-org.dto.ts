@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsBoolean, IsInt, Max, Min, ValidateIf } from 'class-validator';
+import { IsOptional, IsString, IsBoolean, IsInt, IsUrl, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import { PartialType } from '@nestjs/swagger';
 import { CreateOrgDto } from './create-org.dto';
 
@@ -113,4 +113,24 @@ export class UpdateOrgDto extends PartialType(CreateOrgDto) {
   @Min(1)
   @Max(1000000)
   memberGoal?: number | null;
+
+  /**
+   * Where members who joined before MaybeOS still manage their billing
+   * (MIG-03) — a Stripe customer portal, a membership system, whatever the
+   * co-op was using. Shown only to members MaybeOS is not billing.
+   *
+   * `https` only, and not because of eavesdropping: this link is handed to
+   * every imported member as the place to go about money, and an `http` or
+   * `javascript:` address in that position is worth refusing outright.
+   *
+   * Null clears it, which is what a co-op does once everyone has moved.
+   */
+  @ApiPropertyOptional({ example: 'https://billing.stripe.com/p/login/abc123', nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== '')
+  @IsUrl({ protocols: ['https'], require_protocol: true }, {
+    message: 'That needs to be a full https:// address',
+  })
+  @MaxLength(500)
+  legacyBillingUrl?: string | null;
 }
