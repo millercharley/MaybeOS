@@ -63,6 +63,12 @@ export class UpdateOrgDto extends PartialType(CreateOrgDto) {
   @IsBoolean()
   doorCodeEmailsEnabled?: boolean;
 
+  /** Whether MaybeOS welcomes a new member itself (MEM-17). */
+  @ApiPropertyOptional({ example: false, default: false })
+  @IsOptional()
+  @IsBoolean()
+  welcomeEmailEnabled?: boolean;
+
   /**
    * A fee the co-op adds to its own ticket sales, in cents per ticket, on top
    * of MaybeOS's (D-013). Capped at $50 — not a business rule so much as a

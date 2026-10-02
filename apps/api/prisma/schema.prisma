@@ -118,6 +118,15 @@ model Organization {
   /// switch, separate from generating them, so a co-op can fill the sheet and
   /// check it before a few hundred people get a door code in their inbox.
   doorCodeEmailsEnabled       Boolean           @default(false)
+  /// Whether MaybeOS welcomes somebody who has just become a member.
+  ///
+  /// Off by default, and its own switch for the reason every other email
+  /// switch is: a co-op moving in from another system usually already has
+  /// something sending this — MaybeItsFate had a Zapier automation wired to
+  /// Stripe, which welcomed Charley to the *old* system during a test of the
+  /// new one — and two welcomes is worse than none. This goes on when that
+  /// goes off.
+  welcomeEmailEnabled         Boolean           @default(false)
   /// Whether Radar is on for this co-op (RDR-01): a weekly digest telling a
   /// member about gatherings open to members that match what they are
   /// interested in. Off until an admin turns it on, and the switch is only
