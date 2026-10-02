@@ -209,15 +209,19 @@ export default function MemberBillingPage() {
         })
       : null;
   const ending = membership.cancelAtPeriodEnd === true;
-  const hasBillingAccount = membership.subscriptionStatus !== 'NONE';
+  // Whether Stripe is actually behind this membership — not whether the
+  // status says something other than NONE (MEM-23). An organiser can now set
+  // a $0 member to Active, and they have no Stripe customer at all: offering
+  // them "Manage billing" opens a portal session that cannot be created.
+  const hasBillingAccount = membership.stripeBilled === true;
 
   // A member with a live subscription changes tier through the Stripe Billing
   // Portal, never by checking out again — a second checkout creates a second
   // subscription and bills them twice. The API rejects it with a 409 too; this
   // just avoids offering a button that cannot work.
-  const mustUsePortal = ['ACTIVE', 'TRIALING', 'PAST_DUE'].includes(
-    membership.subscriptionStatus,
-  );
+  const mustUsePortal =
+    membership.stripeBilled === true &&
+    ['ACTIVE', 'TRIALING', 'PAST_DUE'].includes(membership.subscriptionStatus);
 
   // Imported, and still paying wherever they always did (MIG-03). MaybeOS
   // holds no subscription for them, so nothing on this page was about the

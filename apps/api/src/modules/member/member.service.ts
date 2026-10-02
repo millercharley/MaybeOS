@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { assertMemberRoom, countsAsMember, memberRoom } from './member-capacity';
 import { tierIdFor } from './import-tier';
+import { manualStatusRefusal, type ManualStatus } from './manual-status';
 import { pageWindow } from './page-window';
 import { FREE_PLAN_MEMBER_LIMIT } from '../stripe/dues-pricing';
 import {
@@ -369,6 +370,45 @@ export class MemberService {
    * So the last ADMIN cannot be demoted, and the check counts ADMINs rather
    * than trusting the caller not to be the only one.
    */
+  /**
+   * Set a membership's status by hand (MEM-23).
+   *
+   * Only where Stripe is not already answering. A manual status on a
+   * membership Stripe bills is overwritten by the next webhook — so it would
+   * tell the truth until it silently stopped, and in between it is the screen
+   * an organiser trusts.
+   */
+  async setMemberStatus(orgId: string, userId: string, status: ManualStatus) {
+    const member = await this.prisma.userOrg.findUnique({
+      where: { userId_orgId: { userId, orgId } },
+      select: { stripeSubscriptionId: true },
+    });
+
+    if (!member) {
+      throw new NotFoundException(
+        `Member not found for user "${userId}" in org "${orgId}"`,
+      );
+    }
+
+    const refusal = manualStatusRefusal(member);
+    if (refusal) throw new BadRequestException(refusal);
+
+    const updated = await this.prisma.userOrg.update({
+      where: { userId_orgId: { userId, orgId } },
+      data: {
+        subscriptionStatus: status,
+        // Set by hand, so there is no period and nothing is ending. Leaving
+        // a stale date behind would have the member's own page announce a
+        // renewal that is not going to happen.
+        cancelAtPeriodEnd: false,
+        currentPeriodEnd: null,
+      },
+      select: { userId: true, subscriptionStatus: true },
+    });
+
+    return { updated: true, subscriptionStatus: updated.subscriptionStatus };
+  }
+
   async updateMemberRole(orgId: string, userId: string, role: OrgRole) {
     const member = await this.prisma.userOrg.findUnique({
       where: { userId_orgId: { userId, orgId } },

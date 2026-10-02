@@ -249,15 +249,47 @@ describe('AuthService', () => {
       expect(select.email).toBe(true);
     });
 
-    it('does not publish a membership\'s Stripe identifiers', async () => {
+    it('never asks the database for a Stripe customer id', async () => {
       prisma.user.findUnique.mockResolvedValue({ id: 'user-1', orgs: [] } as any);
 
       await service.getProfile('user-1');
 
       const { select } = prisma.user.findUnique.mock.calls[0][0];
       expect(select.orgs.select.stripeCustomerId).toBeUndefined();
-      expect(select.orgs.select.stripeSubscriptionId).toBeUndefined();
       expect(select.orgs.select.role).toBe(true);
+    });
+
+    /**
+     * The subscription id *is* selected now, and dropped on the way out
+     * (MEM-23): the browser has to know whether Stripe is behind a
+     * membership — a $0 member set Active by hand has no Stripe customer, and
+     * offering them a billing portal opens a session that cannot be created —
+     * without ever holding the id itself.
+     *
+     * So this asserts on what is returned rather than on what was asked for,
+     * which is the stronger of the two and the one that was actually meant.
+     */
+    it('answers whether Stripe bills a membership without publishing the id', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        orgs: [
+          { orgId: 'org-1', role: 'MEMBER', stripeSubscriptionId: 'sub_123' },
+          { orgId: 'org-2', role: 'MEMBER', stripeSubscriptionId: null },
+        ],
+      } as any);
+
+      const profile: any = await service.getProfile('user-1');
+
+      expect(profile.orgs[0].stripeSubscriptionId).toBeUndefined();
+      expect(profile.orgs[1].stripeSubscriptionId).toBeUndefined();
+      expect(profile.orgs[0].stripeBilled).toBe(true);
+      expect(profile.orgs[1].stripeBilled).toBe(false);
+    });
+
+    it('survives a user who is not there', async () => {
+      prisma.user.findUnique.mockResolvedValue(null as any);
+
+      await expect(service.getProfile('nobody')).resolves.toBeNull();
     });
 
     it('should return null if user not found', async () => {

@@ -26,6 +26,8 @@ import { MemberProfileService } from './member-profile.service';
 import { CreateTierDto } from './dto/create-tier.dto';
 import { ImportMembersDto, ImportAvatarsDto } from './dto/import-members.dto';
 import { UpdateMemberRoleDto } from './dto/update-role.dto';
+import { SetMemberStatusDto } from './dto/set-member-status.dto';
+import type { ManualStatus } from './manual-status';
 import { UpdateTierDto } from './dto/update-tier.dto';
 import { ReorderTiersDto } from './dto/reorder-tiers.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
@@ -138,6 +140,26 @@ export class MemberController {
     @Body() dto: UpdateMemberRoleDto,
   ) {
     return this.memberService.updateMemberRole(orgId, userId, dto.role);
+  }
+
+  /**
+   * Set a member's status by hand (MEM-23).
+   *
+   * ADMIN only, and refused for anybody Stripe is billing — a manual status
+   * there is overwritten by the next webhook, so it tells the truth until it
+   * silently does not.
+   */
+  @Patch('members/:userId/status')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Set a member's status, where Stripe is not deciding it" })
+  setMemberStatus(
+    @Param('orgId') orgId: string,
+    @Param('userId') userId: string,
+    @Body() dto: SetMemberStatusDto,
+  ) {
+    return this.memberService.setMemberStatus(orgId, userId, dto.status as ManualStatus);
   }
 
   @Delete('members/:userId')
