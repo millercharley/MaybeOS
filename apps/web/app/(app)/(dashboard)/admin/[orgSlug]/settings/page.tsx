@@ -20,6 +20,7 @@ import { ShareTracking } from '@/components/settings/share-tracking';
 import { MemberChannels } from '@/components/settings/member-channels';
 import { DoorAccess } from '@/components/settings/door-access';
 import { WelcomeEmail } from '@/components/settings/welcome-email';
+import { SignInLinks } from '@/components/settings/sign-in-links';
 import { SocialSharing } from '@/components/settings/social-sharing';
 import { Radar } from '@/components/settings/radar';
 
@@ -373,6 +374,7 @@ export default function SettingsPage() {
         <MemberChannels orgId={org.id} orgSlug={org.slug} />
       )}
       {activeTab === 'general' && org && <WelcomeEmail org={org} onSaved={refetch} />}
+      {activeTab === 'general' && org && <SignInLinks org={org} />}
       {activeTab === 'general' && org && <DoorAccess org={org} onSaved={refetch} />}
       {activeTab === 'general' && org && <Locations orgId={org.id} />}
       {activeTab === 'general' && org && <Support orgName={org.name} />}

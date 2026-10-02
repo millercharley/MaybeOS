@@ -17,6 +17,8 @@
 
 export type BelongingEmailKindName =
   | 'WELCOME'
+  | 'INVITE'
+  | 'SIGN_IN'
   | 'BUDDY_INVITATION'
   | 'OFF_THE_HOOK'
   | 'INTRO_TO_BUDDY'
@@ -36,6 +38,8 @@ export const LINK_VARIABLES: Record<string, string> = {
   opt_out_url: 'Change my buddy settings',
   article_url: 'Read and agree',
   member_url: 'Open your member page',
+  invite_url: 'Accept the invitation',
+  sign_in_url: 'Sign in',
 };
 
 /**
@@ -49,6 +53,10 @@ export const REQUIRED_VARIABLES: Record<BelongingEmailKindName, string[]> = {
   // A welcome with nowhere to go is a dead end, so the link is not optional
   // however a co-op rewrites the words around it.
   WELCOME: ['member_url'],
+  INVITE: ['invite_url'],
+  // Without this the email is an announcement that somebody has an account
+  // and no way to open it, which is worse than not sending it.
+  SIGN_IN: ['sign_in_url'],
   BUDDY_INVITATION: ['accept_url', 'decline_url'],
   OFF_THE_HOOK: [],
   INTRO_TO_BUDDY: ['dm_url'],
@@ -59,6 +67,8 @@ export const REQUIRED_VARIABLES: Record<BelongingEmailKindName, string[]> = {
 /** Everything a co-op may use in each email, for the editor's help text. */
 export const AVAILABLE_VARIABLES: Record<BelongingEmailKindName, string[]> = {
   WELCOME: ['member_name', 'community_name', 'member_url'],
+  INVITE: ['community_name', 'inviter_name', 'invite_url', 'expiry_days'],
+  SIGN_IN: ['member_name', 'community_name', 'sign_in_url', 'expiry_days', 'member_since'],
   BUDDY_INVITATION: ['new_member_name', 'community_name', 'accept_url', 'decline_url', 'timeout_hours'],
   OFF_THE_HOOK: ['new_member_name', 'community_name', 'opt_out_url'],
   INTRO_TO_BUDDY: ['new_member_name', 'buddy_name', 'community_name', 'dm_url'],
@@ -70,6 +80,37 @@ export const DEFAULT_TEMPLATES: Record<
   BelongingEmailKindName,
   { subject: string; body: string }
 > = {
+  INVITE: {
+    subject: 'Join {{community_name}} on MaybeOS',
+    body: `{{inviter_name}} has invited you to join {{community_name}}.
+
+{{invite_url}}
+
+The link works for {{expiry_days}} days. If you were not expecting this, you can ignore it.`,
+  },
+
+  /**
+   * For somebody who is **already a member** — a co-op moving its roster in.
+   *
+   * The default says the three things that person needs in the order they
+   * need them: nothing has changed about what you pay, here is what this is,
+   * here is the way in. A co-op will write it better, which is the point of
+   * it being editable, but the shipped version must not say "welcome to the
+   * community" to somebody who has been in it since 2024.
+   */
+  SIGN_IN: {
+    subject: 'Your {{community_name}} account is ready',
+    body: `Hello {{member_name}}, {{community_name}} has moved to MaybeOS, and your membership moved with it.
+
+Nothing has changed about your dues — your payments carry on exactly as they are, and there is nothing for you to set up or re-enter.
+
+MaybeOS is where you will find what is on, book a room, read the handbook and see the rest of the community. Your account is already there, under this email address.
+
+{{sign_in_url}}
+
+The link works for {{expiry_days}} days and signs you straight in — there is no password to invent. If it expires, ask for another from the sign-in page.`,
+  },
+
   WELCOME: {
     subject: 'Welcome to {{community_name}}',
     body: `Hello {{member_name}}, you're a member of {{community_name}}.

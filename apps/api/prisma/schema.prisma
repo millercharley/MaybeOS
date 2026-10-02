@@ -127,6 +127,12 @@ model Organization {
   /// new one — and two welcomes is worse than none. This goes on when that
   /// goes off.
   welcomeEmailEnabled         Boolean           @default(false)
+  /// How long an invitation or a sign-in link stays good, in days.
+  ///
+  /// Seven is right for inviting one person and wrong for inviting a whole
+  /// co-op at once: on a wave that size, a week means somebody comes back
+  /// from a holiday to a dead link and has to ask for another (MEM-18).
+  inviteExpiryDays            Int               @default(7)
   /// Whether Radar is on for this co-op (RDR-01): a weekly digest telling a
   /// member about gatherings open to members that match what they are
   /// interested in. Off until an admin turns it on, and the switch is only
@@ -479,6 +485,12 @@ model UserOrg {
   /// other is "here is what your dues did", and a member may well want the
   /// second without the first.
   recapEmails         Boolean   @default(true)
+  /// When this member was sent a link to sign in for the first time (MEM-18).
+  ///
+  /// A marker rather than a preference, like `doorPinEmailedAt`: it is what
+  /// makes the migration send resumable and stops a second run reaching the
+  /// people the first one already did. Null means never sent.
+  signInSentAt        DateTime?
   /// When the last digest went out, so a run that happens twice in an hour
   /// does not send twice. What stops an *event* repeating is `RadarSend`.
   radarLastSentAt     DateTime?
@@ -2252,6 +2264,13 @@ enum BelongingEmailKind {
   /// email MaybeOS sends, and a second template system is how one of them
   /// ends up weaker than the other.
   WELCOME
+  /// Asking somebody who is not a member yet to join (MEM-18).
+  INVITE
+  /// Telling somebody who is *already* a member how to sign in — the email a
+  /// co-op moving in sends its whole roster (MEM-18). Its own kind rather
+  /// than a reworded invitation, because the two say opposite things: one
+  /// asks you to join, the other tells you nothing has changed.
+  SIGN_IN
   BUDDY_INVITATION
   OFF_THE_HOOK
   INTRO_TO_BUDDY

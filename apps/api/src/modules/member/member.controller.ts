@@ -29,6 +29,7 @@ import { UpdateMemberRoleDto } from './dto/update-role.dto';
 import { UpdateTierDto } from './dto/update-tier.dto';
 import { ReorderTiersDto } from './dto/reorder-tiers.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
+import { SendSignInLinksDto } from './dto/sign-in-links.dto';
 
 @ApiTags('members')
 @Controller('orgs/:orgId')
@@ -149,6 +150,17 @@ export class MemberController {
     @Param('userId') userId: string,
   ) {
     return this.memberService.removeMember(orgId, userId);
+  }
+
+  @Post('members/sign-in-links')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Tell imported members how to sign in — the migration send (MEM-18)',
+  })
+  sendSignInLinks(@Param('orgId') orgId: string, @Body() dto: SendSignInLinksDto) {
+    return this.memberService.sendSignInLinks(orgId, dto);
   }
 
   @Post('members/invite')

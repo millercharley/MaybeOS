@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { assertMemberRoom, countsAsMember, memberRoom } from './member-capacity';
 import { FREE_PLAN_MEMBER_LIMIT } from '../stripe/dues-pricing';
 import {
@@ -11,10 +12,15 @@ import {
 import { normaliseHandle } from '../social/social-caption';
 import { ConfigService } from '@nestjs/config';
 import { OrgRole } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { PUBLIC_TIER_SELECT } from './tier-view';
 import { EmailService } from '../email/email.service';
-import { DEFAULT_TEMPLATES, renderTemplate } from '../belonging/belonging-emails';
+import {
+  BelongingEmailKindName,
+  DEFAULT_TEMPLATES,
+  renderTemplate,
+} from '../belonging/belonging-emails';
 import { StripeService } from '../stripe/stripe.service';
 import { StorageService } from '../storage/storage.service';
 import { BuddyService } from '../belonging/buddy.service';
@@ -941,19 +947,20 @@ export class MemberService {
             )?.id
           : null,
         invitedBy: invitedByUserId,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() + org.inviteExpiryDays * 24 * 60 * 60 * 1000),
       },
     });
 
-    const webUrl = this.configService.get<string>('WEB_URL');
-    const inviteUrl = `${webUrl}/invite?token=${invitation.token}`;
+    const inviteUrl = `${this.webUrl()}/invite?token=${invitation.token}`;
 
-    await this.emailService.sendInvite(
-      normalizedEmail,
-      org.name,
-      inviteUrl,
-      inviter?.name || undefined,
-    );
+    const { subject, html } = await this.renderForOrg(orgId, 'INVITE', {
+      community_name: org.name,
+      inviter_name: inviter?.name || 'An organiser',
+      invite_url: inviteUrl,
+      expiry_days: String(org.inviteExpiryDays),
+    });
+
+    await this.emailService.sendRaw(normalizedEmail, subject, html);
 
     return { id: invitation.id, email: normalizedEmail, status: 'sent' };
   }
@@ -1106,6 +1113,31 @@ export class MemberService {
    * invitation — the invitation asked them to come, and this one is the first
    * thing that treats them as having arrived.
    */
+  /**
+   * The co-op's own words for one of its emails, or MaybeOS's where it has
+   * written none (MEM-17, MEM-18).
+   *
+   * Absence means "use the default" rather than a stored copy of it, so a
+   * co-op that never opens the editor keeps getting improvements to the
+   * wording instead of a snapshot of the day they joined.
+   */
+  private async renderForOrg(
+    orgId: string,
+    kind: BelongingEmailKindName,
+    values: Record<string, string>,
+  ) {
+    const custom = await this.prisma.belongingEmailTemplate.findUnique({
+      where: { orgId_kind: { orgId, kind } },
+    });
+
+    return renderTemplate(custom ?? DEFAULT_TEMPLATES[kind], values);
+  }
+
+  /** `WEB_URL`, which is what every member-facing link in this service uses. */
+  private webUrl(): string {
+    return this.configService.get<string>('WEB_URL') ?? 'https://maybeos.org';
+  }
+
   private sendWelcome(orgId: string, userId: string): void {
     void (async () => {
       const [org, user] = await Promise.all([
@@ -1124,17 +1156,10 @@ export class MemberService {
       // so a co-op that never opens the editor keeps getting improvements to
       // the wording instead of a snapshot of whatever shipped the day they
       // joined.
-      const custom = await this.prisma.belongingEmailTemplate.findUnique({
-        where: { orgId_kind: { orgId, kind: 'WELCOME' } },
-      });
-
-      const { subject, html } = renderTemplate(custom ?? DEFAULT_TEMPLATES.WELCOME, {
+      const { subject, html } = await this.renderForOrg(orgId, 'WELCOME', {
         member_name: user.name ?? 'there',
         community_name: org.name,
-        // `WEB_URL`, which is what the invitation email already uses in this
-        // service. `APP_URL` is the other half of the same inconsistency,
-        // used by EventOS and Radar; worth settling one day, not today.
-        member_url: `${this.configService.get<string>('WEB_URL') ?? 'https://maybeos.org'}/member/${org.slug}`,
+        member_url: `${this.webUrl()}/member/${org.slug}`,
       });
 
       await this.emailService.sendRaw(user.email, subject, html);
@@ -1173,18 +1198,19 @@ export class MemberService {
 
     const updated = await this.prisma.invitation.update({
       where: { id: inviteId },
-      data: { expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
+      data: { expiresAt: new Date(Date.now() + org.inviteExpiryDays * 24 * 60 * 60 * 1000) },
     });
 
-    const webUrl = this.configService.get<string>('WEB_URL');
-    const inviteUrl = `${webUrl}/invite?token=${updated.token}`;
+    const inviteUrl = `${this.webUrl()}/invite?token=${updated.token}`;
 
-    await this.emailService.sendInvite(
-      invitation.email,
-      org.name,
-      inviteUrl,
-      resender?.name || undefined,
-    );
+    const { subject, html } = await this.renderForOrg(orgId, 'INVITE', {
+      community_name: org.name,
+      inviter_name: resender?.name || 'An organiser',
+      invite_url: inviteUrl,
+      expiry_days: String(org.inviteExpiryDays),
+    });
+
+    await this.emailService.sendRaw(invitation.email, subject, html);
 
     return { id: updated.id, email: updated.email, status: 'resent' };
   }
@@ -1207,6 +1233,108 @@ export class MemberService {
    * could do. Imported members have no password and are not marked verified;
    * they sign in by magic link whenever the co-op chooses to invite them.
    */
+/** How many sign-in links one call sends. A roster goes out in batches. */
+  private static readonly SIGN_IN_BATCH = 100;
+
+  /**
+   * Tell members who are already here how to get in (MEM-18).
+   *
+   * **The email a co-op moving in sends its whole roster**, and it exists
+   * because the invitation path cannot do this job: `inviteMember` refuses
+   * anybody who already has a membership, and after an import all of them
+   * do. An imported member has an account with no password and has belonged
+   * to the co-op for years. Inviting them to join something they are already
+   * part of is the wrong sentence; this one says nothing has changed and
+   * here is the way in.
+   *
+   * **Who gets it:** members who have never set a password and have never
+   * been sent one of these. That is the honest reading of "has no way in
+   * yet" — somebody who has signed in, by password or by asking for a link,
+   * does not need telling.
+   *
+   * **Marked before sending**, like door codes and the Radar digest, because
+   * `EmailService` swallows failures: the only thing a marker can honestly
+   * mean is that we tried. A member missed once is better than a roster
+   * emailed twice.
+   *
+   * The link is a magic link with the co-op's own expiry rather than the
+   * fifteen minutes a self-service one gets — an email read the next morning
+   * has to still work. It signs them straight in; there is no password to
+   * invent.
+   */
+  async sendSignInLinks(
+    orgId: string,
+    options: { limit?: number; dryRun?: boolean } = {},
+  ): Promise<{ sent: number; remaining: number; recipients: string[]; dryRun: boolean }> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { id: true, name: true, inviteExpiryDays: true },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    const where: Prisma.UserOrgWhereInput = {
+      orgId,
+      role: { in: ['ADMIN', 'STAFF', 'MEMBER'] },
+      signInSentAt: null,
+      // Never set a password, so they have no way in yet. Somebody who has
+      // signed in — by password or by asking for a link — does not need
+      // telling how.
+      user: { passwordHash: null },
+    };
+
+    const limit = Math.min(options.limit ?? MemberService.SIGN_IN_BATCH, MemberService.SIGN_IN_BATCH);
+
+    const waiting = await this.prisma.userOrg.findMany({
+      where,
+      select: { id: true, userId: true, user: { select: { email: true, name: true } } },
+      orderBy: { memberSince: 'asc' },
+      take: limit,
+    });
+
+    const total = await this.prisma.userOrg.count({ where });
+
+    if (options.dryRun) {
+      return {
+        sent: 0,
+        remaining: total,
+        recipients: waiting.map((m) => m.user.email),
+        dryRun: true,
+      };
+    }
+
+    const expiry = new Date(Date.now() + org.inviteExpiryDays * 24 * 60 * 60 * 1000);
+    let sent = 0;
+
+    for (const member of waiting) {
+      if (!member.user?.email) continue;
+
+      const token = randomUUID();
+
+      await this.prisma.$transaction([
+        this.prisma.user.update({
+          where: { id: member.userId },
+          data: { magicLinkToken: token, magicLinkExpiry: expiry },
+        }),
+        this.prisma.userOrg.update({
+          where: { id: member.id },
+          data: { signInSentAt: new Date() },
+        }),
+      ]);
+
+      const { subject, html } = await this.renderForOrg(orgId, 'SIGN_IN', {
+        member_name: member.user.name ?? 'there',
+        community_name: org.name,
+        sign_in_url: `${this.webUrl()}/magic-link?token=${token}`,
+        expiry_days: String(org.inviteExpiryDays),
+      });
+
+      await this.emailService.sendRaw(member.user.email, subject, html);
+      sent += 1;
+    }
+
+    return { sent, remaining: Math.max(0, total - sent), recipients: [], dryRun: false };
+  }
+
   async importMembers(orgId: string, rows: ImportMemberRowDto[]) {
     const results = {
       created: 0,

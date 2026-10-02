@@ -34,6 +34,9 @@ describe('MemberService — invitations with a tier', () => {
 
   beforeEach(async () => {
     prisma = {
+      // The invitation goes out in the co-op's own words now (MEM-18), so the
+      // service reads the template store on its way past.
+      belongingEmailTemplate: { findUnique: jest.fn().mockResolvedValue(null) },
       invitation: {
         findUnique: jest.fn().mockResolvedValue(invitation()),
         findFirst: jest.fn().mockResolvedValue(null),
@@ -55,7 +58,8 @@ describe('MemberService — invitations with a tier', () => {
       providers: [
         MemberService,
         { provide: PrismaService, useValue: prisma },
-        { provide: EmailService, useValue: { sendInvite: jest.fn() } },
+        // Rendered from the co-op's template and sent raw now (MEM-18).
+        { provide: EmailService, useValue: { sendRaw: jest.fn() } },
         { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },
         { provide: StripeService, useValue: {} },
         { provide: StorageService, useValue: {} },
