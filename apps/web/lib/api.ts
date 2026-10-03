@@ -1282,6 +1282,32 @@ class ApiClient {
       return this.request<PaginatedResponse<Event>>(`/orgs/${orgId}/events?${query}`, { token });
     },
 
+    /**
+     * Repeat an event, holding its rooms for each one (EVT-37).
+     *
+     * `dryRun` defaults to true in the API: a weekly event for a year is
+     * fifty-two events and fifty-two reservations.
+     */
+    repeat: (
+      orgId: string,
+      eventId: string,
+      body: {
+        frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
+        interval?: number;
+        weekdays?: number[];
+        count?: number;
+        until?: string;
+        withRooms?: boolean;
+        dryRun?: boolean;
+      },
+      token: string,
+    ) =>
+      this.request<RepeatResult>(`/orgs/${orgId}/events/${eventId}/repeat`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        token,
+      }),
+
     /** Room reservations this member could attach to an event (SPC-27). */
     attachableRooms: (
       orgId: string,
@@ -3732,6 +3758,19 @@ export interface Event {
 function eventUpdateBody<T extends { publish?: boolean }>(data: T): Omit<T, 'publish'> {
   const { publish: _publish, ...rest } = data;
   return rest;
+}
+
+/** What repeating an event would do, or did (EVT-37). */
+export interface RepeatResult {
+  dryRun: boolean;
+  /** How many *new* ones; the event you started from is not counted. */
+  occurrences: number;
+  firstOn: string | null;
+  lastOn: string | null;
+  /** Dates where the room is already taken, and so was not booked. */
+  roomClashes: number;
+  roomsHeld?: number;
+  summary?: string;
 }
 
 /** A room reservation an event could claim (SPC-27). */

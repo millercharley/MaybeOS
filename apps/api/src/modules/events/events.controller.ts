@@ -25,6 +25,7 @@ import { MarkPayoutPaidDto, SetShareDto } from './dto/host-payout.dto';
 import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
 import { EventHostDto } from './dto/event-host.dto';
+import { RepeatEventDto } from './dto/repeat-event.dto';
 import { ListEventsQueryDto } from './dto/list-events.dto';
 import { WalkInDto } from './dto/walk-in.dto';
 import { PublishBookingEventDto } from './dto/publish-booking-event.dto';
@@ -593,6 +594,33 @@ export class EventsController {
       { userId: user.userId, isOrganiser: isStaff(user, orgId) },
       { eventId, from, to },
     );
+  }
+
+  /**
+   * Repeat this event, holding its rooms for each one (EVT-37).
+   *
+   * `dryRun` defaults to true in the service, like every other bulk write
+   * here: a weekly event for a year is fifty-two rows and fifty-two room
+   * reservations, and looking before writing is the habit.
+   *
+   * Not `@Roles`: whoever may edit the event may repeat it, which is the
+   * host, a co-host, the creator or an organiser — and none of those is a
+   * role.
+   */
+  @Post('orgs/:orgId/events/:eventId/repeat')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Repeat an event, with its rooms' })
+  async repeat(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Body() dto: RepeatEventDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.eventsService.repeat(orgId, eventId, dto, {
+      userId: user.userId,
+      isStaff: isStaff(user, orgId),
+    });
   }
 
   /* ─── Cancel Event ──────────────────────────────────────────── */
