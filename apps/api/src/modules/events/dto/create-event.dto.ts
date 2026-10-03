@@ -1,5 +1,6 @@
 import { MaturityLevel } from '@prisma/client';
 import {
+  ArrayMaxSize,
   IsString,
   IsOptional,
   IsDateString,
@@ -157,6 +158,21 @@ export class CreateEventDto {
   @IsOptional()
   @IsBoolean()
   hasCost?: boolean;
+
+  /**
+   * Who else is running it (EVT-36).
+   *
+   * The whole list, not a change to it: the form holds co-hosts alongside the
+   * title and the times and sends what it ended up with, so cancelling the
+   * form leaves the event alone. Sending `[]` clears them; omitting it
+   * entirely leaves them as they are.
+   */
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsUUID('4', { each: true })
+  coHostIds?: string[];
 
   /**
    * What the host suggests at the door, in cents (EVT-34).
@@ -327,6 +343,21 @@ export class UpdateEventDto {
   @IsOptional()
   @IsBoolean()
   hasCost?: boolean;
+
+  /**
+   * Who else is running it (EVT-36).
+   *
+   * The whole list, not a change to it: the form holds co-hosts alongside the
+   * title and the times and sends what it ended up with, so cancelling the
+   * form leaves the event alone. Sending `[]` clears them; omitting it
+   * entirely leaves them as they are.
+   */
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsUUID('4', { each: true })
+  coHostIds?: string[];
 
   /**
    * What the host suggests at the door, in cents (EVT-34).

@@ -122,3 +122,39 @@ describe('what a member is told about paying at the door', () => {
     expect(doorCost({ hasCost: true, priceCents: 1500, suggestedCents: 1000 })).toBeNull();
   });
 });
+
+/**
+ * Naming co-hosts while making the event (EVT-36).
+ *
+ * They were only on the event's own page, so adding one while creating an
+ * event meant saving it, going to find it, and adding them there.
+ */
+describe('co-hosts on the form', () => {
+  it('can be searched for and added', () => {
+    expect(form).toMatch(/Anyone else running it\?/);
+    expect(form).toMatch(/Search for a co-host…/);
+  });
+
+  it('can be taken off again', () => {
+    expect(form).toMatch(/current\.filter\(\(c\) => c\.id !== co\.id\)/);
+  });
+
+  it('does not offer the host or anybody already added', () => {
+    expect(form).toMatch(/exclude=\{\[\.\.\.\(hostId \? \[hostId\] : \[\]\), \.\.\.coHosts\.map/);
+  });
+
+  it('sends the whole list, so removing somebody is a save', () => {
+    expect(form).toMatch(/coHostIds: coHosts\.map\(\(c\) => c\.id\)/);
+  });
+
+  it('starts from whoever is already on the event', () => {
+    expect(form).toMatch(/\(initial\?\.coHosts \?\? \[\]\)\.map/);
+  });
+
+  it('shows the host’s real name, not a placeholder', () => {
+    // `hosts` is a page of members and the current host is often not on it,
+    // which is how this read the literal words "Current host".
+    expect(form).toMatch(/initial\?\.host\?\.name \?\?/);
+    expect(form).not.toMatch(/'Current host'/);
+  });
+});

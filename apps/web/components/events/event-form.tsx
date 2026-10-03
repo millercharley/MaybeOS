@@ -30,6 +30,13 @@ import { MATURITY_LEVELS, type MaturityLevel } from '@/lib/maturity';
 export interface EventFormValues extends CreateEventData {
   publish?: boolean;
   maturityLevel?: MaturityLevel;
+  /**
+   * Read, never sent. The form takes an `Event` as its starting values, and
+   * these two are how it knows who is already running it (EVT-36) — `hosts`
+   * is a page of members and the current host is often not on it.
+   */
+  host?: { id: string; name?: string } | null;
+  coHosts?: { userId: string; user: { name?: string | null } }[];
 }
 
 /** MaybeOS's per-transaction fee by plan, in cents (D-013). */
@@ -173,9 +180,27 @@ export function EventForm({
     initial?.maturityLevel ?? 'ALL_AGES',
   );
   const [hostId, setHostId] = useState(initial?.hostId ?? '');
-  /** Shown while the picker is idle, so the field says who it is set to. */
+  /**
+   * Shown while the picker is idle, so the field says who it is set to.
+   *
+   * From the event itself first: `hosts` is a page of members and the current
+   * host is often not on it, which is how this read the literal words
+   * "Current host" on a real event.
+   */
   const [hostName, setHostName] = useState<string | null>(
-    initial?.hostId ? (hosts?.find((h) => h.id === initial.hostId)?.name ?? 'Current host') : null,
+    initial?.host?.name ??
+      (initial?.hostId ? (hosts?.find((h) => h.id === initial.hostId)?.name ?? null) : null),
+  );
+
+  /**
+   * Everybody else running it (EVT-36).
+   *
+   * Held here and sent with the rest of the form rather than written as each
+   * one is picked, so cancelling the form leaves the event alone — the same
+   * bargain every other field on it makes.
+   */
+  const [coHosts, setCoHosts] = useState<{ id: string; name: string }[]>(
+    (initial?.coHosts ?? []).map((c) => ({ id: c.userId, name: c.user.name ?? 'Member' })),
   );
   const [localError, setLocalError] = useState('');
 
@@ -239,6 +264,8 @@ export function EventForm({
       maturityLevel,
       priceCents,
       ...(hosts && hostId ? { hostId } : {}),
+      // The whole list, so removing somebody is a save (EVT-36).
+      ...(hosts ? { coHostIds: coHosts.map((c) => c.id) } : {}),
       publish,
     });
   }
@@ -392,6 +419,54 @@ export function EventForm({
           <p className="mt-1 text-xs text-gray-500">
             They get the post-event follow-up and can edit the event themselves.
           </p>
+
+          {/* Co-hosts, on the same form (EVT-36). They were only on the
+              event's own page, so naming them while making an event meant
+              saving it and going to find it. */}
+          <div className="mt-4 border-t border-gray-100 pt-4">
+            <span className="mb-1 block text-sm font-medium text-gray-900">
+              Anyone else running it?
+            </span>
+
+            {coHosts.length > 0 && (
+              <ul className="mb-2 flex flex-wrap gap-2">
+                {coHosts.map((co) => (
+                  <li
+                    key={co.id}
+                    className="inline-flex items-center gap-2 rounded-full border border-gray-200 py-1 pl-3 pr-2 text-sm"
+                  >
+                    {co.name}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${co.name}`}
+                      onClick={() => setCoHosts((current) => current.filter((c) => c.id !== co.id))}
+                      className="text-gray-400 hover:text-red-700"
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <MemberPicker
+              orgId={orgId}
+              placeholder="Search for a co-host…"
+              exclude={[...(hostId ? [hostId] : []), ...coHosts.map((c) => c.id)]}
+              onPick={(member) =>
+                setCoHosts((current) =>
+                  current.some((c) => c.id === member.user.id)
+                    ? current
+                    : [...current, { id: member.user.id, name: member.user.name ?? 'Member' }],
+                )
+              }
+            />
+
+            <p className="mt-1 text-xs text-gray-500">
+              They can edit the event and see who is coming, but not hand it to somebody
+              else.
+            </p>
+          </div>
         </div>
       )}
 

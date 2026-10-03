@@ -15,7 +15,14 @@ import type { EventFormValues } from '@/components/events/event-form';
  */
 export function toUpdatePayload(
   values: EventFormValues,
-): Omit<EventFormValues, 'publish'> {
-  const { publish: _publish, ...changes } = values;
+): Omit<EventFormValues, 'publish' | 'host' | 'coHosts'> {
+  /*
+    `host` and `coHosts` are read by the form and never sent (EVT-36): they
+    are how it knows who is already running the event, and the API rejects
+    any field it was not told about — "property host should not exist", which
+    is how the calendar import's cursor stopped a run (CAL-08). The co-host
+    list travels as `coHostIds`.
+  */
+  const { publish: _publish, host: _host, coHosts: _coHosts, ...changes } = values;
   return changes;
 }
