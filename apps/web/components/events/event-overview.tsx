@@ -12,7 +12,10 @@ import {
   Ticket,
   Users,
 } from 'lucide-react';
-import type { Event, TicketSale } from '@/lib/api';
+import { useState } from 'react';
+import { api, type Event, type TicketSale } from '@/lib/api';
+import { useAuthStore } from '@/lib/auth-store';
+import { MemberPicker } from '@/components/member/member-picker';
 import { money } from '@/lib/fees';
 import { MemberName } from '@/components/member/member-name';
 
@@ -32,12 +35,47 @@ import { MemberName } from '@/components/member/member-name';
 export function EventOverview({
   event,
   orgSlug,
+  orgId,
   tickets,
+  canManageHosts = false,
+  onChanged,
 }: {
   event: Event;
   orgSlug: string;
+  orgId?: string;
   tickets?: TicketSale[];
+  /**
+   * Whether this reader may say who runs it (EVT-32) — an organiser, the
+   * host, or whoever created it. The API decides the same thing again; this
+   * keeps controls that would be refused off the screen.
+   */
+  canManageHosts?: boolean;
+  onChanged?: () => void;
 }) {
+  const token = useAuthStore((s) => s.token);
+  const [changingHost, setChangingHost] = useState(false);
+  const [addingCoHost, setAddingCoHost] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [hostError, setHostError] = useState('');
+
+  const coHosts = event.coHosts ?? [];
+
+  async function run(work: () => Promise<unknown>) {
+    setBusy(true);
+    setHostError('');
+    try {
+      await work();
+      setChangingHost(false);
+      setAddingCoHost(false);
+      onChanged?.();
+    } catch (err) {
+      // The API refuses somebody who is not a member, the host added as their
+      // own co-host, and a reader who may not decide this. Each says why.
+      setHostError(err instanceof Error ? err.message : 'That did not work');
+    } finally {
+      setBusy(false);
+    }
+  }
   const start = new Date(event.startTime);
   const end = event.endTime ? new Date(event.endTime) : null;
 
@@ -79,9 +117,25 @@ export function EventOverview({
         </div>
       </div>
 
-      {/* Who is running it, and a way to ask them something (EVT-31). */}
+      {/* Who is running it, and a way to ask them something (EVT-31, EVT-32). */}
       <div className="rounded-xl border border-gray-200 p-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Host</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Host</p>
+          {canManageHosts && orgId && (
+            <button
+              type="button"
+              onClick={() => {
+                setChangingHost(!changingHost);
+                setAddingCoHost(false);
+                setHostError('');
+              }}
+              className="text-xs font-medium text-brand-600 hover:underline"
+            >
+              {changingHost ? 'Cancel' : 'Change host'}
+            </button>
+          )}
+        </div>
+
         {event.host?.id ? (
           <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm font-medium text-gray-900">
@@ -103,6 +157,98 @@ export function EventOverview({
               : 'Nobody is set as the host.'}
           </p>
         )}
+
+        {changingHost && orgId && (
+          <div className="mt-3">
+            <MemberPicker
+              orgId={orgId}
+              busy={busy}
+              placeholder="Who should run this event?"
+              exclude={event.host?.id ? [event.host.id] : []}
+              onPick={(member) =>
+                run(() => api.events.setHost(orgId, event.id, member.user.id, token ?? ''))
+              }
+            />
+          </div>
+        )}
+
+        {/* Everyone else running it (EVT-32). */}
+        <div className="mt-4 border-t border-gray-100 pt-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+              Co-hosts
+            </p>
+            {canManageHosts && orgId && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAddingCoHost(!addingCoHost);
+                  setChangingHost(false);
+                  setHostError('');
+                }}
+                className="text-xs font-medium text-brand-600 hover:underline"
+              >
+                {addingCoHost ? 'Cancel' : 'Add a co-host'}
+              </button>
+            )}
+          </div>
+
+          {coHosts.length === 0 ? (
+            <p className="mt-2 text-sm text-gray-500">Nobody else is running this one.</p>
+          ) : (
+            <ul className="mt-2 space-y-2">
+              {coHosts.map((co) => (
+                <li key={co.userId} className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="text-sm text-gray-900">
+                    <MemberName userId={co.userId} name={co.user.name ?? 'Member'} />
+                  </span>
+                  <span className="flex items-center gap-3">
+                    <Link
+                      href={`/portal/${orgSlug}/messages/${co.userId}`}
+                      className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-brand-600"
+                    >
+                      <MessageCircle className="h-3.5 w-3.5" />
+                      Message
+                    </Link>
+                    {canManageHosts && orgId && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          run(() =>
+                            api.events.removeCoHost(orgId, event.id, co.userId, token ?? ''),
+                          )
+                        }
+                        className="text-xs text-gray-500 hover:text-red-700 disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {addingCoHost && orgId && (
+            <div className="mt-3">
+              <MemberPicker
+                orgId={orgId}
+                busy={busy}
+                placeholder="Who else is running it?"
+                exclude={[
+                  ...(event.host?.id ? [event.host.id] : []),
+                  ...coHosts.map((c) => c.userId),
+                ]}
+                onPick={(member) =>
+                  run(() => api.events.addCoHost(orgId, event.id, member.user.id, token ?? ''))
+                }
+              />
+            </div>
+          )}
+        </div>
+
+        {hostError && <p className="mt-3 text-sm text-red-700">{hostError}</p>}
       </div>
 
       <dl className="grid gap-4 sm:grid-cols-2">

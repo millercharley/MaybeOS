@@ -1280,6 +1280,28 @@ class ApiClient {
       return this.request<PaginatedResponse<Event>>(`/orgs/${orgId}/events?${query}`, { token });
     },
 
+    /** Hand an event to a different host (EVT-32). */
+    setHost: (orgId: string, eventId: string, userId: string, token: string) =>
+      this.request<{ hostId: string }>(`/orgs/${orgId}/events/${eventId}/host`, {
+        method: 'PATCH',
+        body: JSON.stringify({ userId }),
+        token,
+      }),
+
+    /** Somebody else running it alongside the host (EVT-32). */
+    addCoHost: (orgId: string, eventId: string, userId: string, token: string) =>
+      this.request<{ added: boolean }>(`/orgs/${orgId}/events/${eventId}/co-hosts`, {
+        method: 'POST',
+        body: JSON.stringify({ userId }),
+        token,
+      }),
+
+    removeCoHost: (orgId: string, eventId: string, userId: string, token: string) =>
+      this.request<{ removed: boolean }>(
+        `/orgs/${orgId}/events/${eventId}/co-hosts/${userId}`,
+        { method: 'DELETE', token },
+      ),
+
     /** Take it off the members' lists, keeping everything (EVT-30). */
     unpublish: (orgId: string, eventId: string, token: string) =>
       this.request<{ hidden: boolean }>(`/orgs/${orgId}/events/${eventId}/unpublish`, {
@@ -3620,6 +3642,17 @@ export interface Event {
    * which is true of every event created before the column existed.
    */
   host?: { id: string; name?: string; avatarUrl?: string } | null;
+  /**
+   * Everybody else running it (EVT-32). A co-op's events are rarely one
+   * person's, and `host` could only ever name one of them.
+   */
+  coHosts?: { userId: string; user: { id: string; name?: string | null; avatarUrl?: string | null } }[];
+  /**
+   * Who made it, which is not who runs it (EVT-32). The host starts as the
+   * creator and can be handed on; this is what keeps the creator's own
+   * ability to correct the event afterwards.
+   */
+  createdById?: string | null;
   /**
    * Who ran it, when they are not a member here (CAL-03).
    *

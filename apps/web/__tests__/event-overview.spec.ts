@@ -93,16 +93,17 @@ describe('where it is rendered', () => {
     expect(doorList).toMatch(/<EventOverview\s+event=\{event\}/);
   });
 
-  it('is not on the host’s copy, which is only the door', () => {
-    // A host stands at the door with one hand free; they do not need the
-    // ticket takings above the list of names.
-    expect(doorList).toMatch(/\{overviewFor && event && \(/);
-
+  it('is on the host’s own copy too, without the takings', () => {
+    // The host and the creator may say who runs the event (EVT-32), and this
+    // is where they would look. Who paid, and refunding them, still stays
+    // with the co-op's organisers.
     const hostPage = readFileSync(
       join(WEB, 'app', '(app)', '(dashboard)', 'member', '[orgSlug]', 'events', '[eventId]', 'page.tsx'),
       'utf8',
     );
-    expect(hostPage).not.toMatch(/overviewFor/);
+
+    expect(hostPage).toMatch(/overviewFor=\{orgSlug\}/);
+    expect(hostPage).not.toMatch(/showTickets/);
   });
 });
 

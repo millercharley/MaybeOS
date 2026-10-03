@@ -24,6 +24,7 @@ import { HostPayoutService } from './host-payout.service';
 import { MarkPayoutPaidDto, SetShareDto } from './dto/host-payout.dto';
 import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
+import { EventHostDto } from './dto/event-host.dto';
 import { ListEventsQueryDto } from './dto/list-events.dto';
 import { WalkInDto } from './dto/walk-in.dto';
 import { PublishBookingEventDto } from './dto/publish-booking-event.dto';
@@ -507,6 +508,62 @@ export class EventsController {
     @Param('eventId', ParseUUIDPipe) eventId: string,
   ) {
     return this.eventsService.deleteEvent(orgId, eventId);
+  }
+
+  /**
+   * Who runs this event (EVT-32).
+   *
+   * Not `@Roles`: the guard is in the service, because the answer is not a
+   * role. An organiser may, the host may because it is their event, and
+   * whoever created it may — which no role expresses, and which is the case
+   * that matters when an organiser makes an event on a member's behalf.
+   */
+  @Patch('orgs/:orgId/events/:eventId/host')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Hand an event to a different host' })
+  async setHost(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Body() dto: EventHostDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.eventsService.setHost(orgId, eventId, dto.userId, {
+      userId: user.userId,
+      isOrganiser: isStaff(user, orgId),
+    });
+  }
+
+  @Post('orgs/:orgId/events/:eventId/co-hosts')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add somebody to run an event alongside the host' })
+  async addCoHost(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Body() dto: EventHostDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.eventsService.addCoHost(orgId, eventId, dto.userId, {
+      userId: user.userId,
+      isOrganiser: isStaff(user, orgId),
+    });
+  }
+
+  @Delete('orgs/:orgId/events/:eventId/co-hosts/:userId')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Take somebody off an event' })
+  async removeCoHost(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.eventsService.removeCoHost(orgId, eventId, userId, {
+      userId: user.userId,
+      isOrganiser: isStaff(user, orgId),
+    });
   }
 
   /* ─── Cancel Event ──────────────────────────────────────────── */

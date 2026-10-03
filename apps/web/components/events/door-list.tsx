@@ -40,6 +40,7 @@ export function DoorList({
   backHref,
   showTickets = false,
   overviewFor,
+  hostsIfMine = false,
 }: {
   eventId: string;
   backHref: string;
@@ -53,9 +54,16 @@ export function DoorList({
    * total cannot drift from what the door is showing.
    */
   overviewFor?: string;
+  /**
+   * Offer the host controls when this reader is the host or the creator
+   * (EVT-32) — the member's own copy, where an organiser's role guard does
+   * not apply. The API checks it again either way.
+   */
+  hostsIfMine?: boolean;
 }) {
   const token = useAuthStore((s) => s.token);
   const orgId = useAuthStore((s) => s.currentOrgId);
+  const me = useAuthStore((s) => s.user?.id);
 
   const [list, setList] = useState<DoorListData | null>(null);
   // The page never said which event you were checking people into — the
@@ -213,7 +221,19 @@ export function DoorList({
         <EventOverview
           event={event}
           orgSlug={overviewFor}
+          orgId={orgId ?? undefined}
           tickets={showTickets ? tickets : undefined}
+          // An organiser reaches this page through the admin console, which
+          // is already behind a role guard; the API checks it again, and
+          // refuses the host or creator nothing (EVT-32).
+          canManageHosts={
+            showTickets ||
+            (hostsIfMine &&
+              Boolean(
+                me && (me === event.host?.id || me === event.createdById),
+              ))
+          }
+          onChanged={load}
         />
       )}
 
