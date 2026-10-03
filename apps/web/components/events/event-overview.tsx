@@ -19,6 +19,7 @@ import { useState } from 'react';
 import { api, type Event, type TicketSale } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { MemberPicker } from '@/components/member/member-picker';
+import { RepeatEvent } from '@/components/events/repeat-event';
 import { money } from '@/lib/fees';
 import { MemberName } from '@/components/member/member-name';
 
@@ -332,6 +333,14 @@ export function EventOverview({
       {/* Acting on it from the page you opened to look at it (EVT-35). These
           lived only on the Events list, so an organiser who had opened an
           event had to go back to change anything about it. */}
+      {/* Repeating it, and holding its rooms each time (EVT-37). Whoever may
+          edit the event may repeat it. */}
+      {canManageHosts && orgId && (
+        <div className="border-t border-gray-100 pt-4">
+          <RepeatEvent orgId={orgId} event={event} onChangedDone={onChanged} />
+        </div>
+      )}
+
       {(onEdit || canRemove) && (
         <div className="flex flex-wrap items-center gap-4 border-t border-gray-100 pt-4">
           {onEdit && (

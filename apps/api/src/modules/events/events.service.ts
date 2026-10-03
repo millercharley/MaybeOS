@@ -15,6 +15,8 @@ import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
 import { canEditEvent, canManageHosts, coHostProblem, NOT_YOURS, NOT_YOUR_EVENT } from './host-control';
 import { attachProblem, whoseRoomsCount } from './event-rooms';
+import { describeRecurrence, occurrencesOf } from './recurrence';
+import { RepeatEventDto } from './dto/repeat-event.dto';
 import { PublishBookingEventDto } from './dto/publish-booking-event.dto';
 import { ConnectService } from '../stripe/connect.service';
 import ical, { ICalCalendarMethod } from 'ical-generator';
@@ -1284,6 +1286,214 @@ export class EventsService {
       ...withRsvpCount(event),
       isPast: event.endTime < new Date(),
     }));
+  }
+
+  /**
+   * Repeat an event, and hold its rooms for each one (EVT-37).
+   *
+   * Materialised: every occurrence is its own event, with the first as its
+   * parent. An event carries RSVPs, tickets, a picture and a room — a rule
+   * cannot hold any of those, and a room either is or is not free on the
+   * 14th.
+   *
+   * **Rooms are the hard part, and the reason this is not a calendar's
+   * repeat.** A room is exclusive. Each date is checked against what the
+   * building already has, and a clash is reported rather than booked: an
+   * organiser needs to know the 14th is taken now, not in November. The event
+   * is still made for that date — somebody can move the room or hold it
+   * elsewhere — and the reply says which ones have no room.
+   *
+   * `dryRun` first, like every other bulk thing here.
+   */
+  async repeat(
+    orgId: string,
+    eventId: string,
+    dto: RepeatEventDto,
+    actor: { userId: string; isStaff: boolean },
+  ) {
+    const source = await this.loadEventForActor(orgId, eventId, actor.userId, actor.isStaff);
+
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { timezone: true },
+    });
+    const timeZone = org?.timezone ?? 'America/New_York';
+
+    // Through its org, not by bare id: the caller writes the URL, so being a
+    // member of the org they named proves nothing about this event.
+    const full = await this.prisma.event.findFirst({
+      where: { id: eventId, orgId },
+      include: {
+        coHosts: { select: { userId: true } },
+        rooms: { select: { id: true, roomId: true, startTime: true, endTime: true } },
+      },
+    });
+    if (!full) throw new NotFoundException('Event not found');
+
+    const starts = occurrencesOf(
+      full.startTime,
+      {
+        frequency: dto.frequency,
+        interval: dto.interval,
+        weekdays: dto.weekdays,
+        count: dto.count,
+        until: dto.until ? new Date(dto.until) : undefined,
+      },
+      timeZone,
+    );
+
+    // The first is the event that already exists.
+    const rest = starts.slice(1);
+    const lengthMs = full.endTime.getTime() - full.startTime.getTime();
+    const wantRooms = dto.withRooms !== false && full.rooms.length > 0;
+
+    const planned: Array<{
+      startTime: Date;
+      endTime: Date;
+      rooms: Array<{ roomId: string; startTime: Date; endTime: Date; free: boolean }>;
+    }> = [];
+
+    for (const start of rest) {
+      const end = new Date(start.getTime() + lengthMs);
+      const rooms: Array<{ roomId: string; startTime: Date; endTime: Date; free: boolean }> = [];
+
+      if (wantRooms) {
+        for (const held of full.rooms) {
+          // Each room keeps its own offset from the event's start, so a
+          // set-up booking that begins an hour early stays an hour early.
+          const offset = held.startTime.getTime() - full.startTime.getTime();
+          const roomStart = new Date(start.getTime() + offset);
+          const roomEnd = new Date(
+            roomStart.getTime() + (held.endTime.getTime() - held.startTime.getTime()),
+          );
+          /*
+            Is the room free then?
+
+            The same question `SpaceService.checkConflicts` answers, asked
+            here rather than through it: importing the space module into
+            events for one query would tie two large modules together, and
+            the rule is three lines — anything approved, pending, or holding
+            a paid slot that has not expired, overlapping this window.
+          */
+          const clash = await this.prisma.booking.findFirst({
+            where: {
+              roomId: held.roomId,
+              OR: [
+                { status: { in: ['APPROVED', 'PENDING'] } },
+                { status: 'PENDING_PAYMENT', holdExpiresAt: { gt: new Date() } },
+              ],
+              startTime: { lt: roomEnd },
+              endTime: { gt: roomStart },
+            },
+            select: { id: true },
+          });
+          rooms.push({ roomId: held.roomId, startTime: roomStart, endTime: roomEnd, free: !clash });
+        }
+      }
+
+      planned.push({ startTime: start, endTime: end, rooms });
+    }
+
+    const clashes = planned.filter((p) => p.rooms.some((r) => !r.free)).length;
+
+    if (dto.dryRun !== false) {
+      return {
+        dryRun: true,
+        occurrences: planned.length,
+        firstOn: planned[0]?.startTime ?? null,
+        lastOn: planned[planned.length - 1]?.startTime ?? null,
+        roomClashes: clashes,
+        summary: describeRecurrence(
+          { frequency: dto.frequency, interval: dto.interval, weekdays: dto.weekdays },
+          planned.length + 1,
+        ),
+      };
+    }
+
+    let made = 0;
+    let roomsHeld = 0;
+
+    for (const occurrence of planned) {
+      const created = await this.prisma.event.create({
+        data: {
+          orgId,
+          parentEventId: full.parentEventId ?? full.id,
+          title: full.title,
+          slug: await this.slugForRepeat(orgId, full.slug, occurrence.startTime),
+          description: full.description,
+          startTime: occurrence.startTime,
+          endTime: occurrence.endTime,
+          timezone: full.timezone,
+          visibility: full.visibility,
+          category: full.category,
+          tags: full.tags,
+          capacity: full.capacity,
+          waitlistEnabled: full.waitlistEnabled,
+          hostId: full.hostId,
+          createdById: actor.userId,
+          hasCost: full.hasCost,
+          suggestedCents: full.suggestedCents,
+          priceCents: full.priceCents,
+          currency: full.currency,
+          maturityLevel: full.maturityLevel,
+          locationId: full.locationId,
+          roomId: full.roomId,
+          imageUrl: full.imageUrl,
+          imageCredit: full.imageCredit,
+          imageCreditUrl: full.imageCreditUrl,
+          // Drafts, every one. A series going live the moment it is made
+          // would announce fifty-two evenings into the Commons at once
+          // (EVT-23), and an organiser wants to look at the dates first.
+          isPublished: false,
+          coHosts: {
+            create: full.coHosts.map((c) => ({ userId: c.userId, addedById: actor.userId })),
+          },
+        },
+        select: { id: true },
+      });
+      made += 1;
+
+      for (const room of occurrence.rooms) {
+        if (!room.free) continue;
+        await this.prisma.booking.create({
+          data: {
+            roomId: room.roomId,
+            userId: full.hostId ?? actor.userId,
+            eventId: created.id,
+            title: full.title,
+            startTime: room.startTime,
+            endTime: room.endTime,
+            status: 'APPROVED',
+            visibility: 'PRIVATE',
+          },
+        });
+        roomsHeld += 1;
+      }
+    }
+
+    return {
+      dryRun: false,
+      occurrences: made,
+      roomsHeld,
+      roomClashes: clashes,
+      firstOn: planned[0]?.startTime ?? null,
+      lastOn: planned[planned.length - 1]?.startTime ?? null,
+    };
+  }
+
+  /** A readable, free address for one occurrence of a repeat (EVT-37). */
+  private async slugForRepeat(orgId: string, base: string, start: Date): Promise<string> {
+    const day = start.toISOString().slice(0, 10);
+    const stem = base.replace(/-\d{4}-\d{2}-\d{2}(-\d+)?$/, '');
+    const candidates = [`${stem}-${day}`, ...Array.from({ length: 20 }, (_, i) => `${stem}-${day}-${i + 2}`)];
+
+    const taken = await this.prisma.event.findMany({
+      where: { orgId, slug: { in: candidates } },
+      select: { slug: true },
+    });
+    const used = new Set(taken.map((t) => t.slug));
+
+    return candidates.find((c) => !used.has(c)) ?? `${stem}-${start.getTime()}`;
   }
 
   /**
