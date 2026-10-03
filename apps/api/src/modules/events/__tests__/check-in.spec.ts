@@ -27,6 +27,8 @@ describe('EventsService — check-in', () => {
   let service: EventsService;
   let prisma: {
     event: { findFirst: jest.Mock };
+    // Who else runs the event (EVT-33); empty unless a test says otherwise.
+    eventCoHost: { findMany: jest.Mock };
     rsvp: { findFirst: jest.Mock; findMany: jest.Mock; update: jest.Mock };
     attendance: { create: jest.Mock; deleteMany: jest.Mock; findMany: jest.Mock };
     $transaction: jest.Mock;
@@ -37,6 +39,7 @@ describe('EventsService — check-in', () => {
   beforeEach(async () => {
     prisma = {
       event: { findFirst: jest.fn().mockResolvedValue({ id: EVENT, orgId: 'org-1', hostId: 'host-1' }) },
+      eventCoHost: { findMany: jest.fn().mockResolvedValue([]) },
       rsvp: { findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn() },
       attendance: { create: jest.fn(), deleteMany: jest.fn(), findMany: jest.fn() },
       $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),

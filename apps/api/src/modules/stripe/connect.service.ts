@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -9,6 +10,7 @@ import Stripe from 'stripe';
 import { Prisma } from '@prisma/client';
 import { StripeAccountApi } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
+import { canEditEvent, NOT_YOUR_EVENT } from '../events/host-control';
 import { priceTicket, priceBooking } from './ticket-pricing';
 import { CalendarService } from '../calendar/calendar.service';
 import { encodeState, decodeState } from '../../common/oauth-state';
@@ -626,6 +628,45 @@ export class ConnectService {
    * the guard proves the caller organises a co-op, not that this event is
    * theirs.
    */
+  /**
+   * Whether this person runs the event, and may therefore see who paid
+   * (EVT-33).
+   *
+   * Lives here rather than in a `@Roles` decorator because the answer is not
+   * a role: a host is a member, and a co-host is a member somebody asked to
+   * help. Charley: "any host, co-host and admin can… review who has bought
+   * tickets." It is their event, and knowing who is coming is most of
+   * running one.
+   */
+  async assertRunsEvent(
+    orgId: string,
+    eventId: string,
+    actor: { userId: string; isOrganiser: boolean },
+  ) {
+    if (actor.isOrganiser) return;
+
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, orgId },
+      select: {
+        hostId: true,
+        createdById: true,
+        coHosts: { select: { userId: true } },
+      },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+
+    const allowed = canEditEvent(
+      {
+        hostId: event.hostId,
+        createdById: event.createdById,
+        coHostIds: event.coHosts.map((c) => c.userId),
+      },
+      actor.userId,
+      false,
+    );
+    if (!allowed) throw new ForbiddenException(NOT_YOUR_EVENT);
+  }
+
   async listTicketsForEvent(orgId: string, eventId: string) {
     const event = await this.prisma.event.findFirst({
       where: { id: eventId, orgId },

@@ -14,6 +14,17 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
+
+/**
+ * Organisers act on any event in their co-op; everybody else only on the ones
+ * they run (EVT-33). Mirrors the helper in EventsController and
+ * SpaceController — PLATFORM_ADMIN included so support can unstick a co-op.
+ */
+function isStaff(user: RequestUser, orgId: string): boolean {
+  if (user.globalRole === 'PLATFORM_ADMIN') return true;
+  const role = user.orgRoles?.[orgId];
+  return role === 'ADMIN' || role === 'STAFF';
+}
 import { ConnectService } from './connect.service';
 import { forMember } from './stripe-error';
 import { ConnectOnboardingDto, TicketCheckoutDto } from './dto/connect.dto';
@@ -89,21 +100,30 @@ export class ConnectController {
   }
 
   /**
-   * The tickets sold for an event.
+   * The tickets sold for an event (EVT-33).
    *
-   * ADMIN and STAFF only, and for the same reason as the refund below it:
-   * this is a list of who paid what, which is the co-op's business and not
-   * every member's.
+   * Whoever runs it: an organiser, the host, the creator, or a co-host.
+   * Knowing who is coming is most of running an event, and a co-host asked to
+   * help with the door could not see the door.
+   *
+   * Still not every member — this is a list of who paid what. The guard is in
+   * the service because the answer is not a role: a host is an ordinary
+   * member of the co-op.
    */
   @Get('events/:eventId/tickets')
-  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
-  @Roles('ADMIN', 'STAFF')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List tickets sold for an event' })
-  listTickets(
+  async listTickets(
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
+    @CurrentUser() user: RequestUser,
   ) {
+    await this.connectService.assertRunsEvent(orgId, eventId, {
+      userId: user.userId,
+      isOrganiser: isStaff(user, orgId),
+    });
+
     return this.connectService.listTicketsForEvent(orgId, eventId);
   }
 

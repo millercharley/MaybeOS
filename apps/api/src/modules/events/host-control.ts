@@ -59,3 +59,31 @@ export function coHostProblem(
 
   return null;
 }
+
+/**
+ * Who may change an event (EVT-33).
+ *
+ * Charley: "Make sure any host, co-host and admin can edit the title, image,
+ * and description… change any detail… add ticketing or manage the ticketing,
+ * and review who has bought tickets."
+ *
+ * Wider than `canManageHosts` by exactly one person: a co-host. They were
+ * asked to help run the evening, so they can correct a time, write the
+ * description, set what a ticket costs and see who is coming — everything
+ * about the event itself. What they cannot do is decide who runs it, which
+ * is the line `canManageHosts` draws.
+ */
+export function canEditEvent(
+  event: HostControlEvent & { coHostIds?: string[] },
+  userId: string,
+  isOrganiser: boolean,
+): boolean {
+  if (canManageHosts(event, userId, isOrganiser)) return true;
+
+  return (event.coHostIds ?? []).includes(userId);
+}
+
+/** Why they cannot, in words somebody can act on. */
+export const NOT_YOUR_EVENT =
+  'Only an organiser, the host or a co-host can change this event.';
+
