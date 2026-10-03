@@ -88,3 +88,35 @@ describe('who sees the controls', () => {
     expect(doorList).toMatch(/me === event\.host\?\.id \|\| me === event\.createdById/);
   });
 });
+
+/**
+ * What a host or co-host can do with their own event (EVT-33).
+ *
+ * Charley: "any host, co-host and admin can edit the title, image, and
+ * description… change any detail… add ticketing or manage the ticketing, and
+ * reviewing who has bought tickets."
+ */
+describe('a host’s own event page', () => {
+  it('asks for the ticket sales, which were organisers-only', () => {
+    expect(doorList).toMatch(/showTickets \|\| hostsIfMine/);
+  });
+
+  it('survives being refused them', () => {
+    // The API still refuses anybody who does not run the event, and a 403
+    // must not take the door list down with it.
+    expect(doorList).toMatch(/setTickets\(\[\]\)/);
+  });
+
+  it('shows the sales list to whoever runs it', () => {
+    expect(doorList).toMatch(/\(showTickets \|\| hostsIfMine\) && tickets\.length > 0/);
+  });
+
+  it('keeps refunding with organisers', () => {
+    // A host can see who paid, because knowing who is coming is most of
+    // running an event. The money went to the co-op's Stripe account, and
+    // sending it back out is the co-op's decision.
+    const refundBlock = doorList.slice(doorList.indexOf('Refunded {new Date'));
+
+    expect(refundBlock).toMatch(/showTickets && \(/);
+  });
+});

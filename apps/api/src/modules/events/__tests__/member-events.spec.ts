@@ -57,6 +57,8 @@ describe('EventsService — member events', () => {
 
   beforeEach(async () => {
     prisma = {
+      // Who else runs the event (EVT-33); nobody, unless a test says so.
+      eventCoHost: { findMany: jest.fn().mockResolvedValue([]) },
       event: {
         create: jest.fn().mockResolvedValue({ id: 'event-1' }),
         findUnique: jest.fn().mockResolvedValue(null),
@@ -283,16 +285,61 @@ describe('EventsService — member events', () => {
       expect(prisma.event.update).toHaveBeenCalled();
     });
 
-    it('will not let a host hand the event to somebody else', async () => {
+    /*
+      This used to refuse it: "only an organiser can change who hosts an
+      event", on the reasoning that reassigning volunteers somebody for the
+      post-event follow-up. Charley, 2026-10-03, asked for the opposite —
+      "the member who created the event also has the ability to switch the
+      host and add co-hosts" — and it is their event. The line moved to the
+      co-host, who was asked to help run an evening rather than given the
+      power to pass it on (EVT-32).
+    */
+    it('lets the host hand the event to somebody else', async () => {
       prisma.event.findFirst.mockResolvedValue(hosted);
 
-      // Reassigning volunteers that person for the post-event follow-up.
       await expect(
         service.update(ORG, 'event-1', { hostId: 'user-other' } as never, {
           userId: MEMBER,
           isStaff: false,
         }),
+      ).resolves.toBeDefined();
+    });
+
+    it('will not let a co-host hand the event to somebody else', async () => {
+      prisma.event.findFirst.mockResolvedValue(hosted);
+      prisma.eventCoHost.findMany.mockResolvedValue([{ userId: 'user-helper' }]);
+
+      await expect(
+        service.update(ORG, 'event-1', { hostId: 'user-other' } as never, {
+          userId: 'user-helper',
+          isStaff: false,
+        }),
       ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('lets a co-host change everything else about it', async () => {
+      // The whole point of being asked to help run an evening (EVT-33).
+      prisma.event.findFirst.mockResolvedValue(hosted);
+      prisma.eventCoHost.findMany.mockResolvedValue([{ userId: 'user-helper' }]);
+
+      await expect(
+        service.update(ORG, 'event-1', { title: 'A better title' } as never, {
+          userId: 'user-helper',
+          isStaff: false,
+        }),
+      ).resolves.toBeDefined();
+    });
+
+    it('lets whoever created it change it, after handing it on', async () => {
+      prisma.event.findFirst.mockResolvedValue({ ...hosted, hostId: 'user-other', createdById: MEMBER });
+      prisma.eventCoHost.findMany.mockResolvedValue([]);
+
+      await expect(
+        service.update(ORG, 'event-1', { title: 'Corrected' } as never, {
+          userId: MEMBER,
+          isStaff: false,
+        }),
+      ).resolves.toBeDefined();
     });
 
     it('lets the host cancel their own event', async () => {

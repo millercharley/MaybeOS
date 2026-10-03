@@ -13,7 +13,7 @@ import { RadarService } from '../radar/radar.service';
 import { ContactViewer } from '../../common/access/contact-visibility';
 import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
-import { canManageHosts, coHostProblem, NOT_YOURS } from './host-control';
+import { canEditEvent, canManageHosts, coHostProblem, NOT_YOURS, NOT_YOUR_EVENT } from './host-control';
 import { PublishBookingEventDto } from './dto/publish-booking-event.dto';
 import { ConnectService } from '../stripe/connect.service';
 import ical, { ICalCalendarMethod } from 'ical-generator';
@@ -309,6 +309,14 @@ export class EventsService {
    * put an organiser at the door of every event a member ran — Charley, 2026-08-19:
    * "the host of the event is responsible for checking in guests not the admin."
    */
+  /**
+   * The event, if this person may change it (EVT-33).
+   *
+   * An organiser, the host, whoever created it, or a co-host. This read only
+   * `hostId`, so an organiser creating an event for a member lost the ability
+   * to correct it the moment they set the host, and a co-host — somebody
+   * asked to help run the evening — could change nothing at all.
+   */
   private async loadEventForActor(
     orgId: string,
     eventId: string,
@@ -316,9 +324,27 @@ export class EventsService {
     isStaff: boolean,
   ) {
     const event = await this.findEventInOrg(orgId, eventId);
-    if (!isStaff && event.hostId !== userId) {
-      throw new ForbiddenException('Only the host or an organiser can change this event');
-    }
+
+    // An organiser may act on any event in their co-op, so the co-host list
+    // cannot change the answer and is not worth a query.
+    if (isStaff) return event;
+
+    const coHosts = await this.prisma.eventCoHost.findMany({
+      where: { eventId },
+      select: { userId: true },
+    });
+
+    const allowed = canEditEvent(
+      {
+        hostId: event.hostId,
+        createdById: (event as { createdById?: string | null }).createdById ?? null,
+        coHostIds: coHosts.map((c) => c.userId),
+      },
+      userId,
+      isStaff,
+    );
+    if (!allowed) throw new ForbiddenException(NOT_YOUR_EVENT);
+
     return event;
   }
 
@@ -330,10 +356,28 @@ export class EventsService {
   ) {
     const event = await this.loadEventForActor(orgId, eventId, actor.userId, actor.isStaff);
 
-    // Only an organiser reassigns a host. A member handing their event to
-    // somebody else would be volunteering them for the follow-up email.
-    if (dto.hostId !== undefined && !actor.isStaff) {
-      throw new ForbiddenException('Only an organiser can change who hosts an event');
+    /*
+      Who runs it is a narrower question than what it says (EVT-32, EVT-33).
+
+      Everybody who may edit may set the title, the picture, the times, who
+      can see it and what a ticket costs. Handing the event to somebody else
+      is decided by the organiser, the host or the creator — not by a
+      co-host, who was asked to help run an evening rather than given the
+      power to pass it on. `PATCH /host` is the route for it, and this field
+      defers to the same rule.
+    */
+    if (
+      dto.hostId !== undefined &&
+      !canManageHosts(
+        {
+          hostId: event.hostId,
+          createdById: (event as { createdById?: string | null }).createdById ?? null,
+        },
+        actor.userId,
+        actor.isStaff,
+      )
+    ) {
+      throw new ForbiddenException(NOT_YOURS);
     }
 
     // If title or startTime changed, regenerate slug

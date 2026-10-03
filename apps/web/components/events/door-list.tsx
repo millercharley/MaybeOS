@@ -91,10 +91,21 @@ export function DoorList({
       setList(attendees);
       setEvent(detail);
 
-      // Organisers only. Asking for it as a host returns 403 and would take
-      // the door list down with it if they were fetched together.
-      if (showTickets) {
-        setTickets(await api.events.listTickets(orgId, eventId, token));
+      /*
+        Who bought a ticket, for whoever runs the event (EVT-33).
+
+        This was organisers only, so a host could not see the door they were
+        standing at. The API now answers for the host, the creator and a
+        co-host too — and still refuses everybody else, so this is fetched
+        separately: a 403 here must not take the door list down with it.
+      */
+      if (showTickets || hostsIfMine) {
+        try {
+          setTickets(await api.events.listTickets(orgId, eventId, token));
+        } catch {
+          // Not theirs to see. The rest of the page is.
+          setTickets([]);
+        }
       }
       setError('');
     } catch (err) {
@@ -102,7 +113,7 @@ export function DoorList({
     } finally {
       setLoading(false);
     }
-  }, [token, orgId, eventId, showTickets]);
+  }, [token, orgId, eventId, showTickets, hostsIfMine]);
 
   useEffect(() => {
     load();
@@ -222,7 +233,7 @@ export function DoorList({
           event={event}
           orgSlug={overviewFor}
           orgId={orgId ?? undefined}
-          tickets={showTickets ? tickets : undefined}
+          tickets={showTickets || hostsIfMine ? tickets : undefined}
           // An organiser reaches this page through the admin console, which
           // is already behind a role guard; the API checks it again, and
           // refuses the host or creator nothing (EVT-32).
@@ -393,7 +404,7 @@ export function DoorList({
         )}
       </section>
 
-      {showTickets && tickets.length > 0 && (
+      {(showTickets || hostsIfMine) && tickets.length > 0 && (
         <section className="card">
           <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-base font-semibold text-gray-900">Tickets</h2>
@@ -438,6 +449,12 @@ export function DoorList({
                     Refunded {new Date(t.refundedAt).toLocaleDateString()}
                   </span>
                 ) : (
+                  showTickets && (
+                  /* Refunding stays with organisers (EVT-33). A host and a
+                     co-host can see who paid, because knowing who is coming
+                     is most of running an event — but the money went to the
+                     co-op's Stripe account, and sending it back out again is
+                     the co-op's decision rather than the evening's. */
                   <button
                     type="button"
                     onClick={() => refund(t.id, t.buyerName || t.buyerEmail, t.amountCents)}
@@ -446,6 +463,7 @@ export function DoorList({
                   >
                     {refunding === t.id ? 'Refunding...' : 'Refund'}
                   </button>
+                  )
                 )}
               </li>
             ))}
