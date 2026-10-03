@@ -229,6 +229,7 @@ export default function MyEventsPage() {
             plan={org?.plan ?? 'FREE'}
             orgFeeCents={org?.ticketFeeCents ?? 0}
             canSellTickets={Boolean(org?.stripeChargesEnabled)}
+            requireRoom={Boolean(org?.requireEventRoom)}
             orgId={orgId ?? undefined}
             token={token ?? undefined}
           />

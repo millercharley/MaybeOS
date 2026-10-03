@@ -14,6 +14,7 @@ import { ContactViewer } from '../../common/access/contact-visibility';
 import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
 import { canEditEvent, canManageHosts, coHostProblem, NOT_YOURS, NOT_YOUR_EVENT } from './host-control';
+import { attachProblem, whoseRoomsCount } from './event-rooms';
 import { PublishBookingEventDto } from './dto/publish-booking-event.dto';
 import { ConnectService } from '../stripe/connect.service';
 import ical, { ICalCalendarMethod } from 'ical-generator';
@@ -244,6 +245,9 @@ export class EventsService {
         ...(options.bookingId
           ? { rooms: { connect: { id: options.bookingId } } }
           : {}),
+        ...(dto.bookingIds?.length
+          ? { rooms: { connect: dto.bookingIds.map((id) => ({ id })) } }
+          : {}),
         // A member publishing their own event means it goes live. Leaving it
         // as a draft they cannot publish would be a dead end — the point of
         // the feature is that they can share it.
@@ -276,6 +280,28 @@ export class EventsService {
         imageCreditUrl: dto.imageCreditUrl?.trim() || null,
       },
     });
+
+    /*
+      Created already published, with no room, where the co-op asks for one
+      (SPC-27).
+
+      Checked after the write rather than before: the rooms are connected in
+      the same statement, so there is nothing to count until it exists. The
+      event is unpublished again rather than deleted — somebody wrote it, and
+      throwing away their description to enforce a setting is a worse answer
+      than handing it back as a draft.
+    */
+    if (created.isPublished) {
+      try {
+        await this.requireRoomIfEnforced(orgId, created.id);
+      } catch (error) {
+        await this.prisma.event.update({
+          where: { id: created.id },
+          data: { isPublished: false, publishedAt: null },
+        });
+        throw error;
+      }
+    }
 
     // Straight into the Commons when it is created already published, which
     // is what both member forms do (EVT-23).
@@ -490,6 +516,15 @@ export class EventsService {
       );
     }
 
+    // The rooms, after the co-hosts: whose reservations count depends on who
+    // is running it, and the form can change both in one save (SPC-27).
+    if (dto.bookingIds !== undefined) {
+      await this.setRooms(orgId, eventId, dto.bookingIds, {
+        userId: actor.userId,
+        isOrganiser: actor.isStaff,
+      });
+    }
+
     return updated;
   }
 
@@ -501,6 +536,8 @@ export class EventsService {
     actor: { userId: string; isStaff: boolean },
   ) {
     await this.loadEventForActor(orgId, eventId, actor.userId, actor.isStaff);
+    // Where the co-op asks every event to name a room (SPC-27).
+    await this.requireRoomIfEnforced(orgId, eventId);
 
     const published = await this.prisma.event.update({
       where: { id: eventId },
@@ -1247,6 +1284,161 @@ export class EventsService {
       ...withRsvpCount(event),
       isPast: event.endTime < new Date(),
     }));
+  }
+
+  /**
+   * Reservations this event could claim (SPC-27).
+   *
+   * The host's and their co-hosts' holds on rooms, not yet attached to
+   * anything, near the event's own date — a member searching for "the Attic
+   * on Thursday" is looking at a handful of rows, not their booking history.
+   *
+   * Organisers see the co-op's, because sorting out a double-booked evening
+   * is their job.
+   */
+  async attachableRooms(
+    orgId: string,
+    actor: { userId: string; isOrganiser: boolean },
+    options: { eventId?: string; from?: string; to?: string } = {},
+  ) {
+    const event = options.eventId
+      ? await this.prisma.event.findFirst({
+          where: { id: options.eventId, orgId },
+          select: {
+            hostId: true,
+            createdById: true,
+            startTime: true,
+            coHosts: { select: { userId: true } },
+          },
+        })
+      : null;
+
+    const who = whoseRoomsCount(actor, {
+      hostId: event?.hostId ?? actor.userId,
+      createdById: event?.createdById ?? actor.userId,
+      coHostIds: event?.coHosts.map((c) => c.userId) ?? [],
+    });
+
+    // A fortnight either side of the event, or of today when there is no
+    // event yet. Wide enough for "I booked it last week", narrow enough that
+    // a member who books the Attic weekly is not scrolling a year.
+    const around = event?.startTime ?? (options.from ? new Date(options.from) : new Date());
+    const from = options.from ? new Date(options.from) : new Date(around.getTime() - 14 * 86_400_000);
+    const to = options.to ? new Date(options.to) : new Date(around.getTime() + 14 * 86_400_000);
+
+    return this.prisma.booking.findMany({
+      where: {
+        room: { orgId },
+        isCoopHold: false,
+        status: { in: ['PENDING', 'APPROVED'] },
+        // Free, or already this event's — so an event's own rooms stay in the
+        // list it is choosing from.
+        OR: [{ eventId: null }, ...(options.eventId ? [{ eventId: options.eventId }] : [])],
+        ...(who.anyone ? {} : { userId: { in: who.userIds } }),
+        startTime: { gte: from, lte: to },
+      },
+      select: {
+        id: true,
+        title: true,
+        startTime: true,
+        endTime: true,
+        status: true,
+        eventId: true,
+        room: { select: { id: true, name: true } },
+        user: { select: { id: true, name: true } },
+      },
+      orderBy: { startTime: 'asc' },
+      take: 50,
+    });
+  }
+
+  /**
+   * Make the event's rooms match what was sent (SPC-27).
+   *
+   * The whole list, like the co-hosts and for the same reason: the form
+   * holds them alongside the title, so cancelling leaves the event alone.
+   *
+   * A reservation it may not have — somebody else's, one already held for
+   * another event, a hold the co-op made — stops the save with a sentence
+   * rather than being dropped quietly. Taking a room by accident is the one
+   * outcome worth refusing the whole request over.
+   */
+  private async setRooms(
+    orgId: string,
+    eventId: string,
+    wanted: string[],
+    actor: { userId: string; isOrganiser: boolean },
+  ) {
+    const unique = [...new Set(wanted)];
+
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, orgId },
+      select: { hostId: true, createdById: true, coHosts: { select: { userId: true } } },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+
+    const who = whoseRoomsCount(actor, {
+      hostId: event.hostId,
+      createdById: event.createdById,
+      coHostIds: event.coHosts.map((c) => c.userId),
+    });
+
+    const bookings = unique.length
+      ? await this.prisma.booking.findMany({
+          where: { id: { in: unique }, room: { orgId } },
+          select: { id: true, eventId: true, isCoopHold: true, status: true, userId: true },
+        })
+      : [];
+
+    if (bookings.length !== unique.length) {
+      throw new BadRequestException('One of those reservations is not in this co-op.');
+    }
+
+    for (const booking of bookings) {
+      const problem = attachProblem(booking, eventId, who);
+      if (problem) throw new BadRequestException(problem);
+    }
+
+    await this.prisma.$transaction([
+      // Released rather than deleted: the member still holds the room, it is
+      // simply not this event's any more.
+      this.prisma.booking.updateMany({
+        where: { eventId, id: { notIn: unique.length ? unique : ['-'] } },
+        data: { eventId: null },
+      }),
+      ...(unique.length
+        ? [
+            this.prisma.booking.updateMany({
+              where: { id: { in: unique } },
+              data: { eventId },
+            }),
+          ]
+        : []),
+    ]);
+  }
+
+  /**
+   * Refuse to publish an event with no room, where the co-op asks for one
+   * (SPC-27).
+   *
+   * At publishing rather than at creation. A draft with no room yet is an
+   * ordinary half-finished thing; an event the whole co-op can see, with no
+   * record of where it is, is what the setting exists to prevent.
+   */
+  private async requireRoomIfEnforced(orgId: string, eventId: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { requireEventRoom: true },
+    });
+    if (!org?.requireEventRoom) return;
+
+    const held = await this.prisma.booking.count({ where: { eventId } });
+    if (held === 0) {
+      throw new BadRequestException(
+        'This co-op asks every event to say which room it is in. Add a room reservation before publishing it — ' +
+          'book the room first if there is not one yet.',
+      );
+    }
   }
 
   /**

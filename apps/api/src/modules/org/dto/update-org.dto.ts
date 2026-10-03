@@ -133,4 +133,17 @@ export class UpdateOrgDto extends PartialType(CreateOrgDto) {
   })
   @MaxLength(500)
   legacyBillingUrl?: string | null;
+
+  /**
+   * Whether every event must name a room reservation before it is published
+   * (SPC-27).
+   *
+   * Off by default and off for most co-ops: plenty of events happen in a
+   * park, a member's front room, or online. A co-op that runs a building
+   * turns it on so its calendar and its room sheet cannot drift apart.
+   */
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  requireEventRoom?: boolean;
 }

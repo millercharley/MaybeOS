@@ -175,6 +175,20 @@ export class CreateEventDto {
   coHostIds?: string[];
 
   /**
+   * The room reservations this event occupies (SPC-27).
+   *
+   * The whole list, like `coHostIds`: the form holds them alongside the title
+   * and sends what it ended up with, so cancelling leaves the event alone.
+   * Each must be a reservation the host or one of their co-hosts made.
+   */
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsUUID('4', { each: true })
+  bookingIds?: string[];
+
+  /**
    * What the host suggests at the door, in cents (EVT-34).
    *
    * Optional even alongside `hasCost`: an event can ask for something without
@@ -358,6 +372,20 @@ export class UpdateEventDto {
   @ArrayMaxSize(20)
   @IsUUID('4', { each: true })
   coHostIds?: string[];
+
+  /**
+   * The room reservations this event occupies (SPC-27).
+   *
+   * The whole list, like `coHostIds`: the form holds them alongside the title
+   * and sends what it ended up with, so cancelling leaves the event alone.
+   * Each must be a reservation the host or one of their co-hosts made.
+   */
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsUUID('4', { each: true })
+  bookingIds?: string[];
 
   /**
    * What the host suggests at the door, in cents (EVT-34).

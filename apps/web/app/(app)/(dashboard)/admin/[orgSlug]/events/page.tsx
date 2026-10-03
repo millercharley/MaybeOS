@@ -240,6 +240,7 @@ export default function EventsPage() {
             plan={org?.plan ?? 'FREE'}
             orgFeeCents={org?.ticketFeeCents ?? 0}
             canSellTickets={Boolean(org?.stripeChargesEnabled)}
+            requireRoom={Boolean(org?.requireEventRoom)}
             hosts={(members?.data ?? []).map((m) => ({
               id: m.user.id,
               name: m.user.name || m.user.email || 'Member',

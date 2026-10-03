@@ -51,8 +51,16 @@ describe('what else is on it', () => {
     expect(overview).toMatch(/label="Where"/);
   });
 
-  it('says whether a room is held for it', () => {
-    expect(overview).toMatch(/label="Room booking"/);
+  it('lists every room it holds, not whether one is', () => {
+    // An evening using the Attic and the Salon is two reservations and one
+    // event (SPC-26).
+    expect(overview).toMatch(/event\.rooms\?\.length/);
+    expect(overview).toMatch(/'Rooms held' : 'Room held'/);
+  });
+
+  it('says when a reservation is not confirmed yet', () => {
+    // A room "held" by a pending booking is not held.
+    expect(overview).toMatch(/awaiting approval/);
   });
 
   it('says what a ticket costs, and distinguishes paying at the door', () => {

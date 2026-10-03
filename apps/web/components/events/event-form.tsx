@@ -7,6 +7,7 @@ import { CreateEventData, api } from '@/lib/api';
 import { PLATFORM_FEE_CENTS } from '@/lib/fees';
 import { GATHERING_KINDS } from '@/components/rooms/booking-details';
 import { MemberPicker } from '@/components/member/member-picker';
+import { RoomPicker } from '@/components/events/room-picker';
 import { MATURITY_LEVELS, type MaturityLevel } from '@/lib/maturity';
 
 /**
@@ -37,6 +38,10 @@ export interface EventFormValues extends CreateEventData {
    */
   host?: { id: string; name?: string } | null;
   coHosts?: { userId: string; user: { name?: string | null } }[];
+  /** The event's own id, so the room picker can offer its current rooms. */
+  id?: string;
+  /** The reservations it already holds (SPC-27). Read, never sent. */
+  rooms?: { id: string; startTime: string; room: { id: string; name: string } }[];
 }
 
 /** MaybeOS's per-transaction fee by plan, in cents (D-013). */
@@ -85,6 +90,7 @@ export function EventForm({
   plan = 'FREE',
   orgFeeCents = 0,
   canSellTickets = false,
+  requireRoom = false,
   hosts,
   orgId,
   token,
@@ -103,6 +109,8 @@ export function EventForm({
   orgFeeCents?: number;
   /** Whether Stripe onboarding is finished. Without it, tickets cannot sell. */
   canSellTickets?: boolean;
+  /** Whether this co-op asks every event to name a room (SPC-27). */
+  requireRoom?: boolean;
   /**
    * Members an organiser may hand the event to (EVT-04). Omitted on the member
    * form, where you always host what you make — so the field simply does not
@@ -202,6 +210,20 @@ export function EventForm({
   const [coHosts, setCoHosts] = useState<{ id: string; name: string }[]>(
     (initial?.coHosts ?? []).map((c) => ({ id: c.userId, name: c.user.name ?? 'Member' })),
   );
+
+  /**
+   * The rooms this event occupies (SPC-27), held like the co-hosts and sent
+   * with the rest of the form.
+   */
+  const [rooms, setRooms] = useState<{ id: string; label: string }[]>(
+    (initial?.rooms ?? []).map((r) => ({
+      id: r.id,
+      label: `${r.room.name} · ${new Date(r.startTime).toLocaleDateString(undefined, {
+        day: 'numeric',
+        month: 'short',
+      })}`,
+    })),
+  );
   const [localError, setLocalError] = useState('');
 
   function submit(e: FormEvent, publish: boolean) {
@@ -266,6 +288,8 @@ export function EventForm({
       ...(hosts && hostId ? { hostId } : {}),
       // The whole list, so removing somebody is a save (EVT-36).
       ...(hosts ? { coHostIds: coHosts.map((c) => c.id) } : {}),
+      // Likewise the rooms (SPC-27).
+      ...(orgId ? { bookingIds: rooms.map((r) => r.id) } : {}),
       publish,
     });
   }
@@ -467,6 +491,50 @@ export function EventForm({
               else.
             </p>
           </div>
+        </div>
+      )}
+
+      {/*
+        Which room it is in (SPC-27). Below the co-hosts on purpose: the list
+        offered here is the reservations made by whoever is running the event,
+        so naming a co-host first is what makes theirs appear.
+      */}
+      {orgId && (
+        <div>
+          <span className="mb-1 block text-sm font-medium text-gray-900">
+            Which room is it in?{' '}
+            {requireRoom ? (
+              <span className="font-normal text-gray-500">(required to publish)</span>
+            ) : (
+              <span className="font-normal text-gray-500">(optional)</span>
+            )}
+          </span>
+          <p className="mb-2 text-xs text-gray-500">
+            Pick the reservation that holds the room. Only bookings made by you or a
+            co-host appear here.
+          </p>
+
+          <RoomPicker
+            orgId={orgId}
+            eventId={initial?.id}
+            picked={rooms}
+            onPick={(booking) =>
+              setRooms((current) =>
+                current.some((r) => r.id === booking.id)
+                  ? current
+                  : [
+                      ...current,
+                      {
+                        id: booking.id,
+                        label: `${booking.room.name} · ${new Date(
+                          booking.startTime,
+                        ).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`,
+                      },
+                    ],
+              )
+            }
+            onDrop={(id) => setRooms((current) => current.filter((r) => r.id !== id))}
+          />
         </div>
       )}
 
