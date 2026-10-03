@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsBoolean, IsInt, IsUrl, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { IsOptional, IsString, IsBoolean, IsIn, IsInt, IsUrl, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import { PartialType } from '@nestjs/swagger';
 import { CreateOrgDto } from './create-org.dto';
 
@@ -146,4 +146,37 @@ export class UpdateOrgDto extends PartialType(CreateOrgDto) {
   @IsOptional()
   @IsBoolean()
   requireEventRoom?: boolean;
+
+  /**
+   * The longest one room reservation may run, in minutes (SPC-29).
+   *
+   * Three hours by default. The ceiling is a day: longer than that is
+   * somebody moving in, and wants a conversation rather than a form.
+   */
+  @ApiPropertyOptional({ example: 180, minimum: 15, maximum: 1440 })
+  @IsOptional()
+  @IsInt()
+  @Min(15)
+  @Max(1440)
+  maxBookingMinutes?: number;
+
+  /**
+   * Whether a member's total room time is capped, and over what (SPC-29).
+   *
+   * Null clears it, which is the setting switched off — and off is the
+   * commonest answer. Both this and the hours are needed for a cap to apply.
+   */
+  @ApiPropertyOptional({ enum: ['MONTH', 'YEAR'], nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsIn(['MONTH', 'YEAR'])
+  bookingQuotaPeriod?: 'MONTH' | 'YEAR' | null;
+
+  @ApiPropertyOptional({ example: 20, minimum: 1, maximum: 8760, nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsInt()
+  @Min(1)
+  @Max(8760)
+  bookingQuotaHours?: number | null;
 }

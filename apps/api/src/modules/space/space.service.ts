@@ -8,6 +8,11 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../config/prisma.service';
+import {
+  effectiveMaxMinutes,
+  quotaProblem,
+  quotaWindow,
+} from './booking-limits';
 import { ContactViewer } from '../../common/access/contact-visibility';
 import { EmailService } from '../email/email.service';
 import { EventsService } from '../events/events.service';
@@ -643,7 +648,19 @@ export class SpaceService {
   async createBooking(orgId: string, roomId: string, userId: string, dto: CreateBookingDto) {
     const room = await this.prisma.room.findFirst({
       where: { id: roomId, orgId },
-      include: { availabilityRules: true, org: { select: { timezone: true } } },
+      include: {
+        availabilityRules: true,
+        org: {
+          select: {
+            timezone: true,
+            // How long one booking may run, and how much a member may hold
+            // altogether (SPC-29).
+            maxBookingMinutes: true,
+            bookingQuotaPeriod: true,
+            bookingQuotaHours: true,
+          },
+        },
+      },
     });
 
     if (!room) {
@@ -661,8 +678,17 @@ export class SpaceService {
       throw new BadRequestException('End time must be after start time');
     }
 
-    // --- Check the room's own limit on how long a booking may run ---
-    this.validateDuration(room.maxBookingMinutes, startTime, endTime);
+    // --- How long one booking may run (SPC-29) ---
+    // The shorter of the co-op's limit and the room's own: a darkroom with a
+    // queue knows more about itself than the co-op does.
+    this.validateDuration(
+      effectiveMaxMinutes(room.org.maxBookingMinutes, room.maxBookingMinutes),
+      startTime,
+      endTime,
+    );
+
+    // --- And how much of the building one member may hold (SPC-29) ---
+    await this.validateQuota(orgId, userId, room.org, startTime, endTime);
 
     // --- Check availability rules ---
     this.validateAvailability(
@@ -1419,6 +1445,54 @@ export class SpaceService {
     }
   }
 
+  /**
+   * Whether this booking takes a member past their share of the building
+   * (SPC-29).
+   *
+   * Counted over a calendar month or year, in whole reservations: a booking
+   * that straddles the end of the month counts where it starts, which is the
+   * only answer somebody can predict.
+   *
+   * Cancelled and rejected reservations do not count — the member does not
+   * have the room — and neither do the co-op's own imported holds, which are
+   * nobody's personal booking (SPC-23).
+   */
+  private async validateQuota(
+    orgId: string,
+    userId: string,
+    org: { bookingQuotaPeriod: 'MONTH' | 'YEAR' | null; bookingQuotaHours: number | null },
+    startTime: Date,
+    endTime: Date,
+  ): Promise<void> {
+    if (!org.bookingQuotaPeriod || !org.bookingQuotaHours) return;
+
+    const window = quotaWindow(org.bookingQuotaPeriod, startTime);
+
+    const held = await this.prisma.booking.findMany({
+      where: {
+        userId,
+        room: { orgId },
+        isCoopHold: false,
+        status: { in: ['APPROVED', 'PENDING', 'PENDING_PAYMENT'] },
+        startTime: { gte: window.from, lt: window.to },
+      },
+      select: { startTime: true, endTime: true },
+    });
+
+    const usedMinutes = held.reduce(
+      (total, b) => total + (b.endTime.getTime() - b.startTime.getTime()) / 60_000,
+      0,
+    );
+    const requested = (endTime.getTime() - startTime.getTime()) / 60_000;
+
+    const problem = quotaProblem(
+      { period: org.bookingQuotaPeriod, hours: org.bookingQuotaHours },
+      usedMinutes,
+      requested,
+    );
+    if (problem) throw new BadRequestException(problem);
+  }
+
   private validateDuration(
     maxBookingMinutes: number | null,
     startTime: Date,
@@ -1435,7 +1509,7 @@ export class SpaceService {
           : `${maxBookingMinutes} minutes`;
 
       throw new BadRequestException(
-        `This room can be booked for up to ${limit} at a time.`,
+        `A room can be booked for up to ${limit} at a time here.`,
       );
     }
   }

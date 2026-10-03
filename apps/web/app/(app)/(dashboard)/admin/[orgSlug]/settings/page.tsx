@@ -20,6 +20,7 @@ import { ShareTracking } from '@/components/settings/share-tracking';
 import { MemberChannels } from '@/components/settings/member-channels';
 import { DoorAccess } from '@/components/settings/door-access';
 import { WelcomeEmail } from '@/components/settings/welcome-email';
+import { BookingLimits } from '@/components/settings/booking-limits';
 import { EventRooms } from '@/components/settings/event-rooms';
 import { LegacyBilling } from '@/components/settings/legacy-billing';
 import { SignInLinks } from '@/components/settings/sign-in-links';
@@ -32,6 +33,7 @@ type SettingsTab =
   | 'branding'
   | 'website'
   | 'onboarding'
+  | 'rooms'
   | 'migration'
   | 'integrations'
   | 'radar'
@@ -53,6 +55,11 @@ const tabs: { key: SettingsTab; label: string }[] = [
   // page that had existed since the beginning came to be reported missing.
   { key: 'website', label: 'Join page & embeds' },
   { key: 'onboarding', label: 'Getting started' },
+  // Everything about holding a room, in one place (SPC-29). How long somebody
+  // may book for and whether events have to name a room are the same
+  // question asked twice — one about the building's time, one about its
+  // record — and they were a tab apart.
+  { key: 'rooms', label: 'Rooms & bookings' },
   // Everything a co-op arriving from somewhere else does once, together
   // (MIG-04). These three lived at the foot of General — below the name, the
   // slug, the mission, the timezone, the tiers, the welcome email and the
@@ -386,7 +393,6 @@ export default function SettingsPage() {
         <MemberChannels orgId={org.id} orgSlug={org.slug} />
       )}
       {activeTab === 'general' && org && <WelcomeEmail org={org} onSaved={refetch} />}
-      {activeTab === 'general' && org && <EventRooms org={org} onSaved={refetch} />}
       {activeTab === 'general' && org && <DoorAccess org={org} onSaved={refetch} />}
       {activeTab === 'general' && org && <Locations orgId={org.id} />}
       {activeTab === 'general' && org && <Support orgName={org.name} />}
@@ -571,6 +577,14 @@ export default function SettingsPage() {
           co-op settles where its members still pay before it writes to any
           of them, and the calendar is what they should find when they
           arrive. */}
+      {activeTab === 'rooms' && org && <BookingLimits org={org} onSaved={refetch} />}
+      {activeTab === 'rooms' && org && <EventRooms org={org} onSaved={refetch} />}
+      {activeTab === 'rooms' && !org && (
+        <div className="flex items-center justify-center py-12">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
+        </div>
+      )}
+
       {activeTab === 'migration' && org && <LegacyBilling org={org} onSaved={refetch} />}
       {activeTab === 'migration' && org && <SignInLinks org={org} />}
       {activeTab === 'migration' && org && <CalendarImport org={org} />}

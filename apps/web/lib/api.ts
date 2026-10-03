@@ -579,6 +579,10 @@ class ApiClient {
         legacyBillingUrl?: string | null;
         /** Whether every event must name a room reservation (SPC-27). */
         requireEventRoom?: boolean;
+        /** How long one reservation may run, and a member's share (SPC-29). */
+        maxBookingMinutes?: number;
+        bookingQuotaPeriod?: 'MONTH' | 'YEAR' | null;
+        bookingQuotaHours?: number | null;
       },
       token: string,
     ) =>
@@ -3070,6 +3074,18 @@ export interface Org {
    * default: plenty of a co-op's events happen in a park or online.
    */
   requireEventRoom?: boolean;
+  /**
+   * The longest one room reservation may run, in minutes (SPC-29). Three
+   * hours unless a co-op says otherwise; a room may set its own shorter
+   * limit and the shorter of the two wins.
+   */
+  maxBookingMinutes?: number;
+  /**
+   * Whether a member's total room time is capped, and over what (SPC-29).
+   * Null is the setting switched off, which is the commonest answer.
+   */
+  bookingQuotaPeriod?: 'MONTH' | 'YEAR' | null;
+  bookingQuotaHours?: number | null;
   timezone: string;
   /**
    * Whether a stranger can join from the public page. Off by default: a

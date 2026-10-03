@@ -102,12 +102,21 @@ describe('SpaceService — maximum booking length', () => {
     ).resolves.toBeDefined();
   });
 
-  it('leaves a room with no cap alone', async () => {
-    // Null means no limit, which is what every room built before SPC-15 has.
+  it('falls back to the co-op’s limit when a room sets none', async () => {
+    /*
+      This used to mean "no limit at all", which is what every room built
+      before SPC-15 had. Charley, 2026-10-03: the co-op sets a maximum and
+      three hours is the default, so a room that says nothing about itself
+      gets the co-op's answer rather than an unlimited one (SPC-29).
+    */
     prisma.room.findFirst.mockResolvedValue(room(null));
 
     await expect(
       service.createBooking('org-1', 'room-1', 'user-1', booking(6) as never),
+    ).rejects.toThrow(/up to 3 hours at a time/);
+
+    await expect(
+      service.createBooking('org-1', 'room-1', 'user-1', booking(2) as never),
     ).resolves.toBeDefined();
   });
 
