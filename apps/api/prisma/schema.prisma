@@ -67,6 +67,13 @@ model Organization {
   /// Null for a co-op that started here, which must not be offered a link to
   /// a previous arrangement it never had.
   legacyBillingUrl String?
+  /// Whether an event must say which room it is in (SPC-27).
+  ///
+  /// Off by default, and off is right for most co-ops: plenty of events
+  /// happen in a park, a member's front room, or online. A co-op that runs a
+  /// building turns it on, and an event then has to name a reservation —
+  /// which is what stops the calendar and the room sheet drifting apart.
+  requireEventRoom Boolean @default(false)
 
   /// A wide image across the top of the member dashboard (Charley,
   /// 2026-09-04). Public identity like the logo, and stored in the same public
@@ -900,6 +907,9 @@ model Event {
   // event it produced should survive as an event, not vanish along with its
   // RSVPs. Cancellation is handled in the service, not by the database.
   booking     Booking?     @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  /// Every room this event occupies (SPC-26). The replacement for `bookingId`,
+  /// which could only name one.
+  rooms       Booking[]    @relation("EventRooms")
   location    Location?    @relation(fields: [locationId], references: [id])
   room        Room?        @relation(fields: [roomId], references: [id])
   parent      Event?       @relation("EventRecurrence", fields: [parentEventId], references: [id])
@@ -1151,6 +1161,16 @@ model Booking {
   /// member turns up.
   bookedForEmail String?
   bookedForName  String?
+  /// The event this reservation is for (SPC-26).
+  ///
+  /// An event can occupy more than one room — a gig using the Attic and the
+  /// Salon is two reservations and one evening — so the link lives here
+  /// rather than on the event. `Event.bookingId` held the opposite shape,
+  /// one booking per event, and could not say that.
+  ///
+  /// Null for an ordinary reservation: most of a co-op's room use is a
+  /// rehearsal or a meeting, not something the whole community is invited to.
+  eventId        String?
   /// A hold the co-op made, not a booking a member made (SPC-23).
   ///
   /// An imported room reservation created by the account the co-op's
@@ -1213,15 +1233,24 @@ model Booking {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  room      Room                 @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  user      User                 @relation(fields: [userId], references: [id])
-  event     Event?
-  briefings HostBriefingNotice[]
+  room           Room                 @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  /// SetNull, not Cascade: deleting an event must not release the room
+  /// silently — the co-op still held it, and somebody has to decide.
+  event          Event?               @relation("EventRooms", fields: [eventId], references: [id], onDelete: SetNull)
+  user           User                 @relation(fields: [userId], references: [id])
+  /// The event published *from* this booking (EVT-05), the other side of
+  /// `Event.bookingId`. Superseded by `event` above, which is the link that
+  /// can describe an evening using two rooms (SPC-26); kept while the older
+  /// one still has readers.
+  publishedEvent Event?
+  briefings      HostBriefingNotice[]
 
   @@index([roomId, startTime, endTime])
   @@index([userId])
   /// Finding the reservations somebody made, the day they (re)join (CAL-03).
   @@index([bookedForEmail])
+  /// The rooms one event occupies (SPC-26).
+  @@index([eventId])
   /// Somebody's own bookings, without the co-op's holds (SPC-23).
   @@index([userId, isCoopHold])
   @@map("bookings")

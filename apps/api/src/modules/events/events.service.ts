@@ -135,14 +135,16 @@ export class EventsService {
   ) {
     const booking = await this.prisma.booking.findFirst({
       where: { id: bookingId, room: { orgId } },
-      include: { room: true, event: { select: { id: true } } },
+      include: { room: true, publishedEvent: { select: { id: true } }, event: { select: { id: true } } },
     });
     if (!booking) throw new NotFoundException('Booking not found');
 
     if (booking.userId !== userId && !isStaff) {
       throw new ForbiddenException('That booking is not yours');
     }
-    if (booking.event) {
+    // Either link counts: the old one-to-one and the new `eventId` (SPC-26)
+    // both mean this room is already held for something the co-op can see.
+    if (booking.publishedEvent || booking.event) {
       throw new ConflictException('This booking already has an event');
     }
     if (booking.status !== 'APPROVED') {
@@ -237,6 +239,11 @@ export class EventsService {
         // would otherwise have no claim on it afterwards.
         createdById: userId,
         bookingId: options.bookingId,
+        // The same reservation in the shape that can hold more than one
+        // (SPC-26): an event's rooms are the bookings pointing at it.
+        ...(options.bookingId
+          ? { rooms: { connect: { id: options.bookingId } } }
+          : {}),
         // A member publishing their own event means it goes live. Leaving it
         // as a draft they cannot publish would be a dead end — the point of
         // the feature is that they can share it.
@@ -625,6 +632,18 @@ export class EventsService {
           },
           orderBy: { createdAt: 'asc' },
         },
+        // Every room this event occupies (SPC-26). A list, because an evening
+        // using the Attic and the Salon is two reservations.
+        rooms: {
+          select: {
+            id: true,
+            startTime: true,
+            endTime: true,
+            status: true,
+            room: { select: { id: true, name: true } },
+          },
+          orderBy: { startTime: 'asc' },
+        },
       },
     });
 
@@ -693,6 +712,30 @@ export class EventsService {
           location: true,
           room: true,
           host: { select: { id: true, name: true, avatarUrl: true, avatarPath: true } },
+          /*
+            Everybody running it, the rooms it holds, and how many tickets
+            have gone (EVT-35, SPC-26).
+
+            EVT-35 shipped the card that reads these and not the query that
+            fetches them, so every card said "No host set" and no ticket line
+            ever appeared. The web tests read the web source and passed; what
+            would have caught it is a test on the shape this returns.
+          */
+          coHosts: {
+            select: { userId: true, user: { select: { id: true, name: true } } },
+            orderBy: { createdAt: 'asc' },
+          },
+          rooms: {
+            select: {
+              id: true,
+              startTime: true,
+              endTime: true,
+              status: true,
+              room: { select: { id: true, name: true } },
+            },
+            orderBy: { startTime: 'asc' },
+          },
+          _count: { select: { tickets: { where: { refundedAt: null } } } },
           ...CONFIRMED_RSVP_COUNT,
           ...RSVP_FACES,
         },
