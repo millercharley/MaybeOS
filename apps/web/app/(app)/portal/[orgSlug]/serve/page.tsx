@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { HandHelping, CalendarDays } from 'lucide-react';
+import { HandHelping, CalendarDays, ClipboardCheck } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
-import { api, type DutyOpenings } from '@/lib/api';
-import { byDate, shortDate, formatMinutes } from '@/lib/service-rota';
+import { api, type DutyOpenings, type MyService } from '@/lib/api';
+import { byDate, shortDate, formatMinutes, myServiceLabel } from '@/lib/service-rota';
 import { DutyCard } from '@/components/service/duty-card';
 import { Panel } from '@/components/layout/panel';
 import { PageHeader } from '@/components/layout/page-header';
@@ -24,6 +24,7 @@ export default function ServePage() {
   const user = useAuthStore((s) => s.user);
 
   const [data, setData] = useState<DutyOpenings | null>(null);
+  const [mine, setMine] = useState<MyService | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +37,11 @@ export default function ServePage() {
       setLoading(false);
       return;
     }
+    // What this member has already taken on, for the link in the header. A
+    // failure here is not worth a message: the link still works, it simply
+    // does not carry a count.
+    api.service.mine(orgId, token).then(setMine).catch(() => setMine(null));
+
     api.service
       .openings(orgId, {}, token)
       .then(setData)
@@ -88,6 +94,19 @@ export default function ServePage() {
         <PageHeader
           title="Serve"
           description="What the co-op needs doing. Take a single turn, or take one on for good."
+          actions={
+            /* Permanent (SRV-04). This link used to exist only inside the
+               "you're down for it" banner, so the one route to the page a
+               member had just been pointed at vanished the moment they
+               reloaded. */
+            <Link
+              href={`/member/${orgSlug}/service`}
+              className="btn-secondary inline-flex items-center gap-2 text-sm"
+            >
+              <ClipboardCheck size={14} aria-hidden="true" />
+              {myServiceLabel(mine?.upcoming?.length ?? 0)}
+            </Link>
+          }
         />
       </header>
 
@@ -95,7 +114,7 @@ export default function ServePage() {
         <p className="mt-4 rounded-lg border border-[var(--success)] px-4 py-3 text-sm">
           {notice}{' '}
           <Link href={`/member/${orgSlug}/service`} className="underline">
-            See My Service
+            See what you are serving
           </Link>
         </p>
       )}

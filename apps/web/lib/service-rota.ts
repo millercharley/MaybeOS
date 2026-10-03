@@ -1,4 +1,5 @@
 import type {
+  DutyClaimStatus,
   DutyOccurrence,
   Recurrence,
   ServiceStanding,
@@ -168,4 +169,49 @@ export function standingSentence(standing: ServiceStanding): string {
     : '';
 
   return `${done} of ${asked} ${periodLabel(standing)}. ${left} to go.${prorated}`;
+}
+
+/** The calendar day an instant falls on, in a given timezone. "2026-10-03". */
+function dayIn(iso: string | Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date(iso));
+}
+
+/**
+ * The turns somebody is on today (SRV-04).
+ *
+ * Charley took the watering, saw it confirmed, and then found nothing anywhere
+ * that said so — the rota told the member they were down for something and then
+ * the product went quiet. This is what the dashboard says out loud on the day.
+ *
+ * Today in the **co-op's** timezone: a member reading this from California at
+ * ten at night is being reminded about a thing at the building in New York,
+ * and that thing is tomorrow, not tonight.
+ *
+ * Turns already marked done drop out. The reminder is for something still owed.
+ */
+export function servingToday<T extends { occursAt: string; status: DutyClaimStatus }>(
+  claims: T[],
+  timeZone: string,
+  now: Date,
+): T[] {
+  const today = dayIn(now, timeZone);
+
+  return claims
+    .filter((c) => c.status !== 'DONE' && c.status !== 'RELEASED')
+    .filter((c) => dayIn(c.occursAt, timeZone) === today)
+    .sort((a, b) => a.occursAt.localeCompare(b.occursAt));
+}
+
+/**
+ * What the Serve page's link to My service says.
+ *
+ * The link used to live only inside the "you're down for this" banner, so it
+ * went away the moment anything else happened on the page — the one route to
+ * the page a member had just been told about disappeared on reload. It is now
+ * permanent, and it carries the count because a bare "My service" gives a
+ * member no reason to press it.
+ */
+export function myServiceLabel(upcomingCount: number): string {
+  if (upcomingCount === 0) return 'My service';
+  return `My service · ${upcomingCount} coming up`;
 }

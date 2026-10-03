@@ -9,6 +9,7 @@ import { StripeService } from '../../stripe/stripe.service';
 import { RadarService } from '../../radar/radar.service';
 import { RecapService } from '../../recap/recap.service';
 import { HostBriefingService } from '../../service/host-briefing.service';
+import { ServiceService } from '../../service/service.service';
 
 /**
  * The scheduler's correctness is mostly about what it *doesn't* touch: rows
@@ -57,6 +58,11 @@ describe('SchedulerService', () => {
         {
           provide: HostBriefingService,
           useValue: { sendDue: jest.fn().mockResolvedValue({ sent: 0, failed: 0, errors: [] }) },
+        },
+        // SRV-04. Nothing is sent unless somebody is on a turn this morning.
+        {
+          provide: ServiceService,
+          useValue: { remindDue: jest.fn().mockResolvedValue({ sent: 0, failed: 0, errors: [] }) },
         },
         // DOR-01. The door pass is reconciliation, so it does nothing at all
         // unless a co-op has switched door access on and named a sheet.
@@ -224,6 +230,11 @@ describe('SchedulerService — compose-pending-reports', () => {
         {
           provide: HostBriefingService,
           useValue: { sendDue: jest.fn().mockResolvedValue({ sent: 0, failed: 0, errors: [] }) },
+        },
+        // SRV-04. Nothing is sent unless somebody is on a turn this morning.
+        {
+          provide: ServiceService,
+          useValue: { remindDue: jest.fn().mockResolvedValue({ sent: 0, failed: 0, errors: [] }) },
         },
         // DOR-01. The door pass is reconciliation, so it does nothing at all
         // unless a co-op has switched door access on and named a sheet.

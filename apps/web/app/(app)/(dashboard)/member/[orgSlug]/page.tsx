@@ -22,6 +22,7 @@ import { api } from '@/lib/api';
 import { Panel } from '@/components/layout/panel';
 import { MemberSpotlight } from '@/components/member/member-spotlight';
 import { InterestPrompt } from '@/components/member/interest-prompt';
+import { ServingToday } from '@/components/service/serving-today';
 import { eventWindow, happeningToday, whenLabel, startsIn } from '@/lib/event-list';
 
 const quickLinksFor = (orgSlug: string) => [
@@ -134,6 +135,13 @@ export default function MemberPortalPage() {
           What&apos;s happening at {orgName}.
         </p>
       </header>
+
+      {/* Above everything the co-op is saying, because this is the one thing on
+          the page the member themselves promised to do today (SRV-04). Renders
+          nothing on a day they are not serving. */}
+      <div className="mb-6 empty:mb-0">
+        <ServingToday orgId={currentOrg?.orgId} orgSlug={orgSlug} />
+      </div>
 
       {/* The co-op's own banner, when it has set one (DSH-01). No placeholder
           when it has not — an empty grey rectangle across the top of every
