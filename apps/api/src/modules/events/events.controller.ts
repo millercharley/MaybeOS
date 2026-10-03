@@ -12,7 +12,7 @@ import {
   Header,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -564,6 +564,35 @@ export class EventsController {
       userId: user.userId,
       isOrganiser: isStaff(user, orgId),
     });
+  }
+
+  /**
+   * Reservations this event could claim (SPC-27).
+   *
+   * Members, not only organisers: the person attaching a room to their own
+   * event is usually the member who booked it. The service decides whose
+   * reservations they may see, which is not a role — it is whether they are
+   * running the event.
+   */
+  @Get('orgs/:orgId/events/rooms/attachable')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Room reservations this member could attach to an event' })
+  @ApiQuery({ name: 'eventId', required: false })
+  @ApiQuery({ name: 'from', required: false })
+  @ApiQuery({ name: 'to', required: false })
+  async attachableRooms(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @CurrentUser() user: RequestUser,
+    @Query('eventId') eventId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.eventsService.attachableRooms(
+      orgId,
+      { userId: user.userId, isOrganiser: isStaff(user, orgId) },
+      { eventId, from, to },
+    );
   }
 
   /* ─── Cancel Event ──────────────────────────────────────────── */

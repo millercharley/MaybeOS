@@ -292,9 +292,16 @@ export function EventOverview({
               : 'Free'}
         </Fact>
 
-        <Fact icon={DoorOpen} label="Room booking">
-          {event.room?.name
-            ? 'The room is held for this event'
+        {/* Every room it occupies (SPC-26), not whether one is. An evening
+            using the Attic and the Salon is two reservations. */}
+        <Fact icon={DoorOpen} label={(event.rooms?.length ?? 0) > 1 ? 'Rooms held' : 'Room held'}>
+          {event.rooms?.length
+            ? event.rooms
+                .map(
+                  (r) =>
+                    `${r.room.name}${r.status === 'PENDING' ? ' (awaiting approval)' : ''}`,
+                )
+                .join(', ')
             : 'No room is held through MaybeOS'}
         </Fact>
       </dl>

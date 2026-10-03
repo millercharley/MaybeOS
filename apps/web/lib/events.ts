@@ -23,6 +23,15 @@ export function toUpdatePayload(
     is how the calendar import's cursor stopped a run (CAL-08). The co-host
     list travels as `coHostIds`.
   */
-  const { publish: _publish, host: _host, coHosts: _coHosts, ...changes } = values;
+  const {
+    publish: _publish,
+    host: _host,
+    coHosts: _coHosts,
+    // Read by the form, never sent (SPC-27). The rooms travel as
+    // `bookingIds`, and `id` is the event's own.
+    id: _id,
+    rooms: _rooms,
+    ...changes
+  } = values;
   return changes;
 }

@@ -51,6 +51,10 @@ describe('EventsService — announcing an event', () => {
         {
           provide: PrismaService,
           useValue: {
+            // Whether this co-op asks every event to name a room (SPC-27).
+            // It does not, here.
+            organization: { findUnique: jest.fn().mockResolvedValue({ requireEventRoom: false }) },
+            booking: { count: jest.fn().mockResolvedValue(0) },
             event: {
               create: jest.fn(),
               update: jest.fn(),

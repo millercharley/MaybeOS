@@ -577,6 +577,8 @@ class ApiClient {
          * everyone's dues have moved across.
          */
         legacyBillingUrl?: string | null;
+        /** Whether every event must name a room reservation (SPC-27). */
+        requireEventRoom?: boolean;
       },
       token: string,
     ) =>
@@ -1278,6 +1280,23 @@ class ApiClient {
       query.set('perPage', String(window.perPage ?? 20));
 
       return this.request<PaginatedResponse<Event>>(`/orgs/${orgId}/events?${query}`, { token });
+    },
+
+    /** Room reservations this member could attach to an event (SPC-27). */
+    attachableRooms: (
+      orgId: string,
+      token: string,
+      options: { eventId?: string; from?: string; to?: string } = {},
+    ) => {
+      const query = new URLSearchParams();
+      if (options.eventId) query.set('eventId', options.eventId);
+      if (options.from) query.set('from', options.from);
+      if (options.to) query.set('to', options.to);
+
+      return this.request<AttachableBooking[]>(
+        `/orgs/${orgId}/events/rooms/attachable?${query}`,
+        { token },
+      );
     },
 
     /** Hand an event to a different host (EVT-32). */
@@ -2994,6 +3013,11 @@ export interface Org {
    * (MIG-03). Absent for a co-op that started here.
    */
   legacyBillingUrl?: string | null;
+  /**
+   * Whether every event must name a room reservation (SPC-27). Off by
+   * default: plenty of a co-op's events happen in a park or online.
+   */
+  requireEventRoom?: boolean;
   timezone: string;
   /**
    * Whether a stranger can join from the public page. Off by default: a
@@ -3643,6 +3667,17 @@ export interface Event {
    * which is the only place that asks.
    */
   ticketsSold?: number;
+  /**
+   * Every room this event occupies (SPC-26). A list, because an evening using
+   * the Attic and the Salon is two reservations and one event.
+   */
+  rooms?: {
+    id: string;
+    startTime: string;
+    endTime: string;
+    status: string;
+    room: { id: string; name: string };
+  }[];
   /** Who it is suitable for (SPC-22). */
   maturityLevel?: MaturityLevel;
   /**
@@ -3699,6 +3734,19 @@ function eventUpdateBody<T extends { publish?: boolean }>(data: T): Omit<T, 'pub
   return rest;
 }
 
+/** A room reservation an event could claim (SPC-27). */
+export interface AttachableBooking {
+  id: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  status: string;
+  /** Set when it is already this event's. */
+  eventId: string | null;
+  room: { id: string; name: string };
+  user: { id: string; name?: string | null };
+}
+
 export interface CreateEventData {
   title: string;
   /**
@@ -3747,6 +3795,12 @@ export interface CreateEventData {
   maturityLevel?: MaturityLevel;
   locationId?: string;
   roomId?: string;
+  /**
+   * Everybody else running it (EVT-36), and the room reservations it occupies
+   * (SPC-27). Both are the whole list: sending one is what adds and removes.
+   */
+  coHostIds?: string[];
+  bookingIds?: string[];
   /** Go live immediately rather than saving a draft (EVT-05). */
   publish?: boolean;
   /**
