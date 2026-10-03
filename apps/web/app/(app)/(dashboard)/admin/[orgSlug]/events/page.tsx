@@ -25,7 +25,9 @@ const tabs: { key: FilterTab; label: string }[] = [
 
 export default function EventsPage() {
   const orgSlug = useParams()?.orgSlug as string;
-  const [activeTab, setActiveTab] = useState<FilterTab>('all');
+  // What is coming, not everything that ever happened (EVT-31). A console
+  // for 777 events opened on November 2024, which is nobody's first question.
+  const [activeTab, setActiveTab] = useState<FilterTab>('upcoming');
   const [creating, setCreating] = useState(false);
   // The event being edited, or null. Editing did not exist at all: the only
   // route off this page was the door list, so an event created with the wrong
