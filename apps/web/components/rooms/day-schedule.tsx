@@ -1,7 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Users } from 'lucide-react';
+import {
+  CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Loader2,
+  Users,
+} from 'lucide-react';
 import { api, type DaySchedule as DayScheduleData } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { maturityBadge } from '@/lib/maturity';
@@ -37,6 +45,24 @@ export function DaySchedule({ orgId, initialDate }: { orgId: string; initialDate
   const [rooms, setRooms] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  /** Which room, or all of them (SPC-28). */
+  const [roomFilter, setRoomFilter] = useState<string>('all');
+  /**
+   * Which reservations are opened out (SPC-28).
+   *
+   * The day used to print every description in full, so a room with four
+   * bookings and four paragraphs was a page of prose to scroll past before
+   * the next room. A line each, opened when somebody wants the rest.
+   */
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggle = (id: string) =>
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -85,7 +111,17 @@ export function DaySchedule({ orgId, initialDate }: { orgId: string; initialDate
     timeZone: 'UTC',
   });
 
-  const byRoom = rooms.map((room) => ({
+  /*
+    One room, or all of them (SPC-28).
+
+    A co-op with nine rooms answers "what is on today" with nine headings and
+    a scroll. Somebody who came to find out about the Attic wants the Attic.
+    All rooms stays the default, because the question the page exists for is
+    usually the broad one.
+  */
+  const shown = roomFilter === 'all' ? rooms : rooms.filter((r) => r.id === roomFilter);
+
+  const byRoom = shown.map((room) => ({
     room,
     bookings: (data?.bookings ?? []).filter((b) => b.room.id === room.id),
   }));
@@ -127,6 +163,27 @@ export function DaySchedule({ orgId, initialDate }: { orgId: string; initialDate
           >
             Back to today
           </button>
+        </div>
+      )}
+
+      {rooms.length > 1 && (
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+          {[{ id: 'all', name: 'All rooms' }, ...rooms].map((room) => (
+            <button
+              key={room.id}
+              type="button"
+              onClick={() => setRoomFilter(room.id)}
+              aria-pressed={roomFilter === room.id}
+              className={[
+                'rounded-full border px-3 py-1 text-sm transition-colors',
+                roomFilter === room.id
+                  ? 'border-gray-900 bg-gray-100 font-medium text-gray-900'
+                  : 'border-gray-200 text-gray-600 hover:bg-gray-50',
+              ].join(' ')}
+            >
+              {room.name}
+            </button>
+          ))}
         </div>
       )}
 
@@ -185,14 +242,37 @@ export function DaySchedule({ orgId, initialDate }: { orgId: string; initialDate
                         )}
                       </p>
 
-                      {b.description && (
-                        <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-gray-600">
-                          {b.description}
-                        </p>
+                      {/* A line, then the rest on request (SPC-28). */}
+                      {b.description &&
+                        (expanded.has(b.id) ? (
+                          <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-gray-600">
+                            {b.description}
+                          </p>
+                        ) : (
+                          <p className="mt-2 truncate text-sm text-gray-600">{b.description}</p>
+                        ))}
+
+                      {(b.description || b.categories.length > 0) && (
+                        <button
+                          type="button"
+                          onClick={() => toggle(b.id)}
+                          aria-expanded={expanded.has(b.id)}
+                          className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+                        >
+                          {expanded.has(b.id) ? (
+                            <>
+                              <ChevronUp className="h-3.5 w-3.5" /> Less
+                            </>
+                          ) : (
+                            <>
+                              <ChevronDown className="h-3.5 w-3.5" /> More
+                            </>
+                          )}
+                        </button>
                       )}
 
 
-                      {b.categories.length > 0 && (
+                      {expanded.has(b.id) && b.categories.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1.5">
                           {b.categories.map((c) => (
                             <span
