@@ -1,6 +1,8 @@
 import { Test } from '@nestjs/testing';
 import { ServiceService } from '../service.service';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../config/prisma.service';
+import { EmailService } from '../../email/email.service';
 
 /**
  * What members gave, for ImpactOS (SRV-02).
@@ -30,7 +32,13 @@ describe('ServiceService.contribution', () => {
       dutyClaim: { findMany: jest.fn().mockResolvedValue(claims) },
     };
     const moduleRef = await Test.createTestingModule({
-      providers: [ServiceService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        ServiceService,
+        { provide: PrismaService, useValue: prisma },
+        // The rota sends one email (SRV-04); nothing in these tests reaches it.
+        { provide: EmailService, useValue: { sendRaw: jest.fn().mockResolvedValue(true) } },
+        { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },
+      ],
     }).compile();
     service = moduleRef.get(ServiceService);
     return service.contribution('org-1');
@@ -128,7 +136,13 @@ describe('ServiceService.contribution', () => {
       dutyClaim: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const moduleRef = await Test.createTestingModule({
-      providers: [ServiceService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        ServiceService,
+        { provide: PrismaService, useValue: prisma },
+        // The rota sends one email (SRV-04); nothing in these tests reaches it.
+        { provide: EmailService, useValue: { sendRaw: jest.fn().mockResolvedValue(true) } },
+        { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },
+      ],
     }).compile();
     await moduleRef.get(ServiceService).contribution('org-1', from, to);
 

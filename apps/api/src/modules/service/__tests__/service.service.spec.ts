@@ -1,7 +1,9 @@
 import { Test } from '@nestjs/testing';
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { ServiceService } from '../service.service';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../config/prisma.service';
+import { EmailService } from '../../email/email.service';
 
 /**
  * The rules a service rota has to hold (SRV-01).
@@ -60,7 +62,13 @@ describe('ServiceService', () => {
     };
 
     const moduleRef = await Test.createTestingModule({
-      providers: [ServiceService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        ServiceService,
+        { provide: PrismaService, useValue: prisma },
+        // The rota sends one email (SRV-04); nothing in these tests reaches it.
+        { provide: EmailService, useValue: { sendRaw: jest.fn().mockResolvedValue(true) } },
+        { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },
+      ],
     }).compile();
 
     service = moduleRef.get(ServiceService);

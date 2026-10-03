@@ -5033,8 +5033,10 @@ export interface DutyClaim {
   minutesEdited: boolean;
   minutesNote?: string | null;
   completedAt?: string | null;
+  /** When the morning reminder went out (SRV-04). */
+  remindedAt?: string | null;
   adoptionId?: string | null;
-  duty?: Pick<Duty, 'id' | 'title' | 'estimatedMinutes'>;
+  duty?: Pick<Duty, 'id' | 'title' | 'description' | 'estimatedMinutes'>;
 }
 
 export interface DutyAdoption {
@@ -5063,6 +5065,12 @@ export interface MyService {
   totalMinutes: number;
   standing: ServiceStanding | null;
   upcoming: DutyClaim[];
+  /**
+   * Turns whose day has gone and which nobody has logged (SRV-04). Neither
+   * coming up nor done, and the only thing between a member and their
+   * standing — so they get a section of their own rather than vanishing.
+   */
+  needsLogging: DutyClaim[];
   past: DutyClaim[];
   adoptions: DutyAdoption[];
 }

@@ -8,6 +8,7 @@ import { StripeService } from '../stripe/stripe.service';
 import { RadarService } from '../radar/radar.service';
 import { RecapService } from '../recap/recap.service';
 import { HostBriefingService } from '../service/host-briefing.service';
+import { ServiceService } from '../service/service.service';
 
 export interface TaskResult {
   task: string;
@@ -54,6 +55,7 @@ export class SchedulerService {
     private readonly stripe: StripeService,
     private readonly radar: RadarService,
     private readonly recap: RecapService,
+    private readonly rota: ServiceService,
   ) {}
 
   async runDueTasks(now: Date = new Date()): Promise<RunResult> {
@@ -71,6 +73,7 @@ export class SchedulerService {
       { name: 'compose-pending-reports', run: () => this.composePendingReports(now) },
       { name: 'advance-buddy-pairings', run: () => this.advanceBuddyPairings(now) },
       { name: 'send-host-briefings', run: () => this.sendHostBriefings(now) },
+      { name: 'send-duty-reminders', run: () => this.sendDutyReminders(now) },
       { name: 'sync-door-codes', run: () => this.syncDoorCodes() },
       { name: 'remove-dues-fees-after-upgrade', run: () => this.removeDuesFees() },
     { name: 'send-radar-digests',             run: () => this.sendRadarDigests(now) },
@@ -194,6 +197,25 @@ export class SchedulerService {
       const message = (error as Error).message;
       this.logger.error('Failed to send host briefings', error as Error);
       return { task: 'send-host-briefings', processed: 0, failed: 1, errors: [message] };
+    }
+  }
+
+  /**
+   * Remind members of a turn they are on today (SRV-04).
+   *
+   * The 15-minute cadence means the 8am reminder arrives between 8:00 and
+   * 8:15 in the co-op's own timezone. Nothing is sent for a turn nobody has
+   * taken, which is most rows on most mornings.
+   */
+  private async sendDutyReminders(now: Date): Promise<TaskResult> {
+    try {
+      const { sent, failed, errors } = await this.rota.remindDue(now);
+      if (sent > 0) this.logger.log(`Sent ${sent} duty reminder email(s)`);
+      return { task: 'send-duty-reminders', processed: sent, failed, errors };
+    } catch (error) {
+      const message = (error as Error).message;
+      this.logger.error('Failed to send duty reminders', error as Error);
+      return { task: 'send-duty-reminders', processed: 0, failed: 1, errors: [message] };
     }
   }
 

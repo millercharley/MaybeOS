@@ -10,6 +10,7 @@ import { eventWindow } from '@/lib/event-list';
 import { useAuthStore } from '@/lib/auth-store';
 import { HappeningNow } from '@/components/live/happening-now';
 import { WelcomeCard } from '@/components/live/welcome-card';
+import { ServingToday } from '@/components/service/serving-today';
 
 export default function PortalHomePage() {
   const { orgSlug } = useParams();
@@ -46,6 +47,10 @@ export default function PortalHomePage() {
           when there is nothing to say. */}
       {org && token && (
         <div className="space-y-4">
+          {/* What this member themselves promised to do today (SRV-04), above
+              what the building is doing. Renders nothing on a day they are not
+              serving, which is most days. */}
+          <ServingToday orgId={org.id} orgSlug={org.slug} />
           <HappeningNow orgId={org.id} orgSlug={org.slug} />
           <WelcomeCard orgId={org.id} orgSlug={org.slug} />
         </div>

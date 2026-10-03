@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { Repeat, Check, Undo2 } from 'lucide-react';
+import { Repeat, Check, Undo2, AlertCircle } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, type MyService } from '@/lib/api';
 import { PageHeader } from '@/components/layout/page-header';
@@ -11,10 +11,16 @@ import { Panel } from '@/components/layout/panel';
 import {
   formatMinutes,
   recurrenceLabel,
+  servingToday,
   shortDate,
   standingSentence,
   timeOf,
 } from '@/lib/service-rota';
+
+/** Whether a turn falls on today, in the co-op's own reckoning (SRV-04). */
+function isToday(occursAt: string, timeZone: string): boolean {
+  return servingToday([{ occursAt, status: 'CONFIRMED' as const }], timeZone, new Date()).length > 0;
+}
 
 /** How many turns "Coming up" lists before it summarises the rest. */
 const UPCOMING_SHOWN = 8;
@@ -88,6 +94,12 @@ export default function MyServicePage() {
   const shown = upcoming.slice(0, UPCOMING_SHOWN);
   const hidden = upcoming.length - shown.length;
 
+  // Turns whose day has gone and which nobody logged (SRV-04). They used to
+  // appear on no list at all — not Coming up, because the day had passed, and
+  // not Done, because nobody had marked them — so a member who served and
+  // forgot to log it saw an empty page and no way to put it right.
+  const needsLogging = data?.needsLogging ?? [];
+
   return (
     <div>
       <header>
@@ -111,6 +123,83 @@ export default function MyServicePage() {
         </Panel>
       )}
 
+      {needsLogging.length > 0 && (
+        <Panel
+          className="mt-8"
+          title={
+            <span className="inline-flex items-center gap-2">
+              <AlertCircle size={16} aria-hidden="true" />
+              Still to log
+            </span>
+          }
+          description="You took these on and the day has passed. Say how long they took and the hours count towards your standing."
+          bodyClassName=""
+        >
+          <ul className="-mx-5 -mb-5 divide-y divide-[var(--border)] border-t border-[var(--border)]">
+            {needsLogging.map((claim) => (
+              <li key={claim.id} className="p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-medium">{claim.duty?.title}</p>
+                    <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                      {shortDate(claim.occursAt.slice(0, 10))} ·{' '}
+                      {timeOf(claim.occursAt, data!.timezone)}
+                    </p>
+                  </div>
+
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      onClick={() => setEditing(editing === claim.id ? null : claim.id)}
+                      className="btn-primary inline-flex items-center gap-1 text-sm"
+                    >
+                      <Check size={14} aria-hidden="true" />
+                      Mark done
+                    </button>
+                    {/* Still offered, because the honest answer is sometimes
+                        "I did not do it" — and a turn handed back late is
+                        better for the co-op than one quietly logged. */}
+                    <button
+                      onClick={() =>
+                        act(claim.id, () => api.service.releaseClaim(orgId!, claim.id, token!))
+                      }
+                      disabled={busyId === claim.id}
+                      className="btn-secondary inline-flex items-center gap-1 text-sm"
+                    >
+                      <Undo2 size={14} aria-hidden="true" />
+                      I did not
+                    </button>
+                  </div>
+                </div>
+
+                {editing === claim.id && (
+                  <DoneForm
+                    estimate={claim.duty?.estimatedMinutes ?? 30}
+                    minutes={minutes}
+                    note={note}
+                    busy={busyId === claim.id}
+                    onMinutes={setMinutes}
+                    onNote={setNote}
+                    onSubmit={() =>
+                      act(claim.id, () =>
+                        api.service.complete(
+                          orgId!,
+                          claim.id,
+                          {
+                            ...(minutes ? { minutes: parseInt(minutes, 10) } : {}),
+                            ...(note.trim() ? { note: note.trim() } : {}),
+                          },
+                          token!,
+                        ),
+                      )
+                    }
+                  />
+                )}
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
+
       <Panel className="mt-8" title="Coming up" bodyClassName="">
         {upcoming.length === 0 ? (
           <p className="mt-2 text-sm text-[var(--text-secondary)]">
@@ -128,10 +217,23 @@ export default function MyServicePage() {
                   <div className="min-w-0">
                     <p className="font-medium">{claim.duty?.title}</p>
                     <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                      {isToday(claim.occursAt, data!.timezone) && (
+                        <span className="mr-1 font-medium text-[var(--text-primary)]">
+                          Today ·
+                        </span>
+                      )}
                       {shortDate(claim.occursAt.slice(0, 10))} ·{' '}
                       {timeOf(claim.occursAt, data!.timezone)}
                       {claim.status === 'CLAIMED' && ' · waiting on an organizer'}
                     </p>
+                    {/* What the job actually is. This is the page the morning
+                        reminder links to, and "Water the plants" on its own
+                        does not tell somebody which plants. */}
+                    {claim.duty?.description && (
+                      <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                        {claim.duty.description}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex shrink-0 gap-2">

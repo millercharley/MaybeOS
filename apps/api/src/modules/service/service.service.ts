@@ -6,7 +6,9 @@ import {
   ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../config/prisma.service';
+import { EmailService } from '../email/email.service';
 import { occurrencesBetween, nextOccurrences, DutyRule } from './occurrences';
 import { standingFor, currentWindow, ServicePeriod } from './expectation';
 import { zonedParts } from '../space/availability/zoned-time';
@@ -16,6 +18,13 @@ import { needsReview, reviewDueAt } from './standing-review';
 
 /** How far ahead an adoption keeps claims materialised. */
 const ADOPTION_HORIZON_DAYS = 120;
+
+/**
+ * The hour, in the co-op's timezone, from which the morning reminder may go
+ * out (SRV-04). Early enough to be a morning reminder, late enough not to be
+ * the thing that woke somebody up.
+ */
+const REMINDER_HOUR = 8;
 
 /** How many occurrences a duty shows on the open list by default. */
 const DEFAULT_LOOKAHEAD_DAYS = 60;
@@ -36,7 +45,11 @@ const DEFAULT_LOOKAHEAD_DAYS = 60;
 export class ServiceService {
   private readonly logger = new Logger(ServiceService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly email: EmailService,
+    private readonly configService: ConfigService,
+  ) {}
 
   // ── Reading the co-op ───────────────────────────────────────────────
 
@@ -549,7 +562,14 @@ export class ServiceService {
     const [claims, adoptions, membership] = await Promise.all([
       this.prisma.dutyClaim.findMany({
         where: { userId, duty: { orgId }, status: { not: 'RELEASED' } },
-        include: { duty: { select: { id: true, title: true, estimatedMinutes: true } } },
+        // `description` because this is the page the morning reminder links to
+        // (SRV-04): a member who arrives here wants to know what the job
+        // actually is, not just what it is called.
+        include: {
+          duty: {
+            select: { id: true, title: true, description: true, estimatedMinutes: true },
+          },
+        },
         orderBy: { occursAt: 'desc' },
         take: 200,
       }),
@@ -584,11 +604,173 @@ export class ServiceService {
       timezone: timeZone,
       totalMinutes,
       standing,
+      /*
+        A turn belongs to its day, not to the minute it starts (SRV-04).
+
+        This read `occursAt >= now`, so Charley's 9am watering turn vanished
+        from Coming up at 9am — and because Done lists only the turns marked
+        done, a turn somebody had taken for today was on no list at all by
+        lunchtime. The one page that answers "what did I sign up for" said
+        nothing.
+
+        So the day is the unit: a turn stays in Coming up until the end of the
+        day it falls on, in the co-op's own reckoning.
+      */
       upcoming: claims
-        .filter((c) => c.occursAt >= now && c.status !== 'DONE')
+        .filter(
+          (c) =>
+            c.status !== 'DONE' &&
+            zonedParts(c.occursAt, timeZone).date >= zonedParts(now, timeZone).date,
+        )
         .sort((a, b) => a.occursAt.getTime() - b.occursAt.getTime()),
+      /**
+       * Turns somebody took, whose day has gone, and which they have not
+       * logged (SRV-04). Neither coming up nor done — and the only thing
+       * standing between a member and their service standing.
+       */
+      needsLogging: claims
+        .filter(
+          (c) =>
+            c.status !== 'DONE' &&
+            zonedParts(c.occursAt, timeZone).date < zonedParts(now, timeZone).date,
+        )
+        .sort((a, b) => b.occursAt.getTime() - a.occursAt.getTime()),
       past: claims.filter((c) => c.occursAt < now || c.status === 'DONE'),
       adoptions,
+    };
+  }
+
+  /**
+   * Remind whoever is on a turn today (SRV-04).
+   *
+   * Charley, having taken the Saturday watering: "email reminders the morning
+   * of the date". A duty nobody is reminded of is a duty somebody forgets, and
+   * the co-op finds out when the plants are dry.
+   *
+   * **The morning, in the co-op's own reckoning.** A member reading this from
+   * another timezone is being reminded about something happening at the
+   * building, so eight o'clock means eight o'clock there. The scheduler runs
+   * every quarter hour, and `remindedAt` is what makes four runs in that hour
+   * send one email.
+   *
+   * `remindedAt` is written **before** sending, like the host briefings
+   * (SRV-03): the email service swallows its own failures, so a mark afterwards
+   * would send again on the next run. When the provider rejects it the mark is
+   * taken back, which retries until the morning window closes and then stops on
+   * its own — no counter, no stuck row.
+   */
+  async remindDue(now: Date = new Date()): Promise<{ sent: number; failed: number; errors: string[] }> {
+    // A day either side, then narrowed to "today, there" per co-op — the
+    // instant window cannot be exact because the co-ops are in different zones.
+    const claims = await this.prisma.dutyClaim.findMany({
+      where: {
+        remindedAt: null,
+        status: { in: ['CLAIMED', 'CONFIRMED'] },
+        occursAt: {
+          gte: new Date(now.getTime() - 36 * 3_600_000),
+          lte: new Date(now.getTime() + 36 * 3_600_000),
+        },
+      },
+      include: {
+        duty: { select: { title: true, description: true, orgId: true, estimatedMinutes: true } },
+        user: { select: { email: true, name: true } },
+      },
+      take: 300,
+    });
+    if (claims.length === 0) return { sent: 0, failed: 0, errors: [] };
+
+    const orgs = await this.prisma.organization.findMany({
+      where: { id: { in: [...new Set(claims.map((c) => c.duty.orgId))] } },
+      select: { id: true, name: true, slug: true, timezone: true },
+    });
+    const orgById = new Map(orgs.map((o) => [o.id, o]));
+
+    let sent = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (const claim of claims) {
+      const org = orgById.get(claim.duty.orgId);
+      if (!org || !claim.user.email) continue;
+
+      const turn = zonedParts(claim.occursAt, org.timezone);
+      const here = zonedParts(now, org.timezone);
+
+      // Today, there — and not before the morning hour, which is when a
+      // reminder is useful rather than a thing that woke somebody up.
+      if (turn.date !== here.date) continue;
+      if (here.minutes < REMINDER_HOUR * 60) continue;
+
+      const { subject, html } = this.buildReminderEmail({
+        orgName: org.name,
+        orgSlug: org.slug,
+        memberName: claim.user.name,
+        title: claim.duty.title,
+        description: claim.duty.description,
+        at: new Intl.DateTimeFormat('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          timeZone: org.timezone,
+        }).format(claim.occursAt),
+        minutes: claim.duty.estimatedMinutes,
+      });
+
+      try {
+        await this.prisma.dutyClaim.update({
+          where: { id: claim.id },
+          data: { remindedAt: new Date() },
+        });
+
+        const delivered = await this.email.sendRaw(claim.user.email, subject, html);
+        if (!delivered) {
+          await this.prisma.dutyClaim.update({
+            where: { id: claim.id },
+            data: { remindedAt: null },
+          });
+          failed += 1;
+          errors.push(`claim ${claim.id}: the email provider rejected it`);
+          continue;
+        }
+
+        sent += 1;
+      } catch (error) {
+        failed += 1;
+        errors.push(`claim ${claim.id}: ${(error as Error).message}`);
+        this.logger.error(`Duty reminder failed for claim ${claim.id}`, error as Error);
+      }
+    }
+
+    return { sent, failed, errors };
+  }
+
+  /** The morning reminder, as it arrives. Separate so a test can read it. */
+  buildReminderEmail(input: {
+    orgName: string;
+    orgSlug: string;
+    memberName?: string | null;
+    title: string;
+    description?: string | null;
+    at: string;
+    minutes?: number | null;
+  }): { subject: string; html: string } {
+    const base = (this.configService.get<string>('WEB_URL') || 'https://maybeos.org')
+      .split(',')[0]
+      .trim()
+      .replace(/\/+$/, '');
+    const url = `${base}/member/${input.orgSlug}/service`;
+
+    const howLong = input.minutes ? ` It usually takes about ${input.minutes} minutes.` : '';
+
+    return {
+      subject: `Today: ${input.title}`,
+      html:
+        `<p>${input.memberName ? `Hi ${escapeHtml(input.memberName.split(' ')[0])},` : 'Hi,'}</p>` +
+        `<p>You are down for <strong>${escapeHtml(input.title)}</strong> today at ` +
+        `${escapeHtml(input.at)}.${escapeHtml(howLong)}</p>` +
+        (input.description ? `<p>${escapeHtml(input.description).replace(/\n/g, '<br>')}</p>` : '') +
+        `<p><a href="${url}">See what you are serving</a> — and mark it done when you have.</p>` +
+        `<p style="color:#666;font-size:12px">Sent by ${escapeHtml(input.orgName)} through MaybeOS. ` +
+        `If you cannot make it today, release the turn on that page so somebody else can pick it up.</p>`,
     };
   }
 
@@ -844,4 +1026,12 @@ export class ServiceService {
       timeZone,
     );
   }
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }

@@ -2529,6 +2529,13 @@ model DutyClaim {
   /// Why it differed.
   minutesNote   String?
 
+  /// When the morning reminder went out (SRV-04).
+  ///
+  /// Marked before the email is sent, not after: `EmailService` swallows its
+  /// own failures, so a null here after a send would mean the next run sends
+  /// it again — and a reminder arriving twice is worse than one that did not
+  /// arrive, because it is the one somebody stops reading.
+  remindedAt  DateTime?
   completedAt DateTime?
   releasedAt  DateTime?
   reviewedBy  String?
@@ -2548,6 +2555,8 @@ model DutyClaim {
   @@unique([dutyId, userId, occursAt])
   @@index([dutyId, occursAt])
   @@index([userId, status])
+  /// Whose turn is today and has not been reminded (SRV-04).
+  @@index([remindedAt, occursAt])
   @@map("duty_claims")
 }
 
