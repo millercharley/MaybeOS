@@ -54,11 +54,13 @@ describe('what else is on it', () => {
     expect(overview).toMatch(/label="Room booking"/);
   });
 
-  it('says what a ticket costs, and distinguishes cash at the door', () => {
+  it('says what a ticket costs, and distinguishes paying at the door', () => {
     // `hasCost` is money the host takes themselves; `priceCents` is a ticket
-    // sold through MaybeOS, and they are not the same question.
+    // sold through MaybeOS, and they are not the same question. EVT-34 gave
+    // the first of them an optional figure.
     expect(overview).toMatch(/event\.priceCents/);
-    expect(overview).toMatch(/Charged at the door, not through MaybeOS/);
+    expect(overview).toMatch(/Pay or donate at the door/);
+    expect(overview).toMatch(/suggested at the door/);
   });
 
   it('totals the sales, leaving refunds out of what was taken', () => {

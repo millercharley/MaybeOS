@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { DoorOpen, ArrowLeft, Calendar, MapPin, Users, Ticket } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
+import { doorCost } from '@/lib/event-list';
 import { api, Event, Comment } from '@/lib/api';
 import { renderBodyHtml, isBlankBody } from '@/lib/rich-text';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
@@ -510,10 +511,10 @@ export default function PortalEventPage(props: {
                 Ages {maturityBadge(event.maturityLevel)}
               </p>
             )}
-            {!cost && event.hasCost && (
-              <p className="mt-3 text-center text-xs text-gray-500">
-                There is a cost to attend — ask the host.
-              </p>
+            {!cost && doorCost(event) && (
+              // "Ask the host" was what this said when the product did not
+              // know the answer (EVT-34). Now it often does.
+              <p className="mt-3 text-center text-xs text-gray-500">{doorCost(event)}</p>
             )}
 
             {cost ? (

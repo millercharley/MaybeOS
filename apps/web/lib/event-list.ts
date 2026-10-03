@@ -227,3 +227,27 @@ export function adminEventWindow(
 
   return { perPage: 100 };
 }
+
+/**
+ * What an event asks for at the door, in words (EVT-34).
+ *
+ * `hasCost` on its own has always read "there is a cost to attend — ask the
+ * host", which is the sentence somebody writes when the product does not
+ * know the answer. A suggested figure is a better offer and a kinder one:
+ * "$10 suggested, pay what you can" tells a member what to bring and that
+ * they are welcome without it.
+ */
+export function doorCost(
+  event: { hasCost?: boolean; priceCents?: number | null; suggestedCents?: number | null },
+): string | null {
+  // A ticket sold through MaybeOS is a different thing, shown as a price.
+  if (event.priceCents) return null;
+  if (!event.hasCost) return null;
+
+  const suggested = event.suggestedCents ?? 0;
+  if (suggested <= 0) return 'Pay or donate at the door';
+
+  const amount = suggested % 100 === 0 ? `$${suggested / 100}` : `$${(suggested / 100).toFixed(2)}`;
+
+  return `${amount} suggested — pay what you can`;
+}

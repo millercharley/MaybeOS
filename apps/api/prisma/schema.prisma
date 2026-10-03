@@ -859,6 +859,13 @@ model Event {
   /// are asked. `category` is the older singular field the admin form writes;
   /// readers prefer these and fall back to it.
   tags                String[]        @default([])
+  /// What the host suggests, in cents, for an event paid at the door (EVT-34).
+  ///
+  /// Optional even when `hasCost` is set: plenty of events ask for something
+  /// without naming a figure, and "pay what you can" with a number beside it
+  /// is a different offer from "pay what you can". Not a price — nothing
+  /// stops anybody coming who does not pay it, and MaybeOS never collects it.
+  suggestedCents      Int?
   /// Whether the host charges attendees — cash at the door, Venmo, whatever.
   /// Distinct from `priceCents`, which is a ticket sold through MaybeOS: an
   /// event can have a cost and no ticket, and most co-op events that charge

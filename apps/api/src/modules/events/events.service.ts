@@ -247,6 +247,9 @@ export class EventsService {
         category: dto.category,
         tags: dto.tags,
         hasCost: options.hasCost ?? dto.hasCost ?? false,
+        // What they suggest at the door (EVT-34). Only meaningful alongside
+        // `hasCost`, and optional even then.
+        suggestedCents: dto.suggestedCents ?? null,
         maturityLevel: options.maturityLevel ?? dto.maturityLevel ?? 'ALL_AGES',
         // The picture, and whoever has to be credited for it (EVT-22). Empty
         // string means "none" — that is what a cleared field sends — and is
@@ -422,6 +425,7 @@ export class EventsService {
         ...(dto.category !== undefined && { category: dto.category }),
         ...(dto.tags !== undefined && { tags: dto.tags }),
         ...(dto.hasCost !== undefined && { hasCost: dto.hasCost }),
+        ...(dto.suggestedCents !== undefined && { suggestedCents: dto.suggestedCents || null }),
         ...(dto.maturityLevel !== undefined && { maturityLevel: dto.maturityLevel }),
         // Blank clears it, so removing a picture is a save rather than a
         // separate delete — and the credit goes with it, because a credit

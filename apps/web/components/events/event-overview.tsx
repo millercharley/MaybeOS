@@ -267,7 +267,10 @@ export function EventOverview({
           {event.priceCents
             ? `${money(event.priceCents)} each`
             : event.hasCost
-              ? 'Charged at the door, not through MaybeOS'
+              ? // Paid at the door (EVT-34), with the figure if they gave one.
+                event.suggestedCents
+                ? `${money(event.suggestedCents)} suggested at the door`
+                : 'Pay or donate at the door'
               : 'Free'}
         </Fact>
 
