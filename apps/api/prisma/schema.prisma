@@ -376,6 +376,8 @@ model User {
   receivedMessages DirectMessage[]  @relation("ReceivedMessages")
   collectionPages  CollectionPage[]
   hostedEvents     Event[]          @relation("HostedEvents")
+  createdEvents    Event[]          @relation("CreatedEvents")
+  coHostedEvents   EventCoHost[]
   tickets          Ticket[]
 
   expensesCreated       Expense[]              @relation("ExpenseCreator")
@@ -814,6 +816,14 @@ model Event {
   /// have no known host, and guessing one would invent a fact the product
   /// would then act on — the PRD emails this person after their event.
   hostId              String?
+  /// Who made it (EVT-32).
+  ///
+  /// Distinct from the host, which starts as the creator and can be handed
+  /// to somebody else. Without this, handing an event over took the creator's
+  /// own ability to correct it with them — and an organiser creating an event
+  /// on a member's behalf, which is the case `hostId` exists for, would lose
+  /// it the moment they set the host.
+  createdById         String?
   /// Who ran it, when MaybeOS has no member for them (CAL-03).
   ///
   /// A co-op importing years of its own calendar brings events hosted by
@@ -868,10 +878,12 @@ model Event {
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
 
-  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  org       Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
   // SetNull, not Cascade: a host leaving the co-op must not delete the events
   // they ran, along with every RSVP and attendance record attached to them.
-  host User?        @relation("HostedEvents", fields: [hostId], references: [id], onDelete: SetNull)
+  host      User?         @relation("HostedEvents", fields: [hostId], references: [id], onDelete: SetNull)
+  createdBy User?         @relation("CreatedEvents", fields: [createdById], references: [id], onDelete: SetNull)
+  coHosts   EventCoHost[]
 
   /// SetNull, not Cascade: an event whose discussion was moderated away should
   /// still exist.
@@ -2661,6 +2673,33 @@ model ShareGrant {
   @@index([orgId, holderEmail])
   @@index([orgId, userId])
   @@map("share_grants")
+}
+
+/// Somebody else running an event alongside the host (EVT-32).
+///
+/// A co-op's events are rarely one person's: a workshop has somebody teaching
+/// and somebody on the door, a gig has the act and whoever is letting them in.
+/// `hostId` could only ever name one of them, so the other had no way to
+/// correct a time, see who was coming, or be written to about their own event.
+///
+/// A row rather than a column, because the list is open-ended and because
+/// `addedById` is worth keeping: handing somebody responsibility for an event
+/// is a decision, and it is useful to know whose.
+model EventCoHost {
+  id        String   @id @default(uuid())
+  eventId   String
+  userId    String
+  /// The organiser or host who added them. Null if that account is gone.
+  addedById String?
+  createdAt DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// One person cannot co-host the same event twice.
+  @@unique([eventId, userId])
+  @@index([userId])
+  @@map("event_co_hosts")
 }
 
 /// What MaybeOS last wrote to a co-op's door sheet, one row per email (DOR-01).

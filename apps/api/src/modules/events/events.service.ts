@@ -13,6 +13,7 @@ import { RadarService } from '../radar/radar.service';
 import { ContactViewer } from '../../common/access/contact-visibility';
 import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
+import { canManageHosts, coHostProblem, NOT_YOURS } from './host-control';
 import { PublishBookingEventDto } from './dto/publish-booking-event.dto';
 import { ConnectService } from '../stripe/connect.service';
 import ical, { ICalCalendarMethod } from 'ical-generator';
@@ -231,6 +232,10 @@ export class EventsService {
         // on somebody else's behalf reassigns it; until they do, the person
         // who made it is the one who answers for it.
         hostId: dto.hostId ?? userId,
+        // Who made it, kept apart from who runs it (EVT-32). An organiser
+        // creating an event on a member's behalf sets `hostId` to them and
+        // would otherwise have no claim on it afterwards.
+        createdById: userId,
         bookingId: options.bookingId,
         // A member publishing their own event means it goes live. Leaving it
         // as a draft they cannot publish would be a dead end — the point of
@@ -521,6 +526,14 @@ export class EventsService {
         // name to anyone on the internet is a decision the co-op should make,
         // not a default that arrives with a schema change (see SEC-06).
         host: { select: { id: true, name: true, avatarUrl: true, avatarPath: true } },
+        // Everyone else running it (EVT-32).
+        coHosts: {
+          select: {
+            userId: true,
+            user: { select: { id: true, name: true, avatarUrl: true, avatarPath: true } },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
 
@@ -1076,7 +1089,10 @@ export class EventsService {
    */
   async listHostedEvents(orgId: string, userId: string) {
     const events = await this.prisma.event.findMany({
-      where: { orgId, hostId: userId },
+      where: {
+        orgId,
+        OR: [{ hostId: userId }, { coHosts: { some: { userId } } }],
+      },
       orderBy: { startTime: 'desc' },
       include: {
         location: { select: { name: true } },
@@ -1089,6 +1105,108 @@ export class EventsService {
       ...withRsvpCount(event),
       isPast: event.endTime < new Date(),
     }));
+  }
+
+  /**
+   * Who runs this event (EVT-32).
+   *
+   * The host and the co-hosts are one concern, so they share one guard: an
+   * organiser, the host, or whoever created it. A co-host cannot — being
+   * asked to help run an evening is not being given the power to hand it to
+   * somebody else.
+   */
+  private async eventForHostChange(orgId: string, eventId: string, userId: string, isOrganiser: boolean) {
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, orgId },
+      select: {
+        id: true,
+        hostId: true,
+        createdById: true,
+        coHosts: { select: { userId: true } },
+      },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+
+    if (!canManageHosts(event, userId, isOrganiser)) {
+      throw new ForbiddenException(NOT_YOURS);
+    }
+
+    return event;
+  }
+
+  /** Nobody can be made to run an event in a co-op they are not in. */
+  private async requireMember(orgId: string, userId: string) {
+    const membership = await this.prisma.userOrg.findUnique({
+      where: { userId_orgId: { userId, orgId } },
+      select: { userId: true },
+    });
+    if (!membership) {
+      throw new BadRequestException('That person is not a member of this co-op.');
+    }
+  }
+
+  /**
+   * Hand the event to somebody else (EVT-32).
+   *
+   * The new host stops being a co-host if they were one, because the list
+   * would otherwise read "hosted by Ada, with Ada".
+   */
+  async setHost(
+    orgId: string,
+    eventId: string,
+    newHostId: string,
+    actor: { userId: string; isOrganiser: boolean },
+  ) {
+    const event = await this.eventForHostChange(orgId, eventId, actor.userId, actor.isOrganiser);
+    await this.requireMember(orgId, newHostId);
+
+    await this.prisma.$transaction([
+      this.prisma.eventCoHost.deleteMany({ where: { eventId, userId: newHostId } }),
+      this.prisma.event.update({ where: { id: eventId }, data: { hostId: newHostId } }),
+    ]);
+
+    // Imported events carry a name for a host who is not a member (CAL-03).
+    // Naming a real one supersedes it.
+    await this.prisma.event.update({
+      where: { id: eventId },
+      data: { hostEmail: null, hostName: null },
+    });
+
+    return { hostId: newHostId, wasCoHost: event.coHosts.some((c) => c.userId === newHostId) };
+  }
+
+  /** Somebody else running it alongside the host (EVT-32). */
+  async addCoHost(
+    orgId: string,
+    eventId: string,
+    userId: string,
+    actor: { userId: string; isOrganiser: boolean },
+  ) {
+    const event = await this.eventForHostChange(orgId, eventId, actor.userId, actor.isOrganiser);
+    await this.requireMember(orgId, userId);
+
+    const problem = coHostProblem(event, userId, event.coHosts.map((c) => c.userId));
+    if (problem) throw new BadRequestException(problem);
+
+    await this.prisma.eventCoHost.create({
+      data: { eventId, userId, addedById: actor.userId },
+    });
+
+    return { added: true };
+  }
+
+  /** Take somebody off (EVT-32). Silent when they were not on it. */
+  async removeCoHost(
+    orgId: string,
+    eventId: string,
+    userId: string,
+    actor: { userId: string; isOrganiser: boolean },
+  ) {
+    await this.eventForHostChange(orgId, eventId, actor.userId, actor.isOrganiser);
+
+    await this.prisma.eventCoHost.deleteMany({ where: { eventId, userId } });
+
+    return { removed: true };
   }
 
   /**
