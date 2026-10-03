@@ -26,6 +26,7 @@ import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
 import { EventHostDto } from './dto/event-host.dto';
 import { RepeatEventDto } from './dto/repeat-event.dto';
+import { CloneEventDto } from './dto/clone-event.dto';
 import { ListEventsQueryDto } from './dto/list-events.dto';
 import { WalkInDto } from './dto/walk-in.dto';
 import { PublishBookingEventDto } from './dto/publish-booking-event.dto';
@@ -618,6 +619,29 @@ export class EventsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.eventsService.repeat(orgId, eventId, dto, {
+      userId: user.userId,
+      isStaff: isStaff(user, orgId),
+    });
+  }
+
+  /**
+   * Copy an event to a new date (EVT-38).
+   *
+   * `dryRun` defaults to true, and the reply says whether this event is one
+   * of a series — which the screen has to ask about before it can send a
+   * scope.
+   */
+  @Post('orgs/:orgId/events/:eventId/clone')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Copy an event, or a whole series, to a new date' })
+  async clone(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Body() dto: CloneEventDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.eventsService.clone(orgId, eventId, dto, {
       userId: user.userId,
       isStaff: isStaff(user, orgId),
     });

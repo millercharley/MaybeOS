@@ -120,10 +120,12 @@ describe('yearly', () => {
     expect(out.map((d) => local(d).slice(0, 10))).toEqual(['05/10/2026', '05/10/2027']);
   });
 
-  it('skips a year with no 29 February', () => {
+  it('cannot reach a second leap year, because a repeat stops after one', () => {
+    // 2032 is the next 29 February, which is four years past the horizon
+    // (EVT-38). A yearly event is one of the things that has to be cloned.
     const out = occurrencesOf(new Date('2028-02-29T19:00:00Z'), { frequency: 'YEARLY', count: 2 }, ZONE);
 
-    expect(out.map((d) => local(d).slice(0, 10))).toEqual(['29/02/2028', '29/02/2032']);
+    expect(out.map((d) => local(d).slice(0, 10))).toEqual(['29/02/2028']);
   });
 });
 
@@ -148,12 +150,52 @@ describe('when it stops', () => {
     ]);
   });
 
-  it('stops somewhere, even told to repeat for ever', () => {
-    // Google will repeat forever; a row per occurrence cannot. A co-op that
-    // wants more extends it rather than planning its 2029 from here.
+  it('stops after a year, told to repeat for ever', () => {
+    // Google can repeat forever because it stores a rule; a row per
+    // occurrence cannot, and a year is how far ahead a co-op plans (EVT-38).
     const out = occurrencesOf(new Date('2026-10-05T23:00:00Z'), { frequency: 'DAILY' }, ZONE);
 
-    expect(out).toHaveLength(MAX_OCCURRENCES);
+    expect(out).toHaveLength(366);
+    expect(local(out[out.length - 1]).slice(0, 10)).toBe('05/10/2027');
+  });
+
+  it('clamps an ending further out than a year, rather than refusing it', () => {
+    // Somebody asking for two years wants it to carry on. "Here is a year,
+    // come back and clone it" beats an error about a number they cannot see.
+    const out = occurrencesOf(
+      new Date('2026-10-06T23:00:00Z'),
+      { frequency: 'WEEKLY', until: new Date('2029-01-01T00:00:00Z') },
+      ZONE,
+    );
+
+    expect(out).toHaveLength(53);
+    expect(local(out[out.length - 1]).slice(0, 10)).toBe('05/10/2027');
+  });
+
+  it('honours an ending inside the year', () => {
+    const out = occurrencesOf(
+      new Date('2026-10-06T23:00:00Z'),
+      { frequency: 'WEEKLY', until: new Date('2026-11-04T00:00:00Z') },
+      ZONE,
+    );
+
+    expect(out.map((d) => local(d).slice(0, 10))).toEqual([
+      '06/10/2026',
+      '13/10/2026',
+      '20/10/2026',
+      '27/10/2026',
+      '03/11/2026',
+    ]);
+  });
+
+  it('cannot be pushed past the year by a count either', () => {
+    const out = occurrencesOf(
+      new Date('2026-10-06T23:00:00Z'),
+      { frequency: 'WEEKLY', count: 200 },
+      ZONE,
+    );
+
+    expect(out.length).toBeLessThanOrEqual(53);
   });
 
   it('always includes the first, whatever else is asked', () => {

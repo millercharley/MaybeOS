@@ -59,13 +59,44 @@ export function RepeatEvent({
     setBusy(true);
     setError('');
     try {
-      const result = await api.events.repeat(orgId, event.id, { ...body(), dryRun }, token);
-      if (dryRun) setPlan(result);
-      else {
-        setDone(result);
-        setPlan(null);
-        onChangedDone?.();
+      if (dryRun) {
+        setPlan(await api.events.repeat(orgId, event.id, { ...body(), dryRun: true }, token));
+        return;
       }
+
+      /*
+        In as many requests as it takes (EVT-38).
+
+        A year of a daily event is 366 events and 366 reservations, which does
+        not fit in a Lambda. The API says where it stopped; this keeps asking,
+        bounded so a server answering with the same index cannot spin here.
+      */
+      let total: RepeatResult | null = null;
+      let fromIndex: number | undefined;
+
+      for (let request = 0; request < 20; request += 1) {
+        const chunk = await api.events.repeat(
+          orgId,
+          event.id,
+          { ...body(), dryRun: false, ...(fromIndex === undefined ? {} : { fromIndex }) },
+          token,
+        );
+
+        total = total
+          ? {
+              ...chunk,
+              occurrences: total.occurrences + chunk.occurrences,
+              roomsHeld: (total.roomsHeld ?? 0) + (chunk.roomsHeld ?? 0),
+            }
+          : chunk;
+        setDone(total);
+
+        if (chunk.next === null || chunk.next === undefined) break;
+        fromIndex = chunk.next;
+      }
+
+      setPlan(null);
+      onChangedDone?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'That did not work');
     } finally {
@@ -290,6 +321,13 @@ export function RepeatEvent({
             <p className="mt-1 text-amber-800">
               {plan.roomClashes} of them fall when the room is already taken. Those will be
               made without a room.
+            </p>
+          )}
+          {plan.stopsAtAYear && (
+            // Said before they press it, not after (EVT-38).
+            <p className="mt-1 text-gray-600">
+              A repeat reaches one year. Clone it nearer the time to carry on into the year
+              after.
             </p>
           )}
           <p className="mt-1 text-gray-500">
