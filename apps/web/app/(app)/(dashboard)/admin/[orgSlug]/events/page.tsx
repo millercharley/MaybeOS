@@ -2,12 +2,12 @@
 
 import { useParams } from 'next/navigation';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus, MapPin, Users, Clock, Eye, EyeOff, X, Lock, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Users, Clock, Eye, EyeOff, X, Lock, Pencil, Trash2, Ticket, UserCircle } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
 import { useAuthStore } from '@/lib/auth-store';
-import { adminEventWindow } from '@/lib/event-list';
+import { adminEventWindow, hostLine, ticketLine } from '@/lib/event-list';
 import { api, Event } from '@/lib/api';
 import { toUpdatePayload } from '@/lib/events';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
@@ -60,6 +60,29 @@ export default function EventsPage() {
   // The form quotes real ticket fees, so it needs the co-op's plan and whether
   // Stripe onboarding is finished (EVT-06).
   const { data: org } = useApi((token, orgId) => api.orgs.get(orgId, token), []);
+
+  /*
+    Arriving here to edit one event (EVT-35).
+
+    The event page's Edit sends an organiser back with `?edit=<id>`, so they
+    land on the form rather than on a list of 209 cards with theirs somewhere
+    in it. Runs once the events are loaded, because the form needs the event.
+  */
+  useEffect(() => {
+    if (typeof window === 'undefined' || !eventsData) return;
+    const wanted = new URLSearchParams(window.location.search).get('edit');
+    if (!wanted) return;
+
+    const match = (eventsData.data ?? []).find((e) => e.id === wanted);
+    if (match) {
+      setCreating(false);
+      setEditing(match);
+      // Taken out of the address, so a refresh does not reopen it and the
+      // back button does not either.
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [eventsData]);
+
 
   // An organiser usually creates an event on somebody else's behalf, which is
   // the case EVT-04's host column exists for.
@@ -288,9 +311,12 @@ export default function EventsPage() {
                   <Clock className="h-4 w-4" />
                   <span>{dateStr} &middot; {timeStr}</span>
                 </div>
+                {/* Who is running it, not where (EVT-35). At a co-op with
+                    one building the location is the same words on every card,
+                    and "TBD" on the many that never set one. */}
                 <div className="flex items-center gap-2">
-                  <MapPin className="h-4 w-4" />
-                  <span>{event.location?.name ?? 'TBD'}</span>
+                  <UserCircle className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{hostLine(event)}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Users className="h-4 w-4" />
@@ -298,6 +324,12 @@ export default function EventsPage() {
                     {rsvpCount}{capacity > 0 ? ` / ${capacity}` : ''} RSVPs
                   </span>
                 </div>
+                {ticketLine(event) && (
+                  <div className="flex items-center gap-2">
+                    <Ticket className="h-4 w-4 shrink-0" />
+                    <span>{ticketLine(event)}</span>
+                  </div>
+                )}
               </div>
 
               <button

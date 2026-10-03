@@ -91,3 +91,41 @@ describe('what an organiser can do to an event', () => {
     expect(actions).toMatch(/e\.stopPropagation\(\);/);
   });
 });
+
+/**
+ * What an organiser's event card says, and what they can do once inside
+ * (EVT-35).
+ *
+ * Charley: "instead of showing location, display the host(s)… if tickets are
+ * sold, show how many tickets have sold out of how many available… make sure
+ * there are the options to Edit, Hide, and Delete the event so the admin
+ * doesn't have to go backwards to the Events menu."
+ */
+describe('what a card says', () => {
+  it('names who is running it instead of where it is', () => {
+    // At a co-op with one building the location is the same words on every
+    // card, and "TBD" on the many that never set one.
+    expect(page).toMatch(/hostLine\(event\)/);
+    expect(page).not.toMatch(/event\.location\?\.name \?\? 'TBD'/);
+  });
+
+  it('says how ticket sales are going, when there are any', () => {
+    expect(page).toMatch(/ticketLine\(event\) && \(/);
+  });
+});
+
+describe('arriving to edit one event', () => {
+  it('opens the form for the event named in the address', () => {
+    expect(page).toMatch(/get\('edit'\)/);
+    expect(page).toMatch(/setEditing\(match\)/);
+  });
+
+  it('takes it out of the address once used', () => {
+    // Otherwise a refresh reopens it, and so does the back button.
+    expect(page).toMatch(/history\.replaceState/);
+  });
+
+  it('waits until the events are loaded, since the form needs one', () => {
+    expect(page).toMatch(/\}, \[eventsData\]\);/);
+  });
+});

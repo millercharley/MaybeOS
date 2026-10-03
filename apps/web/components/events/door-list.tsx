@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ArrowLeft, Check, Search, UserPlus, Users } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { money } from '@/lib/fees';
@@ -64,6 +65,7 @@ export function DoorList({
   const token = useAuthStore((s) => s.token);
   const orgId = useAuthStore((s) => s.currentOrgId);
   const me = useAuthStore((s) => s.user?.id);
+  const router = useRouter();
 
   const [list, setList] = useState<DoorListData | null>(null);
   // The page never said which event you were checking people into — the
@@ -245,6 +247,15 @@ export function DoorList({
               ))
           }
           onChanged={load}
+          /*
+            The edit form lives on the Events page, which this screen does not
+            host. Rather than making an organiser go back and find the card
+            again, Edit opens that page with this event's form already open
+            (EVT-35).
+          */
+          onEdit={() => router.push(`${backHref}?edit=${event.id}`)}
+          canRemove={showTickets}
+          backHref={backHref}
         />
       )}
 

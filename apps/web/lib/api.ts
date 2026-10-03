@@ -3638,6 +3638,11 @@ export interface Event {
    * MaybeOS, and often absent — plenty of events ask without naming a figure.
    */
   suggestedCents?: number | null;
+  /**
+   * Tickets sold and not refunded (EVT-35). Only on the organiser's list,
+   * which is the only place that asks.
+   */
+  ticketsSold?: number;
   /** Who it is suitable for (SPC-22). */
   maturityLevel?: MaturityLevel;
   /**

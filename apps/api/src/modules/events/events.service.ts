@@ -658,7 +658,15 @@ export class EventsService {
     ]);
 
     return {
-      data: data.map((event) => withRsvpFaces(withRsvpCount(event))),
+      data: data.map((event) => {
+        const row = withRsvpFaces(withRsvpCount(event)) as Record<string, unknown> & {
+          _count?: { tickets?: number };
+        };
+        // Flattened: `_count` also carries the RSVP count, and the shape a
+        // card reads should not depend on which query built it (EVT-35).
+        const { _count, ...rest } = row;
+        return { ...rest, ticketsSold: _count?.tickets ?? 0 };
+      }),
       meta: {
         total,
         page,

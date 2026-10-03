@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   CalendarClock,
   DoorOpen,
@@ -9,7 +10,9 @@ import {
   Lock,
   MapPin,
   MessageCircle,
+  Pencil,
   Ticket,
+  Trash2,
   Users,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -39,6 +42,9 @@ export function EventOverview({
   tickets,
   canManageHosts = false,
   onChanged,
+  onEdit,
+  canRemove = false,
+  backHref,
 }: {
   event: Event;
   orgSlug: string;
@@ -51,12 +57,24 @@ export function EventOverview({
    */
   canManageHosts?: boolean;
   onChanged?: () => void;
+  /** Open the edit form, where the page has one (EVT-35). */
+  onEdit?: () => void;
+  /**
+   * Whether this reader may hide or delete it — an organiser (EVT-30). Both
+   * were only on the Events list, so an organiser who had opened an event to
+   * look at it had to go back to act on it.
+   */
+  canRemove?: boolean;
+  /** Where to go once the event no longer exists. */
+  backHref?: string;
 }) {
   const token = useAuthStore((s) => s.token);
   const [changingHost, setChangingHost] = useState(false);
   const [addingCoHost, setAddingCoHost] = useState(false);
   const [busy, setBusy] = useState(false);
   const [hostError, setHostError] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const router = useRouter();
 
   const coHosts = event.coHosts ?? [];
 
@@ -301,6 +319,90 @@ export function EventOverview({
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Description</p>
           <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700">{event.description}</p>
+        </div>
+      )}
+
+      {/* Acting on it from the page you opened to look at it (EVT-35). These
+          lived only on the Events list, so an organiser who had opened an
+          event had to go back to change anything about it. */}
+      {(onEdit || canRemove) && (
+        <div className="flex flex-wrap items-center gap-4 border-t border-gray-100 pt-4">
+          {onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-brand-600"
+            >
+              <Pencil className="h-4 w-4" /> Edit
+            </button>
+          )}
+
+          {canRemove && orgId && (
+            <>
+              {event.isPublished && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    run(() => api.events.unpublish(orgId, event.id, token ?? ''))
+                  }
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-brand-600 disabled:opacity-50"
+                >
+                  <EyeOff className="h-4 w-4" /> Hide
+                </button>
+              )}
+
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setHostError('');
+                  setConfirmDelete(!confirmDelete);
+                }}
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-red-700 disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4" /> Delete
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {confirmDelete && orgId && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+          <p className="text-sm text-red-900">
+            Delete “{event.title}” for good? This cannot be undone. If anyone is expecting
+            it, hide or cancel it instead.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setHostError('');
+                try {
+                  await api.events.remove(orgId, event.id, token ?? '');
+                  // The page it was on no longer describes anything.
+                  if (backHref) router.push(backHref);
+                } catch (err) {
+                  setHostError(err instanceof Error ? err.message : 'Could not delete that');
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            >
+              {busy ? 'Deleting…' : 'Delete it'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(false)}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700"
+            >
+              Keep it
+            </button>
+          </div>
         </div>
       )}
     </div>
