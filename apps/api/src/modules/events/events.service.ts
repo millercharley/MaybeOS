@@ -250,6 +250,16 @@ export class EventsService {
         // What they suggest at the door (EVT-34). Only meaningful alongside
         // `hasCost`, and optional even then.
         suggestedCents: dto.suggestedCents ?? null,
+        // Everybody else running it, named on the same form (EVT-36).
+        ...(dto.coHostIds?.length
+          ? {
+              coHosts: {
+                create: [...new Set(dto.coHostIds)]
+                  .filter((id) => id !== (dto.hostId ?? userId))
+                  .map((id) => ({ userId: id, addedById: userId })),
+              },
+            }
+          : {}),
         maturityLevel: options.maturityLevel ?? dto.maturityLevel ?? 'ALL_AGES',
         // The picture, and whoever has to be credited for it (EVT-22). Empty
         // string means "none" — that is what a cleared field sends — and is
@@ -399,7 +409,7 @@ export class EventsService {
       }
     }
 
-    return this.prisma.event.update({
+    const updated = await this.prisma.event.update({
       where: { id: eventId },
       data: {
         ...(dto.title !== undefined && { title: dto.title }),
@@ -441,6 +451,39 @@ export class EventsService {
         ...(slug && { slug }),
       },
     });
+
+    /*
+      The co-host list, where the form sent one (EVT-36).
+
+      After the event is written, so a rejected update does not leave the
+      co-hosts changed — and guarded by `canManageHosts` rather than the
+      edit rule, because a co-host may change everything about an event
+      except who runs it.
+    */
+    if (dto.coHostIds !== undefined) {
+      if (
+        !canManageHosts(
+          {
+            hostId: dto.hostId ?? event.hostId,
+            createdById: (event as { createdById?: string | null }).createdById ?? null,
+          },
+          actor.userId,
+          actor.isStaff,
+        )
+      ) {
+        throw new ForbiddenException(NOT_YOURS);
+      }
+
+      await this.setCoHosts(
+        orgId,
+        eventId,
+        dto.hostId ?? event.hostId,
+        dto.coHostIds,
+        actor.userId,
+      );
+    }
+
+    return updated;
   }
 
   /* ─── Publish ───────────────────────────────────────────────── */
@@ -1161,6 +1204,55 @@ export class EventsService {
       ...withRsvpCount(event),
       isPast: event.endTime < new Date(),
     }));
+  }
+
+  /**
+   * Make the co-host list match what was sent (EVT-36).
+   *
+   * The whole list, not a change to it: the form holds co-hosts alongside the
+   * title and sends what it ended up with, so cancelling the form leaves the
+   * event alone and saving it twice does nothing the second time.
+   *
+   * The host is never a co-host of their own event, and nobody who is not a
+   * member of this co-op can be either.
+   */
+  private async setCoHosts(
+    orgId: string,
+    eventId: string,
+    hostId: string | null,
+    wanted: string[],
+    addedById: string,
+  ) {
+    const unique = [...new Set(wanted)].filter((id) => id !== hostId);
+
+    const members = unique.length
+      ? await this.prisma.userOrg.findMany({
+          where: { orgId, userId: { in: unique } },
+          select: { userId: true },
+        })
+      : [];
+    const allowed = new Set(members.map((m) => m.userId));
+
+    const missing = unique.filter((id) => !allowed.has(id));
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `${missing.length === 1 ? 'Somebody' : 'Some of the people'} you added is not a member of this co-op.`,
+      );
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.eventCoHost.deleteMany({
+        where: { eventId, userId: { notIn: [...allowed] } },
+      }),
+      ...[...allowed].map((userId) =>
+        this.prisma.eventCoHost.upsert({
+          where: { eventId_userId: { eventId, userId } },
+          create: { eventId, userId, addedById },
+          // Already there: leave who added them and when alone.
+          update: {},
+        }),
+      ),
+    ]);
   }
 
   /**

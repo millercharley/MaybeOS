@@ -1,4 +1,5 @@
 import { calendar_v3 } from 'googleapis';
+import { htmlToText } from './html-to-text';
 
 /**
  * Reading somebody's Google calendar into a co-op's own shape (CAL-02).
@@ -97,7 +98,9 @@ export function toEntry(
     // A calendar entry with no title is common and harmless; the co-op's own
     // list should still say something rather than show a blank row.
     title: raw.summary?.trim() || 'Untitled',
-    description: raw.description?.trim() || null,
+    // Google stores this as HTML; MaybeOS reads a description as text
+    // (CAL-10).
+    description: htmlToText(raw.description),
     start,
     end,
     cancelled: raw.status === 'cancelled',
