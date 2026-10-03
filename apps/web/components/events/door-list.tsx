@@ -9,6 +9,7 @@ import { money } from '@/lib/fees';
 // otherwise share a name.
 import { api, DoorList as DoorListData, Event, TicketSale } from '@/lib/api';
 import { MemberName } from '@/components/member/member-name';
+import { EventOverview } from '@/components/events/event-overview';
 
 /**
  * The door list (IMP-10).
@@ -38,10 +39,20 @@ export function DoorList({
   eventId,
   backHref,
   showTickets = false,
+  overviewFor,
 }: {
   eventId: string;
   backHref: string;
   showTickets?: boolean;
+  /**
+   * The co-op's slug, which turns this into an organiser's event page rather
+   * than only a door (EVT-31): everything about the event, above the list.
+   *
+   * It renders from the event this screen already loads, so the overview
+   * costs no extra request — and the host's name, the room and the ticket
+   * total cannot drift from what the door is showing.
+   */
+  overviewFor?: string;
 }) {
   const token = useAuthStore((s) => s.token);
   const orgId = useAuthStore((s) => s.currentOrgId);
@@ -196,10 +207,20 @@ export function DoorList({
         </Link>
       </div>
 
+      {/* An organiser opens an event to find out about it; the door list is
+          what they do once they are standing at it (EVT-31). */}
+      {overviewFor && event && (
+        <EventOverview
+          event={event}
+          orgSlug={overviewFor}
+          tickets={showTickets ? tickets : undefined}
+        />
+      )}
+
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-gray-900">
-            {event?.title ?? 'Check-in'}
+            {overviewFor ? 'Check-in' : (event?.title ?? 'Check-in')}
           </h1>
           <p className="mt-1 text-sm text-gray-500">
             Tap a name as each person arrives. Tap again to undo.
