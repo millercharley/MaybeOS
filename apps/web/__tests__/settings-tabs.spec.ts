@@ -79,3 +79,76 @@ describe('what points at it', () => {
     expect(importPage).not.toMatch(/Settings → General/);
   });
 });
+
+/**
+ * Everything about holding a room, in one place (SPC-29).
+ *
+ * Charley: "create a tab in the Admin Settings specific to Rooms & Bookings
+ * (and move the Events and rooms existing setting to this tab too)."
+ */
+describe('the Rooms & bookings tab', () => {
+  it('exists', () => {
+    expect(page).toMatch(/\{ key: 'rooms', label: 'Rooms & bookings' \}/);
+  });
+
+  it('sits between Getting started and Migration', () => {
+    expect(order('onboarding')).toBeLessThan(order('rooms'));
+    expect(order('rooms')).toBeLessThan(order('migration'));
+  });
+
+  it('carries the booking limits', () => {
+    expect(page).toMatch(/activeTab === 'rooms' && org && <BookingLimits/);
+  });
+
+  it('carries the events-and-rooms setting, which moved here', () => {
+    expect(page).toMatch(/activeTab === 'rooms' && org && <EventRooms/);
+  });
+
+  it('leaves nothing behind on General', () => {
+    // Two copies of a control that writes the same setting is worse than not
+    // moving it.
+    expect(page).not.toMatch(/activeTab === 'general' && org && <EventRooms/);
+  });
+});
+
+describe('the booking limits', () => {
+  const panel = readFileSync(
+    join(__dirname, '..', 'components', 'settings', 'booking-limits.tsx'),
+    'utf8',
+  );
+
+  it('defaults a co-op that has never thought about it to three hours', () => {
+    expect(panel).toMatch(/org\.maxBookingMinutes \?\? 180/);
+  });
+
+  it('offers nothing longer than a day', () => {
+    // Longer than that is somebody moving in, not booking.
+    expect(panel).toMatch(/1440\]/);
+    expect(panel).not.toMatch(/2880/);
+  });
+
+  it('says a room may be stricter than the co-op', () => {
+    expect(panel).toMatch(/shorter of the two applies/);
+  });
+
+  it('has the member quota off until somebody turns it on', () => {
+    expect(panel).toMatch(/Boolean\(org\.bookingQuotaPeriod && org\.bookingQuotaHours\)/);
+    expect(panel).toMatch(/Off unless your co-op needs it/);
+  });
+
+  it('asks for hours per month or per year', () => {
+    expect(panel).toMatch(/<option value="MONTH">month<\/option>/);
+    expect(panel).toMatch(/<option value="YEAR">year<\/option>/);
+  });
+
+  it('clears both halves when the switch goes off', () => {
+    // Half a quota — a period with no hours — is a setting that silently
+    // does nothing.
+    expect(panel).toMatch(/bookingQuotaPeriod: quotaOn \? period : null/);
+    expect(panel).toMatch(/bookingQuotaHours: quotaOn \? [^:]+ : null/);
+  });
+
+  it('says when the allowance resets', () => {
+    expect(panel).toMatch(/Counted over the calendar/);
+  });
+});

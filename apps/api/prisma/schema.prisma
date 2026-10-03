@@ -75,6 +75,27 @@ model Organization {
   /// which is what stops the calendar and the room sheet drifting apart.
   requireEventRoom Boolean @default(false)
 
+  /// The longest a member may book a room for, in minutes (SPC-29).
+  ///
+  /// Three hours by default, which is what most of a co-op's room use looks
+  /// like; the ceiling is a day, because a reservation longer than that is
+  /// somebody moving in and wants a conversation rather than a form.
+  ///
+  /// A room may still set its own shorter limit — a darkroom with a queue
+  /// knows more about itself than the co-op does — and the shorter of the two
+  /// wins.
+  maxBookingMinutes Int @default(180)
+
+  /// Whether a member's total room time is capped, and over what (SPC-29).
+  ///
+  /// Off by default, and off is right for most co-ops: a limit on how much of
+  /// the building one member may hold is a thing a co-op decides it needs,
+  /// usually after somebody has booked the Attic every Saturday for a year.
+  /// Null means no cap at all.
+  bookingQuotaPeriod BookingQuotaPeriod?
+  /// How many hours of reservations in that period. Null when uncapped.
+  bookingQuotaHours  Int?
+
   /// A wide image across the top of the member dashboard (Charley,
   /// 2026-09-04). Public identity like the logo, and stored in the same public
   /// bucket. Null unless an admin uploads one, and then the dashboard simply
@@ -775,6 +796,12 @@ enum MaturityLevel {
   AGES_13_PLUS
   AGES_18_PLUS
   AGES_21_PLUS
+}
+
+/// Over what stretch a member's room hours are counted (SPC-29).
+enum BookingQuotaPeriod {
+  MONTH
+  YEAR
 }
 
 enum RecurrenceRule {
