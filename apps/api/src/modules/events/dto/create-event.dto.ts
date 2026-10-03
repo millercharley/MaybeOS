@@ -12,7 +12,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Min, ValidateIf } from 'class-validator';
+import { Max, Min, ValidateIf } from 'class-validator';
 
 export enum EventVisibility {
   PUBLIC = 'PUBLIC',
@@ -157,6 +157,20 @@ export class CreateEventDto {
   @IsOptional()
   @IsBoolean()
   hasCost?: boolean;
+
+  /**
+   * What the host suggests at the door, in cents (EVT-34).
+   *
+   * Optional even alongside `hasCost`: an event can ask for something without
+   * naming a figure. Capped where a ticket price is, because a suggestion of
+   * ten thousand pounds is a typo rather than an offer.
+   */
+  @ApiPropertyOptional({ example: 1000 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1000000)
+  suggestedCents?: number;
 
   /** Who it is suitable for (SPC-22). All ages unless said otherwise. */
   @ApiPropertyOptional({ enum: MaturityLevel, default: MaturityLevel.ALL_AGES })
@@ -313,6 +327,20 @@ export class UpdateEventDto {
   @IsOptional()
   @IsBoolean()
   hasCost?: boolean;
+
+  /**
+   * What the host suggests at the door, in cents (EVT-34).
+   *
+   * Optional even alongside `hasCost`: an event can ask for something without
+   * naming a figure. Capped where a ticket price is, because a suggestion of
+   * ten thousand pounds is a typo rather than an offer.
+   */
+  @ApiPropertyOptional({ example: 1000 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1000000)
+  suggestedCents?: number;
 
   /** Who it is suitable for (SPC-22). All ages unless said otherwise. */
   @ApiPropertyOptional({ enum: MaturityLevel, default: MaturityLevel.ALL_AGES })

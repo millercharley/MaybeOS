@@ -19,6 +19,7 @@ import { api } from '@/lib/api';
  */
 export const GATHERING_KINDS = [
   'Art or expression',
+  'Dance and movement',
   'Organizing or meetings',
   'Social',
   'Learning',

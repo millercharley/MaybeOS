@@ -6,6 +6,7 @@ import { EventImagePicker, EventImageValue } from '@/components/events/event-ima
 import { CreateEventData, api } from '@/lib/api';
 import { PLATFORM_FEE_CENTS } from '@/lib/fees';
 import { GATHERING_KINDS } from '@/components/rooms/booking-details';
+import { MemberPicker } from '@/components/member/member-picker';
 import { MATURITY_LEVELS, type MaturityLevel } from '@/lib/maturity';
 
 /**
@@ -164,10 +165,18 @@ export function EventForm({
     };
   }, [orgId, token]);
   const [hasCost, setHasCost] = useState(initial?.hasCost ?? false);
+  /** What they suggest at the door, in whole currency units (EVT-34). */
+  const [suggested, setSuggested] = useState(
+    initial?.suggestedCents ? (initial.suggestedCents / 100).toFixed(0) : '',
+  );
   const [maturityLevel, setMaturityLevel] = useState<MaturityLevel>(
     initial?.maturityLevel ?? 'ALL_AGES',
   );
   const [hostId, setHostId] = useState(initial?.hostId ?? '');
+  /** Shown while the picker is idle, so the field says who it is set to. */
+  const [hostName, setHostName] = useState<string | null>(
+    initial?.hostId ? (hosts?.find((h) => h.id === initial.hostId)?.name ?? 'Current host') : null,
+  );
   const [localError, setLocalError] = useState('');
 
   function submit(e: FormEvent, publish: boolean) {
@@ -221,6 +230,12 @@ export function EventForm({
       category: kinds[0],
       tags: kinds,
       hasCost,
+      // Only when it is the answer to the question, and only when they gave
+      // a figure — "pay what you can" with no number is a real answer.
+      suggestedCents:
+        !ticketed && hasCost && suggested.trim() !== ''
+          ? Math.round(parseFloat(suggested) * 100)
+          : undefined,
       maturityLevel,
       priceCents,
       ...(hosts && hostId ? { hostId } : {}),
@@ -333,24 +348,47 @@ export function EventForm({
         </div>
       </fieldset>
 
-      {hosts && (
+      {/*
+        Typing a name, not scrolling a list (EVT-34).
+
+        This was a `<select>` of every member in the co-op. At MaybeItsFate
+        that is 437 options in one dropdown, alphabetised by nothing in
+        particular — Charley: "this list is an impossible way to switch the
+        host". The picker searches the roster on the server, the same one the
+        co-host control uses.
+      */}
+      {hosts && orgId && (
         <div>
-          <label htmlFor="event-host" className="mb-1 block text-sm font-medium text-gray-900">
+          <span className="mb-1 block text-sm font-medium text-gray-900">
             Who is running it?
-          </label>
-          <select
-            id="event-host"
-            value={hostId}
-            onChange={(e) => setHostId(e.target.value)}
-            className="input w-full"
-          >
-            <option value="">You</option>
-            {hosts.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.name}
-              </option>
-            ))}
-          </select>
+          </span>
+
+          <p className="mb-2 text-sm text-gray-700">
+            {hostName ?? 'You'}
+            {hostId !== '' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setHostId('');
+                  setHostName(null);
+                }}
+                className="ml-3 text-xs font-medium text-brand-600 hover:underline"
+              >
+                Make it me instead
+              </button>
+            )}
+          </p>
+
+          <MemberPicker
+            orgId={orgId}
+            placeholder="Search for a member…"
+            exclude={hostId ? [hostId] : []}
+            onPick={(member) => {
+              setHostId(member.user.id);
+              setHostName(member.user.name ?? 'Member');
+            }}
+          />
+
           <p className="mt-1 text-xs text-gray-500">
             They get the post-event follow-up and can edit the event themselves.
           </p>
@@ -408,26 +446,11 @@ export function EventForm({
       </fieldset>
 
       {/*
-        A cost that is not a ticket. Most co-op events that charge take cash or
-        Venmo at the door, and an event page silent about money reads as free
-        (EVT-17).
+        The "cost to attend" checkbox that used to live here is now the middle
+        of the three Tickets options above (EVT-34). It asked the same
+        question in a different place, so an event could be marked free and
+        charged for at once.
       */}
-      <label className="mt-4 flex items-start gap-2 text-sm">
-        <input
-          type="checkbox"
-          className="mt-1"
-          checked={hasCost}
-          onChange={(e) => setHasCost(e.target.checked)}
-        />
-        <span>
-          <span className="font-medium text-gray-900">There&apos;s a cost to attend</span>
-          <br />
-          <span className="text-gray-500">
-            For something collected at the door. Selling tickets through MaybeOS is the price
-            field above.
-          </span>
-        </span>
-      </label>
 
       {/* The same question a booking asks (SPC-22), editable here so an event
           published from a booking can be corrected — and so an event created
@@ -502,8 +525,11 @@ export function EventForm({
             <input
               type="radio"
               name="ticketed"
-              checked={!ticketed}
-              onChange={() => setTicketed(false)}
+              checked={!ticketed && !hasCost}
+              onChange={() => {
+                setTicketed(false);
+                setHasCost(false);
+              }}
               className="mt-1"
             />
             <span>
@@ -513,6 +539,64 @@ export function EventForm({
               </span>
             </span>
           </label>
+
+          {/*
+            The third answer (EVT-34). Charley: "many events have a suggested
+            fee but not hard cost and do not sell tickets in advance."
+
+            `hasCost` has recorded this since EVT-17 — it was a checkbox three
+            fields below, which is not where somebody choosing how an event is
+            paid for is looking.
+          */}
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-gray-200 p-3 hover:border-gray-300">
+            <input
+              type="radio"
+              name="ticketed"
+              checked={!ticketed && hasCost}
+              onChange={() => {
+                setTicketed(false);
+                setHasCost(true);
+              }}
+              className="mt-1"
+            />
+            <span>
+              <span className="block text-sm font-medium text-gray-900">
+                Pay or donate at the door
+              </span>
+              <span className="mt-0.5 block text-xs text-gray-500">
+                Nothing is collected in advance and nobody is turned away. Say what you
+                suggest, if you want to.
+              </span>
+            </span>
+          </label>
+
+          {!ticketed && hasCost && (
+            <div className="ml-9">
+              <label
+                htmlFor="event-suggested"
+                className="mb-1 block text-sm font-medium text-gray-900"
+              >
+                Suggested amount <span className="font-normal text-gray-500">(optional)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">$</span>
+                <input
+                  id="event-suggested"
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="decimal"
+                  value={suggested}
+                  onChange={(e) => setSuggested(e.target.value)}
+                  placeholder="10"
+                  className="input w-28"
+                />
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                Leave it blank for &ldquo;pay what you can&rdquo; with no figure.
+              </p>
+            </div>
+          )}
 
           <label
             className={`flex items-start gap-3 rounded-xl border p-3 ${
@@ -526,7 +610,11 @@ export function EventForm({
               name="ticketed"
               checked={ticketed}
               disabled={!canSellTickets}
-              onChange={() => setTicketed(true)}
+              onChange={() => {
+                setTicketed(true);
+                // Sold in advance is not also collected at the door.
+                setHasCost(false);
+              }}
               className="mt-1"
             />
             <span className="min-w-0 flex-1">

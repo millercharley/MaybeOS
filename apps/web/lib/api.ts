@@ -3633,6 +3633,11 @@ export interface Event {
    * Distinct from `priceCents`, which is a ticket sold through MaybeOS.
    */
   hasCost?: boolean;
+  /**
+   * What the host suggests at the door, in cents (EVT-34). Never collected by
+   * MaybeOS, and often absent — plenty of events ask without naming a figure.
+   */
+  suggestedCents?: number | null;
   /** Who it is suitable for (SPC-22). */
   maturityLevel?: MaturityLevel;
   /**
@@ -3722,6 +3727,17 @@ export interface CreateEventData {
    * Distinct from `priceCents`, which is a ticket sold through MaybeOS.
    */
   hasCost?: boolean;
+  /**
+   * What the host suggests at the door, in cents (EVT-34).
+   *
+   * Optional even alongside `hasCost`: an event can ask for something without
+   * naming a figure, and "pay what you can, suggested $10" is a different
+   * offer from "pay what you can". Never collected by MaybeOS.
+   *
+   * Nullable because an `Event` read back carries null, and the form takes
+   * one of those as its starting values.
+   */
+  suggestedCents?: number | null;
   /** Who it is suitable for (SPC-22). */
   maturityLevel?: MaturityLevel;
   locationId?: string;

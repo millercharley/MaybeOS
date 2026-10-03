@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { CalendarDays, DoorOpen, MapPin, Ticket, Users } from 'lucide-react';
 import type { Event } from '@/lib/api';
 import { eventArt } from '@/lib/event-art';
-import { startsIn, whenLabel } from '@/lib/event-list';
+import { doorCost, startsIn, whenLabel } from '@/lib/event-list';
 import { RsvpFaces } from '@/components/events/rsvp-faces';
 import { ticketCost, money } from '@/lib/fees';
 import { maturityBadge } from '@/lib/maturity';
@@ -180,11 +180,11 @@ export function NextEventCard({
               {maturityBadge(event.maturityLevel)}
             </span>
           )}
-          {event.hasCost && !event.priceCents && (
-            // An event that charges at the door says so here, or the absence
-            // of a ticket price reads as free.
+          {doorCost(event) && (
+            // An event paid at the door says so here, or the absence of a
+            // ticket price reads as free (EVT-34).
             <span className="rounded-full bg-[var(--surface-sunken)] px-3 py-1">
-              Cost at the door
+              {doorCost(event)}
             </span>
           )}
           {typeof event.rsvpCount === 'number' && event.rsvpCount > 0 && (
@@ -234,7 +234,7 @@ export function EventRow({ event, actions }: { event: Event; actions: EventActio
           {maturityBadge(event.maturityLevel) && (
             <span className="font-medium">{maturityBadge(event.maturityLevel)}</span>
           )}
-          {event.hasCost && !event.priceCents && <span>Cost at the door</span>}
+          {doorCost(event) && <span>{doorCost(event)}</span>}
         </p>
       </div>
 
