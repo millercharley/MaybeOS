@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { hostLine, ticketLine } from '@/lib/event-list';
 
 /**
  * What an organiser sees when they open an event (EVT-31).
@@ -112,5 +113,86 @@ describe('where it is rendered', () => {
 describe('the events list', () => {
   it('opens on what is coming', () => {
     expect(listPage).toMatch(/useState<FilterTab>\('upcoming'\)/);
+  });
+});
+
+/**
+ * Acting on an event from the page you opened to look at it (EVT-35).
+ *
+ * Edit, Hide and Delete lived only on the Events list, so an organiser who
+ * had opened an event had to go back to change anything about it.
+ */
+describe('what can be done from the event page', () => {
+  it('offers Edit, Hide and Delete', () => {
+    expect(overview).toMatch(/> Edit\n/);
+    expect(overview).toMatch(/> Hide\n/);
+    expect(overview).toMatch(/> Delete\n/);
+  });
+
+  it('does not offer to hide one that is already hidden', () => {
+    expect(overview).toMatch(/\{event\.isPublished && \(/);
+  });
+
+  it('asks before deleting, and says what to do instead', () => {
+    expect(overview).toMatch(/This cannot be undone/);
+    expect(overview).toMatch(/hide or cancel it instead/);
+  });
+
+  it('leaves the page once the event is gone', () => {
+    // The page it was on no longer describes anything.
+    expect(overview).toMatch(/router\.push\(backHref\)/);
+  });
+
+  it('opens the edit form rather than only going back', () => {
+    expect(doorList).toMatch(/\$\{backHref\}\?edit=\$\{event\.id\}/);
+  });
+
+  it('keeps hiding and deleting with organisers', () => {
+    expect(doorList).toMatch(/canRemove=\{showTickets\}/);
+  });
+});
+
+describe('who is running it, in one line', () => {
+  it('names the host', () => {
+    expect(hostLine({ host: { name: 'Ada' } })).toBe('Ada');
+  });
+
+  it('names both when there are two', () => {
+    expect(hostLine({ host: { name: 'Ada' }, coHosts: [{ user: { name: 'Bo' } }] })).toBe(
+      'Ada and Bo',
+    );
+  });
+
+  it('counts the rest past that, rather than filling the card', () => {
+    expect(
+      hostLine({
+        host: { name: 'Ada' },
+        coHosts: [{ user: { name: 'Bo' } }, { user: { name: 'Cy' } }],
+      }),
+    ).toBe('Ada and 2 others');
+  });
+
+  it('uses the name an imported event kept for a host who left', () => {
+    expect(hostLine({ host: null, hostName: 'Sam Mullooly' })).toBe('Sam Mullooly');
+  });
+
+  it('says so when nobody is set', () => {
+    expect(hostLine({})).toBe('No host set');
+  });
+});
+
+describe('how ticket sales read', () => {
+  it('counts against capacity when there is one', () => {
+    expect(ticketLine({ priceCents: 1500, ticketsSold: 12, capacity: 40 })).toBe(
+      '12 of 40 tickets sold',
+    );
+  });
+
+  it('counts alone when there is no capacity', () => {
+    expect(ticketLine({ priceCents: 1500, ticketsSold: 1 })).toBe('1 ticket sold');
+  });
+
+  it('says nothing about an event with no tickets', () => {
+    expect(ticketLine({ ticketsSold: 0 })).toBeNull();
   });
 });

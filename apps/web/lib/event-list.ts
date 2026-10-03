@@ -251,3 +251,54 @@ export function doorCost(
 
   return `${amount} suggested — pay what you can`;
 }
+
+/**
+ * Who is running an event, in one line (EVT-35).
+ *
+ * The organiser's cards showed a location, which at a co-op with one building
+ * is the same words on every card — and "TBD" on the many that never set one.
+ * Who is running it is the thing an organiser scanning a list actually wants.
+ */
+export function hostLine(event: {
+  host?: { name?: string | null } | null;
+  hostName?: string | null;
+  coHosts?: { user: { name?: string | null } }[];
+}): string {
+  // A host who is not a member here keeps their name from the import (CAL-03).
+  const lead = event.host?.name ?? event.hostName ?? null;
+  const others = (event.coHosts ?? [])
+    .map((c) => c.user.name)
+    .filter((n): n is string => Boolean(n));
+
+  if (!lead && others.length === 0) return 'No host set';
+  if (!lead) return others.join(', ');
+  if (others.length === 0) return lead;
+
+  // One name is worth reading; four is a wall. The count is the useful part
+  // past that, and the full list is on the event itself.
+  if (others.length === 1) return `${lead} and ${others[0]}`;
+
+  return `${lead} and ${others.length} others`;
+}
+
+/**
+ * How ticket sales are going, or null when none are sold (EVT-35).
+ *
+ * Capacity is what a co-op has room for, so "12 of 40" answers the question
+ * an organiser is actually asking. Without one there is no denominator and
+ * the count alone is the honest answer.
+ */
+export function ticketLine(event: {
+  priceCents?: number | null;
+  ticketsSold?: number;
+  capacity?: number | null;
+}): string | null {
+  if (!event.priceCents) return null;
+
+  const sold = event.ticketsSold ?? 0;
+  if (event.capacity && event.capacity > 0) {
+    return `${sold} of ${event.capacity} tickets sold`;
+  }
+
+  return `${sold} ${sold === 1 ? 'ticket' : 'tickets'} sold`;
+}
