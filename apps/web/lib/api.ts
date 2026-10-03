@@ -1299,10 +1299,36 @@ class ApiClient {
         until?: string;
         withRooms?: boolean;
         dryRun?: boolean;
+        /** Carry on from this occurrence (EVT-38). */
+        fromIndex?: number;
       },
       token: string,
     ) =>
       this.request<RepeatResult>(`/orgs/${orgId}/events/${eventId}/repeat`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        token,
+      }),
+
+    /**
+     * Copy an event, or a whole series, to a new date (EVT-38).
+     *
+     * `dryRun` defaults to true. The reply says whether this event is one of
+     * a series, which the screen has to ask about before it can send a scope.
+     */
+    clone: (
+      orgId: string,
+      eventId: string,
+      body: {
+        startTime: string;
+        withRooms?: boolean;
+        scope?: 'one' | 'series';
+        confirmSeries?: boolean;
+        dryRun?: boolean;
+      },
+      token: string,
+    ) =>
+      this.request<CloneResult>(`/orgs/${orgId}/events/${eventId}/clone`, {
         method: 'POST',
         body: JSON.stringify(body),
         token,
@@ -3760,6 +3786,20 @@ function eventUpdateBody<T extends { publish?: boolean }>(data: T): Omit<T, 'pub
   return rest;
 }
 
+/** What copying an event would do, or did (EVT-38). */
+export interface CloneResult {
+  dryRun: boolean;
+  copies: number;
+  /** Whether the event is one of a run, which decides if a scope is needed. */
+  hasSeries: boolean;
+  seriesLength: number;
+  firstOn: string | null;
+  lastOn: string | null;
+  /** Occurrences past a year from the new start, which are not copied. */
+  droppedPastAYear: number;
+  roomsHeld?: number;
+}
+
 /** What repeating an event would do, or did (EVT-37). */
 export interface RepeatResult {
   dryRun: boolean;
@@ -3771,6 +3811,11 @@ export interface RepeatResult {
   roomClashes: number;
   roomsHeld?: number;
   summary?: string;
+  /** True when a year is as far as the repeat reaches (EVT-38). */
+  stopsAtAYear?: boolean;
+  /** Where to carry on from, or null when the series is complete (EVT-38). */
+  next?: number | null;
+  total?: number;
 }
 
 /** A room reservation an event could claim (SPC-27). */

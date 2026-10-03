@@ -19,6 +19,7 @@ import { useState } from 'react';
 import { api, type Event, type TicketSale } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { MemberPicker } from '@/components/member/member-picker';
+import { CloneEvent } from '@/components/events/clone-event';
 import { RepeatEvent } from '@/components/events/repeat-event';
 import { money } from '@/lib/fees';
 import { MemberName } from '@/components/member/member-name';
@@ -337,7 +338,10 @@ export function EventOverview({
           edit the event may repeat it. */}
       {canManageHosts && orgId && (
         <div className="border-t border-gray-100 pt-4">
-          <RepeatEvent orgId={orgId} event={event} onChangedDone={onChanged} />
+          <div className="space-y-3">
+            <RepeatEvent orgId={orgId} event={event} onChangedDone={onChanged} />
+            <CloneEvent orgId={orgId} event={event} onCloned={onChanged} />
+          </div>
         </div>
       )}
 

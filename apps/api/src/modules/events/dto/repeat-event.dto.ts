@@ -64,6 +64,21 @@ export class RepeatEventDto {
   @IsBoolean()
   withRooms?: boolean;
 
+  /**
+   * Carry on from this occurrence (EVT-38).
+   *
+   * A year of a daily event is 366 events and 366 reservations, which does
+   * not fit in one request — the calendar import learned the same thing the
+   * expensive way (CAL-05). The reply says where it stopped and the client
+   * asks again.
+   */
+  @ApiPropertyOptional({ example: 0, minimum: 0, maximum: 400 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(400)
+  fromIndex?: number;
+
   /** Say what would happen without writing anything. */
   @ApiPropertyOptional({ example: true })
   @IsOptional()

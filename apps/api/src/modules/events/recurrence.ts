@@ -44,14 +44,35 @@ export interface RecurrenceInput {
 }
 
 /**
- * How many occurrences one rule may make.
+ * How far ahead one repeat may reach (EVT-38).
  *
- * Google will happily repeat forever; a row per occurrence cannot. Two years
- * of a weekly event is 104, of a daily one 730 — and a co-op that wants more
- * extends it rather than planning its 2029 from here. The cap is also what
- * stops "every day, ends never" writing until the request times out.
+ * Charley: "the maximum an event or room reservation can reoccur is one year.
+ * After that the event or room reservation needs to be cloned for another
+ * year."
+ *
+ * A year is the right horizon for a co-op rather than an arbitrary number of
+ * rows: it is how far ahead anybody plans a room, it keeps a series short
+ * enough to look at, and it makes "is this still happening?" a question
+ * somebody answers once a year on purpose instead of a calendar quietly
+ * filling to 2031.
  */
-export const MAX_OCCURRENCES = 200;
+export const MAX_YEARS_AHEAD = 1;
+
+/**
+ * And a ceiling on the rows, which the year alone does not give.
+ *
+ * Daily for a year is 366. Nothing a co-op does repeats more often than
+ * daily, so this is the year expressed in rows — a safety net under the date
+ * cap rather than a second policy.
+ */
+export const MAX_OCCURRENCES = 366;
+
+/** The furthest a repeat may reach from where it starts (EVT-38). */
+export function horizonFrom(firstStart: Date): Date {
+  const at = new Date(firstStart);
+  at.setUTCFullYear(at.getUTCFullYear() + MAX_YEARS_AHEAD);
+  return at;
+}
 
 /** "YYYY-MM-DD" shifted by whole days, which is not the same as adding hours. */
 function shiftDate(date: string, days: number): string {
@@ -81,7 +102,18 @@ export function occurrencesOf(
 ): Date[] {
   const interval = Math.max(1, Math.floor(rule.interval ?? 1));
   const limit = Math.min(MAX_OCCURRENCES, Math.max(1, Math.floor(rule.count ?? MAX_OCCURRENCES)));
-  const until = rule.until ?? null;
+
+  /*
+    A year, whatever was asked for (EVT-38).
+
+    Clamped rather than refused: somebody who asks for two years of a weekly
+    event wants it to carry on, and the honest answer is "here is a year, come
+    back and clone it" rather than an error about a number they cannot see.
+    The caller is told where it stopped.
+  */
+  const horizon = horizonFrom(firstStart);
+  const asked = rule.until ?? null;
+  const until = asked && asked.getTime() < horizon.getTime() ? asked : horizon;
 
   const first = zonedParts(firstStart, timeZone);
   const at = (date: string) => instantAt(date, first.minutes, timeZone);

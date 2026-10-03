@@ -15,8 +15,9 @@ import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
 import { canEditEvent, canManageHosts, coHostProblem, NOT_YOURS, NOT_YOUR_EVENT } from './host-control';
 import { attachProblem, whoseRoomsCount } from './event-rooms';
-import { describeRecurrence, occurrencesOf } from './recurrence';
+import { describeRecurrence, horizonFrom, occurrencesOf } from './recurrence';
 import { RepeatEventDto } from './dto/repeat-event.dto';
+import { CloneEventDto } from './dto/clone-event.dto';
 import { PublishBookingEventDto } from './dto/publish-booking-event.dto';
 import { ConnectService } from '../stripe/connect.service';
 import ical, { ICalCalendarMethod } from 'ical-generator';
@@ -1397,12 +1398,25 @@ export class EventsService {
     const clashes = planned.filter((p) => p.rooms.some((r) => !r.free)).length;
 
     if (dto.dryRun !== false) {
+      // Whether a year was asked for or simply reached (EVT-38). Worth saying:
+      // somebody who asked for two years should be told they got one.
+      const horizon = horizonFrom(full.startTime);
+      const clamped =
+        Boolean(dto.until && new Date(dto.until).getTime() > horizon.getTime()) ||
+        (planned.length > 0 &&
+          !dto.until &&
+          !dto.count &&
+          planned[planned.length - 1].startTime.getTime() >
+            horizon.getTime() - 366 * 86_400_000);
+
       return {
         dryRun: true,
         occurrences: planned.length,
         firstOn: planned[0]?.startTime ?? null,
         lastOn: planned[planned.length - 1]?.startTime ?? null,
         roomClashes: clashes,
+        /** True when a year is as far as this reaches (EVT-38). */
+        stopsAtAYear: clamped,
         summary: describeRecurrence(
           { frequency: dto.frequency, interval: dto.interval, weekdays: dto.weekdays },
           planned.length + 1,
@@ -1410,10 +1424,31 @@ export class EventsService {
       };
     }
 
+    /*
+      Written in pieces (EVT-38).
+
+      A year of a daily event is 366 events and as many reservations, which
+      does not fit in a Lambda's ten seconds. The reply says where it stopped
+      and the client asks again — the shape the calendar import arrived at
+      the expensive way (CAL-05).
+
+      Resumable by index rather than by cursor, because the occurrences are
+      derived from the rule: asking again with the same rule produces the
+      same dates in the same order.
+    */
+    const startAt = Math.max(0, Math.floor(dto.fromIndex ?? 0));
+    const deadline = Date.now() + 6_000;
+
     let made = 0;
     let roomsHeld = 0;
+    let nextIndex: number | null = null;
 
-    for (const occurrence of planned) {
+    for (const [index, occurrence] of planned.entries()) {
+      if (index < startAt) continue;
+      if (Date.now() >= deadline) {
+        nextIndex = index;
+        break;
+      }
       const created = await this.prisma.event.create({
         data: {
           orgId,
@@ -1476,6 +1511,188 @@ export class EventsService {
       occurrences: made,
       roomsHeld,
       roomClashes: clashes,
+      firstOn: planned[0]?.startTime ?? null,
+      lastOn: planned[planned.length - 1]?.startTime ?? null,
+      /** Where to carry on, or null when the series is complete (EVT-38). */
+      next: nextIndex,
+      total: planned.length,
+    };
+  }
+
+  /**
+   * Copy an event to a new date (EVT-38).
+   *
+   * Distinct from repeating it. A repeat is a rule; a clone is "do that
+   * again", and what gets cloned is usually a one-off — last year's
+   * fundraiser, the workshop that went well.
+   *
+   * **The series question is asked, never assumed.** A member looking at one
+   * Tuesday of a weekly class cannot tell from the screen whether "clone"
+   * means that Tuesday or all fifty-two, and guessing either way is wrong
+   * half the time. Where the event has a series, a scope is required, and
+   * choosing the series has to be said twice.
+   *
+   * A cloned series keeps its spacing: the whole run is shifted so the first
+   * one lands on the chosen date, which is what "another year of this" means.
+   */
+  async clone(
+    orgId: string,
+    eventId: string,
+    dto: CloneEventDto,
+    actor: { userId: string; isStaff: boolean },
+  ) {
+    await this.loadEventForActor(orgId, eventId, actor.userId, actor.isStaff);
+
+    const source = await this.prisma.event.findFirst({
+      where: { id: eventId, orgId },
+      include: {
+        coHosts: { select: { userId: true } },
+        rooms: { select: { id: true, roomId: true, startTime: true, endTime: true } },
+      },
+    });
+    if (!source) throw new NotFoundException('Event not found');
+
+    // Everything in the same run, in order. The event itself counts.
+    const seriesId = source.parentEventId ?? source.id;
+    const series = await this.prisma.event.findMany({
+      where: { orgId, OR: [{ id: seriesId }, { parentEventId: seriesId }] },
+      orderBy: { startTime: 'asc' },
+      include: {
+        coHosts: { select: { userId: true } },
+        rooms: { select: { id: true, roomId: true, startTime: true, endTime: true } },
+      },
+    });
+    const hasSeries = series.length > 1;
+
+    if (hasSeries && !dto.scope) {
+      throw new BadRequestException(
+        `This event is one of ${series.length} in a series. Say whether to copy just this one or all ${series.length}.`,
+      );
+    }
+    if (dto.scope === 'series' && !dto.confirmSeries) {
+      throw new BadRequestException(
+        `Copying the whole series makes ${series.length} more events. Confirm that is what you want.`,
+      );
+    }
+
+    const copying = dto.scope === 'series' && hasSeries ? series : [source];
+    const shift = new Date(dto.startTime).getTime() - copying[0].startTime.getTime();
+
+    // The clone of a series is a series too, and it is capped the same way:
+    // a year from where the copy starts (EVT-38).
+    const horizon = horizonFrom(new Date(dto.startTime));
+    const planned = copying
+      .map((one) => ({
+        source: one,
+        startTime: new Date(one.startTime.getTime() + shift),
+        endTime: new Date(one.endTime.getTime() + shift),
+      }))
+      .filter((one) => one.startTime.getTime() <= horizon.getTime());
+
+    const dropped = copying.length - planned.length;
+
+    if (dto.dryRun !== false) {
+      return {
+        dryRun: true,
+        copies: planned.length,
+        hasSeries,
+        seriesLength: series.length,
+        firstOn: planned[0]?.startTime ?? null,
+        lastOn: planned[planned.length - 1]?.startTime ?? null,
+        /** Occurrences past a year from the new start, which are not copied. */
+        droppedPastAYear: dropped,
+      };
+    }
+
+    const newParent = planned.length > 1 ? null : undefined;
+    let made = 0;
+    let roomsHeld = 0;
+    let parentId: string | null = null;
+
+    for (const one of planned) {
+      const created = await this.prisma.event.create({
+        data: {
+          orgId,
+          // The first copy is the parent of the rest, so a cloned series is
+          // its own run rather than more children of the original.
+          parentEventId: parentId ?? newParent ?? null,
+          title: one.source.title,
+          slug: await this.slugForRepeat(orgId, one.source.slug, one.startTime),
+          description: one.source.description,
+          startTime: one.startTime,
+          endTime: one.endTime,
+          timezone: one.source.timezone,
+          visibility: one.source.visibility,
+          category: one.source.category,
+          tags: one.source.tags,
+          capacity: one.source.capacity,
+          waitlistEnabled: one.source.waitlistEnabled,
+          hostId: one.source.hostId,
+          createdById: actor.userId,
+          hasCost: one.source.hasCost,
+          suggestedCents: one.source.suggestedCents,
+          priceCents: one.source.priceCents,
+          currency: one.source.currency,
+          maturityLevel: one.source.maturityLevel,
+          locationId: one.source.locationId,
+          roomId: one.source.roomId,
+          imageUrl: one.source.imageUrl,
+          imageCredit: one.source.imageCredit,
+          imageCreditUrl: one.source.imageCreditUrl,
+          // A draft. Nothing is copied into the Commons (EVT-23), and the
+          // RSVPs and tickets of the original are its own.
+          isPublished: false,
+          coHosts: {
+            create: one.source.coHosts.map((c) => ({ userId: c.userId, addedById: actor.userId })),
+          },
+        },
+        select: { id: true },
+      });
+      if (!parentId) parentId = created.id;
+      made += 1;
+
+      if (dto.withRooms !== false) {
+        for (const held of one.source.rooms) {
+          const roomStart = new Date(held.startTime.getTime() + shift);
+          const roomEnd = new Date(held.endTime.getTime() + shift);
+          const clash = await this.prisma.booking.findFirst({
+            where: {
+              roomId: held.roomId,
+              OR: [
+                { status: { in: ['APPROVED', 'PENDING'] } },
+                { status: 'PENDING_PAYMENT', holdExpiresAt: { gt: new Date() } },
+              ],
+              startTime: { lt: roomEnd },
+              endTime: { gt: roomStart },
+            },
+            select: { id: true },
+          });
+          if (clash) continue;
+
+          await this.prisma.booking.create({
+            data: {
+              roomId: held.roomId,
+              userId: one.source.hostId ?? actor.userId,
+              eventId: created.id,
+              title: one.source.title,
+              startTime: roomStart,
+              endTime: roomEnd,
+              status: 'APPROVED',
+              visibility: 'PRIVATE',
+            },
+          });
+          roomsHeld += 1;
+        }
+      }
+    }
+
+    return {
+      dryRun: false,
+      copies: made,
+      roomsHeld,
+      hasSeries,
+      seriesLength: series.length,
+      droppedPastAYear: dropped,
       firstOn: planned[0]?.startTime ?? null,
       lastOn: planned[planned.length - 1]?.startTime ?? null,
     };
