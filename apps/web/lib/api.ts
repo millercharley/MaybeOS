@@ -1,4 +1,5 @@
 import type { UnreadCounts } from '@/lib/unread';
+import type { ReactionGroup } from '@/lib/reactions';
 import type { MaturityLevel } from './maturity';
 import type { GrantKind } from './ledger';
 import * as Sentry from '@sentry/nextjs';
@@ -2333,6 +2334,28 @@ class ApiClient {
         token,
       }),
 
+    // ── Reactions on messages (CMN-17) ──
+
+    /** Toggle an emoji on a message in a conversation. Returns the new list. */
+    reactToMessage: (
+      orgId: string,
+      threadId: string,
+      messageId: string,
+      emoji: string,
+      token: string,
+    ) =>
+      this.request<{ messageId: string; reactions: ReactionGroup[] }>(
+        `/orgs/${orgId}/threads/${threadId}/messages/${messageId}/reactions`,
+        { method: 'POST', body: JSON.stringify({ emoji }), token },
+      ),
+
+    /** The same, on a reply in the Commons. */
+    reactToComment: (orgId: string, commentId: string, emoji: string, token: string) =>
+      this.request<{ commentId: string; reactions: ReactionGroup[] }>(
+        `/orgs/${orgId}/comments/${commentId}/reactions`,
+        { method: 'POST', body: JSON.stringify({ emoji }), token },
+      ),
+
     // ── Direct Messages ──
     listConversations: (orgId: string, token: string) =>
       this.request<DmConversation[]>(`/orgs/${orgId}/dms`, { token }),
@@ -4284,6 +4307,8 @@ export interface Comment {
    */
   editedAt?: string | null;
   replies: Comment[];
+  /** Grouped per emoji, with whether the reader is one of them (CMN-17). */
+  reactions?: ReactionGroup[];
 }
 
 /**
@@ -4380,6 +4405,7 @@ export interface DirectMessage {
 }
 
 export type { UnreadCounts } from '@/lib/unread';
+export type { ReactionGroup } from '@/lib/reactions';
 
 /** Somebody in a conversation. */
 export interface ThreadPerson {
@@ -4395,6 +4421,8 @@ export interface ThreadMessage {
   body: string;
   createdAt: string;
   sender?: { id: string; name: string | null; avatarUrl: string | null };
+  /** Grouped per emoji, with whether the reader is one of them (CMN-17). */
+  reactions?: ReactionGroup[];
 }
 
 /** A conversation as it appears in the list. */

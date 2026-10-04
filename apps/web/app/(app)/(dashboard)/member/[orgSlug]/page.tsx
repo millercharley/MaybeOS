@@ -23,7 +23,6 @@ import { Panel } from '@/components/layout/panel';
 import { MemberSpotlight } from '@/components/member/member-spotlight';
 import { InterestPrompt } from '@/components/member/interest-prompt';
 import { ServingToday } from '@/components/service/serving-today';
-import { HappeningNow } from '@/components/live/happening-now';
 import { WelcomeCard } from '@/components/live/welcome-card';
 import { eventWindow, happeningToday, whenLabel, startsIn } from '@/lib/event-list';
 
@@ -154,7 +153,16 @@ export default function MemberPortalPage() {
       {currentOrg?.orgId && (
         <div className="mb-6 space-y-4 empty:mb-0">
           <ServingToday orgId={currentOrg.orgId} orgSlug={orgSlug} />
-          <HappeningNow orgId={currentOrg.orgId} orgSlug={orgSlug} />
+          {/*
+            No "Happening now" here (Charley, 2026-10-04): "it turns out this
+            is redundant with the Today at MaybeItsFate section."
+
+            It was. The panel below lists what is on today and badges the one
+            that is running — so a strip above it saying "one room in use:
+            Attic until 12:00" was the same fact, told worse: a room rather
+            than the event in it. It still exists on the admin dashboard,
+            where room occupancy is somebody's actual job.
+          */}
           <WelcomeCard orgId={currentOrg.orgId} orgSlug={orgSlug} />
         </div>
       )}

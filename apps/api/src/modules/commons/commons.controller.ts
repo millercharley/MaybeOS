@@ -29,6 +29,7 @@ import { AddCommentDto } from './dto/add-comment.dto';
 import { EditCommentDto } from './dto/edit-comment.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { StartThreadDto, ThreadMessageDto } from './dto/thread.dto';
+import { ReactionDto } from './dto/reaction.dto';
 import { CreateCollectionDto, UpdateCollectionDto } from './dto/create-collection.dto';
 import { CreatePageDto, UpdatePageDto } from './dto/page.dto';
 import { VoteChoice } from '@prisma/client';
@@ -236,8 +237,9 @@ export class CommonsController {
   getPost(
     @Param('orgId') orgId: string,
     @Param('postId') postId: string,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.commonsService.getPost(orgId, postId);
+    return this.commonsService.getPost(orgId, postId, user.userId);
   }
 
   // ─── Comments ───────────────────────────────────────────────
@@ -461,6 +463,33 @@ export class CommonsController {
   ) {
     await this.threads.markThreadRead(orgId, user.userId, threadId);
     return this.commonsService.unreadCounts(orgId, user.userId);
+  }
+
+  // ─── Reactions on messages (CMN-17) ──────────────────────────
+
+  /** Leave an emoji on a message in a conversation, or take it back. */
+  @Post('threads/:threadId/messages/:messageId/reactions')
+  @ApiOperation({ summary: 'Toggle an emoji reaction on a message' })
+  reactToMessage(
+    @Param('orgId') orgId: string,
+    @Param('threadId') threadId: string,
+    @Param('messageId') messageId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: ReactionDto,
+  ) {
+    return this.threads.toggleMessageReaction(orgId, user.userId, threadId, messageId, dto.emoji);
+  }
+
+  /** The same, on a reply in the Commons. */
+  @Post('comments/:commentId/reactions')
+  @ApiOperation({ summary: 'Toggle an emoji reaction on a comment' })
+  reactToComment(
+    @Param('orgId') orgId: string,
+    @Param('commentId') commentId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: ReactionDto,
+  ) {
+    return this.commonsService.toggleCommentReaction(orgId, commentId, user.userId, dto.emoji);
   }
 
   // ─── Direct Messages ────────────────────────────────────────
