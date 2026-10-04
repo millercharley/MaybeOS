@@ -400,16 +400,18 @@ model User {
   comments         Comment[]
   reactions        Reaction[]
   channelReads     ChannelRead[]
-  threadsStarted   MessageThread[]     @relation("ThreadCreator")
+  threadsStarted   MessageThread[]         @relation("ThreadCreator")
   threadSeats      ThreadParticipant[]
-  threadMessages   ThreadMessage[]     @relation("ThreadSender")
+  threadMessages   ThreadMessage[]         @relation("ThreadSender")
+  messageReactions ThreadMessageReaction[]
+  commentReactions CommentReaction[]
   votes            Vote[]
   surveyResponses  SurveyResponse[]
-  sentMessages     DirectMessage[]     @relation("SentMessages")
-  receivedMessages DirectMessage[]     @relation("ReceivedMessages")
+  sentMessages     DirectMessage[]         @relation("SentMessages")
+  receivedMessages DirectMessage[]         @relation("ReceivedMessages")
   collectionPages  CollectionPage[]
-  hostedEvents     Event[]             @relation("HostedEvents")
-  createdEvents    Event[]             @relation("CreatedEvents")
+  hostedEvents     Event[]                 @relation("HostedEvents")
+  createdEvents    Event[]                 @relation("CreatedEvents")
   coHostedEvents   EventCoHost[]
   tickets          Ticket[]
 
@@ -1408,8 +1410,9 @@ model ThreadMessage {
 
   createdAt DateTime @default(now())
 
-  thread MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  sender User          @relation("ThreadSender", fields: [senderId], references: [id], onDelete: Cascade)
+  thread    MessageThread           @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender    User                    @relation("ThreadSender", fields: [senderId], references: [id], onDelete: Cascade)
+  reactions ThreadMessageReaction[]
 
   @@index([threadId, createdAt])
   @@map("thread_messages")
@@ -1505,11 +1508,12 @@ model Comment {
   /// edit, so the marker the thread shows is true.
   editedAt DateTime?
 
-  post        Post         @relation(fields: [postId], references: [id], onDelete: Cascade)
-  author      User         @relation(fields: [authorId], references: [id])
-  parent      Comment?     @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies     Comment[]    @relation("CommentReplies")
+  post        Post              @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author      User              @relation(fields: [authorId], references: [id])
+  parent      Comment?          @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     Comment[]         @relation("CommentReplies")
   attachments Attachment[]
+  reactions   CommentReaction[]
 
   @@index([postId])
   @@index([parentId])
@@ -1563,6 +1567,46 @@ model Reaction {
 
   @@unique([postId, userId, emoji])
   @@map("reactions")
+}
+
+/// An emoji somebody left on a message in a conversation (CMN-17).
+///
+/// Charley: "Make sure people can leave an emoji reaction on any message."
+/// Posts in the Commons already had this; messages did not, and neither did
+/// comments — so "any" meant two new tables rather than one.
+///
+/// Its own table rather than a nullable column on `reactions`: a polymorphic
+/// parent cannot carry a foreign key, and without one a deleted message
+/// leaves its reactions behind forever. Three small tables that each delete
+/// with their parent beat one clever one that does not.
+model ThreadMessageReaction {
+  id        String @id @default(uuid())
+  messageId String
+  userId    String
+  emoji     String
+
+  message ThreadMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// One of each emoji per person per message. Pressing again removes it.
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@map("thread_message_reactions")
+}
+
+/// The same, on a reply in the Commons (CMN-17).
+model CommentReaction {
+  id        String @id @default(uuid())
+  commentId String
+  userId    String
+  emoji     String
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId, emoji])
+  @@index([commentId])
+  @@map("comment_reactions")
 }
 
 /// A message between two members *of one organization* (CMN-08).

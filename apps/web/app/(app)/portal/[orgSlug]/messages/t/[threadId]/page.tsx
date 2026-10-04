@@ -11,6 +11,7 @@ import { renderBodyHtml } from '@/lib/rich-text';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
 import { timeAgo } from '@/lib/relative-time';
 import { useUnread } from '@/contexts/unread-context';
+import { ReactionBar } from '@/components/reactions/reaction-bar';
 
 /**
  * One conversation — two people or twenty (CMN-08, CMN-16, PRD §5.4).
@@ -155,6 +156,20 @@ export default function ThreadPage() {
                     {timeAgo(m.createdAt)}
                   </p>
                 </div>
+
+                {/* Under the bubble rather than inside it: a reaction is
+                    something other people added, not part of what was said. */}
+                <ReactionBar
+                  reactions={m.reactions ?? []}
+                  align={mine ? 'right' : 'left'}
+                  onToggle={async (emoji) => {
+                    if (!org || !token) return null;
+                    const result = await api.commons
+                      .reactToMessage(org.id, threadId, m.id, emoji, token)
+                      .catch(() => null);
+                    return result?.reactions ?? null;
+                  }}
+                />
               </div>
             </div>
           );

@@ -24,6 +24,7 @@ import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 import { PageHeader } from '@/components/layout/page-header';
 import { MemberName } from '@/components/member/member-name';
 import { useUnread } from '@/contexts/unread-context';
+import { ReactionBar } from '@/components/reactions/reaction-bar';
 
 type Tab = 'channels' | 'proposals';
 
@@ -966,6 +967,7 @@ function CommentNode({
   activeReply: string | null;
   onEdited: () => void;
 }) {
+  const [reactions, setReactions] = useState(comment.reactions ?? []);
   // Its own rather than threaded through: this component is rendered
   // recursively for every reply, and passing the org and token down each level
   // is four props of ceremony for something both already know.
@@ -1052,6 +1054,22 @@ function CommentNode({
             {org && token && (
               <AttachmentList orgId={org.id} token={token} commentId={comment.id} />
             )}
+            {/* A reply is a message too (CMN-17). Charley asked for a
+                reaction on *any* message, and this was the other half of
+                "any": posts had them, comments never did. */}
+            {org && token && (
+              <ReactionBar
+                reactions={reactions}
+                onToggle={async (emoji) => {
+                  const result = await api.commons
+                    .reactToComment(org.id, comment.id, emoji, token)
+                    .catch(() => null);
+                  if (result) setReactions(result.reactions);
+                  return result?.reactions ?? null;
+                }}
+              />
+            )}
+
             <div className="mt-1 flex items-center gap-3">
               <button
                 onClick={() => onReply(activeReply === comment.id ? null : comment.id)}

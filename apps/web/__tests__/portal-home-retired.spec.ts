@@ -50,11 +50,28 @@ describe('the portal home', () => {
 describe('what the portal home was carrying', () => {
   const dashboard = web('app/(app)/(dashboard)/member/[orgSlug]/page.tsx');
 
-  // These two had exactly one call site in the product, and it was the page
-  // being retired. Redirecting without them would have deleted two features
+  // `WelcomeCard` had exactly one call site in the product, and it was the
+  // page being retired. Redirecting without it would have deleted a feature
   // while appearing to remove a duplicate.
-  it.each(['HappeningNow', 'WelcomeCard'])('%s moved to the dashboard', (component) => {
-    expect(dashboard).toContain(`<${component}`);
+  it('WelcomeCard moved to the dashboard', () => {
+    expect(dashboard).toContain('<WelcomeCard');
+  });
+
+  it('HappeningNow came too, and then went — it was the duplicate', () => {
+    /*
+      Charley, once he saw it there: "it turns out this is redundant with the
+      Today at MaybeItsFate section." It was — that panel lists what is on
+      today and badges the one running, so a strip above it reading "one room
+      in use: Attic until 12:00" was the same fact told worse, naming a room
+      rather than the event in it.
+
+      Still in the product, on the admin dashboard, where room occupancy is
+      somebody's actual job. This is the test that stops it drifting back.
+    */
+    expect(dashboard).not.toContain('<HappeningNow');
+
+    const admin = web('app/(app)/(dashboard)/admin/[orgSlug]/page.tsx');
+    expect(admin).toContain('<HappeningNow');
   });
 
   it('still shows what the member themselves is serving today', () => {

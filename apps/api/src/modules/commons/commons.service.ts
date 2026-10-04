@@ -14,6 +14,7 @@ import { CreatePageDto, UpdatePageDto } from './dto/page.dto';
 import { VoteChoice } from '@prisma/client';
 import { UnreadCounts } from './dto/unread.dto';
 import { ThreadsService } from './threads.service';
+import { groupReactions, isAllowedReaction } from './reactions';
 
 const AUTHOR_SELECT = { id: true, name: true, avatarUrl: true, avatarPath: true } as const;
 
@@ -583,7 +584,14 @@ export class CommonsService {
     };
   }
 
-  async getPost(orgId: string, postId: string) {
+  /**
+   * One post and its replies.
+   *
+   * `viewerId` so a reply's reactions can say which are the reader's own
+   * (CMN-17) — a pill that cannot tell you whether you already pressed it is
+   * a pill people press twice.
+   */
+  async getPost(orgId: string, postId: string, viewerId?: string) {
     const post = await this.prisma.post.findFirst({
       where: { id: postId, channel: { orgId } },
       include: {
@@ -592,6 +600,8 @@ export class CommonsService {
           orderBy: { createdAt: 'asc' },
           include: {
             author: { select: AUTHOR_SELECT },
+            // Grouped below, so a reply's emoji survive a reload (CMN-17).
+            reactions: { select: { emoji: true, userId: true } },
           },
         },
         reactions: true,
@@ -603,7 +613,12 @@ export class CommonsService {
     }
 
     // Comments come back flat (with parentId); nest them into a reply tree.
-    const byId = new Map(post.comments.map((c) => [c.id, { ...c, replies: [] as any[] }]));
+    const byId = new Map(
+      post.comments.map((c) => [
+        c.id,
+        { ...c, reactions: groupReactions(c.reactions, viewerId ?? ''), replies: [] as any[] },
+      ]),
+    );
     const roots: any[] = [];
     for (const comment of byId.values()) {
       if (comment.parentId && byId.has(comment.parentId)) {
@@ -664,6 +679,44 @@ export class CommonsService {
     await this.prisma.reaction.deleteMany({
       where: { postId, userId, emoji },
     });
+  }
+
+  /**
+   * An emoji on a reply (CMN-17).
+   *
+   * A toggle, like the one on a message: pressing the same emoji twice means
+   * "I did not mean that", and asking the caller to choose between two calls
+   * is how a double tap becomes two hearts.
+   */
+  async toggleCommentReaction(orgId: string, commentId: string, userId: string, emoji: string) {
+    if (!isAllowedReaction(emoji)) {
+      throw new BadRequestException('That is not one of the reactions.');
+    }
+
+    // Scoped through the post to the co-op: a comment id from the request is
+    // otherwise a way to react inside another tenant's conversation (SEC-04).
+    const comment = await this.prisma.comment.findFirst({
+      where: { id: commentId, post: { channel: { orgId } } },
+      select: { id: true },
+    });
+    if (!comment) throw new NotFoundException('Comment not found');
+
+    const existing = await this.prisma.commentReaction.findUnique({
+      where: { commentId_userId_emoji: { commentId, userId, emoji } },
+    });
+
+    if (existing) {
+      await this.prisma.commentReaction.delete({ where: { id: existing.id } });
+    } else {
+      await this.prisma.commentReaction.create({ data: { commentId, userId, emoji } });
+    }
+
+    const rows = await this.prisma.commentReaction.findMany({
+      where: { commentId },
+      select: { emoji: true, userId: true },
+    });
+
+    return { commentId, reactions: groupReactions(rows, userId) };
   }
 
   // ─── Flagging ───────────────────────────────────────────────

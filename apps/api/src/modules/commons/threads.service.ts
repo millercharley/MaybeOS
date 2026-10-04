@@ -1,5 +1,6 @@
 import { Injectable, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
+import { groupReactions, isAllowedReaction } from './reactions';
 import {
   everyone,
   isGroup,
@@ -117,7 +118,12 @@ export class ThreadsService {
       this.prisma.threadMessage.findMany({
         where: { threadId },
         orderBy: { createdAt: 'asc' },
-        include: { sender: { select: PERSON } },
+        include: {
+          sender: { select: PERSON },
+          // Grouped below, because the page draws one pill per emoji rather
+          // than one per person (CMN-17).
+          reactions: { select: { emoji: true, userId: true } },
+        },
         take: 200,
       }),
       this.prisma.threadParticipant.findMany({
@@ -137,7 +143,10 @@ export class ThreadsService {
       name: threadName(people, userId, thread.title),
       isGroup: isGroup(people.length),
       participants: people,
-      messages,
+      messages: messages.map((m) => ({
+        ...m,
+        reactions: groupReactions(m.reactions, userId),
+      })),
     };
   }
 
@@ -255,6 +264,55 @@ export class ThreadsService {
   async markThreadRead(orgId: string, userId: string, threadId: string) {
     await this.mine(orgId, userId, threadId);
     await this.touchRead(threadId, userId);
+  }
+
+  // ─── Reactions (CMN-17) ───────────────────────────────────────
+
+  /**
+   * Leave an emoji on a message, or take it back.
+   *
+   * A toggle rather than add-and-remove: pressing the same emoji twice means
+   * "I did not mean that", and making the caller decide which of two calls to
+   * send is how a double tap becomes two hearts.
+   */
+  async toggleMessageReaction(
+    orgId: string,
+    userId: string,
+    threadId: string,
+    messageId: string,
+    emoji: string,
+  ) {
+    if (!isAllowedReaction(emoji)) {
+      throw new BadRequestException('That is not one of the reactions.');
+    }
+    // Being in the conversation is the whole permission. Somebody who cannot
+    // read a message must not be able to react to it (CMN-16).
+    await this.mine(orgId, userId, threadId);
+
+    const message = await this.prisma.threadMessage.findFirst({
+      where: { id: messageId, threadId },
+      select: { id: true },
+    });
+    if (!message) throw new NotFoundException('Message not found');
+
+    const existing = await this.prisma.threadMessageReaction.findUnique({
+      where: { messageId_userId_emoji: { messageId, userId, emoji } },
+    });
+
+    if (existing) {
+      await this.prisma.threadMessageReaction.delete({ where: { id: existing.id } });
+    } else {
+      await this.prisma.threadMessageReaction.create({
+        data: { messageId, userId, emoji },
+      });
+    }
+
+    const rows = await this.prisma.threadMessageReaction.findMany({
+      where: { messageId },
+      select: { emoji: true, userId: true },
+    });
+
+    return { messageId, reactions: groupReactions(rows, userId) };
   }
 
   // ─── The badge ────────────────────────────────────────────────
