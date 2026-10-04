@@ -31,15 +31,23 @@ describe('CommonsService — tenant isolation (CMN-07)', () => {
         {
           provide: PrismaService,
           useValue: {
-            channel: { findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn(), findMany: jest.fn(), create: jest.fn(), delete: jest.fn() },
+            channel: { findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]), create: jest.fn(), delete: jest.fn() },
             post: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), findMany: jest.fn(), count: jest.fn() },
-            comment: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn() },
+            comment: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), count: jest.fn().mockResolvedValue(0) },
             reaction: { upsert: jest.fn(), deleteMany: jest.fn() },
             proposal: { findFirst: jest.fn(), findUniqueOrThrow: jest.fn(), create: jest.fn(), update: jest.fn() },
             vote: { upsert: jest.fn() },
             collection: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
             collectionPage: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
-            directMessage: { create: jest.fn(), findMany: jest.fn(), updateMany: jest.fn() },
+            // `count` and `channelRead` are the unread badge (CMN-14): marking a
+            // conversation read now returns the new totals, so it asks for them.
+            directMessage: {
+              create: jest.fn(),
+              findMany: jest.fn(),
+              updateMany: jest.fn(),
+              count: jest.fn().mockResolvedValue(0),
+            },
+            channelRead: { findMany: jest.fn().mockResolvedValue([]), upsert: jest.fn() },
             userOrg: { findFirst: jest.fn(), findMany: jest.fn() },
             $transaction: jest.fn(),
           },

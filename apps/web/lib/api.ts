@@ -1,3 +1,4 @@
+import type { UnreadCounts } from '@/lib/unread';
 import type { MaturityLevel } from './maturity';
 import type { GrantKind } from './ledger';
 import * as Sentry from '@sentry/nextjs';
@@ -2278,6 +2279,19 @@ class ApiClient {
         token,
       }),
 
+    // ── What has not been read (CMN-14) ──
+
+    /** The two numbers behind the sidebar badges. Counts only, never content. */
+    unread: (orgId: string, token: string) =>
+      this.request<UnreadCounts>(`/orgs/${orgId}/unread`, { token }),
+
+    /** Opening a channel is reading it. Returns the new totals. */
+    markChannelRead: (orgId: string, channelId: string, token: string) =>
+      this.request<UnreadCounts>(`/orgs/${orgId}/channels/${channelId}/read`, {
+        method: 'POST',
+        token,
+      }),
+
     // ── Direct Messages ──
     listConversations: (orgId: string, token: string) =>
       this.request<DmConversation[]>(`/orgs/${orgId}/dms`, { token }),
@@ -2292,8 +2306,12 @@ class ApiClient {
         token,
       }),
 
+    /** Returns the new unread totals, so the badge can settle (CMN-14). */
     markConversationRead: (orgId: string, otherUserId: string, token: string) =>
-      this.request(`/orgs/${orgId}/dms/${otherUserId}/read`, { method: 'POST', token }),
+      this.request<UnreadCounts>(`/orgs/${orgId}/dms/${otherUserId}/read`, {
+        method: 'POST',
+        token,
+      }),
 
     // ── Collections (wiki) ──
     listCollections: (orgId: string, token: string) =>
@@ -4319,6 +4337,8 @@ export interface DirectMessage {
   sender: { id: string; name?: string; avatarUrl?: string };
   receiver: { id: string; name?: string; avatarUrl?: string };
 }
+
+export type { UnreadCounts } from '@/lib/unread';
 
 export interface DmConversation {
   counterpart: { id: string; name?: string; avatarUrl?: string };

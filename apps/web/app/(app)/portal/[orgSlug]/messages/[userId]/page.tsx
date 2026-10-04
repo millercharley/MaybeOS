@@ -11,6 +11,7 @@ import { renderBodyHtml } from '@/lib/rich-text';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
 import { timeAgo } from '@/lib/relative-time';
 import { MemberName } from '@/components/member/member-name';
+import { useUnread } from '@/contexts/unread-context';
 
 /**
  * One conversation, and — if you are somebody's buddy — the prompts for it
@@ -29,6 +30,7 @@ import { MemberName } from '@/components/member/member-name';
  */
 export default function ThreadPage() {
   const { org } = usePortal();
+  const { settle } = useUnread();
   const token = useAuthStore((s) => s.token);
   const otherUserId = useParams<{ userId: string }>().userId;
 
@@ -78,13 +80,23 @@ export default function ThreadPage() {
         const member = await api.members.get(org.id, otherUserId, token).catch(() => null);
         if (member?.user?.name) setIntroduced({ name: member.user.name });
       }
-      await api.commons.markConversationRead(org.id, otherUserId, token).catch(() => {});
+      /*
+        The badge in the sidebar is drawn from shared state, not from this
+        page, so marking the conversation read has to say so (CMN-14). The
+        endpoint hands back the new totals; without passing them on, the
+        bubble would sit there with the old number for up to a minute while
+        the member looks straight at the message it is counting.
+      */
+      const totals = await api.commons
+        .markConversationRead(org.id, otherUserId, token)
+        .catch(() => null);
+      if (totals) settle(totals);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not open this conversation');
     } finally {
       setLoading(false);
     }
-  }, [org, token, otherUserId]);
+  }, [org, token, otherUserId, settle]);
 
   useEffect(() => {
     load();

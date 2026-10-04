@@ -23,6 +23,7 @@ import { AttachmentList } from '@/components/composer/attachment-list';
 import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 import { PageHeader } from '@/components/layout/page-header';
 import { MemberName } from '@/components/member/member-name';
+import { useUnread } from '@/contexts/unread-context';
 
 type Tab = 'channels' | 'proposals';
 
@@ -89,6 +90,7 @@ export default function PortalCommonsPage() {
  */
 function ChannelsSection() {
   const { org } = usePortal();
+  const { settle } = useUnread();
   const token = useAuthStore((s) => s.token);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [sections, setSections] = useState<ChannelSection[]>([]);
@@ -140,6 +142,7 @@ function ChannelsSection() {
       )
       .catch(() => setPeople([]));
 
+    let opened: string | null = null;
     api.commons
       .listChannels(org.id, token)
       .then((chs) => {
@@ -152,12 +155,17 @@ function ChannelsSection() {
           const wanted = new URLSearchParams(window.location.search).get('channel');
           const first = chs.find((c) => c.id === wanted) ?? chs[0];
           setSelectedChannel(first.id);
+          opened = first.id;
           return api.commons.listPosts(org.id, first.id, token);
         }
         return null;
       })
       .then((data) => {
         if (data) receiveNewest(data);
+        // The landing channel is opened by this effect, not by a click, so it
+        // needs marking too — otherwise the one channel a member actually
+        // reads is the one the badge never stops counting.
+        if (opened) markRead(opened);
       })
       .catch((err) =>
         setError(err instanceof Error ? err.message : 'Could not load the Commons'),
@@ -201,9 +209,26 @@ function ChannelsSection() {
     try {
       const data = await api.commons.listPosts(org.id, channelId, token);
       receiveNewest(data);
+      markRead(channelId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load these posts');
     }
+  }
+
+  /**
+   * Opening a channel is reading it (CMN-14).
+   *
+   * Quiet on failure, and deliberately not awaited by anything the reader is
+   * waiting for: a read marker that does not get written costs an inflated
+   * badge until the next visit, which is a far smaller problem than a channel
+   * that will not open because a bookkeeping call timed out.
+   */
+  function markRead(channelId: string) {
+    if (!org || !token) return;
+    api.commons
+      .markChannelRead(org.id, channelId, token)
+      .then(settle)
+      .catch(() => {});
   }
 
   /** Older messages, prepended, without moving what the reader is looking at. */

@@ -11,7 +11,7 @@ import {
   DefaultValuePipe,
   ParseIntPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiQuery, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
@@ -361,6 +361,32 @@ export class CommonsController {
     @Query('status') status?: string,
   ) {
     return this.commonsService.listProposals(orgId, status);
+  }
+
+  // ─── What has not been read (CMN-14) ────────────────────────
+
+  /**
+   * The two numbers behind the sidebar badges.
+   *
+   * One route for both halves. They are drawn side by side and polled on a
+   * timer, so splitting them would be twice the requests for one answer and
+   * two chances for the sidebar to disagree with itself.
+   */
+  @Get('unread')
+  @ApiOperation({ summary: 'Unread counts for the signed-in member' })
+  unreadCounts(@Param('orgId') orgId: string, @CurrentUser() user: RequestUser) {
+    return this.commonsService.unreadCounts(orgId, user.userId);
+  }
+
+  /** Opening a channel is reading it. Returns the new totals. */
+  @Post('channels/:channelId/read')
+  @ApiOperation({ summary: 'Mark a channel read up to now' })
+  markChannelRead(
+    @Param('orgId') orgId: string,
+    @Param('channelId') channelId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.commonsService.markChannelRead(orgId, user.userId, channelId);
   }
 
   // ─── Direct Messages ────────────────────────────────────────
