@@ -98,22 +98,44 @@ describe('sending a roster its way in', () => {
     expect(days).toBe(30);
   });
 
-  it('marks each member before handing the email over', async () => {
-    const order: string[] = [];
-    prisma.$transaction.mockImplementation(async () => {
-      order.push('marked');
-      return [];
+  it('marks each member before handing their own email over', async () => {
+    /*
+      Per member, not across the batch.
+
+      This used to assert `['marked', 'sent', 'marked', 'sent']`, which was
+      only ever true because members were handled one at a time. Several now
+      go at once (MEM-23), so the marks of a group land before its sends — and
+      the guarantee that actually matters is unchanged: nobody is emailed
+      before they are marked.
+
+      It matters because `EmailService` swallows its own failures, so a marker
+      can only honestly mean we tried. A member missed once beats a roster
+      emailed twice.
+    */
+    const markedAt = new Map<string, number>();
+    const sentAt = new Map<string, number>();
+    let tick = 0;
+
+    // Recorded where the mark is actually made. `$transaction` is handed
+    // Prisma promises, which carry nothing a test can read.
+    prisma.userOrg.update.mockImplementation((args: { where: { id: string } }) => {
+      markedAt.set(args.where.id, tick++);
+      return {};
     });
-    email.sendRaw.mockImplementation(async () => {
-      order.push('sent');
+    email.sendRaw.mockImplementation(async (to: { primary: string }) => {
+      sentAt.set(to.primary, tick++);
       return true;
     });
 
     await service.sendSignInLinks('org-1');
 
-    // `EmailService` swallows failures, so a marker can only honestly mean we
-    // tried. A member missed once beats a roster emailed twice.
-    expect(order).toEqual(['marked', 'sent', 'marked', 'sent']);
+    for (const member of waiting) {
+      const marked = markedAt.get(member.id);
+      const sent = sentAt.get(member.user.email);
+      expect(marked).toBeDefined();
+      expect(sent).toBeDefined();
+      expect(marked!).toBeLessThan(sent!);
+    }
   });
 
   it('shows the list without sending when asked to look first', async () => {
@@ -258,6 +280,36 @@ describe('a roster that does not fit in one request', () => {
     // null and carries on from there.
     expect(result.remaining).toBe(435 - result.sent);
     expect(result.remaining).toBeGreaterThan(0);
+  });
+
+  it('reads the co-op\'s wording once, not once per member', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+
+    await service.sendSignInLinks('org-1');
+
+    // It was a database read per member — 435 identical lookups of one row,
+    // which is most of why the first real batch managed twenty-six people.
+    expect(prisma.belongingEmailTemplate.findUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it('works through several members at once', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+
+    let inFlight = 0;
+    let mostAtOnce = 0;
+    email.sendRaw.mockImplementation(async () => {
+      inFlight += 1;
+      mostAtOnce = Math.max(mostAtOnce, inFlight);
+      await Promise.resolve();
+      inFlight -= 1;
+      return true;
+    });
+
+    await service.sendSignInLinks('org-1');
+
+    // Each member is round trips that have nothing to do with the next one's,
+    // so waiting for each in turn spends the whole budget on latency.
+    expect(mostAtOnce).toBeGreaterThan(1);
   });
 
   it('leaves itself room, rather than stopping exactly on the limit', () => {
