@@ -294,6 +294,7 @@ model Organization {
   hostDuties      HostDuty[]
   hostBriefings   HostBriefing[]
   channels        Channel[]
+  messageThreads  MessageThread[]
   channelSections ChannelSection[]
   collections     Collection[]
   surveys         Survey[]
@@ -399,13 +400,16 @@ model User {
   comments         Comment[]
   reactions        Reaction[]
   channelReads     ChannelRead[]
+  threadsStarted   MessageThread[]     @relation("ThreadCreator")
+  threadSeats      ThreadParticipant[]
+  threadMessages   ThreadMessage[]     @relation("ThreadSender")
   votes            Vote[]
   surveyResponses  SurveyResponse[]
-  sentMessages     DirectMessage[]  @relation("SentMessages")
-  receivedMessages DirectMessage[]  @relation("ReceivedMessages")
+  sentMessages     DirectMessage[]     @relation("SentMessages")
+  receivedMessages DirectMessage[]     @relation("ReceivedMessages")
   collectionPages  CollectionPage[]
-  hostedEvents     Event[]          @relation("HostedEvents")
-  createdEvents    Event[]          @relation("CreatedEvents")
+  hostedEvents     Event[]             @relation("HostedEvents")
+  createdEvents    Event[]             @relation("CreatedEvents")
   coHostedEvents   EventCoHost[]
   tickets          Ticket[]
 
@@ -1327,6 +1331,88 @@ model Channel {
   @@index([orgId, position])
   @@index([sectionId])
   @@map("channels")
+}
+
+/// A conversation between two or more members (CMN-16).
+///
+/// Charley: "the user can type in one or more members, select that member or
+/// members... This can be a group message thread or an individual DM thread."
+///
+/// `direct_messages` could not answer that. It held a sender and a receiver,
+/// so a conversation was a pair and a third person had nowhere to go. A
+/// one-to-one is now a thread with two participants — the same object, the
+/// same screen, the same unread count — and the only difference between a DM
+/// and a group is how many people are in it.
+///
+/// The old table is migrated into this one and left in place, dormant. It is
+/// not read any more; keeping it costs nothing and dropping a table to tidy
+/// up is how a mistake becomes unrecoverable.
+model MessageThread {
+  id          String  @id @default(uuid())
+  orgId       String
+  /// Who started it. Null for anything migrated.
+  createdById String?
+  /// A name, for a group that has earned one. Null is normal and renders as
+  /// the participants' names.
+  title       String?
+
+  /// Every participant's id, sorted and joined.
+  ///
+  /// This is what makes "message these three again" land in the thread that
+  /// already exists rather than opening a second one beside it — the bug
+  /// every chat product has had at least once. Sorted, so the same people in
+  /// a different order are the same conversation.
+  participantKey String
+
+  /// When somebody last said something, for ordering the list. Not
+  /// `updatedAt`: marking a thread read must not raise it to the top.
+  lastMessageAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  org          Organization        @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdBy    User?               @relation("ThreadCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  participants ThreadParticipant[]
+  messages     ThreadMessage[]
+
+  /// One thread per set of people per co-op. The tenant is in the key
+  /// because two people who share two co-ops hold two conversations (CMN-08).
+  @@unique([orgId, participantKey])
+  @@index([orgId, lastMessageAt])
+  @@map("message_threads")
+}
+
+/// Somebody in a conversation, and how far they have read it.
+model ThreadParticipant {
+  id         String    @id @default(uuid())
+  threadId   String
+  userId     String
+  /// Null until they open it, which means everything in it is unread.
+  lastReadAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  thread MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([threadId, userId])
+  /// The badge's query: every thread this person is in.
+  @@index([userId])
+  @@map("thread_participants")
+}
+
+/// One thing somebody said.
+model ThreadMessage {
+  id       String @id @default(uuid())
+  threadId String
+  senderId String
+  body     String
+
+  createdAt DateTime @default(now())
+
+  thread MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender User          @relation("ThreadSender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@map("thread_messages")
 }
 
 /// How far a member has read in a channel (CMN-14).

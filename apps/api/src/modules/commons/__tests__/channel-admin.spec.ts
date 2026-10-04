@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { CommonsService } from '../commons.service';
 import { PrismaService } from '../../../config/prisma.service';
+import { ThreadsService } from '../threads.service';
 
 /**
  * An admin arranging the co-op's Commons (CMN-10).
@@ -22,6 +23,12 @@ describe('CommonsService — channels', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CommonsService,
+        // The badge counts threads now (CMN-16); these tests are about the
+        // Commons half of it.
+        {
+          provide: ThreadsService,
+          useValue: { unreadMessages: jest.fn().mockResolvedValue(0) },
+        },
         {
           provide: PrismaService,
           useValue: {

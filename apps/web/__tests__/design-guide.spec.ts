@@ -63,7 +63,10 @@ const DATA_TITLED = [
   // The portal home was here until it became a redirect (NAV-04). It has no
   // heading now because it has no page — it is four lines and a `redirect()`.
   'app/(app)/portal/[orgSlug]/events/[eventSlug]/page.tsx',
-  'app/(app)/portal/[orgSlug]/messages/[userId]/page.tsx',
+  // The conversation's own name is the title (CMN-16). `[userId]` is no longer
+  // listed: it resolves a member to their thread and redirects, so it has no
+  // heading of its own to style.
+  'app/(app)/portal/[orgSlug]/messages/t/[threadId]/page.tsx',
   'app/(app)/portal/[orgSlug]/reports/[reportSlug]/page.tsx',
   'app/(app)/portal/[orgSlug]/handbook/start/page.tsx',
 ];

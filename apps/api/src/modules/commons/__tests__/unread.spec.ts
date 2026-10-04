@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { CommonsService } from '../commons.service';
+import { ThreadsService } from '../threads.service';
 import { CommonsController } from '../commons.controller';
 import { PrismaService } from '../../../config/prisma.service';
 
@@ -51,31 +52,26 @@ describe('CommonsService — unread counts', () => {
       comment: { count: jest.fn().mockResolvedValue(over.comments ?? 0) },
     };
 
+    const threads = { unreadMessages: jest.fn().mockResolvedValue(over.dms ?? 0) };
+
     const module: TestingModule = await Test.createTestingModule({
-      providers: [CommonsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        CommonsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ThreadsService, useValue: threads },
+      ],
     }).compile();
 
-    return { service: module.get(CommonsService), prisma };
+    return { service: module.get(CommonsService), prisma, threads };
   };
 
-  it('counts the messages addressed to me and not yet opened', async () => {
-    const { service, prisma } = await build({ dms: 3 });
+  it('counts the messages I have not read, across every conversation', async () => {
+    const { service, threads } = await build({ dms: 3 });
 
     expect((await service.unreadCounts(ORG, ME)).messages).toBe(3);
-    expect(prisma.directMessage.count).toHaveBeenCalledWith({
-      where: { orgId: ORG, receiverId: ME, readAt: null },
-    });
-  });
-
-  it('never counts a message I sent as one I have to read', async () => {
-    const { service, prisma } = await build();
-    await service.unreadCounts(ORG, ME);
-
-    // The whole filter, verbatim: `receiverId` is what makes this my inbox
-    // rather than the co-op's whole mailbag.
-    const { where } = prisma.directMessage.count.mock.calls[0][0];
-    expect(where.receiverId).toBe(ME);
-    expect(where.senderId).toBeUndefined();
+    // Threads, not the dormant `direct_messages` table (CMN-16): a group
+    // message counts the same as a one-to-one.
+    expect(threads.unreadMessages).toHaveBeenCalledWith(ORG, ME);
   });
 
   it('adds up posts and comments across every channel', async () => {
@@ -179,7 +175,11 @@ describe('CommonsService — marking things read', () => {
       comment: { count: jest.fn().mockResolvedValue(0) },
     };
     const module: TestingModule = await Test.createTestingModule({
-      providers: [CommonsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        CommonsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ThreadsService, useValue: { unreadMessages: jest.fn().mockResolvedValue(0) } },
+      ],
     }).compile();
     return { service: module.get(CommonsService), prisma };
   };

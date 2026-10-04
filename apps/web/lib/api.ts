@@ -2292,6 +2292,47 @@ class ApiClient {
         token,
       }),
 
+    // ── Conversations (CMN-16) ──
+    //
+    // One set of methods for DMs and groups alike: a one-to-one is a thread
+    // with two participants, and nothing above this line distinguishes them.
+
+    listThreads: (orgId: string, token: string) =>
+      this.request<ThreadSummary[]>(`/orgs/${orgId}/threads`, { token }),
+
+    /** Start one, or carry on the one these people already have. */
+    startThread: (
+      orgId: string,
+      input: { userIds: string[]; body: string; title?: string },
+      token: string,
+    ) =>
+      this.request<ThreadDetail>(`/orgs/${orgId}/threads`, {
+        method: 'POST',
+        body: JSON.stringify(input),
+        token,
+      }),
+
+    /** The one-to-one with this member, created if it does not exist yet. */
+    threadWithUser: (orgId: string, otherUserId: string, token: string) =>
+      this.request<ThreadDetail>(`/orgs/${orgId}/threads/with/${otherUserId}`, { token }),
+
+    getThread: (orgId: string, threadId: string, token: string) =>
+      this.request<ThreadDetail>(`/orgs/${orgId}/threads/${threadId}`, { token }),
+
+    sendToThread: (orgId: string, threadId: string, body: string, token: string) =>
+      this.request<ThreadMessage>(`/orgs/${orgId}/threads/${threadId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ body }),
+        token,
+      }),
+
+    /** Opening a conversation is reading it. Returns the new unread totals. */
+    markThreadRead: (orgId: string, threadId: string, token: string) =>
+      this.request<UnreadCounts>(`/orgs/${orgId}/threads/${threadId}/read`, {
+        method: 'POST',
+        token,
+      }),
+
     // ── Direct Messages ──
     listConversations: (orgId: string, token: string) =>
       this.request<DmConversation[]>(`/orgs/${orgId}/dms`, { token }),
@@ -4339,6 +4380,42 @@ export interface DirectMessage {
 }
 
 export type { UnreadCounts } from '@/lib/unread';
+
+/** Somebody in a conversation. */
+export interface ThreadPerson {
+  userId: string;
+  name: string | null;
+  avatarUrl: string | null;
+}
+
+export interface ThreadMessage {
+  id: string;
+  threadId: string;
+  senderId: string;
+  body: string;
+  createdAt: string;
+  sender?: { id: string; name: string | null; avatarUrl: string | null };
+}
+
+/** A conversation as it appears in the list. */
+export interface ThreadSummary {
+  id: string;
+  /** The participants' names, the reader's own left out. */
+  name: string;
+  isGroup: boolean;
+  participants: ThreadPerson[];
+  lastMessage: { body: string; senderId: string; createdAt: string } | null;
+  lastMessageAt: string;
+  unreadCount: number;
+}
+
+export interface ThreadDetail {
+  id: string;
+  name: string;
+  isGroup: boolean;
+  participants: ThreadPerson[];
+  messages: ThreadMessage[];
+}
 
 export interface DmConversation {
   counterpart: { id: string; name?: string; avatarUrl?: string };
