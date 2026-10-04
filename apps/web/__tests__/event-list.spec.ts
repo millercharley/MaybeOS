@@ -133,12 +133,6 @@ describe('every member-facing list says which stretch it wants', () => {
     expect(page).toMatch(/listVisible\(orgId, token, eventWindow\(new Date\(\), 0\)\)/);
   });
 
-  it('the portal home asks for today onwards', () => {
-    const page = read('app', '(app)', 'portal', '[orgSlug]', 'page.tsx');
-
-    expect(page).toMatch(/listPublic\(org\.id, eventWindow\(new Date\(\), 0\)\)/);
-  });
-
   it('the events page asks for today onwards, on both branches', () => {
     // It reached ninety days back while it still drew an "already happened"
     // list; EVT-28 removed that, so the past would only be discarded.

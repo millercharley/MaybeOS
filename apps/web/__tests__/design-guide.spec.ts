@@ -60,7 +60,8 @@ const DATA_TITLED = [
   'app/(app)/(dashboard)/admin/[orgSlug]/impact/reports/page.tsx',
   'app/(app)/(dashboard)/admin/[orgSlug]/handbook/page.tsx',
   'app/(app)/(dashboard)/member/[orgSlug]/page.tsx',
-  'app/(app)/portal/[orgSlug]/page.tsx',
+  // The portal home was here until it became a redirect (NAV-04). It has no
+  // heading now because it has no page — it is four lines and a `redirect()`.
   'app/(app)/portal/[orgSlug]/events/[eventSlug]/page.tsx',
   'app/(app)/portal/[orgSlug]/messages/[userId]/page.tsx',
   'app/(app)/portal/[orgSlug]/reports/[reportSlug]/page.tsx',

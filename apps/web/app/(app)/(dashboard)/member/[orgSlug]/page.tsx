@@ -23,6 +23,8 @@ import { Panel } from '@/components/layout/panel';
 import { MemberSpotlight } from '@/components/member/member-spotlight';
 import { InterestPrompt } from '@/components/member/interest-prompt';
 import { ServingToday } from '@/components/service/serving-today';
+import { HappeningNow } from '@/components/live/happening-now';
+import { WelcomeCard } from '@/components/live/welcome-card';
 import { eventWindow, happeningToday, whenLabel, startsIn } from '@/lib/event-list';
 
 const quickLinksFor = (orgSlug: string) => [
@@ -139,9 +141,23 @@ export default function MemberPortalPage() {
       {/* Above everything the co-op is saying, because this is the one thing on
           the page the member themselves promised to do today (SRV-04). Renders
           nothing on a day they are not serving. */}
-      <div className="mb-6 empty:mb-0">
-        <ServingToday orgId={currentOrg?.orgId} orgSlug={orgSlug} />
-      </div>
+      {/*
+        The live strip (NAV-04). These three came from the portal home, which
+        is now a redirect to this page — `HappeningNow` and `WelcomeCard` lived
+        nowhere else in the product, and retiring that page without them would
+        have quietly deleted two features rather than removing a duplicate.
+
+        Above everything the co-op is saying, because the first is what you
+        promised to do today and the second answers the question somebody has
+        standing in the doorway. Each renders nothing when it has nothing.
+      */}
+      {currentOrg?.orgId && (
+        <div className="mb-6 space-y-4 empty:mb-0">
+          <ServingToday orgId={currentOrg.orgId} orgSlug={orgSlug} />
+          <HappeningNow orgId={currentOrg.orgId} orgSlug={orgSlug} />
+          <WelcomeCard orgId={currentOrg.orgId} orgSlug={orgSlug} />
+        </div>
+      )}
 
       {/* The co-op's own banner, when it has set one (DSH-01). No placeholder
           when it has not — an empty grey rectangle across the top of every
