@@ -1406,6 +1406,16 @@ export class MemberService {
   private static readonly SIGN_IN_DEADLINE_MS = 7_000;
 
   /**
+   * How many members are handled at once (MEM-23).
+   *
+   * Modest on purpose. Postmark would take far more, but the database sits
+   * behind a connection pooler, and a burst big enough to exhaust it turns a
+   * slow send into a failing one — which on this particular job means a
+   * member marked as written to who never hears from us.
+   */
+  private static readonly SIGN_IN_CONCURRENCY = 8;
+
+  /**
    * Tell members who are already here how to get in (MEM-18).
    *
    * **The email a co-op moving in sends its whole roster**, and it exists
@@ -1478,43 +1488,79 @@ export class MemberService {
 
     const expiry = new Date(Date.now() + org.inviteExpiryDays * 24 * 60 * 60 * 1000);
     const stopBy = Date.now() + MemberService.SIGN_IN_DEADLINE_MS;
+
+    /*
+      The co-op's own wording, read once (MEM-23).
+
+      This was a database lookup per member — four hundred and thirty-five
+      identical reads of one row. With a transaction and a call to Postmark
+      either side of it, a member cost three sequential round trips and about
+      a quarter of a second, so the first real batch got through twenty-six
+      people in seven seconds and Charley was facing sixteen more presses.
+    */
+    const custom = await this.prisma.belongingEmailTemplate.findUnique({
+      where: { orgId_kind: { orgId, kind: 'SIGN_IN' } },
+    });
+    const template = custom ?? DEFAULT_TEMPLATES.SIGN_IN;
+    const webUrl = this.webUrl();
+
     let sent = 0;
 
-    for (const member of waiting) {
-      // Checked before starting a member, never part-way through one: the
-      // point is to stop in a state somebody can press again from.
+    /*
+      In small groups rather than one at a time.
+
+      Each member is two round trips that have nothing to do with each
+      other's, so waiting for one before starting the next spends the whole
+      budget on latency. Eight at a time is deliberately modest: Postmark is
+      happy with far more, but the database sits behind a connection pooler
+      and a burst large enough to exhaust it would turn a slow send into a
+      failing one.
+
+      The deadline is checked between groups, never inside one — a group that
+      has started always finishes, so nobody is left marked-but-unsent.
+    */
+    for (let i = 0; i < waiting.length; i += MemberService.SIGN_IN_CONCURRENCY) {
       if (Date.now() > stopBy) break;
-      if (!member.user?.email) continue;
 
-      const token = randomUUID();
+      const group = waiting.slice(i, i + MemberService.SIGN_IN_CONCURRENCY);
 
-      await this.prisma.$transaction([
-        this.prisma.user.update({
-          where: { id: member.userId },
-          data: { magicLinkToken: token, magicLinkExpiry: expiry },
+      const results = await Promise.all(
+        group.map(async (member) => {
+          if (!member.user?.email) return false;
+
+          const token = randomUUID();
+
+          await this.prisma.$transaction([
+            this.prisma.user.update({
+              where: { id: member.userId },
+              data: { magicLinkToken: token, magicLinkExpiry: expiry },
+            }),
+            this.prisma.userOrg.update({
+              where: { id: member.id },
+              data: { signInSentAt: new Date() },
+            }),
+          ]);
+
+          const { subject, html } = renderTemplate(template, {
+            member_name: member.user.name ?? 'there',
+            community_name: org.name,
+            sign_in_url: `${webUrl}/magic-link?token=${token}`,
+            expiry_days: String(org.inviteExpiryDays),
+          });
+
+          // Both addresses (MEM-19). This is the send where choosing wrong is
+          // worst: the link arrives somewhere they never look, and the member
+          // concludes MaybeOS does not work.
+          await this.emailService.sendRaw(
+            { primary: member.user.email, also: member.altEmail },
+            subject,
+            html,
+          );
+          return true;
         }),
-        this.prisma.userOrg.update({
-          where: { id: member.id },
-          data: { signInSentAt: new Date() },
-        }),
-      ]);
-
-      const { subject, html } = await this.renderForOrg(orgId, 'SIGN_IN', {
-        member_name: member.user.name ?? 'there',
-        community_name: org.name,
-        sign_in_url: `${this.webUrl()}/magic-link?token=${token}`,
-        expiry_days: String(org.inviteExpiryDays),
-      });
-
-      // Both addresses (MEM-19). This is the send where choosing wrong is
-      // worst: the link arrives somewhere they never look, and the member
-      // concludes MaybeOS does not work.
-      await this.emailService.sendRaw(
-        { primary: member.user.email, also: member.altEmail },
-        subject,
-        html,
       );
-      sent += 1;
+
+      sent += results.filter(Boolean).length;
     }
 
     return { sent, remaining: Math.max(0, total - sent), recipients: [], dryRun: false };
