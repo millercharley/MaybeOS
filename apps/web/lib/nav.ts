@@ -1,25 +1,26 @@
 import {
-  LayoutDashboard,
-  Users,
+  Activity,
+  BookOpen,
   Calendar,
   CalendarPlus,
-  DoorOpen,
-  MessageSquare,
-  Settings,
-  CreditCard,
-  UserCircle,
-  Receipt,
-  type LucideIcon,
-  Activity,
-  HandCoins,
-  Landmark,
-  BookOpen,
-  HeartHandshake,
-  Mail,
-  HandHelping,
-  ListChecks,
   ClipboardCheck,
+  CreditCard,
+  DoorOpen,
+  HandCoins,
+  HandHelping,
+  HeartHandshake,
+  Landmark,
+  LayoutDashboard,
+  ListChecks,
+  Mail,
+  MessageSquare,
   Newspaper,
+  Receipt,
+  Settings,
+  UserCircle,
+  Users,
+  Vote,
+  type LucideIcon,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -69,6 +70,13 @@ const adminNav = (slug: string): NavItem[] => [
   { href: `/admin/${slug}/events`, label: 'Events', icon: Calendar },
   { href: `/admin/${slug}/rooms`, label: 'Rooms & Booking', icon: DoorOpen },
   { href: `/admin/${slug}/commons`, label: 'Commons', icon: MessageSquare },
+  // Its own tab rather than the foot of Commons (Charley, 2026-10-04). It sat
+  // under the conversation, so a vote with a deadline was below however many
+  // messages the channel happened to hold — and once the Commons became a
+  // chat column, with the newest message at the bottom, it would have been
+  // off the screen entirely. Reading the room and counting a vote are two
+  // jobs, and only one of them runs out of time.
+  { href: `/admin/${slug}/proposals`, label: 'Proposals', icon: Vote },
   // Two entries rather than one "Impact", because they are two jobs. This is
   // the switch and the question list (IMP-18) — what the co-op asks and
   // whether it is asking. The Signals view that reports what came back is
