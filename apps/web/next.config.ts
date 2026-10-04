@@ -11,6 +11,23 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: '**' },
     ],
   },
+  /**
+   * The portal home is My Dashboard (NAV-04).
+   *
+   * The page itself also calls `redirect()`, and that works — but a
+   * `redirect()` in a page nested under a client layout comes back as a 200
+   * carrying a client-side navigation, so the shell paints and then leaves.
+   * Declaring it here makes it a real 307 at the edge, before React.
+   *
+   * Temporary, not permanent: a 308 is cached by the browser indefinitely, and
+   * an address we might want back should not be un-takeable. The page-level
+   * redirect stays as the backstop for any path that reaches it another way.
+   */
+  async redirects() {
+    return [
+      { source: '/portal/:orgSlug', destination: '/member/:orgSlug', permanent: false },
+    ];
+  },
   async rewrites() {
     // Prefer an explicitly configured API URL. Otherwise, on Netlify
     // (where `URL` is auto-injected at build time — no dashboard config
