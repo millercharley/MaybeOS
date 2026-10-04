@@ -28,6 +28,11 @@ const INSIDE_A_FORM = [
   'components/events/event-image-picker.tsx',
   'components/ui/image-uploader.tsx',
   'components/ui/image-cropper.tsx',
+  // The General tab is a form, and the Copy button for the co-op's address
+  // sits inside it (PUB-02). Untyped, pressing Copy would have saved the
+  // co-op's settings — the same fault as the picture button, in a place
+  // where it would look like the copy simply did nothing.
+  'app/(app)/(dashboard)/admin/[orgSlug]/settings/page.tsx',
 ];
 
 /**
@@ -55,7 +60,13 @@ describe('components that render inside a form', () => {
     expect(untyped).toEqual([]);
   });
 
-  it.each(INSIDE_A_FORM.filter((f) => !f.endsWith('event-form.tsx')))(
+  // The settings page *is* the outer form in its own case, like the event
+  // form, so neither is asked whether it contains one.
+  it.each(
+    INSIDE_A_FORM.filter(
+      (f) => !f.endsWith('event-form.tsx') && !f.endsWith('settings/page.tsx'),
+    ),
+  )(
     '%s does not open a form of its own',
     (file) => {
       // The event form is the form; anything rendered within it that opens
