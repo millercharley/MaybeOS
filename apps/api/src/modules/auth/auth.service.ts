@@ -68,6 +68,37 @@ export class AuthService {
       orgRoles,
     };
 
+    /*
+      When they last got in (MEM-24).
+
+      `lastLoginAt` has been on the user since the beginning and was never
+      written once — `member-profile.service.ts` even says so in a comment,
+      and worked around it. An organiser looking at a roster of 437 after a
+      migration wants exactly this: who has actually arrived.
+
+      Every way in ends here: the password form, the magic link and
+      registering. Refreshing a token does not — it has its own method — so
+      this counts arrivals rather than inflating them each time a tab
+      renews its session, which is what makes the number worth reading.
+
+      Not awaited, and failures are swallowed. Somebody signing in must not
+      be turned away because a bookkeeping write was slow — the login has
+      already succeeded by the time this runs.
+    */
+    try {
+      void Promise.resolve(
+        this.prisma.user.update({
+          where: { id: user.id },
+          data: { lastLoginAt: new Date() },
+        }),
+      ).catch(() => undefined);
+    } catch {
+      // Belt and braces, and not theoretical: a synchronous throw here —
+      // a closed client, a mocked method returning nothing — would come
+      // out of `login` itself and refuse a sign-in that had already
+      // succeeded. Caught by the API's own test suite doing exactly that.
+    }
+
     return {
       accessToken: this.jwtService.sign(payload),
     };

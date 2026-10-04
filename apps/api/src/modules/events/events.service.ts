@@ -397,6 +397,112 @@ export class EventsService {
     return event;
   }
 
+  // ─── Tickets and the waitlist, for whoever runs the event (EVT-41) ──
+
+  /**
+   * Stop or restart selling.
+   *
+   * Charley: "add an option to pause ticket sales." Distinct from the two
+   * things that already existed and are not this: unpublishing hides the
+   * event from everybody, and cancelling refunds the room. A pause holds the
+   * last few places back while the event stays where it is and the people
+   * already coming stay coming.
+   */
+  async setTicketSales(
+    orgId: string,
+    eventId: string,
+    userId: string,
+    isStaff: boolean,
+    paused: boolean,
+  ) {
+    await this.loadEventForActor(orgId, eventId, userId, isStaff);
+
+    return this.prisma.event.update({
+      where: { id: eventId },
+      data: { ticketSalesPaused: paused },
+      select: { id: true, ticketSalesPaused: true },
+    });
+  }
+
+  /**
+   * Who is waiting, in the order they asked (EVT-41).
+   *
+   * Charley: "where do hosts see and manage the waitlist if there is one?"
+   * Nowhere, was the answer. The engine has worked since EventOS was built —
+   * over capacity a guest is WAITLISTED, and a cancellation promotes the
+   * first of them automatically and emails them — but no screen in the
+   * product listed those people, so a host could not tell whether three were
+   * waiting or thirty, nor let a particular one in.
+   *
+   * Ordered by when they joined it, because that order is the promise the
+   * automatic promotion already keeps.
+   */
+  async listWaitlist(orgId: string, eventId: string, userId: string, isStaff: boolean) {
+    const event = await this.loadEventForActor(orgId, eventId, userId, isStaff);
+
+    const waiting = await this.prisma.rsvp.findMany({
+      where: { eventId, status: 'WAITLISTED' },
+      orderBy: { createdAt: 'asc' },
+      include: { user: { select: { id: true, name: true, avatarUrl: true } } },
+    });
+
+    const confirmed = await this.prisma.rsvp.count({
+      where: { eventId, status: 'CONFIRMED' },
+    });
+
+    return {
+      capacity: event.capacity,
+      confirmed,
+      /** Places free right now; null when the event has no capacity set. */
+      spareSeats: event.capacity === null ? null : Math.max(0, event.capacity - confirmed),
+      waiting: waiting.map((r, index) => ({
+        rsvpId: r.id,
+        position: index + 1,
+        userId: r.userId,
+        name: r.user?.name ?? null,
+        avatarUrl: r.user?.avatarUrl ?? null,
+        plusOnes: r.plusOnes,
+        joinedAt: r.createdAt,
+      })),
+    };
+  }
+
+  /**
+   * Let one particular person in, out of turn if the host chooses.
+   *
+   * The automatic promotion is first-come; this is the host overriding it,
+   * which is the thing they could not do. It deliberately does **not** check
+   * capacity: a host letting somebody in off the waitlist has decided there
+   * is room, and refusing them on a number the host can see and the code
+   * cannot interpret is how a feature becomes something people work around.
+   */
+  async promoteFromWaitlist(
+    orgId: string,
+    eventId: string,
+    rsvpId: string,
+    userId: string,
+    isStaff: boolean,
+  ) {
+    await this.loadEventForActor(orgId, eventId, userId, isStaff);
+
+    // Scoped to the event, not taken on trust from the URL (SEC-04).
+    const rsvp = await this.prisma.rsvp.findFirst({
+      where: { id: rsvpId, eventId, status: 'WAITLISTED' },
+    });
+    if (!rsvp) throw new NotFoundException('Nobody on the waitlist by that id');
+
+    await this.prisma.rsvp.update({
+      where: { id: rsvp.id },
+      data: { status: 'CONFIRMED' },
+    });
+
+    // The same email the automatic promotion sends, for the same reason: the
+    // person waiting is the one who needs to know.
+    await this.notifyPromoted(orgId, rsvp.id);
+
+    return { promoted: true, rsvpId: rsvp.id };
+  }
+
   async update(
     orgId: string,
     eventId: string,

@@ -104,17 +104,25 @@ describe('where it is rendered', () => {
     expect(doorList).toMatch(/<EventOverview\s+event=\{event\}/);
   });
 
-  it('is on the host’s own copy too, without the takings', () => {
-    // The host and the creator may say who runs the event (EVT-32), and this
-    // is where they would look. Who paid, and refunding them, still stays
-    // with the co-op's organisers.
+  it('is on the host’s own copy, with the takings', () => {
+    /*
+      The takings used to stay with organisers, and this test pinned that.
+      Charley, 2026-10-04: "When a member is selling tickets to an event they
+      are hosting or co-hosting, they need visibility into ticket sales, who
+      bought tickets, and an option to refund a person."
+
+      So the rule inverted (EVT-41), and the reason is that the person a
+      buyer asks for their money back is the host — a host who has to go and
+      find an organiser is a host who stops selling tickets. The API checks
+      the same thing again; this flag only chooses what to draw.
+    */
     const hostPage = readFileSync(
       join(WEB, 'app', '(app)', '(dashboard)', 'member', '[orgSlug]', 'events', '[eventId]', 'page.tsx'),
       'utf8',
     );
 
     expect(hostPage).toMatch(/overviewFor=\{orgSlug\}/);
-    expect(hostPage).not.toMatch(/showTickets/);
+    expect(hostPage).toMatch(/showTickets/);
   });
 });
 

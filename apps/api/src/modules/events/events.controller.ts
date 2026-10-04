@@ -38,6 +38,7 @@ import {
 import { StorageService } from '../storage/storage.service';
 import { UnsplashService } from './unsplash.service';
 import { viewerFor } from '../../common/access/contact-visibility';
+import { TicketSalesDto } from './dto/ticket-sales.dto';
 
 /**
  * Organisers may act on any event in their org; a member only on the ones
@@ -177,6 +178,65 @@ export class EventsController {
       page: query.page,
       perPage: query.perPage,
     });
+  }
+
+  /* ─── Tickets and the waitlist, for whoever runs it (EVT-41) ── */
+
+  /**
+   * Stop or restart ticket sales.
+   *
+   * Whoever runs the event. Not a role: a host is an ordinary member.
+   */
+  @Post('orgs/:orgId/events/:eventId/ticket-sales')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Pause or resume ticket sales for an event' })
+  setTicketSales(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: TicketSalesDto,
+  ) {
+    return this.eventsService.setTicketSales(
+      orgId,
+      eventId,
+      user.userId,
+      isStaff(user, orgId),
+      dto.paused,
+    );
+  }
+
+  /** Who is waiting for a place, in the order they asked. */
+  @Get('orgs/:orgId/events/:eventId/waitlist')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "An event's waitlist, for whoever runs it" })
+  listWaitlist(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.eventsService.listWaitlist(orgId, eventId, user.userId, isStaff(user, orgId));
+  }
+
+  /** Let one particular person in, ahead of the automatic order. */
+  @Post('orgs/:orgId/events/:eventId/waitlist/:rsvpId/promote')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Give somebody on the waitlist a place' })
+  promoteFromWaitlist(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Param('rsvpId', ParseUUIDPipe) rsvpId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.eventsService.promoteFromWaitlist(
+      orgId,
+      eventId,
+      rsvpId,
+      user.userId,
+      isStaff(user, orgId),
+    );
   }
 
   /* ─── List Events Visible to a Member ──────────────────────── */
