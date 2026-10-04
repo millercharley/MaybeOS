@@ -56,3 +56,31 @@ export function tenantFromHost(host: string): string | null {
 
   return null;
 }
+
+/**
+ * Where an area path goes on a tenant subdomain (NAV-04).
+ *
+ * `sunrise.maybeos.org/member` is `/member/sunrise` — the hostname says which
+ * co-op, so the path does not have to. But **every in-app link already names
+ * the co-op**, because the slug became a path segment: the sidebar writes
+ * `/member/sunrise`, and rewriting that again produced
+ * `/member/sunrise/sunrise`, which is not a route.
+ *
+ * That was harmless while nothing redirected into `/member/<slug>` from a
+ * tenant root. Retiring the portal home does exactly that — the root rewrites
+ * to `/portal/sunrise`, which now sends the browser to `/member/sunrise` — so
+ * the doubling would have turned a working tenant subdomain into a 404.
+ *
+ * Returns the path to rewrite to, or `null` to leave the request alone.
+ */
+export function tenantAreaPath(path: string, tenant: string, areas: string[]): string | null {
+  const segments = path.split('/').filter(Boolean);
+  const [area, first] = segments;
+
+  if (!area || !areas.includes('/' + area)) return null;
+  // Already names the co-op. Nothing to add, and adding it breaks the route.
+  if (first === tenant) return null;
+
+  const rest = segments.slice(1);
+  return ['', area, tenant, ...rest].join('/');
+}

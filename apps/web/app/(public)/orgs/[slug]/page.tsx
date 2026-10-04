@@ -107,8 +107,11 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
               Become a member
             </a>
           )}
+          {/* Straight to My Dashboard (NAV-04). `/portal/<slug>` only
+              redirects here now, and a member arriving by the front door
+              should not watch two addresses go by. */}
           <Link
-            href={`/portal/${slug}`}
+            href={`/member/${slug}`}
             className={
               org.allowPublicJoin && displayTiers.length > 0
                 ? 'btn-secondary inline-flex items-center gap-2'

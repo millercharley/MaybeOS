@@ -251,7 +251,9 @@ function Breadcrumb({
   const root =
     !onAdmin ? (
       coopSlug ? (
-        <Link href={`/portal/${coopSlug}`} className="text-gray-400 transition-colors hover:text-gray-900">
+        // My Dashboard, which is what the co-op's name points at now that the
+        // portal home redirects there (NAV-04).
+        <Link href={`/member/${coopSlug}`} className="text-gray-400 transition-colors hover:text-gray-900">
           {coopName ?? 'My co-op'}
         </Link>
       ) : (

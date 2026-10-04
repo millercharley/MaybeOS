@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { tenantFromHost } from '@/lib/tenant-host';
+import { tenantFromHost, tenantAreaPath } from '@/lib/tenant-host';
 
 /**
  * Tenant subdomains: `sunrise.maybeos.org/*` serves `/portal/sunrise/*`.
@@ -43,11 +43,12 @@ export function middleware(request: NextRequest) {
   // there was nowhere in the address to *put* the tenant — the org lived in
   // localStorage. Now the slug is a path segment, so a subdomain can rewrite
   // to it exactly the way the portal already does.
-  if (tenant && AREA_ROUTES.some((a) => path === a || path.startsWith(a + '/'))) {
-    const rest = path.slice(path.indexOf('/', 1) === -1 ? path.length : path.indexOf('/', 1));
-    const area = path.split('/')[1];
-    url.pathname = `/${area}/${tenant}${rest}`;
-    return NextResponse.rewrite(url);
+  if (tenant) {
+    const areaPath = tenantAreaPath(path, tenant, AREA_ROUTES);
+    if (areaPath) {
+      url.pathname = areaPath;
+      return NextResponse.rewrite(url);
+    }
   }
 
   if (APP_ROUTES.some((route) => path === route || path.startsWith(route + '/'))) {

@@ -1,119 +1,28 @@
-'use client';
+import { redirect } from 'next/navigation';
 
-import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { Calendar, MessageSquare, DoorOpen, Users } from 'lucide-react';
-import { usePortal } from '@/contexts/portal-context';
-import { usePublicApi } from '@/hooks/use-api';
-import { api } from '@/lib/api';
-import { eventWindow } from '@/lib/event-list';
-import { useAuthStore } from '@/lib/auth-store';
-import { HappeningNow } from '@/components/live/happening-now';
-import { WelcomeCard } from '@/components/live/welcome-card';
-import { ServingToday } from '@/components/service/serving-today';
-
-export default function PortalHomePage() {
-  const { orgSlug } = useParams();
-  const { org } = usePortal();
-  const token = useAuthStore((s) => s.token);
-  const basePath = `/portal/${orgSlug}`;
-
-  const { data: events } = usePublicApi(
-    // What is on, not the first twenty of all time (EVT-27).
-    () => (org ? api.events.listPublic(org.id, eventWindow(new Date(), 0)) : Promise.resolve([])),
-    [org?.id],
-  );
-
-  const upcoming = (events || [])
-    .filter((e) => new Date(e.startTime) > new Date())
-    .slice(0, 3);
-
-  const features = [
-    { label: 'Events', description: 'Browse and RSVP to upcoming events', href: `${basePath}/events`, icon: Calendar },
-    { label: 'Rooms', description: 'Book shared spaces and meeting rooms', href: `${basePath}/rooms`, icon: DoorOpen },
-    { label: 'Commons', description: 'Join discussions and vote on proposals', href: `${basePath}/commons`, icon: MessageSquare },
-    { label: 'Directory', description: 'Find and connect with other members', href: `${basePath}/directory`, icon: Users },
-  ];
-
-  return (
-    <div className="space-y-8">
-      {/* Left, like every other heading in the product. `max-w-2xl` stays on
-          the prose — that is a readable line length, not a centred layout, and
-          dropping it would run a co-op's mission the full width of a large
-          monitor. */}
-      {/* Above the name and the mission, because somebody opening this on
-          their phone outside the building wants to know whether to come in,
-          not to be reminded what the co-op stands for. Both render nothing
-          when there is nothing to say. */}
-      {org && token && (
-        <div className="space-y-4">
-          {/* What this member themselves promised to do today (SRV-04), above
-              what the building is doing. Renders nothing on a day they are not
-              serving, which is most days. */}
-          <ServingToday orgId={org.id} orgSlug={org.slug} />
-          <HappeningNow orgId={org.id} orgSlug={org.slug} />
-          <WelcomeCard orgId={org.id} orgSlug={org.slug} />
-        </div>
-      )}
-
-      <div>
-        <h1 className="font-display text-2xl leading-tight text-ink">{org?.name}</h1>
-        {org?.mission && (
-          <p className="mt-3 max-w-2xl text-lg text-gray-600">{org.mission}</p>
-        )}
-        {org?.description && !org?.mission && (
-          <p className="mt-3 max-w-2xl text-lg text-gray-600">{org.description}</p>
-        )}
-      </div>
-
-      {upcoming.length > 0 && (
-        <section>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold text-gray-900">Upcoming Events</h2>
-            <Link href={`${basePath}/events`} className="text-sm font-medium text-brand-600 hover:text-brand-700">
-              View all
-            </Link>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {upcoming.map((event) => (
-              <div key={event.id} className="rounded-xl border border-gray-200 bg-white p-5">
-                <p className="text-xs font-medium text-brand-600">
-                  {new Date(event.startTime).toLocaleDateString('en-US', {
-                    weekday: 'short',
-                    month: 'short',
-                    day: 'numeric',
-                    hour: 'numeric',
-                    minute: '2-digit',
-                  })}
-                </p>
-                <h3 className="mt-1 text-sm font-semibold text-gray-900">{event.title}</h3>
-                {event.description && (
-                  <p className="mt-1 line-clamp-2 text-xs text-gray-500">{event.description}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <section>
-        <h2 className="mb-4 text-xl font-semibold text-gray-900">Explore</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {features.map((f) => (
-            <Link
-              key={f.label}
-              href={f.href}
-              className="group rounded-xl border border-gray-200 bg-white p-5 transition-colors hover:border-brand-300"
-            >
-              <f.icon className="h-6 w-6 text-brand-600" />
-              <h3 className="mt-3 text-sm font-semibold text-gray-900 group-hover:text-brand-700">
-                {f.label}
-              </h3>
-              <p className="mt-1 text-xs text-gray-500">{f.description}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
+/**
+ * The portal home is My Dashboard now (NAV-04).
+ *
+ * Charley: "I don't think we need this page because it's redundant with My
+ * Dashboard." It was. The co-op's mission is on the public org page, the
+ * Explore grid repeated four items that are in the sidebar on every screen,
+ * and the next three events are on the dashboard already as "Today at …". The
+ * page had one in-app link to it — the co-op's name in the breadcrumb — and
+ * sign-in has not sent anybody here since 2026-10-02.
+ *
+ * A redirect rather than a deletion. This address is on the public org page as
+ * "Enter Member Portal", it is what a tenant subdomain's root rewrites to, and
+ * it is in bookmarks. The two things that lived *only* here — who is in the
+ * building, and who just joined — moved to the dashboard with it, so the
+ * redundancy is now real rather than asserted.
+ *
+ * Server-side, so nobody watches a portal shell paint and then leave.
+ */
+export default async function PortalHomePage({
+  params,
+}: {
+  params: Promise<{ orgSlug: string }>;
+}) {
+  const { orgSlug } = await params;
+  redirect(`/member/${orgSlug}`);
 }
