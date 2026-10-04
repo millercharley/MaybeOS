@@ -9,6 +9,7 @@ import { CommandPalette, OPEN_SEARCH_EVENT } from '@/components/layout/command-p
 import { OrgMark } from '@/components/layout/org-mark';
 import { PortalProvider, usePortal } from '@/contexts/portal-context';
 import { MemberCardProvider } from '@/contexts/member-card-context';
+import { UnreadProvider } from '@/contexts/unread-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { brandStyle, brandTheme } from '@/lib/brand';
 
@@ -59,7 +60,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           the same reason as PortalProvider above: a wrapper that comes and
           goes between routes changes the tree's shape and remounts the shell. */}
       <MemberCardProvider>
-        <AppShell>{children}</AppShell>
+        {/* What this member has not read, for the badges in the sidebar
+            (CMN-14). Unconditional for the same reason as the two above: the
+            sidebar is rendered twice — fixed column and mobile drawer — and a
+            fetch inside it would be two requests a minute for one answer. */}
+        <UnreadProvider>
+          <AppShell>{children}</AppShell>
+        </UnreadProvider>
       </MemberCardProvider>
     </PortalProvider>
   );

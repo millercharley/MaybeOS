@@ -12,6 +12,7 @@ import { CreateProposalDto } from './dto/create-proposal.dto';
 import { CreateCollectionDto, UpdateCollectionDto } from './dto/create-collection.dto';
 import { CreatePageDto, UpdatePageDto } from './dto/page.dto';
 import { VoteChoice } from '@prisma/client';
+import { UnreadCounts } from './dto/unread.dto';
 
 const AUTHOR_SELECT = { id: true, name: true, avatarUrl: true, avatarPath: true } as const;
 
@@ -960,6 +961,127 @@ export class CommonsService {
       where: { orgId, senderId: otherUserId, receiverId: userId, readAt: null },
       data: { readAt: new Date() },
     });
+
+    // The new totals, so the badge can settle without a second request. The
+    // caller has just made this number smaller and is the one surface that
+    // knows it; returning nothing meant the sidebar stayed wrong until the
+    // next poll.
+    return this.unreadCounts(orgId, userId);
+  }
+
+  // ─── What has not been read (CMN-14) ──────────────────────────
+
+  /**
+   * The two numbers behind the badges in the sidebar.
+   *
+   * One request for both, because they are drawn side by side and asked for
+   * on a timer: two endpoints would be twice the polling for one answer, and
+   * two chances for the sidebar to disagree with itself.
+   *
+   * **Counts, never content.** A badge needs a number. Returning the messages
+   * themselves would put private conversations into a response that every
+   * signed-in page fetches on an interval.
+   */
+  async unreadCounts(orgId: string, userId: string): Promise<UnreadCounts> {
+    const [messages, commons] = await Promise.all([
+      this.prisma.directMessage.count({
+        where: { orgId, receiverId: userId, readAt: null },
+      }),
+      this.unreadInCommons(orgId, userId),
+    ]);
+
+    return { messages, commons };
+  }
+
+  /**
+   * Posts and comments this member has not seen.
+   *
+   * Their own are not counted — writing something is not a thing you need to
+   * go and read — and neither is anything older than the line below.
+   */
+  private async unreadInCommons(orgId: string, userId: string): Promise<number> {
+    const [channels, reads, membership] = await Promise.all([
+      this.prisma.channel.findMany({ where: { orgId }, select: { id: true } }),
+      this.prisma.channelRead.findMany({
+        where: { userId, channel: { orgId } },
+        select: { channelId: true, lastReadAt: true },
+      }),
+      this.prisma.userOrg.findFirst({
+        where: { userId, orgId },
+        select: { memberSince: true },
+      }),
+    ]);
+    if (channels.length === 0) return 0;
+
+    const readAt = new Map(reads.map((r) => [r.channelId, r.lastReadAt]));
+
+    /*
+      The line a member has read up to in a channel they have never opened.
+
+      Not the beginning of time: MaybeItsFate imported 426 members, none of
+      whom has ever opened the Commons, and counting everything ever written
+      would have greeted each of them with a badge covering the co-op's whole
+      history. A number that large is one nobody acts on, and a badge nobody
+      acts on is a badge people learn to ignore — which costs the ones that
+      matter later.
+
+      So: the day they joined. Anything since is genuinely theirs to catch up
+      on, and anything before was never addressed to them.
+    */
+    const joined = membership?.memberSince ?? new Date();
+
+    const since = (channelId: string) => readAt.get(channelId) ?? joined;
+
+    const [posts, comments] = await Promise.all([
+      Promise.all(
+        channels.map((c) =>
+          this.prisma.post.count({
+            where: { channelId: c.id, authorId: { not: userId }, createdAt: { gt: since(c.id) } },
+          }),
+        ),
+      ),
+      Promise.all(
+        channels.map((c) =>
+          this.prisma.comment.count({
+            where: {
+              post: { channelId: c.id },
+              authorId: { not: userId },
+              createdAt: { gt: since(c.id) },
+            },
+          }),
+        ),
+      ),
+    ]);
+
+    return [...posts, ...comments].reduce((sum, n) => sum + n, 0);
+  }
+
+  /**
+   * Mark a channel read, up to now.
+   *
+   * Upsert rather than create-or-update: a member opening a channel for the
+   * second time is the normal case, and the unique key on
+   * `[userId, channelId]` is what keeps one row per member per channel when
+   * two tabs do this at once.
+   */
+  async markChannelRead(orgId: string, userId: string, channelId: string) {
+    // Scoped, not trusted: a channelId from the request that belongs to
+    // another co-op would otherwise write a read marker across the tenant
+    // boundary (SEC-04).
+    const channel = await this.prisma.channel.findFirst({
+      where: { id: channelId, orgId },
+      select: { id: true },
+    });
+    if (!channel) throw new NotFoundException('Channel not found');
+
+    const lastReadAt = new Date();
+    await this.prisma.channelRead.upsert({
+      where: { userId_channelId: { userId, channelId } },
+      create: { userId, channelId, lastReadAt },
+      update: { lastReadAt },
+    });
+
+    return this.unreadCounts(orgId, userId);
   }
 
   // ─── Collections (wiki) ───────────────────────────────────────

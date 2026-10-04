@@ -10,6 +10,9 @@ import { useAuthStore } from '@/lib/auth-store';
 import { Wordmark } from '@/components/brand/wordmark';
 import { GettingStarted } from '@/components/onboarding/getting-started';
 import { OrgLinks } from '@/components/layout/org-links';
+import { useUnread } from '@/contexts/unread-context';
+import { UnreadBadge } from '@/components/layout/unread-badge';
+import { sectionUnread, unreadFor, unreadKeyFor } from '@/lib/unread';
 
 /**
  * The one navigation, on every screen.
@@ -33,6 +36,7 @@ import { OrgLinks } from '@/components/layout/org-links';
  */
 export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: string } = {}) {
   const pathname = usePathname();
+  const unread = useUnread();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);
@@ -169,6 +173,20 @@ export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: stri
                   className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wider text-paper-deep/60 transition-colors hover:bg-white/5 hover:text-paper-deep"
                 >
                   <span className="min-w-0 flex-1 truncate">{section.label}</span>
+                  {/* A collapsed section unmounts its links, so a badge on
+                      Messages is invisible exactly when the member is not
+                      already looking at the Commons — which is most of the
+                      time, and when an unread message matters most. The
+                      header carries the total of what it is hiding. */}
+                  {!open && (
+                    <UnreadBadge
+                      count={sectionUnread(
+                        section.items.map((i) => i.href),
+                        unread,
+                      )}
+                      what="messages"
+                    />
+                  )}
                   <ChevronDown
                     className={clsx(
                       'h-3.5 w-3.5 shrink-0 transition-transform duration-fast',
@@ -184,6 +202,11 @@ export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: stri
                 <div id={id} className="space-y-1">
                   {section.items.map((item) => {
                     const isActive = item.href === activeHref;
+                    // `NavItem` carries no runtime data — `sidebarSections()`
+                    // is pure, with no token or org — so the count is matched
+                    // to the route here instead (CMN-14).
+                    const count = unreadFor(item.href, unread);
+                    const kind = unreadKeyFor(item.href);
 
                     return (
                       <Link
@@ -196,8 +219,14 @@ export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: stri
                             : 'text-paper-deep hover:bg-white/10 hover:text-paper',
                         )}
                       >
-                        <item.icon className="h-5 w-5" strokeWidth={1.75} />
-                        {item.label}
+                        <item.icon className="h-5 w-5 shrink-0" strokeWidth={1.75} />
+                        {/* The label was a bare text node and the row has no
+                            `justify-between`; it needs to be an element for
+                            the badge's `ml-auto` to push against. */}
+                        <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                        {kind && (
+                          <UnreadBadge count={count} what={kind} onActiveRow={isActive} />
+                        )}
                       </Link>
                     );
                   })}

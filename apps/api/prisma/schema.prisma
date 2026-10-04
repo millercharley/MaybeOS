@@ -398,6 +398,7 @@ model User {
   posts            Post[]
   comments         Comment[]
   reactions        Reaction[]
+  channelReads     ChannelRead[]
   votes            Vote[]
   surveyResponses  SurveyResponse[]
   sentMessages     DirectMessage[]  @relation("SentMessages")
@@ -1319,12 +1320,44 @@ model Channel {
   createdBy User?           @relation("ChannelCreator", fields: [createdById], references: [id], onDelete: SetNull)
   posts     Post[]
   proposals Proposal[]
+  reads     ChannelRead[]
 
   @@unique([orgId, slug])
   @@index([orgId])
   @@index([orgId, position])
   @@index([sectionId])
   @@map("channels")
+}
+
+/// How far a member has read in a channel (CMN-14).
+///
+/// The Commons had no read state of any kind — no membership, no last-read, no
+/// per-post marker — so nothing in the product could say what was new. This is
+/// the smallest thing that can: one row per member per channel, holding the
+/// moment they last looked.
+///
+/// Shaped after `Reaction`, which was the only per-user-per-object row the
+/// Commons already had. Deliberately NOT a membership: a row appearing here
+/// grants nothing and its absence denies nothing — every member can still see
+/// every channel. It only records reading.
+///
+/// A member with no row for a channel is read up to the day they joined, not
+/// to the beginning of time. Otherwise MaybeItsFate's 426 imported members
+/// would each have opened the app to a badge counting the co-op's entire
+/// history, which is a number nobody acts on.
+model ChannelRead {
+  id         String   @id @default(uuid())
+  userId     String
+  channelId  String
+  /// When they last had the channel open. Advanced on every visit.
+  lastReadAt DateTime
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channelId])
+  @@index([userId])
+  @@map("channel_reads")
 }
 
 /// A named group of channels — Circle's "General", with channels filed under
@@ -1474,6 +1507,10 @@ model DirectMessage {
 
   @@index([orgId, senderId, receiverId])
   @@index([orgId])
+  /// The badge's query: "how many has this person not read yet" (CMN-14).
+  /// Without it that count is a sequential scan of every message in the co-op,
+  /// run by every signed-in member every minute.
+  @@index([receiverId, readAt])
   @@map("direct_messages")
 }
 
