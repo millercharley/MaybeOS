@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { CommonsService } from '../commons.service';
 import { PrismaService } from '../../../config/prisma.service';
+import { ThreadsService } from '../threads.service';
 
 /**
  * Who may rewrite a comment (CMN-09).
@@ -27,6 +28,12 @@ describe('CommonsService — editing a comment', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CommonsService,
+        // The badge counts threads now (CMN-16); these tests are about the
+        // Commons half of it.
+        {
+          provide: ThreadsService,
+          useValue: { unreadMessages: jest.fn().mockResolvedValue(0) },
+        },
         {
           provide: PrismaService,
           useValue: {

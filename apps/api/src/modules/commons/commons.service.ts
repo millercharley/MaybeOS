@@ -13,13 +13,17 @@ import { CreateCollectionDto, UpdateCollectionDto } from './dto/create-collectio
 import { CreatePageDto, UpdatePageDto } from './dto/page.dto';
 import { VoteChoice } from '@prisma/client';
 import { UnreadCounts } from './dto/unread.dto';
+import { ThreadsService } from './threads.service';
 
 const AUTHOR_SELECT = { id: true, name: true, avatarUrl: true, avatarPath: true } as const;
 
 
 @Injectable()
 export class CommonsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly threads: ThreadsService,
+  ) {}
 
   // ─── Org scoping (CMN-07) ───────────────────────────────────
   //
@@ -954,6 +958,11 @@ export class CommonsService {
     });
   }
 
+  /**
+   * @deprecated Superseded by thread reads (CMN-16). Kept so that anything
+   * still calling it is a no-op returning the right numbers rather than a
+   * 404; the unread figure comes from `thread_participants` now.
+   */
   async markConversationRead(orgId: string, userId: string, otherUserId: string) {
     await this.assertOrgMember(orgId, otherUserId);
 
@@ -984,9 +993,10 @@ export class CommonsService {
    */
   async unreadCounts(orgId: string, userId: string): Promise<UnreadCounts> {
     const [messages, commons] = await Promise.all([
-      this.prisma.directMessage.count({
-        where: { orgId, receiverId: userId, readAt: null },
-      }),
+      // Threads, not `direct_messages` — that table is migrated and dormant
+      // (CMN-16). A group message counts the same as a one-to-one, because
+      // it is the same thing with more people in it.
+      this.threads.unreadMessages(orgId, userId),
       this.unreadInCommons(orgId, userId),
     ]);
 

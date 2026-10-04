@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
 import { useAuthStore } from '@/lib/auth-store';
-import { api, Comment as CommentT, Post, PaginatedResponse, DirectMessage } from '@/lib/api';
+import { api, Comment as CommentT, Post, PaginatedResponse, ThreadDetail } from '@/lib/api';
 import { groupChannels } from '@/lib/channel-groups';
 import { renderBodyHtml, isBlankBody, asRichBody } from '@/lib/rich-text';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
@@ -250,8 +250,11 @@ export default function CommonsPage() {
     [],
   );
 
+  // Threads, not the dormant `direct_messages` table (CMN-16). Left pointing
+  // at the old one, this pane would have shown an organiser a conversation
+  // list frozen on the day threads shipped.
   const { data: conversations, refetch: refetchConversations } = useApi(
-    (token, orgId) => api.commons.listConversations(orgId, token),
+    (token, orgId) => api.commons.listThreads(orgId, token),
     [],
   );
 
@@ -280,13 +283,16 @@ export default function CommonsPage() {
     [expandedPostId],
   );
 
-  const { data: dmMessages, refetch: refetchDm } = useApi<DirectMessage[]>(
+  const { data: openThread, refetch: refetchDm } = useApi<ThreadDetail | null>(
     (token, orgId) => {
-      if (view?.type !== 'dm') return Promise.resolve([]);
-      return api.commons.getConversation(orgId, view.userId, token);
+      if (view?.type !== 'dm') return Promise.resolve(null);
+      // The pane is keyed by member, so resolve that to the one-to-one
+      // thread — the same call every "message this person" link makes.
+      return api.commons.threadWithUser(orgId, view.userId, token);
     },
     [view?.type === 'dm' ? view.userId : null],
   );
+  const dmMessages = openThread?.messages ?? [];
 
   /*
     Land on the newest message, the way every chat opens (CMN-15). Without
@@ -490,8 +496,8 @@ export default function CommonsPage() {
   }
 
   async function handleSendDm() {
-    if (!dmDraft.trim() || view?.type !== 'dm') return;
-    await api.commons.sendMessage(currentOrgId!, view.userId, dmDraft.trim(), token!);
+    if (!dmDraft.trim() || view?.type !== 'dm' || !openThread) return;
+    await api.commons.sendToThread(currentOrgId!, openThread.id, dmDraft.trim(), token!);
     setDmDraft('');
     refetchDm();
     refetchConversations();
@@ -900,26 +906,39 @@ export default function CommonsPage() {
               </button>
             </div>
             <ul className="space-y-1">
-              {(conversations ?? []).map((conv) => (
-                <li key={conv.counterpart.id}>
-                  <button
-                    onClick={() => setView({ type: 'dm', userId: conv.counterpart.id, name: conv.counterpart.name })}
-                    className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm ${
-                      view?.type === 'dm' && view.userId === conv.counterpart.id
-                        ? 'bg-brand-50 text-brand-700 font-medium'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    <span className="truncate">{conv.counterpart.name ?? 'Unknown'}</span>
-                    {conv.unreadCount > 0 && (
-                      <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                        {conv.unreadCount}
-                      </span>
-                    )}
-                  </button>
-                </li>
-              ))}
-              {(conversations ?? []).length === 0 && !showMemberPicker && (
+              {/*
+                One-to-one threads only. This pane is keyed by member and
+                composes by picking a person, so a group conversation has no
+                way to open here — those live on the member's Messages page,
+                which is built for them (CMN-16).
+              */}
+              {(conversations ?? [])
+                .filter((conv) => !conv.isGroup)
+                .map((conv) => {
+                  const other = conv.participants.find((pp) => pp.userId !== user?.id);
+                  if (!other) return null;
+
+                  return (
+                    <li key={conv.id}>
+                      <button
+                        onClick={() => setView({ type: 'dm', userId: other.userId, name: other.name ?? undefined })}
+                        className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm ${
+                          view?.type === 'dm' && view.userId === other.userId
+                            ? 'bg-brand-50 text-brand-700 font-medium'
+                            : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        <span className="truncate">{other.name ?? 'Unknown'}</span>
+                        {conv.unreadCount > 0 && (
+                          <span className="rounded-full bg-[var(--danger)] px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                            {conv.unreadCount}
+                          </span>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              {(conversations ?? []).filter((c) => !c.isGroup).length === 0 && !showMemberPicker && (
                 <li className="px-2 py-1 text-xs text-gray-400">No conversations yet.</li>
               )}
             </ul>

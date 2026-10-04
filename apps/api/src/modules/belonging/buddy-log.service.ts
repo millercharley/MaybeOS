@@ -53,17 +53,35 @@ export class BuddyLogService {
       .filter((p) => p.buddyMember)
       .map((p) => ({ a: p.newMember.userId, b: p.buddyMember!.userId }));
 
-    const messages = userPairs.length
-      ? await this.prisma.directMessage.findMany({
-          where: {
-            orgId,
-            OR: userPairs.flatMap(({ a, b }) => [
-              { senderId: a, receiverId: b },
-              { senderId: b, receiverId: a },
-            ]),
-          },
-          select: { senderId: true, receiverId: true, createdAt: true },
-        })
+    /*
+      Whether a pair has actually talked (CMN-16).
+
+      This read `direct_messages`, which is migrated and dormant — left
+      pointing there, the buddy system would have reported every pairing as
+      silent from the day threads shipped, and nudged people who were already
+      talking.
+
+      A one-to-one thread is keyed by its two participants, sorted, so the
+      pair's conversation is one `participantKey` lookup.
+    */
+    const pairKeys = userPairs.map(({ a, b }) => [a, b].sort().join(','));
+    const messages = pairKeys.length
+      ? (
+          await this.prisma.threadMessage.findMany({
+            where: { thread: { orgId, participantKey: { in: pairKeys } } },
+            select: {
+              senderId: true,
+              createdAt: true,
+              thread: { select: { participantKey: true } },
+            },
+          })
+        ).map((m) => ({
+          senderId: m.senderId,
+          // The other participant, which is what the caller means by
+          // "receiver" for a conversation between two people.
+          receiverId: m.thread.participantKey.split(',').find((id) => id !== m.senderId) ?? '',
+          createdAt: m.createdAt,
+        }))
       : [];
 
     const spokeAt = new Map<string, Date>();

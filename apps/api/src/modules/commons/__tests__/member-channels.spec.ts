@@ -6,6 +6,7 @@ import { CreateChannelDto } from '../dto/create-channel.dto';
 import { UpdateChannelDto } from '../dto/update-channel.dto';
 import { UpdateOrgDto } from '../../org/dto/update-org.dto';
 import { VALIDATION_PIPE_OPTIONS } from '../../../common/validation-options';
+import { ThreadsService } from '../threads.service';
 
 /**
  * Members opening channels, sections, emoji and invitations (CMN-11).
@@ -36,6 +37,12 @@ describe('CommonsService — member channels, sections and invitations', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CommonsService,
+        // The badge counts threads now (CMN-16); these tests are about the
+        // Commons half of it.
+        {
+          provide: ThreadsService,
+          useValue: { unreadMessages: jest.fn().mockResolvedValue(0) },
+        },
         {
           provide: PrismaService,
           useValue: {

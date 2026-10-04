@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { CommonsService } from '../commons.service';
 import { PrismaService } from '../../../config/prisma.service';
+import { ThreadsService } from '../threads.service';
 
 /**
  * Tenant isolation for CommonsOS (CMN-07).
@@ -28,6 +29,12 @@ describe('CommonsService — tenant isolation (CMN-07)', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CommonsService,
+        // The badge counts threads now (CMN-16); these tests are about the
+        // Commons half of it.
+        {
+          provide: ThreadsService,
+          useValue: { unreadMessages: jest.fn().mockResolvedValue(0) },
+        },
         {
           provide: PrismaService,
           useValue: {
@@ -199,6 +206,12 @@ describe('CommonsService — voting is only open while a proposal is open', () =
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CommonsService,
+        // The badge counts threads now (CMN-16); these tests are about the
+        // Commons half of it.
+        {
+          provide: ThreadsService,
+          useValue: { unreadMessages: jest.fn().mockResolvedValue(0) },
+        },
         {
           provide: PrismaService,
           useValue: {

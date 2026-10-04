@@ -18,6 +18,7 @@ import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { CommonsService } from './commons.service';
+import { ThreadsService } from './threads.service';
 import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto, ReorderChannelsDto } from './dto/update-channel.dto';
 import { SectionDto, ReorderSectionsDto } from './dto/section.dto';
@@ -27,6 +28,7 @@ import { CreateProposalDto } from './dto/create-proposal.dto';
 import { AddCommentDto } from './dto/add-comment.dto';
 import { EditCommentDto } from './dto/edit-comment.dto';
 import { SendMessageDto } from './dto/send-message.dto';
+import { StartThreadDto, ThreadMessageDto } from './dto/thread.dto';
 import { CreateCollectionDto, UpdateCollectionDto } from './dto/create-collection.dto';
 import { CreatePageDto, UpdatePageDto } from './dto/page.dto';
 import { VoteChoice } from '@prisma/client';
@@ -36,7 +38,9 @@ import { VoteChoice } from '@prisma/client';
 @Controller('orgs/:orgId')
 @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
 export class CommonsController {
-  constructor(private readonly commonsService: CommonsService) {}
+  constructor(private readonly commonsService: CommonsService,
+    private readonly threads: ThreadsService,
+  ) {}
 
   // ─── Channels ───────────────────────────────────────────────
 
@@ -387,6 +391,76 @@ export class CommonsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.commonsService.markChannelRead(orgId, user.userId, channelId);
+  }
+
+  // ─── Conversations (CMN-16) ──────────────────────────────────
+
+  /**
+   * Every conversation this member is in.
+   *
+   * One route for DMs and groups alike: a one-to-one is a thread with two
+   * participants, and the list does not distinguish them.
+   */
+  @Get('threads')
+  @ApiOperation({ summary: "The signed-in member's conversations" })
+  listThreads(@Param('orgId') orgId: string, @CurrentUser() user: RequestUser) {
+    return this.threads.listThreads(orgId, user.userId);
+  }
+
+  /** Start one, or carry on the one these people already have. */
+  @Post('threads')
+  @ApiOperation({ summary: 'Start a conversation with one or more members' })
+  startThread(
+    @Param('orgId') orgId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: StartThreadDto,
+  ) {
+    return this.threads.startThread(orgId, user.userId, dto);
+  }
+
+  /**
+   * The one-to-one thread with this member, created if it does not exist.
+   *
+   * What every "message this person" link in the product resolves through —
+   * the directory, a member card, an event host, the buddy pages.
+   */
+  @Get('threads/with/:otherUserId')
+  @ApiOperation({ summary: 'The one-to-one conversation with a member' })
+  threadWithUser(
+    @Param('orgId') orgId: string,
+    @Param('otherUserId') otherUserId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.threads.threadWithUser(orgId, user.userId, otherUserId);
+  }
+
+  @Get('threads/:threadId')
+  getThread(
+    @Param('orgId') orgId: string,
+    @Param('threadId') threadId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.threads.getThread(orgId, user.userId, threadId);
+  }
+
+  @Post('threads/:threadId/messages')
+  sendToThread(
+    @Param('orgId') orgId: string,
+    @Param('threadId') threadId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: ThreadMessageDto,
+  ) {
+    return this.threads.sendToThread(orgId, user.userId, threadId, dto.body);
+  }
+
+  @Post('threads/:threadId/read')
+  async markThreadRead(
+    @Param('orgId') orgId: string,
+    @Param('threadId') threadId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    await this.threads.markThreadRead(orgId, user.userId, threadId);
+    return this.commonsService.unreadCounts(orgId, user.userId);
   }
 
   // ─── Direct Messages ────────────────────────────────────────
