@@ -893,6 +893,14 @@ model Event {
   /// copying today's number onto every event would freeze it into next year's.
   hostRevenueShareBps Int?
   waitlistEnabled     Boolean         @default(false)
+  /// Whether the host has stopped selling for now (EVT-41).
+  ///
+  /// Separate from unpublishing, which hides the event, and from cancelling,
+  /// which refunds everybody. A host pauses to hold the last few places back,
+  /// to sort out a venue question, or because they are not sure they can take
+  /// any more — and the event stays visible, with the people already coming
+  /// still coming.
+  ticketSalesPaused   Boolean         @default(false)
   requiresRsvp        Boolean         @default(true)
   category            String?
   /// What kind of gathering, in the co-op's own words. Inherited from the

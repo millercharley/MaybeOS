@@ -1238,6 +1238,24 @@ class ApiClient {
   };
 
   events = {
+    /** Pause or resume ticket sales (EVT-41). Whoever runs the event. */
+    setTicketSales: (orgId: string, eventId: string, paused: boolean, token: string) =>
+      this.request<{ id: string; ticketSalesPaused: boolean }>(
+        `/orgs/${orgId}/events/${eventId}/ticket-sales`,
+        { method: 'POST', body: JSON.stringify({ paused }), token },
+      ),
+
+    /** Who is waiting for a place, in the order they asked. */
+    waitlist: (orgId: string, eventId: string, token: string) =>
+      this.request<EventWaitlist>(`/orgs/${orgId}/events/${eventId}/waitlist`, { token }),
+
+    /** Give somebody on the waitlist a place, ahead of the automatic order. */
+    promoteFromWaitlist: (orgId: string, eventId: string, rsvpId: string, token: string) =>
+      this.request<{ promoted: boolean; rsvpId: string }>(
+        `/orgs/${orgId}/events/${eventId}/waitlist/${rsvpId}/promote`,
+        { method: 'POST', token },
+      ),
+
     // ── An event's picture (EVT-22) ───────────────────
     //
     // Org-scoped rather than hung off an event, because the picture is chosen
@@ -3685,7 +3703,14 @@ export interface Member {
    * the API omits it for everyone else and this is optional to match. Any
    * member-facing screen reading it will get undefined.
    */
-  user: { id: string; email?: string; name?: string; avatarUrl?: string };
+  user: {
+    id: string;
+    email?: string;
+    name?: string;
+    avatarUrl?: string;
+    /** When they last signed in; null if they never have (MEM-24). */
+    lastLoginAt?: string | null;
+  };
   role: string;
   tier?: MembershipTier;
   /** Another member's billing state is not their business — organisers only. */
@@ -3799,6 +3824,8 @@ export interface Event {
    * waitlist would switch it off the moment anything else was saved.
    */
   waitlistEnabled?: boolean;
+  /** Whether the host has stopped selling for now (EVT-41). */
+  ticketSalesPaused?: boolean;
   isPublished: boolean;
   /** CONFIRMED RSVPs only — cancelled and waitlisted are not attendees. */
   rsvpCount?: number;
@@ -4443,6 +4470,23 @@ export interface ThreadDetail {
   isGroup: boolean;
   participants: ThreadPerson[];
   messages: ThreadMessage[];
+}
+
+/** An event's waitlist, for whoever runs it (EVT-41). */
+export interface EventWaitlist {
+  capacity: number | null;
+  confirmed: number;
+  /** Places free right now; null when the event has no capacity set. */
+  spareSeats: number | null;
+  waiting: Array<{
+    rsvpId: string;
+    position: number;
+    userId: string;
+    name: string | null;
+    avatarUrl: string | null;
+    plusOnes: number;
+    joinedAt: string;
+  }>;
 }
 
 export interface DmConversation {

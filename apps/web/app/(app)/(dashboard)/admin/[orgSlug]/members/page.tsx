@@ -19,6 +19,7 @@ import { api, type Member } from '@/lib/api';
 import { Modal } from '@/components/ui/modal';
 import { PageHeader } from '@/components/layout/page-header';
 import { MemberName } from '@/components/member/member-name';
+import { lastSeenLabel, neverSignedIn } from '@/lib/last-seen';
 
 const roleBadge: Record<string, string> = {
   ADMIN: 'badge-success',
@@ -613,6 +614,12 @@ export default function MembersPage() {
               <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                 Joined
               </th>
+              <th
+                className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                title="When they last signed in to MaybeOS"
+              >
+                Last seen
+              </th>
               <th className="px-3 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
                 {/* The word is wider than the button below it, and the button
                     announces itself to a screen reader already. */}
@@ -742,6 +749,20 @@ export default function MembersPage() {
                     day: 'numeric',
                     year: 'numeric',
                   })}
+                </td>
+                {/* Grey like the rest, except "Never" — during a migration
+                    that is the one value an organiser is scanning for. */}
+                <td
+                  className={`whitespace-nowrap px-3 py-4 text-sm ${
+                    neverSignedIn(member.user.lastLoginAt) ? 'text-gray-400' : 'text-gray-600'
+                  }`}
+                  title={
+                    member.user.lastLoginAt
+                      ? new Date(member.user.lastLoginAt).toLocaleString()
+                      : 'Has not signed in yet'
+                  }
+                >
+                  {lastSeenLabel(member.user.lastLoginAt)}
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-right">
                   <button

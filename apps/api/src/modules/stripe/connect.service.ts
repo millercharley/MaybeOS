@@ -464,6 +464,12 @@ export class ConnectService {
     if (!event.isPublished) {
       throw new BadRequestException('This event is not on sale yet');
     }
+    if (event.ticketSalesPaused) {
+      // Said as a state rather than a refusal: the event is still happening
+      // and this is still the right page — somebody reading it should come
+      // back, not conclude they have the wrong one (EVT-41).
+      throw new BadRequestException('Ticket sales are paused for this event');
+    }
     if (event.endTime < new Date()) {
       throw new BadRequestException('This event has already happened');
     }
@@ -710,9 +716,27 @@ export class ConnectService {
    * roughly 2.9% + 30c per ticket. That is Stripe's policy, not ours, and it
    * belongs in the copy the organiser reads before confirming.
    */
+  /**
+   * Refund one ticket.
+   *
+   * **Whoever runs the event** (EVT-41), not organisers alone. It used to be
+   * ADMIN and STAFF, reasoning that picking individual people to refund was
+   * the co-op's money and the co-op's decision. Charley, once members began
+   * selling tickets to their own events: "they need visibility into ticket
+   * sales, who bought tickets, and an option to refund a person."
+   *
+   * The money is still the co-op's — it is the co-op's Stripe account the
+   * refund comes out of — but the person asking for it writes to the host,
+   * and a host who has to find an organiser to undo a sale they made is a
+   * host who stops selling tickets.
+   *
+   * `actor` is optional so the cancellation path, which refunds everybody and
+   * has already proved who it is, is not asked to prove it twice.
+   */
   async refundTicket(
     orgId: string,
     ticketId: string,
+    actor?: { userId: string; isOrganiser: boolean },
   ): Promise<{ refunded: boolean; reason?: string }> {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id: ticketId },
@@ -724,6 +748,10 @@ export class ConnectService {
     // the ticket belongs to it. Without this, an admin of one co-op could
     // refund another co-op's sale by id — their money, from their balance.
     if (ticket.event.orgId !== orgId) throw new NotFoundException('Ticket not found');
+
+    // Checked after the tenant, so a host of one co-op cannot learn whether a
+    // ticket id exists in another by the shape of the error.
+    if (actor) await this.assertRunsEvent(orgId, ticket.eventId, actor);
 
     if (ticket.refundedAt) {
       // Idempotent rather than an error: a retried cancellation must not

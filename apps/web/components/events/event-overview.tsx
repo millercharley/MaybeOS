@@ -70,6 +70,29 @@ export function EventOverview({
   /** Where to go once the event no longer exists. */
   backHref?: string;
 }) {
+  /*
+    Pausing sales (EVT-41). Mirrored locally so the button answers at once;
+    the server's value is what it is set from on the next load.
+  */
+  const [paused, setPaused] = useState(Boolean(event.ticketSalesPaused));
+  const [pausing, setPausing] = useState(false);
+  const [pauseError, setPauseError] = useState('');
+
+  async function togglePause() {
+    if (!orgId || !token) return;
+    setPausing(true);
+    setPauseError('');
+    try {
+      const next = await api.events.setTicketSales(orgId, event.id, !paused, token);
+      setPaused(next.ticketSalesPaused);
+      onChanged?.();
+    } catch (err) {
+      setPauseError(err instanceof Error ? err.message : 'Could not change that');
+    } finally {
+      setPausing(false);
+    }
+  }
+
   const token = useAuthStore((s) => s.token);
   const [changingHost, setChangingHost] = useState(false);
   const [addingCoHost, setAddingCoHost] = useState(false);
@@ -310,17 +333,55 @@ export function EventOverview({
 
       {tickets !== undefined && (event.priceCents ?? 0) > 0 && (
         <div className="rounded-xl border border-gray-200 p-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Ticket sales</p>
-          <p className="mt-2 text-sm text-gray-900">
-            <span className="font-semibold">{sold.length}</span> sold ·{' '}
-            <span className="font-semibold">{money(takenCents)}</span> taken
-            {tickets.length > sold.length && (
-              <span className="text-gray-500">
-                {' '}
-                · {tickets.length - sold.length} refunded
-              </span>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Ticket sales
+              </p>
+              <p className="mt-2 text-sm text-gray-900">
+                <span className="font-semibold">{sold.length}</span> sold ·{' '}
+                <span className="font-semibold">{money(takenCents)}</span> taken
+                {tickets.length > sold.length && (
+                  <span className="text-gray-500">
+                    {' '}
+                    · {tickets.length - sold.length} refunded
+                  </span>
+                )}
+              </p>
+            </div>
+
+            {/* Pausing, for whoever runs it (EVT-41). Not the same as
+                unpublishing, which hides the event, or cancelling, which
+                refunds the room — so it says what it does rather than
+                relying on the word. */}
+            {canManageHosts && orgId && (
+              <div className="text-right">
+                <button
+                  type="button"
+                  onClick={togglePause}
+                  disabled={pausing}
+                  className="btn-secondary text-sm"
+                >
+                  {pausing
+                    ? 'Saving…'
+                    : paused
+                      ? 'Resume ticket sales'
+                      : 'Pause ticket sales'}
+                </button>
+                <p className="mt-1 max-w-[16rem] text-xs text-gray-500">
+                  {paused
+                    ? 'Nobody can buy a ticket right now. The event is still listed and everybody already coming still is.'
+                    : 'Stops new purchases without hiding the event or refunding anybody.'}
+                </p>
+              </div>
             )}
-          </p>
+          </div>
+
+          {pauseError && (
+            <p className="mt-2 text-sm text-red-600" role="alert">
+              {pauseError}
+            </p>
+          )}
         </div>
       )}
 

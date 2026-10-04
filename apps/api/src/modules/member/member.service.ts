@@ -184,6 +184,10 @@ export class MemberService {
               name: true,
               avatarUrl: true,
               avatarPath: true,
+              // When they last got in (MEM-24). An organiser looking at a
+              // roster after a migration is asking who has actually arrived,
+              // and until now nothing could answer it.
+              lastLoginAt: true,
             },
           },
           tier: {

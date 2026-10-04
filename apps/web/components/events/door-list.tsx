@@ -8,7 +8,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { money } from '@/lib/fees';
 // Aliased: the data shape and the component that renders it would
 // otherwise share a name.
-import { api, DoorList as DoorListData, Event, TicketSale } from '@/lib/api';
+import { api, DoorList as DoorListData, Event, EventWaitlist, TicketSale } from '@/lib/api';
 import { MemberName } from '@/components/member/member-name';
 import { EventOverview } from '@/components/events/event-overview';
 
@@ -32,9 +32,13 @@ import { EventOverview } from '@/components/events/event-overview';
  * responsible for checking in guests not the admin." Two copies of a screen
  * that must behave identically is two screens that eventually do not.
  *
- * `showTickets` is the one real difference: who paid and refunding them is
- * ADMIN/STAFF only, and a host fetching that list would be refused — taking
- * the door list down with it, since they load together.
+ * `showTickets` used to be the one real difference, because who paid and
+ * refunding them was ADMIN/STAFF only and a host fetching that list would be
+ * refused — taking the door list down with it, since they load together.
+ *
+ * Whoever runs the event may now see and refund their own sales (EVT-41), so
+ * the host's copy asks for it too. The API decides the same thing again: the
+ * flag chooses what to draw, never who is allowed.
  */
 export function DoorList({
   eventId,
@@ -80,6 +84,9 @@ export function DoorList({
   // at all: the refund endpoint took a ticket id nothing in the product could
   // produce, so an organiser could neither see a sale nor undo one.
   const [tickets, setTickets] = useState<TicketSale[]>([]);
+  const [waitlist, setWaitlist] = useState<EventWaitlist | null>(null);
+  const [waitlistError, setWaitlistError] = useState('');
+  const [promoting, setPromoting] = useState<string | null>(null);
   const [refunding, setRefunding] = useState<string | null>(null);
   const [refundError, setRefundError] = useState('');
 
@@ -109,6 +116,17 @@ export function DoorList({
           setTickets([]);
         }
       }
+      /*
+        Who is waiting (EVT-41). Separately and quietly, for the same reason
+        as the tickets above: a reader who may see the door but not run the
+        event gets a 403 here, and that must not take the door list down.
+      */
+      try {
+        setWaitlist(await api.events.waitlist(orgId, eventId, token));
+      } catch {
+        setWaitlist(null);
+      }
+
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load the door list');
@@ -120,6 +138,30 @@ export function DoorList({
   useEffect(() => {
     load();
   }, [load]);
+
+  /**
+   * Give somebody on the waitlist a place (EVT-41).
+   *
+   * Confirmed, and the confirm names them: this emails that person to say
+   * they are in, which is not a thing to do by brushing past a button.
+   */
+  async function promote(rsvpId: string, who: string) {
+    if (!token || !orgId) return;
+    if (!window.confirm(`Give ${who} a place? They will be emailed to say they are in.`)) return;
+
+    setPromoting(rsvpId);
+    setWaitlistError('');
+    try {
+      await api.events.promoteFromWaitlist(orgId, eventId, rsvpId, token);
+      // Reloaded rather than patched: promoting moves somebody out of the
+      // waitlist and into the door list, and both are on this screen.
+      await load();
+    } catch (err) {
+      setWaitlistError(err instanceof Error ? err.message : 'Could not give them a place');
+    } finally {
+      setPromoting(null);
+    }
+  }
 
   async function refund(ticketId: string, who: string, amountCents: number) {
     if (!token || !orgId) return;
@@ -461,11 +503,11 @@ export function DoorList({
                   </span>
                 ) : (
                   showTickets && (
-                  /* Refunding stays with organisers (EVT-33). A host and a
-                     co-host can see who paid, because knowing who is coming
-                     is most of running an event — but the money went to the
-                     co-op's Stripe account, and sending it back out again is
-                     the co-op's decision rather than the evening's. */
+                  /* Whoever runs the event (EVT-41). This was organisers
+                     only; the person a buyer asks for their money back is
+                     the host, and a host who has to go and find an organiser
+                     is a host who stops selling tickets. The API checks the
+                     same thing again. */
                   <button
                     type="button"
                     onClick={() => refund(t.id, t.buyerName || t.buyerEmail, t.amountCents)}
@@ -476,6 +518,62 @@ export function DoorList({
                   </button>
                   )
                 )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Who is waiting, and letting one of them in (EVT-41). Renders nothing
+          unless somebody is actually waiting. */}
+      {waitlist && waitlist.waiting.length > 0 && (
+        <section className="card mt-6">
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-gray-900">
+              Waitlist ({waitlist.waiting.length})
+            </h2>
+            {waitlist.spareSeats !== null && waitlist.spareSeats > 0 && (
+              <span className="text-xs text-gray-500">
+                {waitlist.spareSeats} place{waitlist.spareSeats === 1 ? '' : 's'} free
+              </span>
+            )}
+          </div>
+          <p className="mb-3 text-sm text-gray-500">
+            In the order they asked. If somebody with a place cancels, the first here is given it
+            automatically and told. Giving somebody a place by hand lets them in ahead of that.
+          </p>
+
+          {waitlistError && (
+            <p className="mb-3 text-sm text-red-600" role="alert">
+              {waitlistError}
+            </p>
+          )}
+
+          <ul className="divide-y divide-gray-100">
+            {waitlist.waiting.map((w) => (
+              <li key={w.rsvpId} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-gray-900">
+                    <span className="mr-2 text-xs text-gray-400">{w.position}</span>
+                    {w.name ?? 'A member'}
+                    {w.plusOnes > 0 && (
+                      <span className="ml-2 text-xs font-normal text-gray-500">
+                        +{w.plusOnes} guest{w.plusOnes > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </p>
+                  <p className="truncate text-xs text-gray-500">
+                    Waiting since {new Date(w.joinedAt).toLocaleDateString()}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => promote(w.rsvpId, w.name ?? 'this member')}
+                  disabled={promoting === w.rsvpId}
+                  className="btn-secondary text-sm"
+                >
+                  {promoting === w.rsvpId ? 'Giving a place…' : 'Give a place'}
+                </button>
               </li>
             ))}
           </ul>

@@ -81,22 +81,31 @@ export class ConnectController {
   /**
    * Refund one ticket — a buyer who asked, or a mistake.
    *
-   * ADMIN and STAFF only. A member hosting an event can cancel it, which
-   * refunds everyone; picking individual people to refund is the co-op's
-   * money and the co-op's decision.
+   * Whoever runs the event: an organiser, the host, the creator, or a
+   * co-host (EVT-41). This was ADMIN and STAFF only, on the reasoning that
+   * picking individual people to refund was the co-op's money and the
+   * co-op's decision. It still is the co-op's money — but the person asking
+   * for a refund writes to the host, and a host who has to find an organiser
+   * to undo their own sale is a host who stops selling tickets.
+   *
+   * The guard is in the service, because the answer is not a role: a host is
+   * an ordinary member of the co-op.
    */
   @Post('tickets/:ticketId/refund')
-  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
-  @Roles('ADMIN', 'STAFF')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Refund a ticket in full, including the MaybeOS fee' })
   refund(
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('ticketId', ParseUUIDPipe) ticketId: string,
+    @CurrentUser() user: RequestUser,
   ) {
     // The org was previously ignored — `_orgId` — so the only thing standing
     // between an admin and another co-op's sale was not knowing the id.
-    return this.connectService.refundTicket(orgId, ticketId);
+    return this.connectService.refundTicket(orgId, ticketId, {
+      userId: user.userId,
+      isOrganiser: isStaff(user, orgId),
+    });
   }
 
   /**

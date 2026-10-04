@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 import { RsvpFaces } from '@/components/events/rsvp-faces';
 import { EventSummary } from '@/components/events/event-summary';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 import { Calendar, Globe, Lock, Plus, Users, X } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
@@ -48,6 +48,28 @@ export default function MyEventsPage() {
    * event was to ask an organiser.
    */
   const [editing, setEditing] = useState<HostedEvent | null>(null);
+  const formPane = useRef<HTMLElement>(null);
+
+  /*
+    Take the reader to the form (EVT-40).
+
+    Charley: "make sure when clicking Edit the system auto scrolls you to the
+    top where the editable event displays."
+
+    The form opens above the list, and the Edit button is in the list — so on
+    a co-op with a few events, pressing Edit changed something off the top of
+    the screen and looked like it had done nothing. The page was already
+    scrolled past the thing it had just opened.
+
+    After paint, not during: the section does not exist in the document until
+    this render commits, and asking to scroll to it any earlier scrolls to
+    nothing. `scroll-mt-24` on the section keeps it clear of the sticky
+    header it would otherwise slide underneath.
+  */
+  useEffect(() => {
+    if (!creating && !editing) return;
+    formPane.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [creating, editing]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -202,7 +224,7 @@ export default function MyEventsPage() {
       )}
 
       {(creating || editing) && (
-        <section className="card">
+        <section ref={formPane} className="card scroll-mt-24">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-semibold text-gray-900">
               {editing ? `Edit ${editing.title}` : 'New event'}
