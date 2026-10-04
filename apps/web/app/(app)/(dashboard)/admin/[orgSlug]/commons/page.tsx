@@ -1,14 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Plus,
   MessageSquare,
   Hash,
-  ThumbsUp,
-  ThumbsDown,
-  Minus,
   Pin,
   PinOff,
   Send,
@@ -238,6 +235,8 @@ export default function CommonsPage() {
 
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
   const [newPostBody, setNewPostBody] = useState('');
+  const scroller = useRef<HTMLDivElement>(null);
+  const bottom = useRef<HTMLDivElement>(null);
   const [dmDraft, setDmDraft] = useState('');
   const [showMemberPicker, setShowMemberPicker] = useState(false);
 
@@ -258,11 +257,6 @@ export default function CommonsPage() {
 
   const { data: members } = useApi(
     (token, orgId) => api.members.list(orgId, token, 1, 100),
-    [],
-  );
-
-  const { data: proposals, loading: proposalsLoading } = useApi(
-    (token, orgId) => api.commons.listProposals(orgId, token),
     [],
   );
 
@@ -294,6 +288,19 @@ export default function CommonsPage() {
     [view?.type === 'dm' ? view.userId : null],
   );
 
+  /*
+    Land on the newest message, the way every chat opens (CMN-15). Without
+    this a channel opens scrolled to the top, showing the oldest message in
+    the page — which, having just flipped the order, would be the worst of
+    both arrangements.
+
+    `postsData` rather than a length: switching channels can land on a list
+    the same size as the one before it, and that would not re-run.
+  */
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ block: 'end' });
+  }, [postsData]);
+
   if (!token || !currentOrgId) return null;
 
   const channelList = channels ?? [];
@@ -303,7 +310,14 @@ export default function CommonsPage() {
   const channelGroups = groupChannels(channelList, sectionList, { includeEmpty: isAdmin });
   const selectedChannel = channelList.find((c) => c.id === activeChannelId);
   const posts = postsData?.data ?? [];
-  const proposalList = proposals ?? [];
+  /*
+    The API answers newest-first, which is right for a page that lists. A
+    conversation reads the other way: oldest at the top, newest against the
+    composer. Reversed here rather than asking the API for a different order,
+    because "the most recent twenty" is what the page wants either way — it is
+    only their order on screen that differs.
+  */
+  const stream = [...posts].reverse();
 
   async function handleCreatePost() {
     if (!newPostBody.trim() || !activeChannelId) return;
@@ -970,28 +984,35 @@ export default function CommonsPage() {
               </div>
             </div>
           ) : (
-            <>
-              <div className="flex flex-wrap items-center justify-between gap-3">
+            /*
+              A chat column, the same way round as the member's Commons
+              (CMN-15).
+
+              Charley: "The Admin's version of the Commons should have the
+              same vertical orientation of the member's version, with the
+              message composer on the bottom and the latest message on the
+              bottom with older messages running vertically to the top."
+
+              It read the other way round — composer at the top, newest post
+              under it, older ones below — so the same conversation ran in
+              opposite directions depending on which door you came through.
+              An organiser reading a thread in Admin and then in the portal
+              had to re-learn which end was new.
+            */
+            <div className="flex min-h-[30rem] min-w-0 flex-1 flex-col lg:h-[calc(100vh-15rem)]">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-2">
                 <h2 className="text-lg font-semibold text-gray-900">
                   {selectedChannel ? `#${selectedChannel.name}` : 'All Posts'}
                 </h2>
               </div>
 
-              <RichComposer
-                value={newPostBody}
-                onChange={setNewPostBody}
-                onSubmit={handleCreatePost}
-                placeholder={selectedChannel ? `Post in #${selectedChannel.name}...` : 'Write something...'}
-                submitLabel="Post"
-              />
-
               {postsLoading ? (
-                <div className="flex items-center justify-center py-12">
+                <div className="flex flex-1 items-center justify-center py-12">
                   <div className="h-6 w-6 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
                 </div>
               ) : (
-                <div className="space-y-4">
-                  {posts.map((post) => {
+                <div ref={scroller} className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+                  {stream.map((post) => {
                     const authorName = post.author.name ?? 'Unknown';
                     const initial = authorName.charAt(0).toUpperCase();
                     const isExpanded = expandedPostId === post.id;
@@ -1061,111 +1082,30 @@ export default function CommonsPage() {
                     );
                   })}
 
-                  {posts.length === 0 && (
+                  {stream.length === 0 && (
                     <div className="py-12 text-center text-sm text-gray-500">No posts in this channel yet.</div>
                   )}
+
+                  {/* The end of the conversation, which is where this opens. */}
+                  <div ref={bottom} />
                 </div>
               )}
-            </>
+
+              {/* Below the messages, like every chat anybody uses. */}
+              <div className="mt-3 border-t border-gray-100 pt-3">
+                <RichComposer
+                  value={newPostBody}
+                  onChange={setNewPostBody}
+                  onSubmit={handleCreatePost}
+                  placeholder={selectedChannel ? `Post in #${selectedChannel.name}...` : 'Write something...'}
+                  submitLabel="Post"
+                />
+              </div>
+            </div>
           )}
         </div>
       </div>
 
-      {/* Active Proposals */}
-      <div>
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">Active Proposals</h2>
-        {proposalsLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <div className="h-6 w-6 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {proposalList.map((proposal) => {
-              const votes = proposal.voteTally ?? { yes: 0, no: 0, abstain: 0, total: 0 };
-              const totalVotes = votes.yes + votes.no + votes.abstain;
-              const quorum = proposal.quorum ?? 0;
-              const quorumPercent = quorum > 0 ? Math.round((totalVotes / quorum) * 100) : 0;
-              const yesPercent = totalVotes > 0 ? Math.round((votes.yes / totalVotes) * 100) : 0;
-              const noPercent = totalVotes > 0 ? Math.round((votes.no / totalVotes) * 100) : 0;
-              const abstainPercent = totalVotes > 0 ? Math.round((votes.abstain / totalVotes) * 100) : 0;
-
-              return (
-                <div key={proposal.id} className="card">
-                  <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-gray-900">{proposal.title}</h3>
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                        proposal.status === 'OPEN'
-                          ? 'bg-blue-50 text-blue-700'
-                          : proposal.status === 'PASSED'
-                            ? 'bg-green-50 text-green-700'
-                            : 'bg-red-50 text-red-700'
-                      }`}
-                    >
-                      {proposal.status}
-                    </span>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <ThumbsUp className="h-3.5 w-3.5 text-green-500" />
-                      <div className="flex-1">
-                        <div className="h-2 rounded-full bg-gray-100">
-                          <div className="h-2 rounded-full bg-green-500" style={{ width: `${yesPercent}%` }} />
-                        </div>
-                      </div>
-                      <span className="w-12 text-right text-xs text-gray-500">
-                        {votes.yes} ({yesPercent}%)
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <ThumbsDown className="h-3.5 w-3.5 text-red-500" />
-                      <div className="flex-1">
-                        <div className="h-2 rounded-full bg-gray-100">
-                          <div className="h-2 rounded-full bg-red-500" style={{ width: `${noPercent}%` }} />
-                        </div>
-                      </div>
-                      <span className="w-12 text-right text-xs text-gray-500">
-                        {votes.no} ({noPercent}%)
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Minus className="h-3.5 w-3.5 text-gray-400" />
-                      <div className="flex-1">
-                        <div className="h-2 rounded-full bg-gray-100">
-                          <div className="h-2 rounded-full bg-gray-400" style={{ width: `${abstainPercent}%` }} />
-                        </div>
-                      </div>
-                      <span className="w-12 text-right text-xs text-gray-500">
-                        {votes.abstain} ({abstainPercent}%)
-                      </span>
-                    </div>
-                  </div>
-
-                  {quorum > 0 && (
-                    <div className="mt-3 border-t border-gray-100 pt-3">
-                      <div className="flex flex-wrap items-center justify-between text-xs text-gray-500 gap-3">
-                        <span>Quorum progress</span>
-                        <span>{Math.min(quorumPercent, 100)}%</span>
-                      </div>
-                      <div className="mt-1 h-1.5 rounded-full bg-gray-100">
-                        <div className="h-1.5 rounded-full bg-brand-500" style={{ width: `${Math.min(quorumPercent, 100)}%` }} />
-                      </div>
-                      <p className="mt-1 text-xs text-gray-400">
-                        {totalVotes} of {quorum} required votes
-                      </p>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
-            {proposalList.length === 0 && (
-              <div className="col-span-full py-12 text-center text-sm text-gray-500">No proposals found.</div>
-            )}
-          </div>
-        )}
-      </div>
     </div>
   );
 }
