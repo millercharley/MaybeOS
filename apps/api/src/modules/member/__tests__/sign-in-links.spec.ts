@@ -174,3 +174,95 @@ describe('sending a roster its way in', () => {
     expect(email.sendRaw.mock.calls[1][2]).toContain('there');
   });
 });
+
+/**
+ * The send has to fit inside a Netlify function (MEM-23).
+ *
+ * Found during the pre-flight for MaybeItsFate's real send, with 435 people
+ * waiting. A batch of a hundred, each costing two writes, a render and a call
+ * to Postmark, is thirty to sixty seconds against a ten-second limit — and
+ * the mark goes in *before* the email goes out, so anybody killed mid-flight
+ * is recorded as sent, never emailed, and skipped by every retry afterwards.
+ * One person in four hundred silently never gets their way in, with nothing
+ * to say which one.
+ */
+describe('a roster that does not fit in one request', () => {
+  let service: MemberService;
+  let prisma: any;
+  let email: any;
+
+  const manyWaiting = Array.from({ length: 100 }, (_, i) => ({
+    id: `m${i}`,
+    userId: `u${i}`,
+    altEmail: null,
+    user: { email: `member${i}@example.com`, name: `Member ${i}` },
+  }));
+
+  beforeEach(async () => {
+    prisma = {
+      organization: {
+        findUnique: jest.fn().mockResolvedValue({ id: 'org-1', name: 'MaybeItsFate', inviteExpiryDays: 30 }),
+      },
+      userOrg: {
+        findMany: jest.fn().mockResolvedValue(manyWaiting),
+        count: jest.fn().mockResolvedValue(435),
+        update: jest.fn(),
+      },
+      user: { update: jest.fn() },
+      belongingEmailTemplate: { findUnique: jest.fn().mockResolvedValue(null) },
+      $transaction: jest.fn().mockResolvedValue([]),
+    };
+
+    // A provider that takes time, which is the whole point.
+    email = {
+      sendRaw: jest.fn().mockImplementation(async () => {
+        jest.advanceTimersByTime(400);
+        return true;
+      }),
+    };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        MemberService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: EmailService, useValue: email },
+        { provide: BuddyService, useValue: { onMemberJoined: jest.fn() } },
+        { provide: StripeService, useValue: {} },
+        { provide: StorageService, useValue: {} },
+        { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },
+      ],
+    }).compile();
+
+    service = module.get(MemberService);
+  });
+
+  afterEach(() => jest.useRealTimers());
+
+  it('stops on the clock rather than running past the function limit', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+
+    const result = await service.sendSignInLinks('org-1');
+
+    // Well short of a hundred, and short of ten seconds' worth.
+    expect(result.sent).toBeLessThan(100);
+    expect(result.sent).toBeGreaterThan(0);
+    expect(email.sendRaw.mock.calls.length).toBe(result.sent);
+  });
+
+  it('says how many are still waiting, so the next press continues', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+
+    const result = await service.sendSignInLinks('org-1');
+
+    // `signInSentAt` is the cursor: the next call asks for whoever is still
+    // null and carries on from there.
+    expect(result.remaining).toBe(435 - result.sent);
+    expect(result.remaining).toBeGreaterThan(0);
+  });
+
+  it('leaves itself room, rather than stopping exactly on the limit', () => {
+    // Netlify kills at ten seconds. Stopping at ten would mean the last
+    // member of a batch is the one that gets killed part-way through.
+    expect(MemberService.signInDeadlineMs).toBeLessThan(10_000);
+  });
+});

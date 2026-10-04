@@ -1383,8 +1383,27 @@ export class MemberService {
    * could do. Imported members have no password and are not marked verified;
    * they sign in by magic link whenever the co-op chooses to invite them.
    */
-/** How many sign-in links one call sends. A roster goes out in batches. */
+/** The most one call will ever take on. The deadline below usually stops it first. */
   private static readonly SIGN_IN_BATCH = 100;
+
+  /**
+   * How long one call may spend sending, in milliseconds (MEM-23).
+   *
+   * Netlify kills a synchronous function at ten seconds. Each member here
+   * costs two database writes, a template render and a call to Postmark —
+   * somewhere between a third and two-thirds of a second — so a batch of a
+   * hundred is thirty to sixty seconds and never finishes.
+   *
+   * This is the third time that limit has bitten (CAL-05, CAL-06, EVT-38),
+   * and it is the worst place for it: the mark goes in before the email goes
+   * out, so a member killed mid-flight is recorded as sent, never emailed,
+   * and skipped by every retry. One person silently never gets their way in,
+   * out of four hundred, with nothing to say which one.
+   *
+   * So the loop stops on the clock, between members, and says how many are
+   * left. `signInSentAt` is already the cursor — pressing again continues.
+   */
+  private static readonly SIGN_IN_DEADLINE_MS = 7_000;
 
   /**
    * Tell members who are already here how to get in (MEM-18).
@@ -1458,9 +1477,13 @@ export class MemberService {
     }
 
     const expiry = new Date(Date.now() + org.inviteExpiryDays * 24 * 60 * 60 * 1000);
+    const stopBy = Date.now() + MemberService.SIGN_IN_DEADLINE_MS;
     let sent = 0;
 
     for (const member of waiting) {
+      // Checked before starting a member, never part-way through one: the
+      // point is to stop in a state somebody can press again from.
+      if (Date.now() > stopBy) break;
       if (!member.user?.email) continue;
 
       const token = randomUUID();
@@ -1495,6 +1518,11 @@ export class MemberService {
     }
 
     return { sent, remaining: Math.max(0, total - sent), recipients: [], dryRun: false };
+  }
+
+  /** Visible to the tests that prove the deadline exists (MEM-23). */
+  static get signInDeadlineMs(): number {
+    return MemberService.SIGN_IN_DEADLINE_MS;
   }
 
   async importMembers(orgId: string, rows: ImportMemberRowDto[]) {
