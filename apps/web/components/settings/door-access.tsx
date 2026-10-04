@@ -96,11 +96,21 @@ export function DoorAccess({ org, onSaved }: { org: Org; onSaved: () => void }) 
 
   const syncNow = () =>
     run('sync', async () => {
-      const { issued, synced, emailed } = await api.door.sync(org.id, token!);
+      const { issued, synced, emailed, remaining } = await api.door.sync(org.id, token!);
       return (
         `Issued ${issued} ${issued === 1 ? 'code' : 'codes'}, sent ${synced} ${synced === 1 ? 'row' : 'rows'} to the sheet` +
         (emailed ? `, emailed ${emailed}` : '') +
-        '.'
+        '.' +
+        /*
+          What is left, when a roster is too big for one request (DOR-02).
+          A sheet is written a row at a time by Apps Script, so a first sync
+          of several hundred people takes more than one go. Said out loud,
+          because the alternative is an admin watching a number that has
+          stopped moving and not knowing whether to wait or press again.
+        */
+        (remaining
+          ? ` ${remaining} ${remaining === 1 ? 'row' : 'rows'} still to go — press Sync now again, or leave it and the next quarter-hour will pick it up.`
+          : '')
       );
     });
 

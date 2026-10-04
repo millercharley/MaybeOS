@@ -1021,7 +1021,7 @@ class ApiClient {
 
     /** Issue anything missing and resend the whole sheet now. */
     sync: (orgId: string, token: string) =>
-      this.request<{ issued: number; synced: number; emailed: number }>(
+      this.request<{ issued: number; synced: number; emailed: number; remaining: number }>(
         `/orgs/${orgId}/door/sync`,
         { method: 'POST', token },
       ),
