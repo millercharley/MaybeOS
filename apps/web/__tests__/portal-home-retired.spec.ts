@@ -22,11 +22,28 @@ describe('the portal home', () => {
     expect(page).toContain("redirect(`/member/${orgSlug}`)");
   });
 
-  it('redirects on the server, so no portal shell paints first', () => {
-    // A client `router.replace` in an effect renders the old page, then
-    // navigates — visible, and on a slow connection quite visible.
+  it('is not a client component, so it never renders the old page', () => {
+    // A client `router.replace` in an effect paints the portal home, then
+    // navigates away from it — visible, and on a slow connection quite visible.
     expect(page).toContain("from 'next/navigation'");
     expect(page).not.toContain("'use client'");
+  });
+
+  it('is declared in next.config too, so the hop is a real 307', () => {
+    /*
+      Checked against the deployed site: a `redirect()` in a page nested under
+      a client layout does not come back as an HTTP redirect. It is a 200 whose
+      payload tells the router to navigate, so the shell paints first. The
+      config entry moves the decision to the edge, before React exists.
+
+      Not `permanent` — a 308 is cached by the browser for good, and an address
+      we might want back should not be un-takeable.
+    */
+    const config = web('next.config.ts');
+
+    expect(config).toContain("source: '/portal/:orgSlug'");
+    expect(config).toContain("destination: '/member/:orgSlug'");
+    expect(config).toContain('permanent: false');
   });
 });
 
