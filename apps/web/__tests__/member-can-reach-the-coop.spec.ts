@@ -51,6 +51,23 @@ describe('the sidebar', () => {
       );
     });
 
+    it('offers Rooms before Events, because booking comes first', () => {
+      /*
+        Charley, 2026-10-04: "we want to encourage booking a room then
+        promoting an event with that room booking."
+
+        The order is the suggestion — somebody with an idea reaches for the
+        thing nearer the top, and an event announced without a room is one
+        the co-op then has to find room for. A test because nav order is
+        exactly the sort of thing a later edit reshuffles without noticing
+        it meant something.
+      */
+      const items = hrefs(sections());
+      expect(items.indexOf('/portal/maybeitsfate/rooms')).toBeLessThan(
+        items.indexOf('/portal/maybeitsfate/events'),
+      );
+    });
+
     it('keeps their own pages, and their own dashboard', () => {
       expect(hrefs(sections())).toEqual(
         expect.arrayContaining(['/member/maybeitsfate', '/member/maybeitsfate/events', '/member/maybeitsfate/billing', '/member/maybeitsfate/profile']),
