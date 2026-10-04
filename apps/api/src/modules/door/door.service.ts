@@ -31,7 +31,30 @@ import { generateDoorPin } from './door-pin';
  */
 
 /** How many members are issued, written or emailed in one pass. */
-const BATCH = 500;
+/**
+ * Rows per call to the door script (DOR-02).
+ *
+ * Was 500, so MaybeItsFate's first sync sent all 436 members in a single
+ * request to Apps Script. That call takes minutes — Apps Script writes a
+ * sheet a row at a time — so Netlify gave up on the HTTP request at ten
+ * seconds and the admin was shown "Request failed" while the sync went on to
+ * finish perfectly. Every row landed; the only thing that broke was what the
+ * screen said about it.
+ *
+ * A hundred returns while the request is still alive, and makes a full roster
+ * a handful of calls rather than fifty.
+ */
+const BATCH = 100;
+
+/**
+ * How long one sync may spend, in milliseconds.
+ *
+ * The same ten-second ceiling as everything else on Netlify (CAL-05, MEM-23).
+ * Checked between batches, never inside one: a batch already sent to Apps
+ * Script has changed the sheet, and abandoning it before writing down that it
+ * went would send it again on the next run.
+ */
+const SYNC_DEADLINE_MS = 7_000;
 
 /** The sheet script caps a name at this length; matching it keeps the comparison stable. */
 const NAME_LIMIT = 200;
@@ -141,7 +164,7 @@ export class DoorService {
     org: { id: string; doorScriptUrl: string },
     secret: string,
     { full = false }: { full?: boolean } = {},
-  ): Promise<number> {
+  ): Promise<{ synced: number; remaining: number }> {
     const [memberships, entries] = await Promise.all([
       this.prisma.userOrg.findMany({
         where: { orgId: org.id, doorPin: { not: null } },
@@ -197,7 +220,13 @@ export class DoorService {
     });
 
     let sent = 0;
+    const stopBy = Date.now() + SYNC_DEADLINE_MS;
+
     for (let i = 0; i < changed.length; i += BATCH) {
+      // Between batches. Whatever is left is still `changed` next time: the
+      // rows this run wrote now match the sheet and drop out of the list.
+      if (Date.now() > stopBy) break;
+
       const batch = changed.slice(i, i + BATCH);
       const members = batch.map(({ email, code, name, revoked }) => ({ email, code, name, revoked }));
       const result = await this.script.upsert(org.doorScriptUrl, secret, members);
@@ -238,7 +267,7 @@ export class DoorService {
       });
     }
 
-    return sent;
+    return { synced: sent, remaining: Math.max(0, changed.length - sent) };
   }
 
   /**
@@ -295,21 +324,32 @@ export class DoorService {
   async syncOrg(
     orgId: string,
     options: { full?: boolean } = {},
-  ): Promise<{ issued: number; synced: number; emailed: number }> {
+  ): Promise<{ issued: number; synced: number; emailed: number; remaining: number }> {
     const org = await this.loadOrg(orgId);
     const secret = this.secretOf(org);
 
     if (!org.doorAccessEnabled || !org.doorScriptUrl || !secret) {
       // Not an error: a co-op that has not finished setting this up has
       // nothing outstanding.
-      return { issued: 0, synced: 0, emailed: 0 };
+      return { issued: 0, synced: 0, emailed: 0, remaining: 0 };
     }
 
     const issued = await this.issuePins(org.id);
-    const synced = await this.syncSheet({ id: org.id, doorScriptUrl: org.doorScriptUrl }, secret, options);
-    const emailed = org.doorCodeEmailsEnabled ? await this.emailPending(org) : 0;
+    const sheet = await this.syncSheet(
+      { id: org.id, doorScriptUrl: org.doorScriptUrl },
+      secret,
+      options,
+    );
 
-    return { issued, synced, emailed };
+    /*
+      Only once the sheet is caught up (DOR-02). Emailing somebody their code
+      while their row is still waiting to be written is an email saying the
+      door works, sent before it does.
+    */
+    const emailed =
+      org.doorCodeEmailsEnabled && sheet.remaining === 0 ? await this.emailPending(org) : 0;
+
+    return { issued, synced: sheet.synced, emailed, remaining: sheet.remaining };
   }
 
   /** One pass over every co-op with a door. Called by the scheduler. */

@@ -218,7 +218,7 @@ describe('DoorService', () => {
     it('sends a new member with a lowercased email, and records them after the script accepts', async () => {
       prisma.userOrg.findMany.mockResolvedValue([member()]);
 
-      expect(await sync()).toBe(1);
+      expect(await sync()).toEqual({ synced: 1, remaining: 0 });
       expect(script.upsert).toHaveBeenCalledWith(URL, 'the-secret', [
         { email: 'ada@example.com', code: 'ABCDE', name: 'Ada Lovelace', revoked: false },
       ]);
@@ -264,7 +264,7 @@ describe('DoorService', () => {
       prisma.userOrg.findMany.mockResolvedValue([member({ doorPinSyncedAt: new Date() })]);
       prisma.doorSheetEntry.findMany.mockResolvedValue([entry()]);
 
-      expect(await sync()).toBe(0);
+      expect(await sync()).toEqual({ synced: 0, remaining: 0 });
       expect(script.upsert).not.toHaveBeenCalled();
     });
 
@@ -272,7 +272,7 @@ describe('DoorService', () => {
       prisma.userOrg.findMany.mockResolvedValue([member({ doorPinSyncedAt: new Date() })]);
       prisma.doorSheetEntry.findMany.mockResolvedValue([entry()]);
 
-      expect(await sync({ full: true })).toBe(1);
+      expect(await sync({ full: true })).toEqual({ synced: 1, remaining: 0 });
     });
 
     it('sends a new code, and a member with no name as an empty name', async () => {
@@ -317,7 +317,7 @@ describe('DoorService', () => {
       ['no secret', { doorScriptSecret: null }],
     ])('does nothing when %s', async (_label, over) => {
       prisma.organization.findUnique.mockResolvedValue(org(over));
-      expect(await service.syncOrg(ORG)).toEqual({ issued: 0, synced: 0, emailed: 0 });
+      expect(await service.syncOrg(ORG)).toEqual({ issued: 0, synced: 0, emailed: 0, remaining: 0 });
       expect(script.upsert).not.toHaveBeenCalled();
       expect(prisma.userOrg.update).not.toHaveBeenCalled();
     });
@@ -423,3 +423,78 @@ describe('door settings through the validation whitelist', () => {
     ).resolves.toMatchObject({ url: null });
   });
 });
+
+/**
+ * A roster too big for one request (DOR-02).
+ *
+ * MaybeItsFate's first sync sent all 436 members to Apps Script in a single
+ * call — `BATCH` was 500. That call takes minutes, so Netlify gave up on the
+ * request at ten seconds and the admin was shown "Request failed" while the
+ * sync went on to finish perfectly. Every row landed; the only thing that
+ * broke was what the screen said about it.
+ */
+describe('DoorService — a sync that cannot fit in one request', () => {
+  it('stops on the clock and says how much is left', async () => {
+    const { service, prisma, script } = buildBigSync();
+
+    // Each call to the sheet costs real time, the way Apps Script does.
+    script.upsert.mockImplementation(async () => {
+      jest.advanceTimersByTime(3_000);
+      return { accepted: 0, rejected: 0 };
+    });
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+
+    const result = await service.syncSheet({ id: 'org-1', doorScriptUrl: 'https://x' }, 'secret');
+
+    expect(result.synced).toBeGreaterThan(0);
+    expect(result.remaining).toBeGreaterThan(0);
+    expect(result.synced + result.remaining).toBe(436);
+    // What it did write, it wrote down — so the next run does not resend it.
+    expect(prisma.$transaction).toHaveBeenCalled();
+    jest.useRealTimers();
+  });
+
+  it('sends the sheet a batch it can answer, not the whole roster', async () => {
+    const { service, script } = buildBigSync();
+
+    await service.syncSheet({ id: 'org-1', doorScriptUrl: 'https://x' }, 'secret');
+
+    for (const call of script.upsert.mock.calls) {
+      expect((call[2] as unknown[]).length).toBeLessThanOrEqual(100);
+    }
+  });
+});
+
+/** 436 members and an empty sheet — the shape of a first run. */
+function buildBigSync() {
+  const memberships = Array.from({ length: 436 }, (_, i) => ({
+    id: `m${i}`,
+    role: 'MEMBER',
+    subscriptionStatus: 'ACTIVE',
+    doorPin: 'ABCDE',
+    doorPinSyncedAt: null,
+    user: { email: `member${i}@example.com`, name: `Member ${i}` },
+  }));
+
+  const prisma = {
+    userOrg: {
+      findMany: jest.fn().mockResolvedValue(memberships),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+    doorSheetEntry: {
+      findMany: jest.fn().mockResolvedValue([]),
+      upsert: jest.fn(),
+    },
+    $transaction: jest.fn().mockResolvedValue([]),
+  };
+  const script = { upsert: jest.fn().mockResolvedValue({ accepted: 0, rejected: 0 }) };
+
+  const service = new (DoorService as unknown as new (...args: unknown[]) => DoorService)(
+    prisma,
+    script,
+    { sendDoorCode: jest.fn() },
+    { get: () => 'secret' },
+  );
+
+  return { service, prisma, script };
+}
