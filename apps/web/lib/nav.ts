@@ -141,8 +141,19 @@ const coopNav = (slug: string): NavItem[] => [
   // The Directory, and the co-op's cap table when it tracks shares (MEM-17,
   // MEM-19). Same route, so every existing link to it still lands.
   { href: `/portal/${slug}/directory`, label: 'Members', icon: Users },
-  { href: `/portal/${slug}/events`, label: 'Events', icon: Calendar },
+  /*
+    Rooms before Events (Charley, 2026-10-04): "we want to encourage booking a
+    room then promoting an event with that room booking."
+
+    The order is the suggestion. Somebody with an idea reaches for the thing
+    at the top, and holding the space is the step that has to happen first —
+    an event announced without a room is a thing the co-op then has to find
+    room for. It also matches the way the two are wired together (SPC-27): a
+    booking offers to become an event, and an event searches the rooms you
+    have already reserved.
+  */
   { href: `/portal/${slug}/rooms`, label: 'Rooms', icon: DoorOpen },
+  { href: `/portal/${slug}/events`, label: 'Events', icon: Calendar },
   // What needs doing, and taking a turn (SRV-01). Last in the section
   // deliberately: a member comes to the portal to find out what is on before
   // they come to find out what needs doing.
