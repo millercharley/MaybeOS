@@ -164,8 +164,17 @@ export default function MemberPortalPage() {
           <Panel
             title={`Today at ${orgName}`}
             actions={
+              /*
+                The co-op's listing, not the member's own (EVT-39).
+
+                `/member/.../events` is **My Events** — the ones you host. So
+                "All events" beside a panel of what the co-op has on today sent
+                a member to a page listing their own, which for most members is
+                empty. Every event inside this panel already links to
+                `/portal/.../events/<slug>`; this now goes where they live.
+              */
               <Link
-                href={`/member/${orgSlug}/events`}
+                href={`/portal/${orgSlug}/events`}
                 className="text-sm font-medium text-brand-600 hover:text-brand-700"
               >
                 All events
@@ -252,8 +261,11 @@ export default function MemberPortalPage() {
                 <p className="mt-3 text-sm text-gray-500">
                   You haven&apos;t RSVPed to anything coming up.
                 </p>
+                {/* Somebody with no RSVPs is looking for something to go to,
+                    which is the co-op's listing — not My Events, where they
+                    would find only what they themselves are hosting. */}
                 <Link
-                  href={`/member/${orgSlug}/events`}
+                  href={`/portal/${orgSlug}/events`}
                   className="mt-4 inline-block text-sm font-medium text-brand-600 hover:text-brand-700"
                 >
                   Browse upcoming events
