@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, FormEvent } from 'react';
-import { Save } from 'lucide-react';
+import { Save, Copy, Check } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
@@ -110,6 +110,7 @@ export default function SettingsPage() {
 
   const [orgName, setOrgName] = useState('');
   const [orgSlug, setOrgSlug] = useState('');
+  const [slugCopied, setSlugCopied] = useState(false);
   const [orgDescription, setOrgDescription] = useState('');
   const [orgMission, setOrgMission] = useState('');
   const [timezone, setTimezone] = useState('America/New_York');
@@ -214,6 +215,25 @@ export default function SettingsPage() {
     }
   }
 
+  // Whatever host this app is served from, so a staging copy never hands out a
+  // production link. SSR has no window; the field is only read in the browser.
+  const origin = typeof window === 'undefined' ? 'https://maybeos.org' : window.location.origin;
+  const slugUrl = `${origin}/orgs/${orgSlug.trim()}`;
+
+  /** Put the co-op's public address on the clipboard (PUB-02). */
+  async function copySlugUrl() {
+    try {
+      await navigator.clipboard.writeText(slugUrl);
+      setSlugCopied(true);
+      setTimeout(() => setSlugCopied(false), 2000);
+    } catch {
+      // Clipboard access can be refused — a browser permission, an insecure
+      // origin. The address is still on screen and selectable, so saying
+      // nothing is better than an error about a thing the admin can do by hand.
+      setSlugCopied(false);
+    }
+  }
+
   async function handleSaveGeneral(e: FormEvent) {
     e.preventDefault();
     if (!token || !currentOrgId) return;
@@ -283,6 +303,7 @@ export default function SettingsPage() {
       <div className="-mx-4 flex gap-1 overflow-x-auto border-b border-gray-200 px-4 sm:mx-0 sm:px-0">
         {tabs.map((tab) => (
           <button
+            type="button"
             key={tab.key}
             onClick={() => { setActiveTab(tab.key); setSaveMessage(''); }}
             className={`whitespace-nowrap px-4 py-2 text-sm font-medium transition-colors ${
@@ -319,16 +340,45 @@ export default function SettingsPage() {
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Slug</label>
             <div className="flex items-center">
+              {/* The host this app is actually served from, so a staging copy
+                  never hands out a production address. Shown without the
+                  scheme, which is noise in a field; the copied link has it. */}
               <span className="rounded-l-lg border border-r-0 border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-500">
-                maybeos.org/orgs/
+                {origin.replace(/^https?:\/\//, '')}/orgs/
               </span>
               <input
                 type="text"
                 value={orgSlug}
                 onChange={(e) => setOrgSlug(e.target.value)}
-                className="w-full rounded-r-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                className="w-full border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
+              {/*
+                `type="button"` is load-bearing: this sits inside the General
+                form, and a bare <button> there submits it — copying the
+                address would save the co-op's settings.
+              */}
+              <button
+                type="button"
+                onClick={copySlugUrl}
+                disabled={!orgSlug.trim()}
+                title={slugUrl}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-r-lg border border-l-0 border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+              >
+                {slugCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {slugCopied ? 'Copied' : 'Copy'}
+              </button>
             </div>
+
+            {/* The field is editable, so what it reads and what the internet
+                answers on are two different things until somebody saves. An
+                admin who copies an address into a newsletter should be told
+                that here rather than by the first person to click it. */}
+            {org && orgSlug.trim() && orgSlug !== org.slug && (
+              <p className="mt-1 text-xs text-amber-700">
+                That address goes nowhere until you save. Right now the co-op answers on{' '}
+                <span className="font-mono">/orgs/{org.slug}</span>.
+              </p>
+            )}
           </div>
 
           <div>
