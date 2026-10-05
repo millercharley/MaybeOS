@@ -120,6 +120,35 @@
     '.price { display: inline-block; margin-left: 8px; font-size: 12px; font-weight: 600; color: ' + accentText + '; }',
     '.empty, .failed { padding: 24px 0; color: #666; font-size: 14px; }',
     '@media (max-width: 30rem) { .event { display: block; } .when { margin-bottom: 4px; } }',
+    /*
+      The header above the prices (PUB-03).
+
+      Charley, having put the cards on maybeitsfate.com/join: "Just showing
+      the pricing cards doesn't work. The page needs more context."
+
+      Modelled on the stat bar his own site had above its prices — big
+      numerals, small capital labels, hairline rules between — because that
+      shape reads as facts about a place rather than as marketing. The
+      designer is adding the hero above this, so there is no headline here
+      competing with theirs.
+    */
+    '.lead { margin: 0 0 20px; font-size: 16px; line-height: 1.5; color: #444; max-width: 46rem; }',
+    '.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); border-top: 1px solid #1a1a1a; border-bottom: 1px solid #1a1a1a; margin: 0 0 28px; }',
+    // A rule between cells rather than around them, so the strip reads as one
+    // object. The first cell has none, or the row starts with a stray line.
+    '.stat { padding: 18px 20px; border-left: 1px solid #d8d8d8; }',
+    '.stat:first-child { border-left: 0; padding-left: 0; }',
+    '.stat-n { font-size: 30px; font-weight: 700; line-height: 1.1; color: #1a1a1a; font-variant-numeric: tabular-nums; }',
+    '.stat-l { margin-top: 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #777; }',
+    /*
+      No vertical rules once the strip wraps.
+
+      `:first-child` clears the rule on the first cell only, and CSS cannot
+      say "first of each row" under auto-fit — so at two columns the third
+      cell started the row with a stray line down its left. Whitespace
+      separates them perfectly well at this width.
+    */
+    '@media (max-width: 42rem) { .stat { padding: 14px 0; border-left: 0; } .stat-n { font-size: 26px; } }',
     // Membership (PUB-01). Cards rather than rows: these are being compared,
     // not scanned in date order.
     '.tiers { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }',
@@ -127,6 +156,8 @@
     '.tier-name { font-weight: 600; font-size: 17px; }',
     '.tier-price { margin-top: 4px; font-size: 22px; font-weight: 700; color: ' + accentText + '; font-variant-numeric: tabular-nums; }',
     '.tier-per { font-size: 13px; font-weight: 500; color: #666; }',
+    // Dark rather than grey: it is money somebody will be charged, not a note.
+    '.tier-joining { margin-top: 4px; font-size: 13px; font-weight: 600; color: #333; }',
     '.tier-desc { margin-top: 8px; font-size: 14px; color: #444; }',
     '.tier-benefits { margin: 12px 0 0; padding: 0; list-style: none; font-size: 14px; color: #444; }',
     '.tier-benefits li { padding-left: 18px; position: relative; margin-top: 6px; }',
@@ -250,6 +281,21 @@
     }
     el.appendChild(price);
 
+    /*
+      The co-op's joining fee, under the monthly price (PAY-10).
+
+      Beside the price rather than buried in the benefits, and drawn from the
+      tier's own figure rather than from a line somebody remembered to type —
+      a co-op that changes the amount should not have to remember to change
+      the sentence as well.
+    */
+    if (tier.initiationFeeCents > 0) {
+      var joining = document.createElement('div');
+      joining.className = 'tier-joining';
+      joining.textContent = '+ ' + money(tier.initiationFeeCents, 'usd') + ' once, to join';
+      el.appendChild(joining);
+    }
+
     if (tier.description) {
       var desc = document.createElement('div');
       desc.className = 'tier-desc';
@@ -311,8 +357,87 @@
     });
   };
 
+  /** "$19.50", "$10" — cents only when there are cents. */
+  var money = function (cents) {
+    return '$' + (cents % 100 === 0 ? cents / 100 : (cents / 100).toFixed(2));
+  };
+
+  /**
+   * The stat strip and the sentence above the prices (PUB-03).
+   *
+   * Every figure is counted at load rather than typed into the page once: a
+   * co-op that writes "400+ members" onto their website is writing a number
+   * that is wrong within a year, and wrong in the direction that makes them
+   * look smaller than they are.
+   *
+   * A cell is only drawn when it has something true to say — a co-op with no
+   * rooms does not advertise nought rooms — so the strip is three cells wide
+   * for one co-op and four for another, and the grid handles both.
+   */
+  var header = function (data) {
+    var stats = data.stats || {};
+    var cells = [];
+
+    if (stats.members > 0) {
+      cells.push([String(stats.members), stats.members === 1 ? 'Member' : 'Members']);
+    }
+    if (stats.rooms > 0) {
+      // Charley's own wording from the page this replaces.
+      cells.push([String(stats.rooms), stats.rooms === 1 ? 'Spot to reserve' : 'Spots to reserve']);
+    }
+    if (stats.eventsSoon > 0) {
+      cells.push([String(stats.eventsSoon), 'Events this month']);
+    }
+    if (stats.fromCents > 0) {
+      /*
+        The lowest monthly price, with a plus when the tiers differ — "$10+"
+        reads as a range somebody can enter at, where "$10" beside three
+        prices reads as the only one.
+      */
+      var several = (data.tiers || []).some(function (t) {
+        var cents = t.isPayWhatYouCan ? t.minPrice || 0 : t.priceMonthly;
+        return cents > stats.fromCents;
+      });
+      cells.push([money(stats.fromCents) + (several ? '+' : ''), 'Monthly dues']);
+    }
+
+    var lead = (data.mission || data.description || '').trim();
+    if (lead) {
+      var p = document.createElement('p');
+      p.className = 'lead';
+      p.textContent = lead;
+      wrap.appendChild(p);
+    }
+
+    if (!cells.length) return;
+
+    var strip = document.createElement('div');
+    strip.className = 'stats';
+    cells.forEach(function (cell) {
+      var box = document.createElement('div');
+      box.className = 'stat';
+
+      var n = document.createElement('div');
+      n.className = 'stat-n';
+      n.textContent = cell[0];
+
+      var l = document.createElement('div');
+      l.className = 'stat-l';
+      l.textContent = cell[1];
+
+      box.appendChild(n);
+      box.appendChild(l);
+      strip.appendChild(box);
+    });
+    wrap.appendChild(strip);
+  };
+
   var renderMembership = function (data) {
     var tiers = data.tiers || [];
+
+    // Context before prices (PUB-03). Drawn even when there are no tiers yet,
+    // because "here is the place, membership is coming" is still an answer.
+    header(data);
 
     if (!tiers.length) {
       var empty = document.createElement('div');

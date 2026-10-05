@@ -234,12 +234,30 @@ export class OrgService {
    * button and "invitation only" — an embed offering to sign somebody up for a
    * co-op that will refuse them is worse than one that says so.
    */
+  /**
+   * A co-op's membership, for the embed on their own website (PUB-03).
+   *
+   * Charley, having put the tier cards on maybeitsfate.com/join: "Just
+   * showing the pricing cards doesn't work. The page needs more context."
+   *
+   * So the embed gets what the co-op's old hand-built page had above its
+   * prices — how many people are already in, how much space there is, what it
+   * costs — except counted rather than typed. A number somebody typed into
+   * their website once is a number that is wrong a year later; these are the
+   * co-op's own figures at the moment the page loads.
+   *
+   * Public and unauthenticated, like the rest of this endpoint, so it carries
+   * counts and nothing about any person.
+   */
   async embedMembership(slug: string) {
     const org = await this.prisma.organization.findUnique({
       where: { slug },
       select: {
+        id: true,
         name: true,
         slug: true,
+        mission: true,
+        description: true,
         allowPublicJoin: true,
         tiers: {
           where: { isActive: true },
@@ -253,7 +271,46 @@ export class OrgService {
       throw new NotFoundException(`Organization with slug "${slug}" not found`);
     }
 
-    return org;
+    const thirtyDays = new Date(Date.now() + 30 * 86_400_000);
+
+    const [members, rooms, events] = await Promise.all([
+      this.prisma.userOrg.count({
+        where: { orgId: org.id, role: { in: ['ADMIN', 'STAFF', 'MEMBER'] } },
+      }),
+      this.prisma.room.count({ where: { orgId: org.id, isActive: true } }),
+      this.prisma.event.count({
+        where: {
+          orgId: org.id,
+          isPublished: true,
+          canceledAt: null,
+          startTime: { gte: new Date(), lte: thirtyDays },
+        },
+      }),
+    ]);
+
+    /*
+      The lowest way in, which is the number a visitor is actually asking
+      about — not the cheapest tier's name, and not an average. A
+      pay-what-you-can tier counts at its minimum, because that is what
+      somebody could pay.
+    */
+    const prices = org.tiers
+      .map((tier) => (tier.isPayWhatYouCan ? (tier.minPrice ?? 0) : tier.priceMonthly))
+      .filter((cents) => cents > 0);
+
+    const { id: _id, ...publicOrg } = org;
+
+    return {
+      ...publicOrg,
+      stats: {
+        members,
+        rooms,
+        /** Published events starting in the next thirty days. */
+        eventsSoon: events,
+        /** The cheapest monthly way in, in cents. Null when everything is free. */
+        fromCents: prices.length > 0 ? Math.min(...prices) : null,
+      },
+    };
   }
 
   /**

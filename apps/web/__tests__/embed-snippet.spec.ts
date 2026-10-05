@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { DEFAULT_ACCENT, embedSnippet, normaliseHex, resolveAccent } from '@/lib/embed-snippet';
 
 /**
@@ -109,5 +111,59 @@ describe('the snippet', () => {
     expect(snippetFor('https://staging.example', 'x', DEFAULT_ACCENT)).toContain(
       'https://staging.example/embed.js',
     );
+  });
+});
+
+/**
+ * The header above the prices (PUB-03).
+ *
+ * Charley, having put the cards on maybeitsfate.com/join: "Just showing the
+ * pricing cards doesn't work. The page needs more context."
+ *
+ * `embed.js` is a plain script with no module system, so it is read as text —
+ * which is also the honest test of a file that runs on somebody else's
+ * website, where a syntax error is a blank space on their join page.
+ */
+describe('the membership embed', () => {
+  const script = readFileSync(join(__dirname, '..', 'public', 'embed.js'), 'utf8');
+
+  it('parses', () => {
+    // The whole file, as a browser would take it.
+    expect(() => new Function(script)).not.toThrow();
+  });
+
+  it('draws the context before the prices', () => {
+    const header = script.indexOf('header(data)');
+    const grid = script.indexOf("grid.className = 'tiers'");
+    expect(header).toBeGreaterThan(-1);
+    expect(header).toBeLessThan(grid);
+  });
+
+  it('counts the figures rather than carrying typed ones', () => {
+    // A co-op that writes "400+ members" onto their website is writing a
+    // number that is wrong within a year, in the direction that makes them
+    // look smaller than they are.
+    for (const field of ['members', 'rooms', 'eventsSoon', 'fromCents']) {
+      expect(script).toContain(`stats.${field}`);
+    }
+  });
+
+  it('leaves out a figure it has nothing true to say about', () => {
+    // A co-op with no rooms does not advertise nought rooms.
+    expect(script).toContain('stats.rooms > 0');
+    expect(script).toContain('stats.eventsSoon > 0');
+  });
+
+  it('shows the joining fee on the card, from the tier rather than a benefit', () => {
+    // A co-op that changes the amount should not have to remember to change
+    // a sentence somebody typed as well (PAY-10).
+    expect(script).toContain('tier.initiationFeeCents > 0');
+    expect(script).toContain('once, to join');
+  });
+
+  it('adds no headline of its own', () => {
+    // The designer is adding the hero above this; two competing headlines on
+    // one page is the thing that made the old page need rebuilding.
+    expect(script).not.toMatch(/<h1|createElement\('h1'\)/);
   });
 });
