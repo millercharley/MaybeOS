@@ -135,6 +135,23 @@ export class UpdateOrgDto extends PartialType(CreateOrgDto) {
   legacyBillingUrl?: string | null;
 
   /**
+   * Where "View all events" should send somebody (PUB-05).
+   *
+   * Blank or null is the normal case: the link then goes to the events page
+   * MaybeOS hosts, which needs no account to read, RSVP to, or buy a ticket
+   * from. A co-op that already has a calendar on their own website puts its
+   * address here instead.
+   */
+  @ApiPropertyOptional({ example: 'https://maybeitsfate.com/events', nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== '')
+  @IsUrl({ protocols: ['https'], require_protocol: true }, {
+    message: 'That needs to be a full https:// address',
+  })
+  @MaxLength(500)
+  publicEventsUrl?: string | null;
+
+  /**
    * Whether every event must name a room reservation before it is published
    * (SPC-27).
    *

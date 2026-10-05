@@ -54,6 +54,7 @@ describe('what the public org endpoint publishes', () => {
       'mission',
       'name',
       'plan',
+      'publicEventsUrl',
       'slug',
       'stripeChargesEnabled',
       'ticketFeeCents',

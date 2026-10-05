@@ -121,6 +121,17 @@ model Organization {
   // Off by default: a housing co-op or members' club must not be joinable by
   // anyone with a card. Each org opts in. See D-020.
   allowPublicJoin             Boolean           @default(false)
+  /// Where "View all events" should send somebody (PUB-05).
+  ///
+  /// Charley: "Make sure the View all events link takes the user to a public
+  /// view of events at the community. Ask the admin for the link... If the URL
+  /// entry is left blank, show a single page of events that do not require a
+  /// logged in user."
+  ///
+  /// Null is the normal case and means the co-op has no events page of their
+  /// own, so the link goes to the one MaybeOS hosts at `/orgs/<slug>/events`.
+  /// A co-op that has built their own calendar sends people there instead.
+  publicEventsUrl             String?
   /// Whether this co-op tracks shares and ownership at all (MEM-19). Off by
   /// default: most co-ops do not keep an equity register, and one that does
   /// decides when members see it.
