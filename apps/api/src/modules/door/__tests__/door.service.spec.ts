@@ -72,7 +72,8 @@ describe('DoorService', () => {
   let prisma: {
     organization: { findMany: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
     userOrg: { findMany: jest.Mock; findFirst: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
-    doorSheetEntry: { findMany: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock };
+    doorSheetEntry: {
+        findMany: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock; count: jest.Mock };
     $transaction: jest.Mock;
   };
   let script: { upsert: jest.Mock; ping: jest.Mock };
@@ -136,6 +137,7 @@ describe('DoorService', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       },
       doorSheetEntry: {
+        count: jest.fn().mockResolvedValue(0),
         findMany: jest.fn().mockResolvedValue([]),
         upsert: jest.fn((args) => args),
         deleteMany: jest.fn((args) => args),
@@ -434,10 +436,10 @@ describe('door settings through the validation whitelist', () => {
  * broke was what the screen said about it.
  */
 describe('DoorService — a sync that cannot fit in one request', () => {
-  it('stops on the clock and says how much is left', async () => {
-    const { service, prisma, script } = buildBigSync();
+  afterEach(() => jest.useRealTimers());
 
-    // Each call to the sheet costs real time, the way Apps Script does.
+  it('stops on the clock rather than running past the function limit', async () => {
+    const { service, prisma, script } = buildBigSync();
     script.upsert.mockImplementation(async () => {
       jest.advanceTimersByTime(3_000);
       return { accepted: 0, rejected: 0 };
@@ -447,11 +449,9 @@ describe('DoorService — a sync that cannot fit in one request', () => {
     const result = await service.syncSheet({ id: 'org-1', doorScriptUrl: 'https://x' }, 'secret');
 
     expect(result.synced).toBeGreaterThan(0);
-    expect(result.remaining).toBeGreaterThan(0);
-    expect(result.synced + result.remaining).toBe(436);
-    // What it did write, it wrote down — so the next run does not resend it.
+    expect(result.synced).toBeLessThan(436);
+    // What it did send, it wrote down — so the next run does not resend it.
     expect(prisma.$transaction).toHaveBeenCalled();
-    jest.useRealTimers();
   });
 
   it('sends the sheet a batch it can answer, not the whole roster', async () => {
@@ -463,17 +463,58 @@ describe('DoorService — a sync that cannot fit in one request', () => {
       expect((call[2] as unknown[]).length).toBeLessThanOrEqual(100);
     }
   });
+
+  it('asks the database what is still behind, rather than subtracting', async () => {
+    /*
+      The bug this exists for. A full sync resends every row, so
+      `changed.length - sent` reported hundreds outstanding on a sheet that
+      was already correct — Charley pressed Sync twice and got "sent 200, 236
+      still to go" both times. True each time, and never going to change.
+    */
+    const { service, prisma } = buildBigSync();
+    prisma.doorSheetEntry.count.mockResolvedValue(236);
+
+    const result = await service.syncSheet({ id: 'org-1', doorScriptUrl: 'https://x' }, 'secret');
+
+    expect(result.remaining).toBe(236);
+    expect(prisma.doorSheetEntry.count.mock.calls[0][0].where.syncedAt).toHaveProperty('lt');
+  });
+
+  it('takes the stalest rows first, so pressing again makes progress', async () => {
+    /*
+      The other half of the same bug. With the rows in a fixed order, every
+      press of a full sync sent the same first two hundred for ever.
+
+      Three members, all already in the sheet, written at different times —
+      so the only thing that can order them is staleness.
+    */
+    const { service, prisma, script } = buildBigSync({
+      members: ['fresh', 'stale', 'middling'],
+    });
+    prisma.doorSheetEntry.findMany.mockResolvedValue([
+      { email: 'fresh@example.com', doorPin: 'ABCDE', name: 'fresh', revoked: false, syncedAt: new Date('2030-01-01') },
+      { email: 'stale@example.com', doorPin: 'ABCDE', name: 'stale', revoked: false, syncedAt: new Date('2020-01-01') },
+      { email: 'middling@example.com', doorPin: 'ABCDE', name: 'middling', revoked: false, syncedAt: new Date('2025-01-01') },
+    ]);
+
+    await service.syncSheet({ id: 'org-1', doorScriptUrl: 'https://x' }, 'secret', { full: true });
+
+    const sent = (script.upsert.mock.calls[0][2] as Array<{ email: string }>).map((r) => r.email);
+    expect(sent).toEqual(['stale@example.com', 'middling@example.com', 'fresh@example.com']);
+  });
 });
 
 /** 436 members and an empty sheet — the shape of a first run. */
-function buildBigSync() {
-  const memberships = Array.from({ length: 436 }, (_, i) => ({
+function buildBigSync(over: { members?: string[] } = {}) {
+  const memberships = (
+    over.members ?? Array.from({ length: 436 }, (_, i) => `member${i}`)
+  ).map((handle, i) => ({
     id: `m${i}`,
     role: 'MEMBER',
     subscriptionStatus: 'ACTIVE',
     doorPin: 'ABCDE',
     doorPinSyncedAt: null,
-    user: { email: `member${i}@example.com`, name: `Member ${i}` },
+    user: { email: `${handle}@example.com`, name: handle },
   }));
 
   const prisma = {
@@ -482,6 +523,7 @@ function buildBigSync() {
       updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     doorSheetEntry: {
+        count: jest.fn().mockResolvedValue(0),
       findMany: jest.fn().mockResolvedValue([]),
       upsert: jest.fn(),
     },
