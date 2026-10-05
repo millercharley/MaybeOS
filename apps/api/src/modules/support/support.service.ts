@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { SUPPORT_ARTICLES } from './support-articles';
@@ -29,11 +29,38 @@ export interface SupportArticleView {
  * page is four hundred pages drifting apart.
  */
 @Injectable()
-export class SupportService {
+export class SupportService implements OnModuleInit {
+  private readonly logger = new Logger(SupportService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
   ) {}
+
+  /**
+   * Put the shipped documentation in, as the module comes up.
+   *
+   * This was lazy — seeded on the first read — and the cost of that only
+   * became obvious when the deploy landed: the first read is an
+   * *authenticated* one, so nothing exists until an organiser opens the page,
+   * and nobody can confirm a deploy worked without signing in as somebody.
+   * A system whose state can only be verified by a human is a system that
+   * gets verified by nobody.
+   *
+   * One `count` per cold start is the price, and it is a few milliseconds
+   * against a table that is seeded once. Deliberately not awaited and
+   * deliberately swallowing failures: documentation arriving late is a
+   * nuisance, an API that will not boot is an outage.
+   */
+  onModuleInit(): void {
+    void this.seed()
+      .then(({ added }) => {
+        if (added > 0) this.logger.log(`Seeded ${added} support article(s)`);
+      })
+      .catch((error) => {
+        this.logger.warn(`Could not seed support articles: ${(error as Error).message}`);
+      });
+  }
 
   /**
    * Put the shipped articles in the database, without touching edits.
@@ -75,13 +102,12 @@ export class SupportService {
    */
   async list(canEdit: boolean): Promise<SupportArticleView[]> {
     /*
-      Fill an empty shelf on the way past.
+      A backstop behind `onModuleInit`.
 
-      Rather than seeding at boot, which on a serverless function means a
-      query on every cold start to discover there is nothing to do. This costs
-      nothing until the table is actually empty, which is once — and it means
-      documentation arrives with a deploy rather than with somebody
-      remembering to press a button.
+      Boot seeding is what makes the documentation appear without anybody
+      opening anything; this catches the case where that boot ran before the
+      database was reachable. Costs one count against a table that is empty
+      exactly once.
     */
     if ((await this.prisma.supportArticle.count()) === 0) {
       await this.seed();

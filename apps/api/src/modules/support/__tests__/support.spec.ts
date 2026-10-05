@@ -89,7 +89,32 @@ describe('SupportService', () => {
       expect(written[0].slug).toBe(SUPPORT_ARTICLES[0].slug);
     });
 
-    it('fills an empty shelf on the way past, so docs arrive with a deploy', async () => {
+    it('seeds as the module comes up, so nobody has to open anything', async () => {
+      /*
+        This was lazy — seeded on the first read — and the cost only became
+        obvious at deploy: the first read is an *authenticated* one, so
+        nothing existed until an organiser opened the page, and a deploy could
+        not be confirmed without signing in as somebody.
+      */
+      const { service, prisma } = await build({ existing: [] });
+
+      service.onModuleInit();
+      await new Promise((r) => setImmediate(r));
+
+      expect(prisma.supportArticle.createMany).toHaveBeenCalled();
+    });
+
+    it('does not take the API down when seeding fails', async () => {
+      // Documentation arriving late is a nuisance; an API that will not boot
+      // is an outage.
+      const { service, prisma } = await build({ existing: [] });
+      prisma.supportArticle.findMany.mockRejectedValue(new Error('no database yet'));
+
+      expect(() => service.onModuleInit()).not.toThrow();
+      await new Promise((r) => setImmediate(r));
+    });
+
+    it('still fills an empty shelf on read, if the boot seed could not run', async () => {
       const { service, prisma } = await build({ count: 0, existing: [] });
 
       await service.list(false);
