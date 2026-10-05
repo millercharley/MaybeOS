@@ -151,8 +151,28 @@
     '@media (max-width: 42rem) { .stat { padding: 14px 0; border-left: 0; } .stat-n { font-size: 26px; } }',
     // Membership (PUB-01). Cards rather than rows: these are being compared,
     // not scanned in date order.
-    '.tiers { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }',
-    '.tier { border: 1px solid #e2e2e2; border-radius: 10px; padding: 20px; display: flex; flex-direction: column; }',
+    /*
+      Wider cards (PUB-04). Charley: "Make the cards wider." 15rem fitted five
+      across on a wide page and turned every benefit into two lines; 20rem
+      gives three or four and lets a line of text be a line.
+
+      The top padding is on the grid rather than on the featured card, which
+      is what keeps the pill from pushing anything down: the room for it is
+      made once, above all of them, so every card's title still sits on the
+      same line as its neighbours'.
+    */
+    '.tiers { display: grid; gap: 20px; padding-top: 14px; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); }',
+    /*
+      A white ground, deliberately (PUB-04).
+
+      These cards had a border and no background, so the host page showed
+      through them — and MaybeItsFate's brand colour is #afd2e9, near enough
+      their page's own blue that the accent vanished into it: the pill read as
+      plain text and the buttons read as links. A card that supplies its own
+      ground is a card that looks the same on anybody's website, which is the
+      whole promise of an embed.
+    */
+    '.tier { background: #fff; border: 1px solid #dcdcdc; border-radius: 12px; padding: 24px; display: flex; flex-direction: column; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }',
     '.tier-name { font-weight: 600; font-size: 17px; }',
     '.tier-price { margin-top: 4px; font-size: 22px; font-weight: 700; color: ' + accentText + '; font-variant-numeric: tabular-nums; }',
     '.tier-per { font-size: 13px; font-weight: 500; color: #666; }',
@@ -163,13 +183,47 @@
     '.tier-benefits li { padding-left: 18px; position: relative; margin-top: 6px; }',
     '.tier-benefits li::before { content: "✓"; position: absolute; left: 0; color: ' + accentText + '; }',
     // Pushed to the bottom so buttons line up across cards of different heights.
-    '.join { margin-top: auto; padding-top: 16px; }',
-    '.join a { display: inline-block; width: 100%; text-align: center; text-decoration: none; padding: 10px 16px; border-radius: 8px; background: ' + accent + '; color: ' + onAccent + '; font-weight: 600; font-size: 14px; }',
+    '.join { margin-top: auto; padding-top: 20px; }',
+    /*
+      A button that looks like one (PUB-04). Charley: "Make the button on each
+      card look more like a button."
+
+      It was a flat fill in the co-op's accent, which on a pale accent — his
+      is #afd2e9 — is a pale rectangle with dark text and no edge, read as a
+      line of text. The border gives it an outline whatever the fill, the
+      shadow lifts it off the card, and the press moves it.
+    */
+    /*
+      Filled with `accentText`, not the raw accent.
+
+      The raw colour is the co-op's as chosen, and a pale one — #afd2e9 —
+      makes a pale rectangle that reads as a panel rather than a control.
+      `accentText` is that same hue darkened until it can be read, which is
+      exactly what a button needs: a co-op with a strong colour sees no
+      change, a co-op with a pale one gets a button instead of a tint.
+    */
+    '.join a { display: block; width: 100%; text-align: center; text-decoration: none; padding: 13px 18px; border-radius: 9px; background: ' + accentText + '; color: #fff; border: 1px solid ' + accentText + '; font-weight: 700; font-size: 15px; letter-spacing: 0.01em; box-shadow: 0 1px 3px rgba(0,0,0,0.18); transition: transform 0.06s ease, box-shadow 0.12s ease, filter 0.12s ease; }',
+    '.join a:hover { filter: brightness(1.08); box-shadow: 0 3px 10px rgba(0,0,0,0.22); }',
+    '.join a:active { transform: translateY(1px); box-shadow: 0 1px 2px rgba(0,0,0,0.14); }',
     '.closed { margin-top: 16px; font-size: 14px; color: #666; }',
     // The admin's own badge (MEM-16). The card is offset so the pill can sit
     // on its top border without the grid clipping it.
-    '.tier.featured { border-color: ' + accent + '; border-width: 2px; margin-top: 10px; }',
-    '.badge { position: absolute; top: -11px; left: 50%; transform: translateX(-50%); background: ' + accent + '; color: ' + onAccent + '; border-radius: 999px; padding: 3px 12px; font-size: 12px; font-weight: 600; white-space: nowrap; }',
+    /*
+      The highlighted card, which has to carry across a room (PUB-04).
+      Charley: "The highlighted card pops off the page with a strong outline
+      and more visible pill."
+
+      No `margin-top` any more — that was what pushed this card's text below
+      its neighbours'. The grid already leaves room for the pill above every
+      card, so this one only has to be unmistakable, not moved.
+
+      The outline is drawn in `accentText` rather than the raw accent: a pale
+      brand colour makes a pale outline, which is the thing that failed.
+      `accentText` is the same colour darkened until it can be read, so the
+      border is the co-op's colour at a strength that shows.
+    */
+    '.tier.featured { border: 3px solid ' + accentText + '; box-shadow: 0 6px 20px rgba(0,0,0,0.13); }',
+    '.badge { position: absolute; top: -13px; left: 50%; transform: translateX(-50%); background: ' + accentText + '; color: #fff; border-radius: 999px; padding: 6px 16px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }',
     '.tier { position: relative; }',
   ].join('\n');
   root.appendChild(style);
@@ -379,26 +433,28 @@
     var cells = [];
 
     if (stats.members > 0) {
-      cells.push([String(stats.members), stats.members === 1 ? 'Member' : 'Members']);
+      cells.push([String(stats.members), stats.members === 1 ? 'Active member' : 'Active members']);
     }
     if (stats.rooms > 0) {
-      // Charley's own wording from the page this replaces.
-      cells.push([String(stats.rooms), stats.rooms === 1 ? 'Spot to reserve' : 'Spots to reserve']);
+      cells.push([
+        String(stats.rooms),
+        stats.rooms === 1 ? 'Room to book for your gatherings' : 'Rooms to book for your gatherings',
+      ]);
     }
-    if (stats.eventsSoon > 0) {
-      cells.push([String(stats.eventsSoon), 'Events this month']);
+    /*
+      Two counts of the same month, which is the point of showing both (PUB-03).
+
+      The first is what a visitor could come to; the second includes the
+      private bookings, which is how busy the building actually is. Drawn
+      whenever the month has anything in it at all — a zero beside "total
+      events" would be worth knowing, but these cells exist to be read quickly
+      and the empty-month case is already covered by the strip shrinking.
+    */
+    if (stats.openEvents > 0) {
+      cells.push([String(stats.openEvents), 'Non-private events this month']);
     }
-    if (stats.fromCents > 0) {
-      /*
-        The lowest monthly price, with a plus when the tiers differ — "$10+"
-        reads as a range somebody can enter at, where "$10" beside three
-        prices reads as the only one.
-      */
-      var several = (data.tiers || []).some(function (t) {
-        var cents = t.isPayWhatYouCan ? t.minPrice || 0 : t.priceMonthly;
-        return cents > stats.fromCents;
-      });
-      cells.push([money(stats.fromCents) + (several ? '+' : ''), 'Monthly dues']);
+    if (stats.allEvents > 0) {
+      cells.push([String(stats.allEvents), 'Total events this month']);
     }
 
     var lead = (data.mission || data.description || '').trim();

@@ -150,10 +150,18 @@ describe('the membership embed', () => {
     expect(shadow().textContent).toContain('<img src=x onerror=alert(1)>');
   });
 
-  it('puts readable text on a pale accent', async () => {
-    // BRD-03: the accent now defaults to the co-op's own brand colour, and
-    // MaybeItsFate's is a light blue. White on it is unreadable, so the button
-    // text follows the accent's luminance rather than always being white.
+  it('does not paint a button in a colour the page may already be', async () => {
+    /*
+      BRD-03 made the accent default to the co-op's own brand colour, and this
+      test used to assert the button was filled with it and given dark text —
+      readable, and the right answer at the time.
+
+      Then MaybeItsFate put the embed on a page whose background *is* their
+      brand colour, #afd2e9. A pale fill on a pale page is not a button, and
+      Charley asked for one that looks like one (PUB-04). So the fill is the
+      same hue darkened until it carries — a co-op with a strong colour sees
+      no change, a co-op with a pale one gets a button instead of a tint.
+    */
     const { shadow } = render(
       { 'data-org': 'sunrise', 'data-show': 'membership', 'data-accent': '#afd2e9' },
       MEMBERSHIP,
@@ -161,7 +169,10 @@ describe('the membership embed', () => {
     await settle();
 
     const css = shadow().querySelector('style')!.textContent!;
-    expect(css).toContain("background: #afd2e9; color: #1a1a1a");
+    const join = css.split('.join a {')[1].split('}')[0];
+
+    expect(join).not.toContain('#afd2e9');
+    expect(join).toContain('color: #fff');
   });
 
   it('darkens a pale accent where it is used as text', async () => {

@@ -271,21 +271,44 @@ export class OrgService {
       throw new NotFoundException(`Organization with slug "${slug}" not found`);
     }
 
-    const thirtyDays = new Date(Date.now() + 30 * 86_400_000);
+    /*
+      This calendar month, not the next thirty days (PUB-03).
 
-    const [members, rooms, events] = await Promise.all([
+      The label says "this month", so the window has to be the month — a
+      figure counted over a rolling thirty days beside a label saying
+      otherwise is the kind of small lie that makes somebody distrust the
+      whole strip. From now to the end of it: what has already happened is
+      not something a visitor can come to.
+    */
+    const now = new Date();
+    const endOfMonth = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0),
+    );
+    const thisMonth = {
+      orgId: org.id,
+      isPublished: true,
+      canceledAt: null,
+      startTime: { gte: now, lt: endOfMonth },
+    };
+
+    const [members, rooms, openEvents, allEvents] = await Promise.all([
       this.prisma.userOrg.count({
-        where: { orgId: org.id, role: { in: ['ADMIN', 'STAFF', 'MEMBER'] } },
-      }),
-      this.prisma.room.count({ where: { orgId: org.id, isActive: true } }),
-      this.prisma.event.count({
         where: {
           orgId: org.id,
-          isPublished: true,
-          canceledAt: null,
-          startTime: { gte: new Date(), lte: thirtyDays },
+          role: { in: ['ADMIN', 'STAFF', 'MEMBER'] },
+          // Active, as the label says. Somebody whose membership is cancelled
+          // is a former member, and counting them would inflate the one
+          // number a visitor uses to judge whether this place is alive.
+          subscriptionStatus: { not: 'CANCELED' },
         },
       }),
+      this.prisma.room.count({ where: { orgId: org.id, isActive: true } }),
+      // Anything a visitor could come to: public, or open to members. A
+      // private event is somebody's booking, not the co-op's programme.
+      this.prisma.event.count({
+        where: { ...thisMonth, visibility: { not: 'PRIVATE' } },
+      }),
+      this.prisma.event.count({ where: thisMonth }),
     ]);
 
     /*
@@ -305,8 +328,10 @@ export class OrgService {
       stats: {
         members,
         rooms,
-        /** Published events starting in the next thirty days. */
-        eventsSoon: events,
+        /** Events this month a visitor could come to: public or members-only. */
+        openEvents,
+        /** Everything on this month, private bookings included. */
+        allEvents,
         /** The cheapest monthly way in, in cents. Null when everything is free. */
         fromCents: prices.length > 0 ? Math.min(...prices) : null,
       },

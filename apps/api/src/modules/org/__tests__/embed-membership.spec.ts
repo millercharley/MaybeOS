@@ -20,6 +20,11 @@ describe('OrgService — the membership embed', () => {
 
   beforeEach(async () => {
     prisma = {
+      // The strip above the prices (PUB-03): counted at load, so the service
+      // asks for four numbers alongside the co-op itself.
+      userOrg: { count: jest.fn().mockResolvedValue(437) },
+      room: { count: jest.fn().mockResolvedValue(9) },
+      event: { count: jest.fn().mockResolvedValue(21) },
       organization: {
         findUnique: jest.fn().mockResolvedValue({
           name: 'Sunrise',
@@ -61,6 +66,11 @@ describe('OrgService — the membership embed', () => {
 
     expect(Object.keys(selection()).sort()).toEqual([
       'allowPublicJoin',
+      // Shown above the cards as the sentence about the place (PUB-03).
+      'description',
+      // Only to count against; stripped from what is returned.
+      'id',
+      'mission',
       'name',
       'slug',
       'tiers',
@@ -76,6 +86,7 @@ describe('OrgService — the membership embed', () => {
       'description',
       'highlightLabel',
       'id',
+      'initiationFeeCents',
       'isPayWhatYouCan',
       'maxMembers',
       'minPrice',
