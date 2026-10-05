@@ -19,6 +19,7 @@ import {
 } from './maybeos-plans';
 import { ConnectService } from './connect.service';
 import { membershipStatusFor } from './subscription-status';
+import { initiationOwed } from './initiation';
 import { applicationFeePercent, duesFeeFor } from './dues-pricing';
 import { duesPaymentFrom, payerFrom } from './dues-ledger';
 import {
@@ -50,6 +51,8 @@ interface ConnectObjects {
   accountId: string;
   portalConfigId?: string | null;
   feeProductId?: string | null;
+  /** The co-op's joining-fee product, made on first use (PAY-10). */
+  initiationProductId?: string | null;
 }
 
 /** Request options for an account: a connected account id, or MaybeOS's own when null. */
@@ -200,7 +203,43 @@ export class StripeService implements OnModuleInit {
       });
     }
 
-    const metadata = { orgId, userId, tierId, duesFeeCents: String(feeCents) };
+    /*
+      The co-op's joining fee, once (PAY-10).
+
+      A line item with no `recurring`, which Stripe bills on the first invoice
+      of the subscription and never again — one checkout, one card entry, one
+      receipt showing both what they paid to join and what they will pay each
+      month.
+
+      `initiationOwed` is what keeps it to once a member: somebody moving
+      between tiers has already paid, and charging them again for changing
+      their mind is the version of this that generates refund requests.
+    */
+    const initiation = initiationOwed({
+      tierInitiationCents: tier.initiationFeeCents,
+      alreadyPaidAt: userOrg.initiationFeePaidAt,
+    });
+
+    if (initiation.cents > 0) {
+      lineItems.push({
+        price_data: {
+          currency: 'usd',
+          product: await this.ensureInitiationProduct(orgId, org.accountId, tier.name),
+          unit_amount: initiation.cents,
+        },
+        quantity: 1,
+      });
+    }
+
+    const metadata = {
+      orgId,
+      userId,
+      tierId,
+      duesFeeCents: String(feeCents),
+      // Read back on `customer.subscription.created`, which is what records
+      // that this member has now paid to join.
+      initiationCents: String(initiation.cents),
+    };
 
     // 6. Create the Checkout session on the co-op's account.
     const session = await this.stripe.checkout.sessions.create(
@@ -211,6 +250,19 @@ export class StripeService implements OnModuleInit {
         metadata,
         subscription_data: {
           metadata,
+          /*
+            MaybeOS's cut, as a percentage of each invoice (PAY-09).
+
+            Worth knowing when reading this beside a joining fee: the
+            percentage is worked out so that a dues-only invoice hands MaybeOS
+            exactly `feeCents`, and Stripe applies it to the whole of every
+            invoice — including the first, which now carries the co-op's
+            joining fee as well. On a co-op where `feeCents` is zero (every
+            paid plan) that is nothing at all. On the Free plan it means
+            MaybeOS takes its percentage of the joining fee too, which is a
+            pricing decision rather than an accident, and is recorded here so
+            that it stays a decision (PAY-10).
+          */
           ...(feeCents > 0 && { application_fee_percent: applicationFeePercent(duesCents, feeCents) }),
         },
         success_url: successUrl,
@@ -337,6 +389,38 @@ export class StripeService implements OnModuleInit {
       onAccount(accountId),
     );
     await this.saveConnectObjects(orgId, { ...objects, feeProductId: product.id });
+    return product.id;
+  }
+
+  /**
+   * The co-op's joining fee, as a Stripe product on their account (PAY-10).
+   *
+   * One product per co-op rather than one per tier: the amount travels on the
+   * line item, and a product per tier would litter the co-op's Stripe
+   * dashboard with near-identical entries that say nothing the invoice does
+   * not already say.
+   *
+   * The tier's name goes in the description, so a co-op reading their Stripe
+   * payments can tell which way in somebody bought without opening the
+   * invoice.
+   */
+  private async ensureInitiationProduct(
+    orgId: string,
+    accountId: string,
+    tierName: string,
+  ): Promise<string> {
+    const objects = await this.connectObjects(orgId, accountId);
+    if (objects.initiationProductId) return objects.initiationProductId;
+
+    const product = await this.stripe.products.create(
+      {
+        name: 'Joining fee',
+        description: `A one-time charge on joining (${tierName})`,
+        metadata: { orgId, kind: 'initiation_fee' },
+      },
+      onAccount(accountId),
+    );
+    await this.saveConnectObjects(orgId, { ...objects, initiationProductId: product.id });
     return product.id;
   }
 
@@ -1058,7 +1142,7 @@ export class StripeService implements OnModuleInit {
     /** The connected account it happened on, or null for MaybeOS's own (PAY-09). */
     accountId: string | null = null,
   ) {
-    const { orgId, userId, tierId, duesFeeCents } = subscription.metadata;
+    const { orgId, userId, tierId, duesFeeCents, initiationCents } = subscription.metadata;
 
     if (!orgId || !userId) {
       this.logger.warn(
@@ -1078,6 +1162,18 @@ export class StripeService implements OnModuleInit {
           stripeCustomerId: typeof subscription.customer === 'string' ? subscription.customer : subscription.customer.id,
         }),
         duesFeeCents: Number(duesFeeCents) > 0 ? Number(duesFeeCents) : 0,
+        /*
+          They have paid to join (PAY-10).
+
+          Recorded from the subscription's own metadata rather than from the
+          tier, because the tier's fee may have changed between the member
+          starting checkout and finishing it — and what they actually paid is
+          what was on the invoice, not what the tier says today.
+
+          Only ever set, never cleared: this is the flag that stops a member
+          being charged to join a second time.
+        */
+        ...(Number(initiationCents) > 0 && { initiationFeePaidAt: new Date() }),
         // From the start, so "renews on" is answerable before anybody cancels.
         ...this.periodFrom(subscription),
       },

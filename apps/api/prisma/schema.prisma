@@ -457,6 +457,14 @@ model UserOrg {
   /// When the current paid period runs out, from Stripe. The date shown to a
   /// member who has cancelled, and null for anyone who has never subscribed.
   currentPeriodEnd      DateTime?
+  /// When this member paid the co-op's joining fee, or null if they have not
+  /// (PAY-10).
+  ///
+  /// Once per member, not once per tier: moving between tiers is not joining
+  /// again, and a co-op that charged twice for it would be charging somebody
+  /// for changing their mind. A member who has never paid one owes whatever
+  /// the tier they are joining asks.
+  initiationFeePaidAt   DateTime?
   memberSince           DateTime           @default(now())
   bio                   String?
   /// One line under a member's name — what they do, what to ask them about.
@@ -738,6 +746,17 @@ model MembershipTier {
   description          String?
   priceMonthly         Int      @default(0) // cents
   priceYearly          Int? // cents
+  /// A one-off charge on joining, in cents (PAY-10).
+  ///
+  /// Charley: "Some organizations will need to charge a one-time initiation
+  /// fee for their memberships." Zero is no fee, which is every tier until an
+  /// admin sets one.
+  ///
+  /// On the tier rather than the co-op, because a co-op that charges to join
+  /// rarely charges the same to join at every level — and a tier with no fee
+  /// beside one that has is how a co-op offers a way in for somebody who
+  /// cannot pay it.
+  initiationFeeCents   Int      @default(0)
   isPayWhatYouCan      Boolean  @default(false)
   minPrice             Int? // cents, for PWYC
   maxMembers           Int? // null = unlimited

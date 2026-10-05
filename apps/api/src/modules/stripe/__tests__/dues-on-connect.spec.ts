@@ -213,3 +213,143 @@ describe('dues on the co-op’s connected account', () => {
     });
   });
 });
+
+/**
+ * The co-op's one-time joining fee, on the way in (PAY-10).
+ *
+ * Charley: "Some organizations will need to charge a one-time initiation fee
+ * for their memberships... including setting the amount."
+ *
+ * It rides on the same checkout as the first month — one card entry, one
+ * receipt — as a line item with no `recurring`, which Stripe bills on the
+ * first invoice and never again. The tests below are the ways that goes
+ * wrong with somebody's money.
+ */
+describe('StripeService — the joining fee', () => {
+  const ACCT = 'acct_coop';
+  let service: StripeService;
+  let stripe: any;
+  let prisma: any;
+  let org: any;
+  let membership: any;
+
+  const tierWith = (initiationFeeCents: number) => ({
+    id: 'tier-1',
+    orgId: 'org-1',
+    name: 'Full member',
+    priceMonthly: 1500,
+    isPayWhatYouCan: false,
+    minPrice: null,
+    initiationFeeCents,
+    stripeProductId: 'prod_coop',
+    stripePriceIdMonthly: 'price_coop',
+    stripeDuesAccountId: ACCT,
+  });
+
+  const build = (initiationFeeCents: number, paidAt: Date | null = null, plan = 'PLUS') => {
+    org = { stripeAccountId: ACCT, stripeChargesEnabled: true, plan, stripeConnectObjects: null };
+    membership = {
+      id: 'uo-1',
+      stripeCustomerId: 'cus_coop',
+      stripeDuesAccountId: ACCT,
+      stripeSubscriptionId: null,
+      subscriptionStatus: 'NONE',
+      initiationFeePaidAt: paidAt,
+      user: { email: 'priya@example.com', name: 'Priya' },
+    };
+    stripe = {
+      customers: { create: jest.fn().mockResolvedValue({ id: 'cus_coop' }) },
+      products: { create: jest.fn().mockResolvedValue({ id: 'prod_join' }) },
+      prices: { create: jest.fn().mockResolvedValue({ id: 'price_new' }) },
+      checkout: { sessions: { create: jest.fn().mockResolvedValue({ url: 'https://checkout' }) } },
+      subscriptions: { retrieve: jest.fn(), update: jest.fn().mockResolvedValue({}) },
+    };
+    prisma = {
+      membershipTier: {
+        findFirst: jest.fn().mockResolvedValue(tierWith(initiationFeeCents)),
+        update: jest.fn(({ data }: any) => Promise.resolve({ ...tierWith(initiationFeeCents), ...data })),
+      },
+      organization: {
+        findUnique: jest.fn(() => Promise.resolve(org)),
+        update: jest.fn(({ data }: any) => {
+          Object.assign(org, data);
+          return Promise.resolve(org);
+        }),
+      },
+      userOrg: {
+        findUnique: jest.fn().mockResolvedValue(membership),
+        update: jest.fn().mockResolvedValue({}),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    };
+    service = new StripeService(
+      { get: (k: string) => (k === 'STRIPE_SECRET_KEY' ? 'sk_test_x' : '') } as unknown as ConfigService,
+      prisma as never,
+      {} as never,
+    );
+    (service as unknown as { stripe: unknown }).stripe = stripe;
+    jest.spyOn(console, 'log').mockImplementation(() => undefined);
+  };
+
+  afterEach(() => jest.restoreAllMocks());
+
+  const checkout = () =>
+    service.createCheckoutSession('org-1', 'user-1', 'tier-1', 'https://ok', 'https://cancel');
+
+  const itemsOf = () => stripe.checkout.sessions.create.mock.calls[0][0].line_items;
+
+  it('adds the fee to the same checkout as the first month', async () => {
+    build(5000);
+    await checkout();
+
+    const joining = itemsOf().find((i: any) => i.price_data?.unit_amount === 5000);
+    expect(joining).toBeDefined();
+    // One card entry and one receipt, showing both what they paid to join
+    // and what they will pay each month.
+    expect(itemsOf()).toHaveLength(2);
+  });
+
+  it('charges it once, not every month', async () => {
+    build(5000);
+    await checkout();
+
+    const joining = itemsOf().find((i: any) => i.price_data?.unit_amount === 5000);
+    // No `recurring`, which is the whole of what makes Stripe bill it on the
+    // first invoice and never again.
+    expect(joining.price_data.recurring).toBeUndefined();
+  });
+
+  it('does not charge a member who has already paid it', async () => {
+    // Moving between tiers is not joining again.
+    build(5000, new Date('2026-01-01'));
+    await checkout();
+
+    expect(itemsOf()).toHaveLength(1);
+    expect(itemsOf()[0].price).toBe('price_coop');
+  });
+
+  it('adds nothing on a tier that does not charge one', async () => {
+    build(0);
+    await checkout();
+
+    expect(itemsOf()).toHaveLength(1);
+  });
+
+  it('tells the subscription what was charged, so it can be recorded', async () => {
+    build(5000);
+    await checkout();
+
+    const params = stripe.checkout.sessions.create.mock.calls[0][0];
+    expect(params.metadata.initiationCents).toBe('5000');
+    expect(params.subscription_data.metadata.initiationCents).toBe('5000');
+  });
+
+  it('runs on the co-op’s own Stripe account, not MaybeOS’s', async () => {
+    // The joining fee is the co-op's money.
+    build(5000);
+    await checkout();
+
+    expect(stripe.checkout.sessions.create.mock.calls[0][1]).toEqual({ stripeAccount: ACCT });
+    expect(stripe.products.create.mock.calls[0][1]).toEqual({ stripeAccount: ACCT });
+  });
+});
