@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { StorageService } from '../storage/storage.service';
-import { SUPPORT_ARTICLES } from './support-articles';
+import { SUPPORT_ARTICLES, SUPPORT_CATEGORIES } from './support-articles';
 
 /** What an article looks like once its screenshots have signed URLs. */
 export interface SupportArticleView {
@@ -115,9 +115,24 @@ export class SupportService implements OnModuleInit {
 
     const articles = await this.prisma.supportArticle.findMany({
       where: canEdit ? {} : { state: 'PUBLISHED' },
-      orderBy: [{ category: 'asc' }, { position: 'asc' }, { createdAt: 'asc' }],
+      orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
       include: { images: { orderBy: { position: 'asc' } } },
     });
+
+    /*
+      Sections in the order somebody meets them, not in alphabetical order
+      (PLT-05).
+
+      Sorted here rather than in the query because the order is a list in
+      code, and SQL has no opinion about it. A category nobody listed sorts to
+      the end rather than vanishing — a section somebody typed by hand is a
+      section they meant to make.
+    */
+    const rank = (category: string) => {
+      const i = (SUPPORT_CATEGORIES as readonly string[]).indexOf(category);
+      return i === -1 ? SUPPORT_CATEGORIES.length : i;
+    };
+    articles.sort((a, b) => rank(a.category) - rank(b.category) || a.position - b.position);
 
     return Promise.all(articles.map((a) => this.withImages(a)));
   }

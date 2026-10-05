@@ -257,3 +257,74 @@ describe('SupportController', () => {
     }
   });
 });
+
+/**
+ * The order the sections read in (PLT-05).
+ *
+ * Charley: "Move the section for these 3 under Members & Dues. Move Migration
+ * to under Getting Started."
+ *
+ * They were in alphabetical order, which put Events before Getting started and
+ * Migration at the end — the reverse of the order somebody meets them.
+ */
+describe('SupportService — the order of things', () => {
+  const article = (category: string, position = 0) => ({
+    id: category + position,
+    slug: category + position,
+    title: category,
+    summary: null,
+    category,
+    body: '<p>x</p>',
+    state: 'PUBLISHED',
+    position,
+    updatedAt: new Date(),
+    images: [],
+  });
+
+  const listOf = async (categories: string[]) => {
+    const prisma = {
+      supportArticle: {
+        count: jest.fn().mockResolvedValue(1),
+        findMany: jest.fn().mockResolvedValue(categories.map((c, i) => article(c, i))),
+      },
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        SupportService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: StorageService, useValue: { signedAttachmentUrl: jest.fn() } },
+      ],
+    }).compile();
+
+    const out = await module.get(SupportService).list(false);
+    return out.map((a) => a.category);
+  };
+
+  it('runs orientation, then moving in, then the daily things, then the reference', async () => {
+    const shuffled = [
+      'Settings',
+      'Events and tickets',
+      'Getting started',
+      'Rooms and the building',
+      'Migration',
+      'Members and dues',
+    ];
+
+    await expect(listOf(shuffled)).resolves.toEqual([
+      'Getting started',
+      'Migration',
+      'Members and dues',
+      'Events and tickets',
+      'Rooms and the building',
+      'Settings',
+    ]);
+  });
+
+  it('puts a section somebody typed by hand at the end, rather than losing it', async () => {
+    // A category nobody listed is still a section they meant to make.
+    await expect(listOf(['Volunteering', 'Getting started'])).resolves.toEqual([
+      'Getting started',
+      'Volunteering',
+    ]);
+  });
+});
