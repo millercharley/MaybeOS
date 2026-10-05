@@ -12,8 +12,22 @@
  * last week.
  */
 
-/** Nobody's joining fee is a thousand pounds by accident. */
-export const MAX_INITIATION_CENTS = 500_00;
+/**
+ * The most a co-op may ask to join, in cents (PAY-10).
+ *
+ * This was $500, chosen by me as a typo guard and wrong the first time a real
+ * co-op used it: MaybeItsFate's Believer level asks $970, and the screen
+ * refused it with "initiationFeeCents must not be greater than 50000".
+ *
+ * A joining fee is not a subscription — it is the price of a place in a
+ * building, and co-ops that ask for one often ask for thousands. The guard
+ * that matters is against typing cents into a box labelled dollars, and
+ * $25,000 catches that while standing well clear of anything a co-op means.
+ *
+ * Stripe will not take a single charge above $999,999.99, so this is nowhere
+ * near a technical limit; it is a question of what is plausibly deliberate.
+ */
+export const MAX_INITIATION_CENTS = 25_000_00;
 
 export interface InitiationOwed {
   /** What to charge now, in cents. Zero when nothing is owed. */
@@ -49,7 +63,8 @@ export function initiationProblem(cents: number): string | null {
   if (!Number.isInteger(cents)) return 'A joining fee has to be a whole number of cents.';
   if (cents < 0) return 'A joining fee cannot be negative.';
   if (cents > MAX_INITIATION_CENTS) {
-    return `A joining fee of more than ${MAX_INITIATION_CENTS / 100} is almost certainly a typo. Say so in writing first if you mean it.`;
+    // In dollars, because that is the box the admin typed into.
+    return `A joining fee over $${(MAX_INITIATION_CENTS / 100).toLocaleString()} is almost certainly a typo — check whether you meant dollars.`;
   }
   return null;
 }

@@ -30,8 +30,17 @@ export class CreateTierDto {
   })
   @IsOptional()
   @IsInt()
-  @Min(0)
-  @Max(MAX_INITIATION_CENTS)
+  @Min(0, { message: 'A joining fee cannot be negative.' })
+  /*
+    Said in dollars and without naming the field (PAY-10).
+
+    The default message is "initiationFeeCents must not be greater than
+    50000", which is three things an admin should not have to decode: the
+    column's name, an amount in cents, and a limit nobody told them about.
+  */
+  @Max(MAX_INITIATION_CENTS, {
+    message: `A joining fee over $${(MAX_INITIATION_CENTS / 100).toLocaleString()} is almost certainly a typo — check whether you meant dollars.`,
+  })
   initiationFeeCents?: number;
 
   @ApiPropertyOptional({ example: false })
