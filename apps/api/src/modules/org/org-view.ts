@@ -33,6 +33,9 @@ export const PUBLIC_ORG_SELECT = {
   logoUrl: true,
   brandColor: true,
   allowPublicJoin: true,
+  // Where "View all events" goes, when the co-op has somewhere of their own
+  // (PUB-05). Public because the public page is what reads it.
+  publicEventsUrl: true,
   plan: true,
   ticketFeeCents: true,
   stripeChargesEnabled: true,

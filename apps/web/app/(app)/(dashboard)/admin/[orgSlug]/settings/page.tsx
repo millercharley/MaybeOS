@@ -12,6 +12,7 @@ import { Locations } from '@/components/settings/locations';
 import { Support } from '@/components/settings/support';
 import { WebsiteEmbed } from '@/components/settings/website-embed';
 import { JoinPage } from '@/components/settings/join-page';
+import { PublicEventsLink } from '@/components/settings/public-events-link';
 import { MemberDashboard } from '@/components/settings/member-dashboard';
 import { GettingStartedSettings } from '@/components/settings/getting-started-settings';
 import { Integrations } from '@/components/settings/integrations';
@@ -448,7 +449,12 @@ export default function SettingsPage() {
       {activeTab === 'general' && org && <Support orgName={org.name} />}
 
       {activeTab === 'website' && org && (
-        <JoinPage org={org} allowPublicJoin={allowPublicJoin} />
+        <>
+          <JoinPage org={org} allowPublicJoin={allowPublicJoin} />
+          {/* Where "View all events" goes, beside the join page it appears
+              on (PUB-05). */}
+          <PublicEventsLink org={org} />
+        </>
       )}
 
       {activeTab === 'website' && (

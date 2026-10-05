@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Calendar, CalendarPlus, Clock, MapPin, Users, Check, Star } from 'lucide-react';
 import { usePublicApi } from '@/hooks/use-api';
 import { api, apiUrl } from '@/lib/api';
+import { leavesMaybeOs, publicEventsHref } from '@/lib/public-events';
 
 export default function OrgProfilePage(props: { params: Promise<{ slug: string }> }) {
   const { slug } = use(props.params);
@@ -35,6 +36,9 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
       .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
       .slice(0, 3);
   }, [events]);
+
+  // Where "View all events" goes (PUB-05).
+  const eventsHref = publicEventsHref(slug, org?.publicEventsUrl);
 
   const loading = orgLoading;
 
@@ -268,8 +272,19 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
               <CalendarPlus className="h-4 w-4" />
               Add to calendar
             </a>
+            {/*
+              The co-op's own events page when they have one, and otherwise
+              the public one MaybeOS hosts (PUB-05). This went to
+              `/portal/<slug>/events`, which is readable without an account
+              but draws the signed-in app around it — a visitor who came from
+              the co-op's website met a sidebar full of things they cannot
+              open.
+            */}
             <Link
-              href={`/portal/${slug}/events`}
+              href={eventsHref}
+              {...(leavesMaybeOs(eventsHref)
+                ? { target: '_blank', rel: 'noopener noreferrer' }
+                : {})}
               className="text-sm font-medium text-brand-600 hover:text-brand-700 transition-colors"
             >
               View all events

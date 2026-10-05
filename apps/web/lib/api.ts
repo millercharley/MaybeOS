@@ -549,6 +549,8 @@ class ApiClient {
       data: Partial<CreateOrgData> & {
         brandColor?: string;
         allowPublicJoin?: boolean;
+        /** Where "View all events" goes; null restores the MaybeOS page (PUB-05). */
+        publicEventsUrl?: string | null;
         /** Whether the co-op tracks shares and ownership (MEM-19). */
         sharesEnabled?: boolean;
         /** Whether any member may open a channel in the Commons (CMN-11). */
@@ -1673,11 +1675,22 @@ class ApiClient {
     getPublicBySlug: (orgSlug: string, eventSlug: string) =>
       this.request<Event>(`/public/events/${orgSlug}/${eventSlug}`),
 
+    /**
+     * RSVP without an account (PUB-05).
+     *
+     * The path was `/guest-rsvp` and the API has always served `/rsvp/guest`,
+     * and the body sent `name`/`email` where the DTO asks for
+     * `guestName`/`guestEmail` — so this has never once worked. Nothing
+     * called it until the public events page, which is why nobody noticed.
+     */
     guestRsvp: (orgId: string, eventId: string, data: { name: string; email: string }) =>
-      this.request(`/orgs/${orgId}/events/${eventId}/guest-rsvp`, {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
+      this.request<{ id: string; status: 'CONFIRMED' | 'WAITLISTED' }>(
+        `/orgs/${orgId}/events/${eventId}/rsvp/guest`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ guestName: data.name, guestEmail: data.email }),
+        },
+      ),
   };
 
   // ── Rooms & Bookings ────────────────────────────
@@ -3145,6 +3158,8 @@ export interface Attachment {
 }
 
 export interface Org {
+  /** Where "View all events" goes; null means the page MaybeOS hosts (PUB-05). */
+  publicEventsUrl?: string | null;
   id: string;
   name: string;
   slug: string;
