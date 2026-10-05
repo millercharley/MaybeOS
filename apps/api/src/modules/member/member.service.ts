@@ -691,6 +691,9 @@ export class MemberService {
         priceYearly: dto.priceYearly,
         isPayWhatYouCan: dto.isPayWhatYouCan ?? false,
         minPrice: dto.minPrice,
+        // A one-time charge on joining (PAY-10). Zero is no fee, which is
+        // every tier until an admin sets one.
+        initiationFeeCents: dto.initiationFeeCents ?? 0,
         benefits: dto.benefits ?? [],
         ...this.serviceExpectation(dto),
         // The badge, if the form carried one (MEM-16). Whitelisted like every

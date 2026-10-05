@@ -1,16 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsString,
-  IsOptional,
-  IsInt,
-  IsBoolean,
-  IsArray,
-  IsIn,
-  Min,
-  Max,
-  MaxLength,
-  ValidateIf,
-} from 'class-validator';
+import { IsString, IsOptional, IsInt, IsBoolean, IsArray, IsIn, Min, Max, MaxLength, ValidateIf } from 'class-validator';
+import { MAX_INITIATION_CENTS } from '../../stripe/initiation';
 
 /** How often a tier's service expectation resets (SRV-01). */
 export const SERVICE_PERIODS = ['WEEK', 'MONTH', 'YEAR'] as const;
@@ -33,6 +23,16 @@ export class CreateTierDto {
   @IsOptional()
   @IsInt()
   priceYearly?: number;
+
+  @ApiPropertyOptional({
+    example: 5000,
+    description: 'A one-time charge on joining, in cents. 0 for none (PAY-10).',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(MAX_INITIATION_CENTS)
+  initiationFeeCents?: number;
 
   @ApiPropertyOptional({ example: false })
   @IsOptional()

@@ -23,6 +23,8 @@ type Draft = {
   benefits: string;
   /** The badge on this tier's card, blank for none (MEM-16). */
   highlightLabel: string;
+  /** A one-time charge on joining, in dollars. Blank means none (PAY-10). */
+  joiningFee: string;
   /** Service asked of this tier, in hours. Blank means none (SRV-01). */
   serviceHours: string;
   servicePeriod: string;
@@ -36,6 +38,7 @@ const emptyDraft: Draft = {
   minPrice: '',
   benefits: '',
   highlightLabel: '',
+  joiningFee: '',
   serviceHours: '',
   servicePeriod: 'MONTH',
 };
@@ -48,6 +51,9 @@ const draftFrom = (t: AdminTier): Draft => ({
   minPrice: t.minPrice ? toDollars(t.minPrice) : '',
   benefits: (t.benefits ?? []).join('\n'),
   highlightLabel: t.highlightLabel ?? '',
+  // Blank rather than "0": an empty box reads as "no joining fee", where a
+  // zero reads as an amount somebody chose (PAY-10).
+  joiningFee: t.initiationFeeCents ? toDollars(t.initiationFeeCents) : '',
   // Hours in the form, minutes on the wire: a co-op says "four hours a
   // month", and asking an organiser to type 240 invites a slip of a zero.
   serviceHours: t.serviceMinutes ? String(t.serviceMinutes / 60) : '',
@@ -64,6 +70,9 @@ const toInput = (d: Draft): TierInput => ({
   // Explicit null for the same reason as the service expectation: clearing
   // the field has to remove the badge, not leave the old one standing.
   highlightLabel: d.highlightLabel.trim() || null,
+  // Always sent, so clearing the box removes the fee rather than leaving the
+  // old one in place.
+  initiationFeeCents: d.joiningFee.trim() ? toCents(d.joiningFee) : 0,
   // Explicit null rather than omitted, so clearing the field removes the
   // expectation instead of silently leaving the old one in place.
   serviceMinutes: d.serviceHours.trim()
@@ -346,6 +355,40 @@ export default function AdminTiersPage() {
                 </div>
               </label>
             )}
+
+            {/*
+              The joining fee (PAY-10). Charley: "Some organizations will need
+              to charge a one-time initiation fee for their memberships."
+
+              Beside the monthly price and after it, because it is the second
+              number a co-op decides and the first one people compare. It
+              applies to both kinds of tier, fixed and pay-what-you-can — a
+              co-op that lets somebody choose their dues may still ask a set
+              amount to join.
+            */}
+            <label className="block">
+              <span className="text-sm font-medium">One-time joining fee</span>
+              <div className="mt-1 flex items-center gap-2">
+                <span className="text-[var(--text-tertiary)]">$</span>
+                <input
+                  type="number" min="0" step="0.01"
+                  className="input w-32"
+                  value={draft.joiningFee}
+                  onChange={(e) => setDraft({ ...draft, joiningFee: e.target.value })}
+                  placeholder="None"
+                />
+              </div>
+              <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+                {toCents(draft.joiningFee) > 0 ? (
+                  <>
+                    Charged once, on the first invoice, along with the first month. A member
+                    who has already paid it is not charged again if they change tier.
+                  </>
+                ) : (
+                  <>Leave this blank unless your co-op charges to join.</>
+                )}
+              </p>
+            </label>
 
             <label className="block">
               <span className="text-sm font-medium">Benefits</span>

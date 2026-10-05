@@ -3303,6 +3303,8 @@ export interface Location {
 }
 
 export interface TierInput {
+  /** A one-time charge on joining, in cents. 0 for none (PAY-10). */
+  initiationFeeCents?: number;
   name: string;
   description?: string;
   priceMonthly: number;
@@ -3342,6 +3344,8 @@ export interface TierUpdateResult extends MembershipTier {
 }
 
 export interface MembershipTier {
+  /** A one-time charge on joining, in cents. 0 for none (PAY-10). */
+  initiationFeeCents?: number;
   id: string;
   name: string;
   description?: string;

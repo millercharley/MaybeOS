@@ -184,6 +184,20 @@ export default function OrgProfilePage(props: { params: Promise<{ slug: string }
                           + ${(duesFeeFor(org.plan, tier.priceMonthly) / 100).toFixed(2)} MaybeOS fee a month
                         </span>
                       )}
+                      {/*
+                        The co-op's own joining fee (PAY-10), beside the
+                        monthly price rather than in the small print further
+                        down. Somebody deciding whether to join is comparing
+                        what it costs, and a one-off charge they meet for the
+                        first time at the card form is the charge they
+                        dispute — which costs the co-op the fee as well as the
+                        money.
+                      */}
+                      {(tier.initiationFeeCents ?? 0) > 0 && (
+                        <span className="mt-1 block text-xs font-medium text-gray-700">
+                          + ${((tier.initiationFeeCents as number) / 100).toFixed(2).replace(/\.00$/, '')} once, to join
+                        </span>
+                      )}
                     </div>
                     <p className="mt-2 text-sm text-gray-500">
                       {tier.description || `Access as a ${tier.name} member.`}
