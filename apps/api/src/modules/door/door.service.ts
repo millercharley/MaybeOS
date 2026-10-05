@@ -219,7 +219,29 @@ export class DoorService {
       );
     });
 
+    /*
+      Stalest first (DOR-03).
+
+      This mattered the moment the deadline arrived. A full sync resends
+      every row — that is what repairs a sheet somebody edited by hand — and
+      with the rows in a fixed order, every press sent the *same* first two
+      hundred and reported the same number left. Charley pressed twice and
+      got "sent 200, 236 still to go" both times, which was true each time
+      and never going to stop being true.
+
+      Ordering by when each row last reached the sheet makes a press pick up
+      where the last one stopped, because the rows it just wrote now sort to
+      the back. Three presses cover a roster this size; the quarter-hourly
+      pass does the same thing unattended.
+    */
+    changed.sort((a, b) => {
+      const at = recorded.get(a.email)?.syncedAt?.getTime() ?? 0;
+      const bt = recorded.get(b.email)?.syncedAt?.getTime() ?? 0;
+      return at - bt;
+    });
+
     let sent = 0;
+    const startedAt = new Date();
     const stopBy = Date.now() + SYNC_DEADLINE_MS;
 
     for (let i = 0; i < changed.length; i += BATCH) {
@@ -267,7 +289,17 @@ export class DoorService {
       });
     }
 
-    return { synced: sent, remaining: Math.max(0, changed.length - sent) };
+    /*
+      What is genuinely still behind, not simply what this request did not
+      reach. On a full sync `changed` is everybody, so `changed.length - sent`
+      would report hundreds outstanding on a sheet that is already correct —
+      which is exactly the number that stopped moving.
+    */
+    const stale = await this.prisma.doorSheetEntry.count({
+      where: { orgId: org.id, syncedAt: { lt: startedAt } },
+    });
+
+    return { synced: sent, remaining: stale };
   }
 
   /**
