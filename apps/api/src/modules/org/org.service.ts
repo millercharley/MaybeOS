@@ -272,26 +272,27 @@ export class OrgService {
     }
 
     /*
-      This calendar month, not the next thirty days (PUB-03).
+      The whole calendar month (PUB-03).
 
-      The label says "this month", so the window has to be the month — a
-      figure counted over a rolling thirty days beside a label saying
-      otherwise is the kind of small lie that makes somebody distrust the
-      whole strip. From now to the end of it: what has already happened is
-      not something a visitor can come to.
+      The label says "this month", and the window has to agree with it: a
+      figure counted from now to the end of the month shrinks as the month
+      goes on, so a co-op that is busy all May advertises one event on the
+      30th. What already happened this month is still what happens here in a
+      month, which is the claim the strip is making.
     */
     const now = new Date();
-    const endOfMonth = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0),
-    );
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    const window = { gte: monthStart, lt: monthEnd };
+
     const thisMonth = {
       orgId: org.id,
       isPublished: true,
       canceledAt: null,
-      startTime: { gte: now, lt: endOfMonth },
+      startTime: window,
     };
 
-    const [members, rooms, openEvents, allEvents] = await Promise.all([
+    const [members, rooms, openEvents, listedEvents, privateBookings] = await Promise.all([
       this.prisma.userOrg.count({
         where: {
           orgId: org.id,
@@ -303,13 +304,39 @@ export class OrgService {
         },
       }),
       this.prisma.room.count({ where: { orgId: org.id, isActive: true } }),
-      // Anything a visitor could come to: public, or open to members. A
-      // private event is somebody's booking, not the co-op's programme.
+      // Anything a visitor could come to: public, or open to members.
       this.prisma.event.count({
         where: { ...thisMonth, visibility: { not: 'PRIVATE' } },
       }),
       this.prisma.event.count({ where: thisMonth }),
+      /*
+        A room booking is a private event (Charley, 2026-10-05: "we're calling
+        a room booking a private event for marketing purposes"), and most of
+        what happens in this building is one.
+
+        MaybeItsFate's rooms carry their Google calendars, and the import put
+        those entries here: of 174 bookings this month, 173 came from a
+        calendar and one was made in MaybeOS. Counting only published events
+        said 18 for a month with ten times that in it.
+
+        `eventId: null` is what stops a booking being counted twice once
+        somebody turns it into an event (SPC-27) — the two are the same
+        gathering, and the event is the half with a name.
+
+        A co-op that imported no calendars gets exactly what it books through
+        MaybeOS, which is the same query asking the same question.
+      */
+      this.prisma.booking.count({
+        where: {
+          room: { orgId: org.id },
+          canceledAt: null,
+          eventId: null,
+          startTime: window,
+        },
+      }),
     ]);
+
+    const allEvents = listedEvents + privateBookings;
 
     /*
       The lowest way in, which is the number a visitor is actually asking
@@ -330,7 +357,10 @@ export class OrgService {
         rooms,
         /** Events this month a visitor could come to: public or members-only. */
         openEvents,
-        /** Everything on this month, private bookings included. */
+        /**
+         * Everything happening this month, a room booking counting as the
+         * private event it is.
+         */
         allEvents,
         /** The cheapest monthly way in, in cents. Null when everything is free. */
         fromCents: prices.length > 0 ? Math.min(...prices) : null,
