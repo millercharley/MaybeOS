@@ -30,6 +30,10 @@ export const PUBLIC_TIER_SELECT = {
   priceYearly: true,
   isPayWhatYouCan: true,
   minPrice: true,
+  // What it costs to join, once (PAY-10). Public for the same reason the
+  // monthly price is: it is the question somebody is asking, and a charge
+  // first met at the card form is the charge they dispute.
+  initiationFeeCents: true,
   benefits: true,
   maxMembers: true,
   // What the tier asks of a member in return (SRV-01). Shown before somebody
