@@ -1693,6 +1693,61 @@ class ApiClient {
       ),
   };
 
+  /**
+   * MaybeOS's own documentation (PLT-05).
+   *
+   * No org in any of these paths: the articles belong to no co-op. Reading
+   * needs a signed-in account; writing needs a platform admin, which the API
+   * decides rather than the client.
+   */
+  support = {
+    list: (token: string) => this.request<SupportArticle[]>(`/support/articles`, { token }),
+
+    get: (slug: string, token: string) =>
+      this.request<SupportArticle>(`/support/articles/${slug}`, { token }),
+
+    create: (
+      data: { title: string; summary?: string; category: string; body: string },
+      token: string,
+    ) =>
+      this.request<SupportArticle>(`/support/articles`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    update: (
+      id: string,
+      data: Partial<{ title: string; summary: string; category: string; body: string; state: string }>,
+      token: string,
+    ) =>
+      this.request<SupportArticle>(`/support/articles/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    remove: (id: string, token: string) =>
+      this.request<unknown>(`/support/articles/${id}`, { method: 'DELETE', token }),
+
+    /** A screenshot, as the browser's FileReader hands it back. */
+    addImage: (
+      id: string,
+      data: { data: string; mimeType: string; caption?: string },
+      token: string,
+    ) =>
+      this.request<{ id: string; url: string | null; caption: string | null }>(
+        `/support/articles/${id}/images`,
+        { method: 'POST', body: JSON.stringify(data), token },
+      ),
+
+    removeImage: (id: string, imageId: string, token: string) =>
+      this.request<unknown>(`/support/articles/${id}/images/${imageId}`, {
+        method: 'DELETE',
+        token,
+      }),
+  };
+
   // ── Rooms & Bookings ────────────────────────────
   rooms = {
     list: (orgId: string, token: string) =>
@@ -4506,6 +4561,20 @@ export interface EventWaitlist {
     plusOnes: number;
     joinedAt: string;
   }>;
+}
+
+/** An article in MaybeOS's own documentation (PLT-05). */
+export interface SupportArticle {
+  id: string;
+  slug: string;
+  title: string;
+  summary: string | null;
+  category: string;
+  body: string;
+  state: 'DRAFT' | 'PUBLISHED';
+  position: number;
+  updatedAt: string;
+  images: { id: string; url: string | null; caption: string | null }[];
 }
 
 export interface DmConversation {
