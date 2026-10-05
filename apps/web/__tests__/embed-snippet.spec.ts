@@ -143,7 +143,7 @@ describe('the membership embed', () => {
     // A co-op that writes "400+ members" onto their website is writing a
     // number that is wrong within a year, in the direction that makes them
     // look smaller than they are.
-    for (const field of ['members', 'rooms', 'eventsSoon', 'fromCents']) {
+    for (const field of ['members', 'rooms', 'openEvents', 'allEvents']) {
       expect(script).toContain(`stats.${field}`);
     }
   });
@@ -151,7 +151,7 @@ describe('the membership embed', () => {
   it('leaves out a figure it has nothing true to say about', () => {
     // A co-op with no rooms does not advertise nought rooms.
     expect(script).toContain('stats.rooms > 0');
-    expect(script).toContain('stats.eventsSoon > 0');
+    expect(script).toContain('stats.openEvents > 0');
   });
 
   it('shows the joining fee on the card, from the tier rather than a benefit', () => {
@@ -165,5 +165,48 @@ describe('the membership embed', () => {
     // The designer is adding the hero above this; two competing headlines on
     // one page is the thing that made the old page need rebuilding.
     expect(script).not.toMatch(/<h1|createElement\('h1'\)/);
+  });
+});
+
+/**
+ * The cards, on somebody else's website (PUB-04).
+ *
+ * Charley's co-op's brand colour is #afd2e9 — a pale blue, near enough his
+ * own page's background that every accented thing vanished into it: the
+ * highlighted card's pill read as plain text and the buttons read as links.
+ * An embed has to look like itself on any page it lands on.
+ */
+describe('the membership cards', () => {
+  const script = readFileSync(join(__dirname, '..', 'public', 'embed.js'), 'utf8');
+
+  it('brings its own background, rather than showing the page through', () => {
+    expect(script).toMatch(/\.tier \{[^']*background: #fff/);
+  });
+
+  it('fills the button with the legible accent, not the raw one', () => {
+    // A pale brand colour makes a pale rectangle, which reads as a panel
+    // rather than a control.
+    expect(script).toMatch(/\.join a \{[^']*background: ' \+ accentText/);
+  });
+
+  it('draws the highlighted outline in the legible accent too', () => {
+    expect(script).toMatch(/\.tier\.featured \{ border: 3px solid ' \+ accentText/);
+  });
+
+  it('makes room for the pill above every card, not by moving one', () => {
+    /*
+      The pill is absolutely positioned above the featured card's top edge.
+      The room for it is made once on the grid, so the highlighted card's
+      title still sits on the same line as its neighbours' — it used to carry
+      a `margin-top`, which pushed its whole contents down.
+    */
+    expect(script).toMatch(/\.tiers \{[^']*padding-top: 14px/);
+    expect(script).not.toMatch(/\.tier\.featured \{[^']*margin-top/);
+  });
+
+  it('gives a card room for a line of text to be a line', () => {
+    // 15rem fitted five across on a wide page and turned every benefit into
+    // two lines.
+    expect(script).toMatch(/minmax\(20rem, 1fr\)/);
   });
 });

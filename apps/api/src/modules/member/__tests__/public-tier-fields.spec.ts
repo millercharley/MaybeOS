@@ -22,6 +22,7 @@ describe('the public shape of a membership tier', () => {
         'description',
         'highlightLabel',
         'id',
+        'initiationFeeCents',
         'isPayWhatYouCan',
         'maxMembers',
         'minPrice',
