@@ -23,6 +23,7 @@ import { CommonsModule } from './modules/commons/commons.module';
 import { ImpactModule } from './modules/impact/impact.module';
 import { SchedulerModule } from './modules/scheduler/scheduler.module';
 import { BelongingModule } from './modules/belonging/belonging.module';
+import { SupportModule } from './modules/support/support.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { StripeModule } from './modules/stripe/stripe.module';
 import { EmailModule } from './modules/email/email.module';
@@ -151,6 +152,7 @@ import { HealthModule } from './modules/health/health.module';
     CalendarModule,
     SchedulerModule,
     PlatformModule,
+    SupportModule,
     BelongingModule,
   ],
   providers: [

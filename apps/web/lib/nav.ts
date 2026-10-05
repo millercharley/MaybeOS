@@ -11,6 +11,7 @@ import {
   HeartHandshake,
   Landmark,
   LayoutDashboard,
+  LifeBuoy,
   ListChecks,
   Mail,
   MessageSquare,
@@ -97,6 +98,14 @@ const adminNav = (slug: string): NavItem[] => [
   // straight to it — this entry is for everybody who did not get that email.
   { href: `/admin/${slug}/recap`, label: 'Monthly recap', icon: Newspaper },
   { href: `/admin/${slug}/settings`, label: 'Settings', icon: Settings },
+  /*
+    MaybeOS's own documentation (PLT-05). Charley: "Under the Settings option
+    in the Administration navigation panel, add a new page for Support."
+
+    Last, under Settings, because it is the thing you reach for when one of
+    the entries above it has not done what you expected.
+  */
+  { href: `/admin/${slug}/support`, label: 'Support', icon: LifeBuoy },
 ];
 
 /**

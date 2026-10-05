@@ -475,6 +475,17 @@ export class StorageService {
   }
 
   /**
+   * A screenshot in MaybeOS's own documentation (PLT-05).
+   *
+   * Filed under `platform` rather than a co-op, because these articles belong
+   * to no co-op — and a picture of an admin screen is still a picture of
+   * somebody's admin screen, so it goes in the private bucket like the rest.
+   */
+  async uploadSupportImage(body: Buffer, mimeType: string): Promise<string> {
+    return this.uploadImage('platform', 'support', body, mimeType, 'Screenshots');
+  }
+
+  /**
    * Store an image against an org, under `folder`.
    *
    * Was `uploadArticleCover` alone; room photos need exactly the same
