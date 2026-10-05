@@ -64,10 +64,19 @@ describe('what an admin may set', () => {
     expect(initiationProblem(-1)).toMatch(/negative/i);
   });
 
-  it('refuses a number that is almost certainly a typo', () => {
-    // A co-op meaning $50 and typing cents in the dollars box asks for
-    // $5,000. The cap is low enough to catch that and high enough that a
-    // real joining fee passes.
+  it('takes a real co-op’s joining fee', () => {
+    /*
+      The cap was $500, picked by me as a typo guard and wrong the first time
+      somebody used it: MaybeItsFate’s Believer level asks $970 and the screen
+      refused it. A joining fee is the price of a place in a building, not a
+      subscription, and co-ops that ask for one often ask for thousands.
+    */
+    expect(initiationProblem(97000)).toBeNull();
+    expect(initiationProblem(500000)).toBeNull();
+  });
+
+  it('still refuses a number that is almost certainly a typo', () => {
+    // The guard that matters is cents typed into a box labelled dollars.
     expect(initiationProblem(MAX_INITIATION_CENTS + 1)).toMatch(/typo/i);
     expect(initiationProblem(MAX_INITIATION_CENTS)).toBeNull();
   });
