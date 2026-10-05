@@ -464,20 +464,42 @@ describe('DoorService — a sync that cannot fit in one request', () => {
     }
   });
 
-  it('asks the database what is still behind, rather than subtracting', async () => {
+  it('counts what is still wrong, not what this press did not reach', async () => {
     /*
-      The bug this exists for. A full sync resends every row, so
-      `changed.length - sent` reported hundreds outstanding on a sheet that
-      was already correct — Charley pressed Sync twice and got "sent 200, 236
-      still to go" both times. True each time, and never going to change.
+      Two wrong answers came before this one, and both read plausibly.
+
+      `changed.length - sent` meant "everybody minus what I managed", which
+      on a full sync is hundreds outstanding on a sheet that is already
+      correct. Counting rows older than this request meant "not touched in
+      this press" — so the two hundred written an hour earlier counted as
+      behind, and Charley saw "236 still to go" three times running: 200 from
+      the previous press, plus the 36 genuinely left.
     */
-    const { service, prisma } = buildBigSync();
-    prisma.doorSheetEntry.count.mockResolvedValue(236);
+    const { service } = buildBigSync();
 
     const result = await service.syncSheet({ id: 'org-1', doorScriptUrl: 'https://x' }, 'secret');
 
-    expect(result.remaining).toBe(236);
-    expect(prisma.doorSheetEntry.count.mock.calls[0][0].where.syncedAt).toHaveProperty('lt');
+    // An empty sheet and 436 members: everything it did not write is behind,
+    // and everything it wrote is not.
+    expect(result.remaining).toBe(436 - result.synced);
+  });
+
+  it('says nothing is behind on a sheet that already matches, even on a full resend', async () => {
+    // The case Charley was actually in. A full sync resends every row by
+    // design; that does not mean anything was wrong with them.
+    const { service, prisma } = buildBigSync({ members: ['a', 'b'] });
+    prisma.doorSheetEntry.findMany.mockResolvedValue([
+      { email: 'a@example.com', doorPin: 'ABCDE', name: 'a', revoked: false, syncedAt: new Date('2020-01-01') },
+      { email: 'b@example.com', doorPin: 'ABCDE', name: 'b', revoked: false, syncedAt: new Date('2020-01-02') },
+    ]);
+    const result = await service.syncSheet(
+      { id: 'org-1', doorScriptUrl: 'https://x' },
+      'secret',
+      { full: true },
+    );
+
+    expect(result.synced).toBe(2);
+    expect(result.remaining).toBe(0);
   });
 
   it('takes the stalest rows first, so pressing again makes progress', async () => {
