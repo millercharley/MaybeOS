@@ -22,12 +22,25 @@ export interface SeedArticle {
   body: string;
 }
 
+/**
+ * The order the sections read in (PLT-05).
+ *
+ * Explicit, because the alphabet is not an argument: sorted by name, Events
+ * came before Getting started and Migration sat at the end, which is the
+ * reverse of the order somebody meets them. This runs orientation, moving in,
+ * then the three things a co-op does daily, then the reference.
+ *
+ * An article whose category is not on this list still appears — at the end,
+ * rather than vanishing, because a category somebody typed by hand is a
+ * section they meant to make.
+ */
 export const SUPPORT_CATEGORIES = [
   'Getting started',
+  'Migration',
   'Members and dues',
   'Events and tickets',
   'Rooms and the building',
-  'Migration',
+  'Settings',
 ] as const;
 
 export const SUPPORT_ARTICLES: SeedArticle[] = [
@@ -113,18 +126,50 @@ export const SUPPORT_ARTICLES: SeedArticle[] = [
 `.trim(),
   },
   {
-    slug: 'events-and-tickets',
-    title: 'Events, tickets and the waitlist',
-    summary: 'Who can run an event, how tickets are sold, and what happens when it fills.',
+    slug: 'running-an-event',
+    title: 'Running an event: who may, and what they can do',
+    summary: 'Hosts, co-hosts, and the difference between creating an event and running it.',
     category: 'Events and tickets',
     body: `
-<p>Any member can create an event. The host is whoever is running it, which need not be whoever created it, and co-hosts share every power the host has: editing it, seeing who is coming, selling and refunding tickets, and letting somebody in off the waitlist.</p>
-<h3>Visibility</h3>
-<p>Public events can be shared and bought from by anybody, with no account. Members-only events appear to your members. Private events are, for most co-ops, a room booking with a name on it.</p>
-<h3>Tickets</h3>
-<p>An event can be free, ticketed, or pay-at-the-door. A ticketed event shows sales and buyers to whoever runs it, with a refund beside each. Sales can be paused without unpublishing the event or cancelling it — the event stays listed and everybody already coming stays coming, which is the right tool for "we are nearly full and I need to think".</p>
-<h3>The waitlist</h3>
-<p>An event with a capacity can keep one. Over capacity, a guest is waitlisted rather than refused, and when somebody with a place cancels the first person waiting is given it automatically and emailed. Whoever runs the event can also let a particular person in by hand, out of turn.</p>
+<p>Any member can create an event. Whoever is <strong>running</strong> it need not be whoever created it — an organiser can set up an evening on somebody else's behalf and hand it over by naming them as host.</p>
+<h3>Hosts and co-hosts</h3>
+<p>A co-host has every power the host has: editing the event, changing its details, seeing who is coming, selling and refunding tickets, and letting somebody in off the waitlist. This is deliberate. Somebody asked to help run an evening who cannot see the door is not helping run it.</p>
+<p>The people who may change an event are the host, whoever created it, any co-host, and any organiser. Nobody else, including other members.</p>
+<h3>Who can see it</h3>
+<p>A <strong>public</strong> event can be read, shared and bought from by anybody, with no account — its link works on social media. A <strong>members-only</strong> event appears to your members. A <strong>private</strong> event is, for most co-ops, a room booking with a name on it.</p>
+<h3>Editing and the things that are not editing</h3>
+<p>Changing a title or a time is editing. Two other things look similar and are not: <em>hiding</em> an event removes it from view without telling anybody, and <em>cancelling</em> it refunds every ticket. Cancelling is not reversible by un-cancelling, so it asks first.</p>
+`.trim(),
+  },
+  {
+    slug: 'selling-tickets',
+    title: 'Selling tickets',
+    summary: 'Prices, who sees the sales, refunds, and pausing without cancelling.',
+    category: 'Events and tickets',
+    body: `
+<p>An event is free, ticketed, or pay-at-the-door. A ticketed event sells through Stripe on your own connected account — somebody with no MaybeOS account can buy one, which is the point of a public event.</p>
+<h3>What whoever runs it can see</h3>
+<p>The host, a co-host, whoever created it, and any organiser see how many tickets have sold, who bought them, and what each paid. That list is not visible to other members: it is a list of who paid what.</p>
+<h3>Refunds</h3>
+<p>Beside each buyer. A refund returns them everything including the MaybeOS fee; Stripe keeps its own processing fee, so a refund leaves the co-op slightly out of pocket — that is Stripe's charge, not ours. Refunding is idempotent: a second press on somebody already refunded does nothing rather than paying twice.</p>
+<p>This used to be organisers only, on the reasoning that the co-op's money is the co-op's decision. It still is the co-op's money — but the person a buyer writes to is the host, and a host who has to find an organiser to undo their own sale is a host who stops selling tickets.</p>
+<h3>Pausing</h3>
+<p>Stops new purchases without hiding the event or refunding anybody. The event stays listed, everybody already coming still is, and you can start again. It is the right tool for "we are nearly full and I need to think", which is otherwise a choice between cancelling and letting it overfill.</p>
+`.trim(),
+  },
+  {
+    slug: 'capacity-and-waitlist',
+    title: 'Capacity and the waitlist',
+    summary: 'What happens when an event fills, and how to let one more person in.',
+    category: 'Events and tickets',
+    body: `
+<p>An event can have a capacity. Without one it never fills and the waitlist never applies.</p>
+<h3>What happens at the limit</h3>
+<p>With a waitlist on, somebody arriving after the last place is <strong>waitlisted</strong> rather than refused — they are told that is what happened, which matters: a refusal reads as "not for you", a waitlist reads as "not yet".</p>
+<h3>It moves on its own</h3>
+<p>When somebody with a place cancels, the first person waiting is given it and emailed. Nobody has to notice or do anything, which is the whole reason it is worth having — a waitlist that depends on a host remembering is a list of people who were never told.</p>
+<h3>Letting a particular person in</h3>
+<p>Whoever runs the event sees the waitlist in order, with how many places are free, and can give one to somebody out of turn. That deliberately does not check the capacity: a host letting somebody in has decided there is room, and the number on the screen is not the only thing they know about the evening.</p>
 `.trim(),
   },
   {
@@ -215,6 +260,68 @@ export const SUPPORT_ARTICLES: SeedArticle[] = [
 <p>A single script tag you paste onto your own site, showing either your events or your membership tiers. It carries live figures — how many members, how many rooms, how much is on this month — counted when the page loads rather than typed in once, so your website is never quietly out of date about how big you are. It renders inside a shadow root, so it cannot be disturbed by your site's own styles, and it takes your brand colour.</p>
 <h3>The public events page</h3>
 <p><code>/orgs/your-slug/events</code>. Everything coming up, readable without an account, with RSVP and ticket buying for people who do not have one. If you have your own calendar page, set its address in Settings &rarr; Join page &amp; embeds and every "View all events" link goes there instead.</p>
+`.trim(),
+  },
+  {
+    slug: 'where-each-setting-lives',
+    title: 'Where each setting lives',
+    summary: 'The nine tabs in Settings, and what each one is for.',
+    category: 'Settings',
+    body: `
+<p>Settings has nine tabs. Most of what you will ever change is on two of them.</p>
+<h3>General</h3>
+<p>Your co-op's name, address on MaybeOS, description, mission and timezone — and, further down, your locations, your welcome email, door access, and where to write for help. The timezone is worth getting right early: it decides what "today" means on every member's dashboard, and a co-op in New York read from California should still show tonight's event as tonight.</p>
+<h3>Branding</h3>
+<p>Your logo, banner and colour. See <em>Branding: your colour, and where it shows up</em> — it reaches further than this tab suggests.</p>
+<h3>Join page &amp; embeds</h3>
+<p>Everything about your presence off MaybeOS: the address of your join page, who may come through it, the script tags for your own website, and where "View all events" should send people.</p>
+<h3>Getting started</h3>
+<p>The checklist a new co-op works through, and what a new member is shown on their first visit.</p>
+<h3>Rooms &amp; bookings</h3>
+<p>How long a reservation may be, whether members have a monthly or yearly allowance, and whether every event must name a room.</p>
+<h3>Migration</h3>
+<p>The three things a co-op arriving from somewhere else needs: sign-in links for imported members, the address of their old billing, and the Google calendar import.</p>
+<h3>Integrations, Radar, Billing</h3>
+<p>Calendars and social accounts; the digest of what members have missed; and your MaybeOS plan with the Stripe connection that dues and tickets run through.</p>
+`.trim(),
+  },
+  {
+    slug: 'settings-that-change-things',
+    title: 'The settings that change how your co-op works',
+    summary: 'Eight switches worth deciding deliberately, and what each one does to members.',
+    category: 'Settings',
+    body: `
+<p>Most settings are details. These eight change what members can do, so they are worth a decision rather than a default.</p>
+<h3>Who can join</h3>
+<p>On, and your join page takes payment and creates memberships. Off, and the same page shows your tiers and asks people to write to you. The question is whether you want to meet somebody before they are a member.</p>
+<h3>Whether events must name a room</h3>
+<p>Off for most co-ops — plenty of events happen in a park, a front room, or online. On if your rule is that nothing happens in the building without a space being held.</p>
+<h3>How long a room may be booked, and how much</h3>
+<p>Three hours by default, twenty-four at most. The per-member allowance is off unless you turn it on; turn it on when one member booking the good room every Saturday has become a conversation nobody wants to have in person.</p>
+<h3>What a tier asks in service</h3>
+<p>Minutes a month or a year, set per tier. A co-op that asks for nothing leaves it blank and the Serve page simply shows what needs doing.</p>
+<h3>Whether members can open channels</h3>
+<p>On, and the Commons grows the way the membership wants it to. Off, and it stays as organisers arranged it.</p>
+<h3>Door access</h3>
+<p>Two things, and neither works alone: the switch and the script address. A third switch decides whether members are <em>emailed</em> their code — off by default, so you can fill the sheet before anybody is told.</p>
+<h3>Shares and the cap table</h3>
+<p>On, and every member sees every member's holding on the Members page. That is a transparency decision about your own co-op, not a feature flag.</p>
+<h3>Radar digests</h3>
+<p>What members are sent about things they have missed. Quiet by default, because an emailed digest nobody asked for is the fastest way to be marked as spam.</p>
+`.trim(),
+  },
+  {
+    slug: 'branding-and-colour',
+    title: 'Branding: your colour, and where it shows up',
+    summary: 'The accent reaches further than the tab suggests, including onto your own website.',
+    category: 'Settings',
+    body: `
+<p>Your brand colour is set once, in Branding, and everything that needs a colour inherits it: buttons, dates, prices, the badge on a highlighted tier, and the website embed on your own site.</p>
+<h3>A pale colour needs no special handling, but does have one trap</h3>
+<p>MaybeOS darkens your colour where it has to be read as text, so a pale blue at 14px on white is still legible. The same applies to buttons in the embed, which are filled with the darkened version rather than the raw colour — a pale fill with dark text reads as a panel, not a control.</p>
+<p>The trap is your own website. MaybeItsFate's colour is a light blue, and their join page's background is that same blue — so when the embed first went up, every accented thing disappeared into the page. The cards now carry their own white ground, which fixes it, but it is worth knowing that <strong>your embed will look different on a dark or strongly coloured page</strong> than it does on a white one. Look at it where it will actually live.</p>
+<h3>Logo and banner</h3>
+<p>The logo appears in the header and on your join page; the banner only on dashboards, and only if you set one. Neither has a placeholder when absent, deliberately — an empty grey rectangle across the top of every member's dashboard is worse than no banner.</p>
 `.trim(),
   },
 ];
