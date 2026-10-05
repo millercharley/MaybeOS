@@ -234,6 +234,35 @@ export class DoorService {
       the back. Three presses cover a roster this size; the quarter-hourly
       pass does the same thing unattended.
     */
+    /*
+      Which rows are genuinely behind — missing from the sheet or carrying
+      the wrong details (DOR-04).
+
+      Kept apart from `changed`, which on a full sync is everybody by
+      definition. Two wrong answers came before this one and both read
+      plausibly: `changed.length - sent` meant "everybody minus what I
+      managed", and counting rows older than this request meant "not touched
+      in this press" — so the two hundred written an hour earlier counted as
+      behind, and Charley saw 236 three times running.
+
+      Rows drop out of here as they are written, so what is left at the end
+      is what is still wrong. Zero on a healthy sheet, however the sync was
+      asked for.
+    */
+    const outOfSync = new Set(
+      [...wanted.values()]
+        .filter((row) => {
+          const entry = recorded.get(row.email);
+          return (
+            !entry ||
+            entry.doorPin !== row.code ||
+            entry.name !== row.name ||
+            entry.revoked !== row.revoked
+          );
+        })
+        .map((row) => row.email),
+    );
+
     changed.sort((a, b) => {
       const at = recorded.get(a.email)?.syncedAt?.getTime() ?? 0;
       const bt = recorded.get(b.email)?.syncedAt?.getTime() ?? 0;
@@ -241,7 +270,6 @@ export class DoorService {
     });
 
     let sent = 0;
-    const startedAt = new Date();
     const stopBy = Date.now() + SYNC_DEADLINE_MS;
 
     for (let i = 0; i < changed.length; i += BATCH) {
@@ -273,6 +301,7 @@ export class DoorService {
           }),
         ),
       );
+      for (const row of batch) outOfSync.delete(row.email);
       sent += batch.length;
     }
 
@@ -289,17 +318,7 @@ export class DoorService {
       });
     }
 
-    /*
-      What is genuinely still behind, not simply what this request did not
-      reach. On a full sync `changed` is everybody, so `changed.length - sent`
-      would report hundreds outstanding on a sheet that is already correct —
-      which is exactly the number that stopped moving.
-    */
-    const stale = await this.prisma.doorSheetEntry.count({
-      where: { orgId: org.id, syncedAt: { lt: startedAt } },
-    });
-
-    return { synced: sent, remaining: stale };
+    return { synced: sent, remaining: outOfSync.size };
   }
 
   /**
