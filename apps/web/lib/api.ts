@@ -750,12 +750,43 @@ class ApiClient {
      */
     sendSignInLinks: (
       orgId: string,
-      data: { limit?: number; dryRun?: boolean },
+      data: { limit?: number; dryRun?: boolean; scope?: ResendScope },
       token: string,
     ) =>
-      this.request<{ sent: number; remaining: number; recipients: string[]; dryRun: boolean }>(
-        `/orgs/${orgId}/members/sign-in-links`,
-        { method: 'POST', body: JSON.stringify(data), token },
+      this.request<{
+        sent: number;
+        failed: number;
+        remaining: number;
+        recipients: string[];
+        dryRun: boolean;
+        scope: ResendScope;
+      }>(`/orgs/${orgId}/members/sign-in-links`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
+    /**
+     * Ask the email provider what actually happened to those links (MEM-24).
+     *
+     * `signInSentAt` is written before the provider is called, so the old
+     * screen was reading its own marks: when Postmark's plan capped at a
+     * hundred messages it reported four hundred and thirty-five sent and
+     * nobody left waiting. This reads Postmark instead.
+     *
+     * Reconciliation only — it sends nothing.
+     */
+    auditSignInLinks: (orgId: string, token: string) =>
+      this.request<SignInAudit>(`/orgs/${orgId}/members/sign-in-audit`, {
+        method: 'POST',
+        token,
+      }),
+
+    /** The address is fixed — let this member be written to again (MEM-24). */
+    clearSignInBounce: (orgId: string, userId: string, token: string) =>
+      this.request<{ cleared: boolean; reason?: 'not-bounced' | 'refused' }>(
+        `/orgs/${orgId}/members/${userId}/sign-in-bounce/clear`,
+        { method: 'POST', token },
       ),
 
     /**
@@ -3601,6 +3632,37 @@ export interface MemberProfile {
     createdAt: string;
     post: { id: string; title: string | null; excerpt: string; channel: { id: string; name: string } };
   }>;
+}
+
+/** Which group a re-send of the sign-in links is for (MEM-24). */
+export type ResendScope = 'waiting' | 'undelivered' | 'not-signed-in';
+
+/**
+ * What the email provider says happened to the migration send (MEM-24).
+ *
+ * `checked: false` is a real answer, not an error, and `reason` says which:
+ * no provider configured, nobody written to yet, the provider's records could
+ * not be recognised, or the lookup ran out of time. None of them write
+ * anything down, and the screen has to say so rather than show zeroes.
+ */
+export interface SignInAudit {
+  checked: boolean;
+  reason?: 'no-provider' | 'nobody-sent' | 'unrecognised' | 'incomplete';
+  tally: {
+    /** Marked as sent in MaybeOS — what the old screen called "sent". */
+    marked: number;
+    delivered: number;
+    bounced: number;
+    /** Marked as sent, and the provider has no record of it at all. */
+    missing: number;
+    /** Reached, and has still never signed in. */
+    stalled: number;
+    /** Never written to: the queue the original send works through. */
+    neverSent: number;
+  };
+  bounced: Array<{ userId: string; name: string | null; email: string; kind: string }>;
+  beyondRetention: boolean;
+  checkedAt: string | null;
 }
 
 export interface ImportResult {

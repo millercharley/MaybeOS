@@ -576,6 +576,30 @@ model UserOrg {
   /// makes the migration send resumable and stops a second run reaching the
   /// people the first one already did. Null means never sent.
   signInSentAt        DateTime?
+  /// What Postmark says actually happened to that link (MEM-24).
+  ///
+  /// `signInSentAt` records that MaybeOS *tried* — it is written inside the
+  /// same transaction that mints the token, before the provider is called at
+  /// all, so that a crash cannot leave a sent link unrecorded. The cost of
+  /// that order is that it proves nothing about delivery, and the first real
+  /// migration send proved how much that matters: Postmark's plan stopped at
+  /// a hundred messages, MaybeOS marked four hundred and thirty-five, and
+  /// three hundred and thirty-five people were recorded as told while their
+  /// inbox stayed empty. Nothing in MaybeOS could tell them apart.
+  ///
+  /// So these three come from the provider, not from us. `signInDeliveredAt`
+  /// is the ReceivedAt of a message Postmark has a record of accepting;
+  /// `signInBouncedAt` is a bounce against that address; `signInAuditedAt`
+  /// says when the reconciliation last looked, which is what makes "Postmark
+  /// has never heard of this message" different from "nobody has checked".
+  signInDeliveredAt   DateTime?
+  signInBouncedAt     DateTime?
+  /// The bounce in a few words, as Postmark types it — "Hard bounce", "Spam
+  /// complaint". Kept so the admin fixing the address knows whether it is a
+  /// typo or a person who pressed the spam button, which need opposite
+  /// responses. Null unless `signInBouncedAt` is set.
+  signInBounceKind    String?
+  signInAuditedAt     DateTime?
   /// When the last digest went out, so a run that happens twice in an hour
   /// does not send twice. What stops an *event* repeating is `RadarSend`.
   radarLastSentAt     DateTime?
