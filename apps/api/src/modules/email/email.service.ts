@@ -47,6 +47,21 @@ export function addresses(to: string | Addresses): { primary: string; also?: str
   return also && also.toLowerCase() !== primary.toLowerCase() ? { primary, also } : { primary };
 }
 
+/**
+ * A date window spelled both ways Postmark might read it (MEM-24).
+ *
+ * The SDK types these as `fromDate` and puts them on the query string exactly
+ * as given; Postmark's own documentation calls them `fromdate`. In practice it
+ * accepts either, and betting the audit on that would be a poor trade: an
+ * unrecognised filter is not an error, it is *no filter*, which returns every
+ * message the server has ever sent and looks from the outside like a lookup
+ * that keeps running out of time. Sending both spellings of the same value
+ * costs a few bytes and removes the question.
+ */
+function dateWindow(fromDate: string, toDate: string): Record<string, string> {
+  return { fromDate, toDate, fromdate: fromDate, todate: toDate };
+}
+
 /** One outbound message as Postmark reports it, reduced to what MaybeOS reads. */
 export interface ProviderMessage {
   recipients: string[];
@@ -389,8 +404,7 @@ export class EmailService {
     const page = await this.client.getOutboundMessages({
       count: opts.count,
       offset: opts.offset,
-      fromDate: opts.fromDate,
-      toDate: opts.toDate,
+      ...dateWindow(opts.fromDate, opts.toDate),
       ...(opts.tag && { tag: opts.tag }),
     });
 
@@ -425,8 +439,7 @@ export class EmailService {
     const page = await this.client.getBounces({
       count: opts.count,
       offset: opts.offset,
-      fromDate: opts.fromDate,
-      toDate: opts.toDate,
+      ...dateWindow(opts.fromDate, opts.toDate),
     });
 
     return {
