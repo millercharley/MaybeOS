@@ -19,13 +19,16 @@ export interface SyncState {
 }
 
 /**
- * How long between finished passes.
+ * How long to wait after a pass *finishes* before starting another.
  *
- * Not the fifteen minutes the scheduler ticks at. A full pass is nine
- * calendars and two years of entries for MaybeItsFate, and running that four
- * times an hour would spend most of a Google quota re-reading entries nobody
- * has touched. An hour is the compromise: a deleted booking frees up within
- * the hour rather than whenever somebody next presses a button.
+ * Not the fifteen minutes the scheduler ticks at, and not how long a pass
+ * takes. A tick moves about forty-eight entries, and MaybeItsFate is nine
+ * calendars, so a pass runs over many ticks — hours, not minutes — and this is
+ * only the idle time once it has got all the way round.
+ *
+ * An hour rather than immediately, because a co-op that has just been read end
+ * to end has nothing to say for a while, and reading it again straight away
+ * would spend a Google quota on entries nobody has touched.
  */
 export const SYNC_INTERVAL_MS = 60 * 60 * 1000;
 

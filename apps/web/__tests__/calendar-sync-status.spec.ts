@@ -44,7 +44,14 @@ describe('the import panel', () => {
   });
 
   it('tells the admin what pressing the button is now for', () => {
-    // It used to be the only thing that ever read Google.
-    expect(panel).toMatch(/about once an hour/);
+    /*
+      It used to be the only thing that ever read Google. It is now the way to
+      not wait — and the wait is honestly described, because it is hours and
+      not minutes: MaybeItsFate's pass moves about forty-eight entries a tick
+      across nine calendars.
+    */
+    expect(panel).toMatch(/continuously in the background/);
+    expect(panel).toMatch(/takes a few hours/);
+    expect(panel).toMatch(/how you stop waiting/);
   });
 });

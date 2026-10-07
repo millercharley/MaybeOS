@@ -208,9 +208,11 @@ export function CalendarImport({ org }: { org: Org }) {
             a room stayed booked after its entry was deleted. Now it is the
             way to not wait an hour.
           */}
-          MaybeOS now also does this by itself, about once an hour, so an entry
-          deleted in Google stops holding the room without anybody pressing
-          anything. Running it here is how you stop waiting.
+          MaybeOS now also does this by itself, working through your calendars
+          continuously in the background, so an entry deleted in Google stops
+          holding the room without anybody pressing anything. A full pass over
+          a co-op with several room calendars takes a few hours, so running it
+          here is still how you stop waiting.
         </p>
       </div>
 
