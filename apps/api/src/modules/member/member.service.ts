@@ -64,6 +64,11 @@ function toMemberView<
     emailOptIn?: boolean | null;
     doorPin?: string | null;
     socialShareAllowed?: boolean | null;
+    signInSentAt?: Date | null;
+    signInDeliveredAt?: Date | null;
+    signInBouncedAt?: Date | null;
+    signInBounceKind?: string | null;
+    signInAuditedAt?: Date | null;
     user: { email?: string };
   },
 >(member: T, viewer: ContactViewer) {
@@ -87,6 +92,22 @@ function toMemberView<
     // Whether an admin has stopped this member sharing to the co-op's
     // Facebook and Instagram (SOC-01). A moderation decision, not a profile.
     socialShareAllowed: _socialShare,
+    /*
+      What happened to this member's sign-in email (MEM-25).
+
+      Facts about somebody else's email address, which is the one thing the
+      directory has never shown — and a bounce says more than the address
+      does: that it is dead, or that its owner pressed the spam button. It
+      travels with the address it describes, like the marketing consent above.
+
+      Organisers keep it, because chasing a roster that did not arrive is
+      their job and it is the whole point of the audit.
+    */
+    signInSentAt: _signInSent,
+    signInDeliveredAt: _signInDelivered,
+    signInBouncedAt: _signInBounced,
+    signInBounceKind: _signInBounceKind,
+    signInAuditedAt: _signInAudited,
     user,
     ...rest
   } = member;
@@ -1481,7 +1502,7 @@ export class MemberService {
     const scope = options.scope ?? 'waiting';
 
     /*
-      Who this send is for (MEM-24).
+      Who this send is for (MEM-25).
 
       Three different groups, and the difference between them is not a detail:
       `waiting` has never been written to, `undelivered` was written to and the
@@ -1581,7 +1602,7 @@ export class MemberService {
               data: {
                 signInSentAt: new Date(),
                 /*
-                  A re-send is a fresh question, so the old answers go (MEM-24).
+                  A re-send is a fresh question, so the old answers go (MEM-25).
 
                   Leaving `signInDeliveredAt` set from a previous audit would
                   mean the next audit had nothing to find out, and this member
@@ -1612,7 +1633,7 @@ export class MemberService {
           );
 
           /*
-            Take the mark back when the provider says no (MEM-24).
+            Take the mark back when the provider says no (MEM-25).
 
             `sendRaw` returns false only for an explicit refusal — a quota
             exhausted, an address Postmark will not accept — and that is the
@@ -1673,7 +1694,7 @@ export class MemberService {
   private static readonly AUDIT_MAX_PAGES = 10;
 
   /**
-   * Ask Postmark what actually happened to the sign-in links (MEM-24).
+   * Ask Postmark what actually happened to the sign-in links (MEM-25).
    *
    * **Why this exists.** `signInSentAt` is written before the provider is
    * called, so it records an attempt. The first real migration send is what
@@ -1967,7 +1988,7 @@ export class MemberService {
   }
 
   /**
-   * "I have sorted that address out — try them again" (MEM-24).
+   * "I have sorted that address out — try them again" (MEM-25).
    *
    * Every re-send scope excludes a bounced address, which is right: writing
    * again to an address that refused the first message spends quota the

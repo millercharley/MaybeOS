@@ -15,7 +15,7 @@ import {
 
 /**
  * Telling an imported roster how to get in, and checking that it worked
- * (MEM-18, MEM-24).
+ * (MEM-18, MEM-25).
  *
  * The migration send, and the only way to reach these people: an invitation
  * is refused for anybody who already has a membership, and after a CSV
@@ -147,7 +147,7 @@ export function SignInLinks({ org }: { org: Org }) {
               {/*
                 Said out loud, because a refusal puts the member straight back
                 in the queue and an admin watching the same number twice is
-                owed the reason (MEM-24).
+                owed the reason (MEM-25).
               */}
               Your provider refused {failedTotal} — those members are back in the queue, and
               pressing again will try them once more. If the number does not move, the provider
@@ -157,7 +157,7 @@ export function SignInLinks({ org }: { org: Org }) {
         </div>
       )}
 
-      {/* ── What the provider actually did (MEM-24) ── */}
+      {/* ── What the provider actually did (MEM-25) ── */}
       <div className="rounded-lg border border-gray-200 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="max-w-prose">

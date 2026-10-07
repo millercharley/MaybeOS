@@ -139,7 +139,7 @@ describe('sending a roster its way in', () => {
   });
 
   /*
-    What the hundred-message cap taught (MEM-24).
+    What the hundred-message cap taught (MEM-25).
 
     Postmark's plan stopped accepting at a hundred, MaybeOS marked four hundred
     and thirty-five, and nothing noticed: `sendRaw` returned false for every

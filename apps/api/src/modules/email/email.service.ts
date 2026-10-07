@@ -48,7 +48,7 @@ export function addresses(to: string | Addresses): { primary: string; also?: str
 }
 
 /**
- * A date window spelled both ways Postmark might read it (MEM-24).
+ * A date window spelled both ways Postmark might read it (MEM-25).
  *
  * The SDK types these as `fromDate` and puts them on the query string exactly
  * as given; Postmark's own documentation calls them `fromdate`. In practice it
@@ -334,7 +334,7 @@ export class EmailService {
     subject: string,
     htmlBody: string,
     /**
-     * Postmark's tag, for mail that will later be audited (MEM-24).
+     * Postmark's tag, for mail that will later be audited (MEM-25).
      *
      * Without one, asking the provider "which of these four hundred people did
      * you actually accept a sign-in link for" is a question about subject
@@ -382,7 +382,7 @@ export class EmailService {
   }
 
   /**
-   * What Postmark has a record of accepting, for the audit (MEM-24).
+   * What Postmark has a record of accepting, for the audit (MEM-25).
    *
    * Paged rather than fetched whole: a page is five hundred messages, which is
    * Postmark's own ceiling, and an org's send window can hold more than that
@@ -421,7 +421,7 @@ export class EmailService {
   }
 
   /**
-   * Bounces in a window, for the audit (MEM-24).
+   * Bounces in a window, for the audit (MEM-25).
    *
    * Separate from the message list because Postmark keeps them separately, and
    * for a reason that matters here: a bounced message still counts as accepted

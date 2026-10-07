@@ -767,7 +767,7 @@ class ApiClient {
       }),
 
     /**
-     * Ask the email provider what actually happened to those links (MEM-24).
+     * Ask the email provider what actually happened to those links (MEM-25).
      *
      * `signInSentAt` is written before the provider is called, so the old
      * screen was reading its own marks: when Postmark's plan capped at a
@@ -782,7 +782,7 @@ class ApiClient {
         token,
       }),
 
-    /** The address is fixed — let this member be written to again (MEM-24). */
+    /** The address is fixed — let this member be written to again (MEM-25). */
     clearSignInBounce: (orgId: string, userId: string, token: string) =>
       this.request<{ cleared: boolean; reason?: 'not-bounced' | 'refused' }>(
         `/orgs/${orgId}/members/${userId}/sign-in-bounce/clear`,
@@ -3634,11 +3634,11 @@ export interface MemberProfile {
   }>;
 }
 
-/** Which group a re-send of the sign-in links is for (MEM-24). */
+/** Which group a re-send of the sign-in links is for (MEM-25). */
 export type ResendScope = 'waiting' | 'undelivered' | 'not-signed-in';
 
 /**
- * What the email provider says happened to the migration send (MEM-24).
+ * What the email provider says happened to the migration send (MEM-25).
  *
  * `checked: false` is a real answer, not an error, and `reason` says which:
  * no provider configured, nobody written to yet, the provider's records could
@@ -3857,6 +3857,16 @@ export interface Member {
    * (MEM-23): Stripe's own statuses are not an organiser's to overwrite.
    */
   stripeSubscriptionId?: string | null;
+  /**
+   * What happened to this member's sign-in email (MEM-25). Organisers only —
+   * a bounce is a fact about somebody's address, and the directory has never
+   * shown those.
+   *
+   * `signInBouncedAt` is the one worth putting on a roster: it is the reason a
+   * member who looks ignored has in fact never been reachable.
+   */
+  signInBouncedAt?: string | null;
+  signInBounceKind?: string | null;
   /** Ending when the paid period does (PLT-06), and when that is. */
   cancelAtPeriodEnd?: boolean;
   currentPeriodEnd?: string | null;

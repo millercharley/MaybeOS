@@ -41,6 +41,13 @@ describe('MemberService — contact redaction', () => {
     doorPin: 'ABCDE',
     // An admin has stopped this member sharing to the co-op's socials (SOC-01).
     socialShareAllowed: false,
+    // What the provider did with their sign-in email (MEM-25). Scalars on the
+    // membership, so the real query returns them whether or not anything asks.
+    signInSentAt: new Date('2026-10-04'),
+    signInDeliveredAt: null,
+    signInBouncedAt: new Date('2026-10-04'),
+    signInBounceKind: 'Hard bounce — the address does not exist',
+    signInAuditedAt: new Date('2026-10-07'),
     headline: 'Ask me about sourdough',
     location: 'Butchertown, KY',
     user: { id: userId, email, name: 'Alex', avatarUrl: null },
@@ -103,6 +110,29 @@ describe('MemberService — contact redaction', () => {
 
     const [asAdmin] = await listAs({ userId: 'admin-1', privileged: true });
     expect(asAdmin).toMatchObject({ socialShareAllowed: false });
+  });
+
+  it('does not tell other members that somebody’s email address is dead', async () => {
+    // A bounce says more about an address than the address does — that it is
+    // closed, or that its owner pressed the spam button. It belongs with the
+    // contact details, which no member sees for anybody but themselves.
+    const [other] = await listAs({ userId: 'user-1', privileged: false });
+
+    expect(other).not.toHaveProperty('signInBouncedAt');
+    expect(other).not.toHaveProperty('signInBounceKind');
+    expect(other).not.toHaveProperty('signInSentAt');
+    expect(other).not.toHaveProperty('signInDeliveredAt');
+    expect(other).not.toHaveProperty('signInAuditedAt');
+  });
+
+  it('gives organisers the bounce, which is the point of the audit', async () => {
+    // Chasing a roster that never arrived is their job, and the flag on the
+    // member list is how a bounced address stops looking like indifference.
+    const [asAdmin] = await listAs({ userId: 'admin-1', privileged: true });
+
+    expect(asAdmin).toMatchObject({
+      signInBounceKind: 'Hard bounce — the address does not exist',
+    });
   });
 
   it('gives organisers the door codes, which is what they are for', async () => {
