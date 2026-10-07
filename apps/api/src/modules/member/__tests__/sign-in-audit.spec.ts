@@ -6,6 +6,7 @@ import {
   indexDelivered,
   inconclusive,
   isPermanentRefusal,
+  isDeliveryFailure,
   isSignInMessage,
   memberAddresses,
   normalizeEmail,
@@ -13,6 +14,7 @@ import {
   scopeFilter,
   tallyLine,
   verdictFor,
+  wasSent,
   type AuditMessage,
 } from '../sign-in-audit';
 
@@ -107,6 +109,61 @@ describe('indexing bounces', () => {
     ]);
 
     expect(bounced.has('member@example.com')).toBe(true);
+  });
+});
+
+describe('what Postmark files as a bounce but is not one', () => {
+  /*
+    Found on the first audit of the real roster.
+
+    One of MaybeItsFate's 433 came back as "Auto Responder" — an out-of-office
+    reply. MaybeOS recorded a bounced address, showed the admin a member whose
+    email needed fixing, and left them out of every re-send, on the strength of
+    a message proving their address works.
+  */
+  it('does not treat an out-of-office reply as a failure', () => {
+    expect(isDeliveryFailure('AutoResponder')).toBe(false);
+
+    const bounced = indexBounces([
+      { email: 'away@example.com', type: 'AutoResponder', bouncedAt: '2026-10-04T16:05:00.000Z' },
+    ]);
+    expect(bounced.size).toBe(0);
+  });
+
+  it('does not treat a subscribe or an address-change notice as a failure', () => {
+    expect(isDeliveryFailure('Subscribe')).toBe(false);
+    expect(isDeliveryFailure('AddressChange')).toBe(false);
+  });
+
+  it('still treats the real failures as failures', () => {
+    for (const type of ['HardBounce', 'SoftBounce', 'DnsError', 'Blocked', 'SpamComplaint']) {
+      expect(isDeliveryFailure(type)).toBe(true);
+    }
+
+    const bounced = indexBounces([
+      { email: 'gone@example.com', type: 'HardBounce', bouncedAt: '2026-10-04T16:05:00.000Z' },
+    ]);
+    expect(bounced.size).toBe(1);
+  });
+});
+
+describe('a message the provider has not actually sent', () => {
+  it('does not count a queued message as reached', () => {
+    // It is in the outbound list and it has gone nowhere — the same mistake as
+    // trusting our own mark, one layer further out.
+    expect(wasSent(message({ status: 'Queued' }))).toBe(false);
+
+    const delivered = indexDelivered([message({ status: 'Queued' })], SUBJECT);
+    expect(delivered.size).toBe(0);
+  });
+
+  it('counts the ones it has', () => {
+    expect(wasSent(message({ status: 'Sent' }))).toBe(true);
+    expect(wasSent(message({ status: 'Processed' }))).toBe(true);
+  });
+
+  it('treats a missing status as sent, which is what older records have', () => {
+    expect(wasSent(message({ status: null }))).toBe(true);
   });
 });
 
