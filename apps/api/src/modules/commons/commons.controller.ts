@@ -305,33 +305,39 @@ export class CommonsController {
   // ─── Taking things down (CMN-18) ────────────────────────────
 
   /**
-   * Delete a post, whoever wrote it.
+   * Delete a post: an admin may delete anybody's, an author their own.
    *
-   * Admins only. Flagging was the only moderation the Commons had, and
-   * `isFlagged` is read by nothing — a flagged post stayed exactly where it
-   * was. The choice was a whole channel or nothing.
+   * **No `@Roles('ADMIN')`**, deliberately (CMN-19). The route cannot see who
+   * wrote the post, so a role guard here would refuse every author — the
+   * check belongs in the service, where the row is. Flagging was the only
+   * moderation the Commons had before this, and `isFlagged` is read by
+   * nothing, so a flagged post stayed exactly where it was.
    */
   @Delete('posts/:postId')
-  @Roles('ADMIN')
   @ApiOperation({ summary: 'Delete a post and everything under it (CMN-18)' })
   deletePost(
     @Param('orgId') orgId: string,
     @Param('postId') postId: string,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.commonsService.deletePost(orgId, postId, user.userId);
+    return this.commonsService.deletePost(orgId, postId, {
+      userId: user.userId,
+      isAdmin: user.orgRoles?.[orgId] === 'ADMIN',
+    });
   }
 
-  /** Delete a comment and its replies, whoever wrote them. Admins only. */
+  /** Delete a comment and its replies: an admin anybody's, an author their own. */
   @Delete('comments/:commentId')
-  @Roles('ADMIN')
   @ApiOperation({ summary: 'Delete a comment and its replies (CMN-18)' })
   deleteComment(
     @Param('orgId') orgId: string,
     @Param('commentId') commentId: string,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.commonsService.deleteComment(orgId, commentId, user.userId);
+    return this.commonsService.deleteComment(orgId, commentId, {
+      userId: user.userId,
+      isAdmin: user.orgRoles?.[orgId] === 'ADMIN',
+    });
   }
 
   // ─── Flagging ───────────────────────────────────────────────

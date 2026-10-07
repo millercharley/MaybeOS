@@ -28,10 +28,17 @@ describe('the admin Commons', () => {
     expect(adminCommons).toMatch(/>\s*Delete\s*</);
   });
 
-  it('offers it only to an admin', () => {
-    // Both controls are behind the same check the rest of the page uses.
-    expect(adminCommons).toMatch(/isAdmin && \(\s*<button[\s\S]{0,800}Delete post/);
-    expect(adminCommons).toMatch(/onDelete=\{\s*isAdmin/);
+  it('offers it to an admin, and to whoever wrote it', () => {
+    /*
+      Two rights reaching the same button (CMN-19).
+
+      An admin takes down anybody's: the co-op removing something. An author
+      takes down their own: a person withdrawing what they said. The server
+      checks both; this is only whether to draw the control.
+    */
+    expect(adminCommons).toMatch(/\(isAdmin \|\| post\.author\?\.id === user\?\.id\) && \(/);
+    expect(adminCommons).toMatch(/canDelete=\{isAdmin\}/);
+    expect(adminCommons).toMatch(/\(canDelete \|\| isAuthor\) && onDelete/);
   });
 
   it('confirms before deleting, rather than on the click', () => {
@@ -67,9 +74,14 @@ describe('the Commons a member reads', () => {
   it('offers an admin the same deletes there', () => {
     // This is where an admin actually reads the conversation; moderating
     // should not mean going to find another screen.
-    expect(portalCommons).toMatch(/isAdmin && \(/);
     expect(portalCommons).toMatch(/api\.commons\.deletePost/);
     expect(portalCommons).toMatch(/api\.commons\.deleteComment/);
+  });
+
+  it('offers a member the delete on their own words', () => {
+    // CMN-19. The right an author already had for editing.
+    expect(portalCommons).toMatch(/const canDelete = isAuthor \|\| isAdmin/);
+    expect(portalCommons).toMatch(/const canDelete = wroteIt \|\| isAdmin/);
   });
 
   it('works out admin from this co-op’s role, not a global one', () => {

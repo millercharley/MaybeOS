@@ -41,17 +41,20 @@ function CommentThread({
   onReply,
   onEdit,
   onDelete,
+  canDelete,
   viewerId,
 }: {
   comment: CommentT;
   depth: number;
   onReply: (parentId: string, body: string) => void;
   onEdit: (commentId: string, body: string) => Promise<void>;
-  /**
-   * Take this one down, whoever wrote it (CMN-18). Absent for anybody who is
-   * not an admin, which is what decides whether the button exists at all.
-   */
+  /** Take this one down (CMN-18). */
   onDelete?: (comment: CommentT) => void;
+  /**
+   * Whether the reader may delete anybody's, rather than only their own
+   * (CMN-19). An author sees the button either way.
+   */
+  canDelete?: boolean;
   /** Who is reading, so the edit is offered only on their own words. */
   viewerId?: string;
 }) {
@@ -163,7 +166,7 @@ function CommentThread({
                 rank; deleting is the co-op removing something, and an admin
                 may do it to anybody's (CMN-18).
               */}
-              {onDelete && (
+              {(canDelete || isAuthor) && onDelete && (
                 <button
                   onClick={() => onDelete(comment)}
                   className="text-xs font-medium text-gray-400 hover:text-red-600"
@@ -213,6 +216,7 @@ function CommentThread({
               onReply={onReply}
               onEdit={onEdit}
               onDelete={onDelete}
+              canDelete={canDelete}
               viewerId={viewerId}
             />
           ))}
@@ -1110,7 +1114,7 @@ export default function CommonsPage() {
                               <span className="text-xs text-gray-400">{timeAgo(post.createdAt)}</span>
                             </div>
                             {post.title && <h3 className="mt-1 text-sm font-medium text-gray-900">{post.title}</h3>}
-                            {isAdmin && (
+                            {(isAdmin || post.author?.id === user?.id) && (
                               <button
                                 onClick={() =>
                                   setRemoving({
@@ -1158,16 +1162,14 @@ export default function CommonsPage() {
                                     comment={comment}
                                     depth={0}
                                     onReply={(parentId, body) => handleReply(post.id, parentId, body)}
-                                    onDelete={
-                                      isAdmin
-                                        ? (c) =>
-                                            setRemoving({
-                                              kind: 'comment',
-                                              id: c.id,
-                                              who: c.author?.name ?? 'this member',
-                                              what: 'comment',
-                                            })
-                                        : undefined
+                                    canDelete={isAdmin}
+                                    onDelete={(c) =>
+                                      setRemoving({
+                                        kind: 'comment',
+                                        id: c.id,
+                                        who: c.author?.name ?? 'this member',
+                                        what: 'comment',
+                                      })
                                     }
                                     onEdit={handleEditComment}
                                     viewerId={user?.id}

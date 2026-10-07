@@ -27,6 +27,11 @@ describe('CommonsService — taking a post or comment down', () => {
   const POST = { id: 'post-1', authorId: 'author-1', title: 'A post', channelId: 'ch-1' };
   const COMMENT = { id: 'c1', authorId: 'author-2', postId: 'post-1' };
 
+  const ADMIN = { userId: 'admin-1', isAdmin: true };
+  /** The person who wrote the post above, with no rank at all (CMN-19). */
+  const AUTHOR = { userId: 'author-1', isAdmin: false };
+  const STRANGER = { userId: 'someone-else', isAdmin: false };
+
   beforeEach(async () => {
     prisma = {
       post: { findFirst: jest.fn().mockResolvedValue(POST), delete: jest.fn() },
@@ -57,7 +62,7 @@ describe('CommonsService — taking a post or comment down', () => {
     it('resolves it through the co-op, never by bare id', async () => {
       // CMN-07, SEC-04: `OrgMembershipGuard` proves only that the caller
       // belongs to the org in the URL, and the caller writes the URL.
-      await service.deletePost('org-1', 'post-1', 'admin-1');
+      await service.deletePost('org-1', 'post-1', ADMIN);
 
       expect(prisma.post.findFirst).toHaveBeenCalledWith({
         where: { id: 'post-1', channel: { orgId: 'org-1' } },
@@ -75,14 +80,14 @@ describe('CommonsService — taking a post or comment down', () => {
         { path: 'org-1/b.pdf' },
       ]);
 
-      await service.deletePost('org-1', 'post-1', 'admin-1');
+      await service.deletePost('org-1', 'post-1', ADMIN);
 
       expect(storage.deleteAttachment).toHaveBeenCalledWith('org-1', 'org-1/a.png');
       expect(storage.deleteAttachment).toHaveBeenCalledWith('org-1', 'org-1/b.pdf');
     });
 
     it('sweeps the comments’ files as well as the post’s own', async () => {
-      await service.deletePost('org-1', 'post-1', 'admin-1');
+      await service.deletePost('org-1', 'post-1', ADMIN);
 
       // The comments cascade, which takes their attachment rows with them and
       // silently leaves their objects.
@@ -101,7 +106,7 @@ describe('CommonsService — taking a post or comment down', () => {
         order.push('delete');
       });
 
-      await service.deletePost('org-1', 'post-1', 'admin-1');
+      await service.deletePost('org-1', 'post-1', ADMIN);
 
       // Afterwards there is nothing left to ask.
       expect(order).toEqual(['gather', 'delete']);
@@ -114,14 +119,14 @@ describe('CommonsService — taking a post or comment down', () => {
       ]);
       storage.deleteAttachment.mockRejectedValueOnce(new Error('bucket unavailable'));
 
-      await expect(service.deletePost('org-1', 'post-1', 'admin-1')).resolves.toEqual({
+      await expect(service.deletePost('org-1', 'post-1', ADMIN)).resolves.toEqual({
         deleted: true,
       });
       expect(storage.deleteAttachment).toHaveBeenCalledTimes(2);
     });
 
     it('writes it down, without copying the post back out', async () => {
-      await service.deletePost('org-1', 'post-1', 'admin-1');
+      await service.deletePost('org-1', 'post-1', ADMIN);
 
       const entry = audit.record.mock.calls[0][0];
       expect(entry).toMatchObject({
@@ -133,6 +138,59 @@ describe('CommonsService — taking a post or comment down', () => {
       // Enough to answer "what was taken down and whose was it".
       expect(entry.metadata).toMatchObject({ authorId: 'author-1', title: 'A post' });
       expect(JSON.stringify(entry.metadata)).not.toContain('body');
+    });
+  });
+
+  describe('who is allowed', () => {
+    /*
+      Two ways to be allowed, and they are not the same thing (CMN-19).
+
+      An admin takes down anybody's: the co-op removing something. An author
+      takes down their own: a person withdrawing what they said. The route
+      carries no `@Roles('ADMIN')` because it cannot see who wrote the post —
+      a role guard there would have refused every author.
+    */
+    it('lets the author delete their own post', async () => {
+      await expect(service.deletePost('org-1', 'post-1', AUTHOR)).resolves.toEqual({
+        deleted: true,
+      });
+    });
+
+    it('refuses somebody else’s post to a member', async () => {
+      await expect(service.deletePost('org-1', 'post-1', STRANGER)).rejects.toThrow(
+        /Only the person who wrote this, or an admin/,
+      );
+      expect(prisma.post.delete).not.toHaveBeenCalled();
+    });
+
+    it('lets the author delete their own comment', async () => {
+      await expect(
+        service.deleteComment('org-1', 'c1', { userId: 'author-2', isAdmin: false }),
+      ).resolves.toEqual({ deleted: true });
+    });
+
+    it('refuses somebody else’s comment to a member', async () => {
+      await expect(service.deleteComment('org-1', 'c1', STRANGER)).rejects.toThrow(
+        /Only the person who wrote this, or an admin/,
+      );
+      expect(prisma.comment.delete).not.toHaveBeenCalled();
+    });
+
+    it('records whether it was moderation or somebody withdrawing their own', async () => {
+      // The same row otherwise, and they are not the same event.
+      await service.deletePost('org-1', 'post-1', AUTHOR);
+      expect(audit.record.mock.calls[0][0].metadata.own).toBe(true);
+
+      audit.record.mockClear();
+      await service.deletePost('org-1', 'post-1', ADMIN);
+      expect(audit.record.mock.calls[0][0].metadata.own).toBe(false);
+    });
+
+    it('refuses before touching the files', async () => {
+      prisma.attachment.findMany.mockResolvedValue([{ path: 'org-1/a.png' }]);
+
+      await expect(service.deletePost('org-1', 'post-1', STRANGER)).rejects.toThrow();
+      expect(storage.deleteAttachment).not.toHaveBeenCalled();
     });
   });
 
@@ -151,7 +209,7 @@ describe('CommonsService — taking a post or comment down', () => {
         { id: 'elsewhere', parentId: null },
       ]);
 
-      await service.deleteComment('org-1', 'c1', 'admin-1');
+      await service.deleteComment('org-1', 'c1', ADMIN);
 
       const where = prisma.attachment.findMany.mock.calls[0][0].where;
       expect([...where.commentId.in].sort()).toEqual(['c1', 'c2', 'c3']);
@@ -166,7 +224,7 @@ describe('CommonsService — taking a post or comment down', () => {
         { id: 'c1', parentId: null },
       ]);
 
-      await service.deleteComment('org-1', 'c1', 'admin-1');
+      await service.deleteComment('org-1', 'c1', ADMIN);
 
       const where = prisma.attachment.findMany.mock.calls[0][0].where;
       expect([...where.commentId.in].sort()).toEqual(['c1', 'c2', 'c3']);
@@ -179,14 +237,14 @@ describe('CommonsService — taking a post or comment down', () => {
         { id: 'other-reply', parentId: 'other' },
       ]);
 
-      await service.deleteComment('org-1', 'c1', 'admin-1');
+      await service.deleteComment('org-1', 'c1', ADMIN);
 
       const where = prisma.attachment.findMany.mock.calls[0][0].where;
       expect(where.commentId.in).toEqual(['c1']);
     });
 
     it('resolves it through the co-op, never by bare id', async () => {
-      await service.deleteComment('org-1', 'c1', 'admin-1');
+      await service.deleteComment('org-1', 'c1', ADMIN);
 
       expect(prisma.comment.findFirst).toHaveBeenCalledWith({
         where: { id: 'c1', post: { channel: { orgId: 'org-1' } } },
@@ -200,7 +258,7 @@ describe('CommonsService — taking a post or comment down', () => {
         { id: 'c3', parentId: 'c2' },
       ]);
 
-      await service.deleteComment('org-1', 'c1', 'admin-1');
+      await service.deleteComment('org-1', 'c1', ADMIN);
 
       // Deleting one comment can remove a conversation.
       expect(audit.record.mock.calls[0][0].metadata.replies).toBe(2);
