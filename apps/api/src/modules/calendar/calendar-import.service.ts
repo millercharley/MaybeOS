@@ -747,10 +747,18 @@ export class CalendarImportService {
     const hosts = await this.hostsFor(org.id, entries);
     const slugs = await this.slugsFor(org.id, entries);
 
-    for (const entry of entries) {
-      // Checked before the write, never during: a chunk that stops here has
-      // written everything it counted, and the cursor it returns is true.
-      if (outOfTime()) break;
+    for (const [index, entry] of entries.entries()) {
+      /*
+        Checked before the write, never during: a chunk that stops here has
+        written everything it counted, and the cursor it returns is true.
+
+        Never before the *first* one, though (CAL-13). `nextCursor` moves by
+        how many were handled, so a chunk that handles none returns the cursor
+        it was given — and a scheduled pass, unlike an admin pressing a button,
+        would then read the same page every fifteen minutes forever and never
+        notice. One entry a tick is slow; no entries a tick is stuck.
+      */
+      if (index > 0 && outOfTime()) break;
 
       try {
       const person = entry.hostPerson ?? { email: null, name: null };
@@ -866,8 +874,9 @@ export class CalendarImportService {
       ).map((row) => [row.googleEventId as string, row.id]),
     );
 
-    for (const entry of withGuests) {
-      if (outOfTime()) break;
+    for (const [index, entry] of withGuests.entries()) {
+      // Always at least one, so the cursor always moves. See `writeEvents`.
+      if (index > 0 && outOfTime()) break;
 
       const person = entry.hostPerson ?? { email: null, name: null };
       const matched = person.email ? (hosts.get(person.email) ?? null) : null;
