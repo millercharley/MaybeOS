@@ -14,6 +14,8 @@ import { CreatePageDto, UpdatePageDto } from './dto/page.dto';
 import { VoteChoice } from '@prisma/client';
 import { UnreadCounts } from './dto/unread.dto';
 import { ThreadsService } from './threads.service';
+import { StorageService } from '../storage/storage.service';
+import { AuditService } from '../platform/audit.service';
 import { groupReactions, isAllowedReaction } from './reactions';
 
 const AUTHOR_SELECT = { id: true, name: true, avatarUrl: true, avatarPath: true } as const;
@@ -24,6 +26,8 @@ export class CommonsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly threads: ThreadsService,
+    private readonly storage: StorageService,
+    private readonly audit: AuditService,
   ) {}
 
   // ─── Org scoping (CMN-07) ───────────────────────────────────
@@ -588,7 +592,7 @@ export class CommonsService {
    * One post and its replies.
    *
    * `viewerId` so a reply's reactions can say which are the reader's own
-   * (CMN-17) — a pill that cannot tell you whether you already pressed it is
+   * (CMN-18) — a pill that cannot tell you whether you already pressed it is
    * a pill people press twice.
    */
   async getPost(orgId: string, postId: string, viewerId?: string) {
@@ -600,7 +604,7 @@ export class CommonsService {
           orderBy: { createdAt: 'asc' },
           include: {
             author: { select: AUTHOR_SELECT },
-            // Grouped below, so a reply's emoji survive a reload (CMN-17).
+            // Grouped below, so a reply's emoji survive a reload (CMN-18).
             reactions: { select: { emoji: true, userId: true } },
           },
         },
@@ -682,7 +686,7 @@ export class CommonsService {
   }
 
   /**
-   * An emoji on a reply (CMN-17).
+   * An emoji on a reply (CMN-18).
    *
    * A toggle, like the one on a message: pressing the same emoji twice means
    * "I did not mean that", and asking the caller to choose between two calls
@@ -720,6 +724,142 @@ export class CommonsService {
   }
 
   // ─── Flagging ───────────────────────────────────────────────
+
+  /**
+   * Take a post down, whoever wrote it (CMN-18).
+   *
+   * **There was no way to remove anything from the Commons.** Flagging was the
+   * only moderation there has ever been, and `isFlagged` is written and read
+   * by nothing at all — a flagged post stayed exactly where it was, fully
+   * visible, with nothing anywhere to show for it. The admin could delete a
+   * whole channel or nothing.
+   *
+   * So this is a real delete rather than a flag. The comments, replies,
+   * reactions and attachment rows go with it, by the cascades already in the
+   * schema; the event thread does not, because `Event.post` is `SetNull` and
+   * was written that way on purpose — "an event whose discussion was moderated
+   * away should still exist".
+   *
+   * **The files go too.** The attachment rows cascade in the database and the
+   * objects in the bucket do not, and a moderation delete that leaves the
+   * bytes behind has not removed the thing somebody complained about — anybody
+   * holding a link still has it.
+   *
+   * Written to the co-op's audit log (PLT-01). Removing somebody else's words
+   * is the kind of power a co-op should be able to see being used.
+   */
+  async deletePost(orgId: string, postId: string, actorId: string) {
+    const post = await this.findPostInOrg(orgId, postId);
+
+    /*
+      Every file under this post, gathered before the rows are gone.
+
+      Both its own attachments and its comments' — the comments cascade, which
+      takes their attachment rows with them and silently leaves their objects.
+    */
+    const files = await this.prisma.attachment.findMany({
+      where: {
+        OR: [{ postId: post.id }, { comment: { postId: post.id } }],
+      },
+      select: { path: true },
+    });
+
+    // The row first, like every other attachment delete here: a failed object
+    // delete leaves a file nobody references, which is recoverable, where the
+    // reverse leaves a row rendering as a broken file, which is not.
+    await this.prisma.post.delete({ where: { id: post.id } });
+
+    for (const file of files) {
+      // One failure must not strand the rest. The row is already gone, so the
+      // worst case is an unreferenced object.
+      await this.storage.deleteAttachment(orgId, file.path).catch(() => {});
+    }
+
+    await this.audit.record({
+      orgId,
+      actorId,
+      action: 'commons.post_deleted',
+      entityType: 'post',
+      entityId: post.id,
+      // The author and the title, not the body: enough to answer "what was
+      // taken down and whose was it" without copying the thing back out.
+      metadata: { authorId: post.authorId, title: post.title ?? null, files: files.length },
+    });
+
+    return { deleted: true };
+  }
+
+  /**
+   * Take a comment down, whoever wrote it (CMN-18).
+   *
+   * Replies go with it, by the cascade on `Comment.parent` — a thread whose
+   * first message is gone and whose answers remain reads as people talking to
+   * nobody, and in a moderation case the replies are usually quoting the thing
+   * being removed.
+   */
+  async deleteComment(orgId: string, commentId: string, actorId: string) {
+    const comment = await this.findCommentInOrg(orgId, commentId);
+
+    /*
+      Every reply beneath it, to any depth.
+
+      A reply can itself be replied to — `getPost` builds a tree from a flat
+      list — so the cascade on `Comment.parent` goes all the way down and so
+      must this. Gathering only the direct replies' files would delete a
+      grandchild's row and leave its object in the bucket, which on a
+      moderation delete means the thing being removed is still downloadable.
+
+      Read from the one post rather than queried per level: a thread is small,
+      and this is one round trip instead of one per generation.
+    */
+    const siblings = await this.prisma.comment.findMany({
+      where: { postId: comment.postId },
+      select: { id: true, parentId: true },
+    });
+
+    const doomed = new Set([comment.id]);
+    // Repeat until a pass adds nothing: the rows come back in no particular
+    // order, so one sweep would miss a reply listed before its parent.
+    let growing = true;
+    while (growing) {
+      growing = false;
+      for (const row of siblings) {
+        if (row.parentId && doomed.has(row.parentId) && !doomed.has(row.id)) {
+          doomed.add(row.id);
+          growing = true;
+        }
+      }
+    }
+
+    const files = await this.prisma.attachment.findMany({
+      where: { commentId: { in: [...doomed] } },
+      select: { path: true },
+    });
+
+    await this.prisma.comment.delete({ where: { id: comment.id } });
+
+    for (const file of files) {
+      await this.storage.deleteAttachment(orgId, file.path).catch(() => {});
+    }
+
+    await this.audit.record({
+      orgId,
+      actorId,
+      action: 'commons.comment_deleted',
+      entityType: 'comment',
+      entityId: comment.id,
+      metadata: {
+        authorId: comment.authorId,
+        postId: comment.postId,
+        files: files.length,
+        // Said out loud, because deleting one comment can remove a
+        // conversation: the number is how many went with it.
+        replies: doomed.size - 1,
+      },
+    });
+
+    return { deleted: true };
+  }
 
   async flagPost(orgId: string, postId: string) {
     await this.findPostInOrg(orgId, postId);

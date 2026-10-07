@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { CommonsService } from '../commons.service';
+import { StorageService } from '../../storage/storage.service';
+import { AuditService } from '../../platform/audit.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { ThreadsService } from '../threads.service';
 
@@ -28,6 +30,8 @@ describe('CommonsService — editing a comment', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CommonsService,
+        { provide: StorageService, useValue: { deleteAttachment: jest.fn() } },
+        { provide: AuditService, useValue: { record: jest.fn() } },
         // The badge counts threads now (CMN-16); these tests are about the
         // Commons half of it.
         {

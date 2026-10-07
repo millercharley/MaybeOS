@@ -20,6 +20,7 @@ import { RichComposer, composerValue } from '@/components/composer/rich-composer
 import { EmojiPicker } from '@/components/composer/emoji-picker';
 import { PageHeader } from '@/components/layout/page-header';
 import { MemberName } from '@/components/member/member-name';
+import { Modal } from '@/components/ui/modal';
 
 /** What a dragged channel carries, so a drop can ignore anything else dragged in. */
 const CHANNEL_DRAG_TYPE = 'application/x-maybeos-channel';
@@ -39,12 +40,18 @@ function CommentThread({
   depth,
   onReply,
   onEdit,
+  onDelete,
   viewerId,
 }: {
   comment: CommentT;
   depth: number;
   onReply: (parentId: string, body: string) => void;
   onEdit: (commentId: string, body: string) => Promise<void>;
+  /**
+   * Take this one down, whoever wrote it (CMN-18). Absent for anybody who is
+   * not an admin, which is what decides whether the button exists at all.
+   */
+  onDelete?: (comment: CommentT) => void;
   /** Who is reading, so the edit is offered only on their own words. */
   viewerId?: string;
 }) {
@@ -151,6 +158,19 @@ function CommentThread({
                   Edit
                 </button>
               )}
+              {/*
+                Editing is authorship and stays with the author whatever their
+                rank; deleting is the co-op removing something, and an admin
+                may do it to anybody's (CMN-18).
+              */}
+              {onDelete && (
+                <button
+                  onClick={() => onDelete(comment)}
+                  className="text-xs font-medium text-gray-400 hover:text-red-600"
+                >
+                  Delete
+                </button>
+              )}
             </div>
           )}
 
@@ -192,6 +212,7 @@ function CommentThread({
               depth={depth + 1}
               onReply={onReply}
               onEdit={onEdit}
+              onDelete={onDelete}
               viewerId={viewerId}
             />
           ))}
@@ -206,6 +227,12 @@ export default function CommonsPage() {
   const token = useAuthStore((s) => s.token);
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const isAdmin = user?.orgs.find((o) => o.orgId === currentOrgId)?.role === 'ADMIN';
+  /** What is about to be taken down, and what it will take with it (CMN-18). */
+  const [removing, setRemoving] = useState<
+    { kind: 'post' | 'comment'; id: string; who: string; what: string } | null
+  >(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const searchParams = useSearchParams();
   const [view, setView] = useState<View | null>(null);
@@ -347,6 +374,36 @@ export default function CommonsPage() {
     await api.commons.addComment(currentOrgId!, postId, { body, parentId }, token!);
     refetchExpandedPost();
     refetchPosts();
+  }
+
+  /*
+    Taking something down (CMN-18).
+
+    Confirmed first and never inline: this removes somebody else's words, it
+    takes their replies and attached files with it, and there is no undo. The
+    dialog says which of those apply to the thing being deleted rather than
+    warning in general.
+  */
+  async function confirmDelete() {
+    if (!removing || !currentOrgId || !token) return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      if (removing.kind === 'post') {
+        await api.commons.deletePost(currentOrgId, removing.id, token);
+        // It may be the post that is open. Nothing can be read from it now.
+        if (expandedPostId === removing.id) setExpandedPostId(null);
+      } else {
+        await api.commons.deleteComment(currentOrgId, removing.id, token);
+        refetchExpandedPost();
+      }
+      setRemoving(null);
+      refetchPosts();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'That could not be deleted');
+    } finally {
+      setDeleting(false);
+    }
   }
 
   // ── Arranging the Commons (CMN-10) ──────────────────────────────
@@ -1053,6 +1110,21 @@ export default function CommonsPage() {
                               <span className="text-xs text-gray-400">{timeAgo(post.createdAt)}</span>
                             </div>
                             {post.title && <h3 className="mt-1 text-sm font-medium text-gray-900">{post.title}</h3>}
+                            {isAdmin && (
+                              <button
+                                onClick={() =>
+                                  setRemoving({
+                                    kind: 'post',
+                                    id: post.id,
+                                    who: authorName,
+                                    what: 'post',
+                                  })
+                                }
+                                className="mt-1 text-xs font-medium text-gray-400 hover:text-red-600"
+                              >
+                                Delete post
+                              </button>
+                            )}
                             <div
                               className="prose prose-sm mt-1 max-w-none whitespace-pre-wrap text-sm text-gray-700"
                               dangerouslySetInnerHTML={{ __html: renderBodyHtml(post.body) }}
@@ -1086,6 +1158,17 @@ export default function CommonsPage() {
                                     comment={comment}
                                     depth={0}
                                     onReply={(parentId, body) => handleReply(post.id, parentId, body)}
+                                    onDelete={
+                                      isAdmin
+                                        ? (c) =>
+                                            setRemoving({
+                                              kind: 'comment',
+                                              id: c.id,
+                                              who: c.author?.name ?? 'this member',
+                                              what: 'comment',
+                                            })
+                                        : undefined
+                                    }
                                     onEdit={handleEditComment}
                                     viewerId={user?.id}
                                   />
@@ -1125,6 +1208,68 @@ export default function CommonsPage() {
         </div>
       </div>
 
+      {/*
+        Confirmed, never inline (CMN-18).
+
+        This removes somebody else's words, takes their replies and attached
+        files with them, and cannot be undone. The sentence names whose it is
+        and what else goes, because "are you sure?" does not tell an admin what
+        they are about to lose.
+      */}
+      <Modal
+        open={Boolean(removing)}
+        onClose={() => {
+          if (!deleting) {
+            setRemoving(null);
+            setDeleteError('');
+          }
+        }}
+        title={removing?.kind === 'post' ? 'Delete this post?' : 'Delete this comment?'}
+      >
+        {removing && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              This deletes {removing.who === 'this member' ? 'a' : `${removing.who}\u2019s`}{' '}
+              {removing.what}
+              {removing.kind === 'post'
+                ? ', along with every comment and reply under it'
+                : ', along with any replies to it'}
+              , and any files attached. It cannot be undone, and the member is not told.
+            </p>
+            <p className="text-sm text-gray-500">
+              It will show in this co-op&rsquo;s audit log as deleted by you.
+            </p>
+
+            {deleteError && (
+              <p className="text-sm text-red-600" role="alert">
+                {deleteError}
+              </p>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="btn-danger text-sm"
+              >
+                {deleting ? 'Deleting\u2026' : `Yes, delete this ${removing.what}`}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRemoving(null);
+                  setDeleteError('');
+                }}
+                disabled={deleting}
+                className="btn-secondary text-sm"
+              >
+                Keep it
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -1146,5 +1291,6 @@ function ReplyBox({ onSubmit }: { onSubmit: (body: string) => void }) {
         rows={2}
       />
     </div>
+
   );
 }

@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
 import { CommonsService } from '../commons.service';
 import { ThreadsService } from '../threads.service';
+import { StorageService } from '../../storage/storage.service';
+import { AuditService } from '../../platform/audit.service';
 import { CommonsController } from '../commons.controller';
 import { PrismaService } from '../../../config/prisma.service';
 
@@ -59,6 +61,8 @@ describe('CommonsService — unread counts', () => {
         CommonsService,
         { provide: PrismaService, useValue: prisma },
         { provide: ThreadsService, useValue: threads },
+        { provide: StorageService, useValue: { deleteAttachment: jest.fn() } },
+        { provide: AuditService, useValue: { record: jest.fn() } },
       ],
     }).compile();
 
@@ -179,6 +183,8 @@ describe('CommonsService — marking things read', () => {
         CommonsService,
         { provide: PrismaService, useValue: prisma },
         { provide: ThreadsService, useValue: { unreadMessages: jest.fn().mockResolvedValue(0) } },
+        { provide: StorageService, useValue: { deleteAttachment: jest.fn() } },
+        { provide: AuditService, useValue: { record: jest.fn() } },
       ],
     }).compile();
     return { service: module.get(CommonsService), prisma };

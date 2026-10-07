@@ -397,6 +397,9 @@ function ChannelsSection() {
                     orgId={org!.id}
                     token={token!}
                     onChannelMention={loadPosts}
+                    // Reload rather than splice it out: the feed is paged, and
+                    // dropping a row locally would leave the count wrong.
+                    onDeleted={() => selectedChannel && loadPosts(selectedChannel)}
                   />
                 ) : (
                   // Somebody arriving, at the point in the conversation where
@@ -771,12 +774,15 @@ function PostCard({
   orgId,
   token,
   onChannelMention,
+  onDeleted,
 }: {
   post: Post;
   orgId: string;
   token: string;
   /** Clicking `#channel` in a body switches channel rather than navigating. */
   onChannelMention?: (channelId: string) => void;
+  /** Gone from the list, once an admin has taken it down (CMN-18). */
+  onDeleted?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [thread, setThread] = useState<Comment[] | null>(null);
@@ -789,6 +795,35 @@ function PostCard({
 
   const commentCount = thread ? countThread(thread) : (post._count?.comments ?? 0);
   const reactionCount = reactions.length || post._count?.reactions || 0;
+
+  /*
+    Taking a post down, whoever wrote it (CMN-18).
+
+    Offered here as well as in the admin Commons, because this is where an
+    admin actually reads the conversation. The count is in the question: a post
+    takes its whole thread with it, and "are you sure?" does not say that.
+  */
+  const viewer = useAuthStore((state) => state.user);
+  const isAdmin = Boolean(viewer?.orgs?.find((o) => o.orgId === orgId)?.role === 'ADMIN');
+  const [removing, setRemoving] = useState(false);
+
+  async function remove() {
+    if (removing) return;
+    const warning = commentCount
+      ? `Delete this post and the ${commentCount} ${commentCount === 1 ? 'comment' : 'comments'} under it? This cannot be undone.`
+      : 'Delete this post? This cannot be undone.';
+    if (!window.confirm(warning)) return;
+
+    setRemoving(true);
+    setError('');
+    try {
+      await api.commons.deletePost(orgId, post.id, token);
+      onDeleted?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'That could not be deleted');
+      setRemoving(false);
+    }
+  }
 
   async function toggle() {
     if (open) return setOpen(false);
@@ -904,6 +939,15 @@ function PostCard({
             ? open ? 'Hide' : 'Reply'
             : `${commentCount} ${commentCount === 1 ? 'reply' : 'replies'}`}
         </button>
+        {isAdmin && (
+          <button
+            onClick={remove}
+            disabled={removing}
+            className="ml-auto text-xs text-gray-400 hover:text-red-600"
+          >
+            {removing ? 'Deleting…' : 'Delete'}
+          </button>
+        )}
       </div>
 
       {open && (
@@ -983,6 +1027,39 @@ function CommentNode({
   // Authorship, not rank. The API refuses anybody else's comment whatever
   // their role, and this is only whether to offer the button.
   const isAuthor = Boolean(user?.id && comment.author?.id === user.id);
+
+  /*
+    Deleting is the other way round (CMN-18).
+
+    Editing belongs to whoever wrote it; taking something down is the co-op
+    removing it, and an admin may do that to anybody's. Offered here as well as
+    in the admin Commons because this is where an admin actually reads the
+    conversation, and moderating should not mean going to find another screen.
+  */
+  const isAdmin = Boolean(
+    org && user?.orgs?.find((o) => o.orgId === org.id)?.role === 'ADMIN',
+  );
+  const [deleting, setDeleting] = useState(false);
+
+  async function remove() {
+    if (!org || !token || deleting) return;
+    // Replies go with it, so the number is part of the question.
+    const count = comment.replies?.length ?? 0;
+    const warning = count
+      ? `Delete this comment and the ${count} ${count === 1 ? 'reply' : 'replies'} under it? This cannot be undone.`
+      : 'Delete this comment? This cannot be undone.';
+    if (!window.confirm(warning)) return;
+
+    setDeleting(true);
+    setError('');
+    try {
+      await api.commons.deleteComment(org.id, comment.id, token);
+      onEdited();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'That could not be deleted');
+      setDeleting(false);
+    }
+  }
 
   function startEditing() {
     // Seeded with the rendered HTML rather than the raw column: a body written
@@ -1083,6 +1160,15 @@ function CommentNode({
                   className="text-[11px] text-gray-400 hover:text-gray-600"
                 >
                   Edit
+                </button>
+              )}
+              {isAdmin && (
+                <button
+                  onClick={remove}
+                  disabled={deleting}
+                  className="text-[11px] text-gray-400 hover:text-red-600"
+                >
+                  {deleting ? 'Deleting…' : 'Delete'}
                 </button>
               )}
             </div>

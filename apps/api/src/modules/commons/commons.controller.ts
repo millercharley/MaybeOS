@@ -302,6 +302,38 @@ export class CommonsController {
     return this.commonsService.removeReaction(orgId, postId, user.userId, emoji);
   }
 
+  // ─── Taking things down (CMN-18) ────────────────────────────
+
+  /**
+   * Delete a post, whoever wrote it.
+   *
+   * Admins only. Flagging was the only moderation the Commons had, and
+   * `isFlagged` is read by nothing — a flagged post stayed exactly where it
+   * was. The choice was a whole channel or nothing.
+   */
+  @Delete('posts/:postId')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Delete a post and everything under it (CMN-18)' })
+  deletePost(
+    @Param('orgId') orgId: string,
+    @Param('postId') postId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.commonsService.deletePost(orgId, postId, user.userId);
+  }
+
+  /** Delete a comment and its replies, whoever wrote them. Admins only. */
+  @Delete('comments/:commentId')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Delete a comment and its replies (CMN-18)' })
+  deleteComment(
+    @Param('orgId') orgId: string,
+    @Param('commentId') commentId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.commonsService.deleteComment(orgId, commentId, user.userId);
+  }
+
   // ─── Flagging ───────────────────────────────────────────────
 
   @Post('posts/:postId/flag')
@@ -465,7 +497,7 @@ export class CommonsController {
     return this.commonsService.unreadCounts(orgId, user.userId);
   }
 
-  // ─── Reactions on messages (CMN-17) ──────────────────────────
+  // ─── Reactions on messages (CMN-18) ──────────────────────────
 
   /** Leave an emoji on a message in a conversation, or take it back. */
   @Post('threads/:threadId/messages/:messageId/reactions')
