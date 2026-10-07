@@ -306,10 +306,6 @@ export class EventsService {
       }
     }
 
-    // Straight into the Commons when it is created already published, which
-    // is what both member forms do (EVT-23).
-    await this.announce(orgId, created, userId);
-
     return created;
   }
 
@@ -656,11 +652,6 @@ export class EventsService {
       },
     });
 
-    // A draft going live is the moment the co-op should hear about it
-    // (EVT-23). `ensureEventThread` is idempotent, so an event published,
-    // edited and published again keeps the one thread it already has.
-    await this.announce(orgId, published, actor.userId);
-
     return published;
   }
 
@@ -981,48 +972,41 @@ export class EventsService {
    * having a conversation, and burying it somewhere the Commons cannot see
    * would mean two places to look for the same thing.
    */
-  /**
-   * Put a published event in the Commons (EVT-23).
-   *
-   * Charley, having made an event and gone looking for it: a new event should
-   * appear in #Events. It did not, and that was by design — the thread was
-   * created the first time somebody opened an event's discussion, on the
-   * reasoning that most events are never discussed and a thread each would
-   * fill the Commons with empty ones. True, and it also meant the Commons
-   * never told anybody an event existed, which is most of what a co-op wants
-   * from it. Announcing is now the point; the empty-thread cost is real and
-   * accepted.
-   *
-   * Two things it will not announce:
-   *
-   * - **A draft.** Publishing is the act of telling people, and an event
-   *   somebody is still writing has not been told to anybody.
-   * - **A private event.** "Just me for now" means exactly that, and #Events
-   *   is read by every member of the co-op. Posting one there would be the
-   *   product overriding a member's own answer about who can see it.
-   *
-   * Failure here never fails the event. The Commons is where people hear
-   * about it; the event itself is the thing that must exist, and losing an
-   * announcement is a smaller harm than refusing to create what somebody
-   * spent five minutes writing.
-   */
-  private async announce(
-    orgId: string,
-    event: { id: string; isPublished: boolean; visibility: string; hostId: string | null },
-    actorId: string,
-  ): Promise<void> {
-    if (!event.isPublished || event.visibility === 'PRIVATE') return;
+  /*
+    There is no announcement any more (EVT-42).
 
-    try {
-      // Under the host's name rather than whoever pressed publish: an
-      // organiser publishing on somebody's behalf should not appear to be
-      // running their event.
-      await this.ensureEventThread(orgId, event.id, event.hostId ?? actorId);
-    } catch (error) {
-      this.logger.warn(
-        `Could not announce event ${event.id} in the Commons: ${(error as Error).message}`,
-      );
-    }
+    EVT-23 put every published event into #Events, because an event Charley
+    had just made did not appear there and most of what a co-op wants from the
+    Commons is to hear that things exist. The cost was stated at the time and
+    accepted: "the empty-thread cost is real".
+
+    It turned out to be the whole cost. Of the seven event threads MaybeItsFate
+    had, six carried no comments, and the channel read as a list of messages
+    nobody had written. A thread in #Events now means a conversation is
+    happening — it is created by the first comment and by nothing else.
+
+    If announcing comes back, it should be an announcement and not an empty
+    discussion thread wearing one's clothes.
+  */
+
+  /**
+   * The post carrying this event's comments, if one exists (EVT-42).
+   *
+   * Separate from `ensureEventThread` because reading and creating were the
+   * same call, and the page called it on load. Opening an event therefore
+   * posted to #Events under the name of whoever opened it: three appeared in
+   * one browsing session five days after those events were published, with no
+   * comments on any of them, looking for all the world like a member had
+   * written something.
+   */
+  async eventThread(orgId: string, eventId: string): Promise<{ postId: string | null }> {
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, orgId },
+      select: { postId: true },
+    });
+    if (!event) throw new NotFoundException('Event not found');
+
+    return { postId: event.postId };
   }
 
   async ensureEventThread(orgId: string, eventId: string, authorId: string) {
@@ -1033,12 +1017,25 @@ export class EventsService {
         title: true,
         slug: true,
         postId: true,
+        visibility: true,
         org: { select: { slug: true } },
       },
     });
     if (!event) throw new NotFoundException('Event not found');
 
     if (event.postId) return { postId: event.postId };
+
+    /*
+      Never a private one (EVT-42).
+
+      Announcing already refused these — "#Events is read by every member of
+      the co-op, and posting one there would be the product overriding a
+      member's own answer about who can see it" — but this path had no such
+      check, and it was the path that ran when anybody opened the page. One
+      private event and its title would have been in the channel the whole
+      co-op reads. There were none, so it never happened.
+    */
+    if (event.visibility === 'PRIVATE') return { postId: null };
 
     // Upsert rather than find-then-create: the unique index on (orgId, slug)
     // is what actually decides, and two members opening two event pages at

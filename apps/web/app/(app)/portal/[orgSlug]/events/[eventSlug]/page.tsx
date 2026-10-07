@@ -608,9 +608,16 @@ function EventDiscussion({ orgId, eventId, token }: { orgId: string; eventId: st
 
   const load = useCallback(async () => {
     try {
-      // Created on first view rather than for every event: most events are
-      // never discussed, and a post each would fill the Commons with empty
-      // threads.
+      /*
+        A read (EVT-42).
+
+        This used to create the thread, on the reasoning that making one per
+        event would fill the Commons with empty threads. It filled them anyway
+        — opening an event page was enough — and the posts were attributed to
+        whoever had opened it. Three appeared in one browsing session, five
+        days after those events were published, with no comments on any of
+        them. The thread is made by the first comment now; see `submit`.
+      */
       const { postId: id } = await api.events.thread(orgId, eventId, token);
       setPostId(id);
       if (id) {
@@ -627,11 +634,30 @@ function EventDiscussion({ orgId, eventId, token }: { orgId: string; eventId: st
   }, [load]);
 
   async function submit() {
-    if (!postId || (isBlankBody(draft) && files.length === 0)) return;
+    if (isBlankBody(draft) && files.length === 0) return;
     setBusy(true);
     setError('');
     try {
-      const comment = await api.commons.addComment(orgId, postId, { body: composerValue(draft) }, token);
+      /*
+        The first comment is what makes the thread (EVT-42).
+
+        Which means a thread in #Events is a conversation rather than a page
+        somebody opened. A private event never gets one — the channel is read
+        by the whole co-op — so there is nothing to post a comment onto.
+      */
+      const thread = postId ? { postId } : await api.events.startThread(orgId, eventId, token);
+      if (!thread.postId) {
+        setError('This event is private, so it has no discussion.');
+        return;
+      }
+      setPostId(thread.postId);
+
+      const comment = await api.commons.addComment(
+        orgId,
+        thread.postId,
+        { body: composerValue(draft) },
+        token,
+      );
       if (files.length > 0) {
         await uploadAttachments(orgId, files, { commentId: comment.id }, token);
         setFiles([]);

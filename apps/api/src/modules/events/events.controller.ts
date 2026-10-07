@@ -359,11 +359,35 @@ export class EventsController {
   /* ─── Event discussion ──────────────────────────────────────── */
 
   /**
-   * The post carrying this event's comments, made if it does not exist yet.
+   * The post carrying this event's comments, if there is one yet (EVT-42).
+   *
+   * **Reading must not create.** This used to be the `POST` below, called when
+   * the page loaded, so opening an event wrote a post into #Events under the
+   * name of whoever looked at it. Three of those appeared in one browsing
+   * session, five days after the events were published, and read to the admin
+   * like members had posted about them.
    *
    * Members only: an event page is public, its conversation is not. A co-op
    * discussing its own event in front of the internet is not what "public
    * event" means.
+   */
+  @Get('orgs/:orgId/events/:eventId/thread')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'The post carrying an event’s discussion, if it has one' })
+  async eventThreadIfAny(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+  ) {
+    return this.eventsService.eventThread(orgId, eventId);
+  }
+
+  /**
+   * Make the post carrying this event's comments.
+   *
+   * Called when somebody writes the first comment, and at no other time — a
+   * thread in #Events means a conversation is happening, not that a page was
+   * opened (EVT-42).
    */
   @Post('orgs/:orgId/events/:eventId/thread')
   @UseGuards(JwtAuthGuard, OrgMembershipGuard)
