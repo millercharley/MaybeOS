@@ -763,6 +763,22 @@ export default function MembersPage() {
                   }
                 >
                   {lastSeenLabel(member.user.lastLoginAt)}
+                  {/*
+                    Why they have never signed in (MEM-25).
+
+                    Without this, a bounced address is indistinguishable from a
+                    member who is ignoring their email — and the two call for
+                    opposite responses. Settings → Sign-in links is where it
+                    gets fixed; this is where it gets noticed.
+                  */}
+                  {member.signInBouncedAt && (
+                    <span
+                      className="ml-2 inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700"
+                      title={member.signInBounceKind ?? 'Their sign-in email bounced'}
+                    >
+                      Email bounced
+                    </span>
+                  )}
                 </td>
                 <td className="whitespace-nowrap px-3 py-4 text-right">
                   <button

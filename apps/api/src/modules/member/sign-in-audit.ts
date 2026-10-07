@@ -1,6 +1,6 @@
 /**
  * Reconciling the migration send against what the provider actually did
- * (MEM-24).
+ * (MEM-25).
  *
  * `sendSignInLinks` marks `signInSentAt` inside the transaction that mints the
  * magic-link token, before Postmark is called. That order is deliberate — a

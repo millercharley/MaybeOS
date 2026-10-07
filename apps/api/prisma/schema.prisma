@@ -576,7 +576,7 @@ model UserOrg {
   /// makes the migration send resumable and stops a second run reaching the
   /// people the first one already did. Null means never sent.
   signInSentAt        DateTime?
-  /// What Postmark says actually happened to that link (MEM-24).
+  /// What Postmark says actually happened to that link (MEM-25).
   ///
   /// `signInSentAt` records that MaybeOS *tried* — it is written inside the
   /// same transaction that mints the token, before the provider is called at

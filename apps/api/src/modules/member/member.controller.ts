@@ -190,7 +190,7 @@ export class MemberController {
   @Roles('ADMIN')
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Ask the email provider what happened to the sign-in links (MEM-24)',
+    summary: 'Ask the email provider what happened to the sign-in links (MEM-25)',
   })
   auditSignInLinks(@Param('orgId') orgId: string) {
     return this.memberService.auditSignInLinks(orgId);
@@ -201,7 +201,7 @@ export class MemberController {
   @Roles('ADMIN')
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'The address is fixed — let this member be written to again (MEM-24)',
+    summary: 'The address is fixed — let this member be written to again (MEM-25)',
   })
   clearSignInBounce(@Param('orgId') orgId: string, @Param('userId') userId: string) {
     return this.memberService.clearSignInBounce(orgId, userId);

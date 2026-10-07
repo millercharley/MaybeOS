@@ -30,7 +30,7 @@ export class SendSignInLinksDto {
   dryRun?: boolean;
 
   /**
-   * Which group to write to (MEM-24).
+   * Which group to write to (MEM-25).
    *
    * `waiting` is the original migration send and the default, so an older
    * client keeps the behaviour it had. `undelivered` reaches the people the

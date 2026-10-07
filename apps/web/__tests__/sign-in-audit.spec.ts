@@ -11,7 +11,7 @@ import {
 } from '@/lib/sign-in-audit';
 
 /**
- * Reading the migration send honestly (MEM-24).
+ * Reading the migration send honestly (MEM-25).
  *
  * The real failure this is built around: Postmark's plan capped at a hundred
  * messages, MaybeOS marked 435 members as sent because it marks before it

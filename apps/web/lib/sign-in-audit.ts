@@ -1,7 +1,7 @@
 import type { ResendScope, SignInAudit } from './api';
 
 /**
- * Reading the audit back to the admin (MEM-24).
+ * Reading the audit back to the admin (MEM-25).
  *
  * The screen this feeds used to report "sent to 435 members, nobody left
  * waiting" while three hundred and thirty-five of them had an empty inbox. It
