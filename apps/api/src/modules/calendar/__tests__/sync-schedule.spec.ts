@@ -142,3 +142,35 @@ describe('what a failure writes down', () => {
     expect(long.endsWith('…')).toBe(true);
   });
 });
+
+describe('a chunk always moves', () => {
+  const { nextCursor } = require('../import-cursor');
+  const source = require('fs').readFileSync(
+    require('path').join(__dirname, '..', 'calendar-import.service.ts'),
+    'utf8',
+  );
+
+  it('returns the very same cursor when a chunk handled nothing', () => {
+    /*
+      The hazard this guards, stated as the arithmetic that causes it.
+
+      `nextCursor` moves by how many entries were handled. Handle none and it
+      hands back the position it was given — which an admin pressing a button
+      would notice as "nothing happened", and an unattended pass would not.
+      It would read the same page every fifteen minutes, forever.
+    */
+    const stuck = nextCursor(0, 9, { token: null, nextToken: null, length: 274 }, 48, 0);
+    expect(stuck).toEqual({ calendar: 0, page: null, entry: 48 });
+
+    const moved = nextCursor(0, 9, { token: null, nextToken: null, length: 274 }, 48, 1);
+    expect(moved).toEqual({ calendar: 0, page: null, entry: 49 });
+  });
+
+  it('never checks the clock before the first entry of a chunk', () => {
+    // So `handled` is at least one whenever there is anything to handle, and
+    // the cursor always advances. One entry a tick is slow; none is stuck.
+    const checks = source.match(/if \(index > 0 && outOfTime\(\)\) break;/g) ?? [];
+    expect(checks.length).toBe(2); // events and bookings
+    expect(source).not.toMatch(/\n      if \(outOfTime\(\)\) break;/);
+  });
+});
