@@ -4,6 +4,13 @@ import { tierIdFor } from './import-tier';
 import { manualStatusRefusal, type ManualStatus } from './manual-status';
 import { pageWindow } from './page-window';
 import {
+  isNarrowed,
+  orderFor,
+  parseFilters,
+  whereFor,
+  type RawFilters,
+} from './member-filters';
+import {
   SIGN_IN_TAG,
   beyondRetention,
   indexBounces,
@@ -170,11 +177,22 @@ export class MemberService {
     page: number = 1,
     perPage: number = 20,
     search?: string,
+    rawFilters: RawFilters = {},
   ) {
     // Clamped, not trusted: these arrive from a query string (MEM-22).
     const window = pageWindow(page, perPage);
 
-    const where: any = { orgId };
+    /*
+      Narrowing a roster of four hundred (MEM-26).
+
+      Parsed rather than trusted, and parsed against the viewer: most of these
+      are an organiser's alone, because a filter is a way of reading a fact one
+      yes-or-no at a time. "Show me everybody who is past due" answers the same
+      question as a status column for anybody patient enough to try each value.
+    */
+    const filters = parseFilters({ ...rawFilters, search }, viewer.privileged);
+
+    const where: any = { orgId, ...whereFor(filters) };
 
     // `isPublic` finally means something (FRM-01). It has been on `UserOrg`
     // since the beginning and nothing has ever read it, so a member who had
@@ -188,20 +206,25 @@ export class MemberService {
       where.isPublic = true;
     }
 
-    if (search) {
+    if (filters.search) {
       // Matching on email would answer "is this address a member here?" even
       // with the address itself redacted from the response — a membership
       // oracle for anyone with a list of emails to test. Organisers keep it
       // because looking a member up by the address they wrote in is the
       // normal way to find them.
-      where.user = viewer.privileged
+      const matching = viewer.privileged
         ? {
             OR: [
-              { name: { contains: search, mode: 'insensitive' } },
-              { email: { contains: search, mode: 'insensitive' } },
+              { name: { contains: filters.search, mode: 'insensitive' } },
+              { email: { contains: filters.search, mode: 'insensitive' } },
             ],
           }
-        : { name: { contains: search, mode: 'insensitive' } };
+        : { name: { contains: filters.search, mode: 'insensitive' } };
+
+      // Merged, not assigned. The activity filter puts its own condition on
+      // `user`, and an assignment here silently dropped it — a search inside
+      // "never signed in" would quietly have searched everybody.
+      where.user = { ...(where.user ?? {}), ...matching };
     }
 
     const [data, total] = await this.prisma.$transaction([
@@ -209,7 +232,7 @@ export class MemberService {
         where,
         skip: window.skip,
         take: window.take,
-        orderBy: { memberSince: 'desc' },
+        orderBy: orderFor(filters.sort) as any,
         // Lifts the client-level omission on the door code, for organisers
         // (Charley's call: admins can see them, which makes helping somebody
         // locked out a two-second job). `toMemberView` strips it again for
@@ -247,6 +270,11 @@ export class MemberService {
         page: window.page,
         perPage: window.perPage,
         totalPages: Math.ceil(total / window.perPage),
+        // What the server actually applied, which is not always what was
+        // asked: a filter the viewer may not use is dropped rather than
+        // refused, and the screen should show the list it is really showing.
+        sort: filters.sort,
+        narrowed: isNarrowed(filters),
       },
     };
   }

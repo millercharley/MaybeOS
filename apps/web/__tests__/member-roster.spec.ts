@@ -102,7 +102,9 @@ describe('the page is wired to all of it', () => {
   });
 
   it('refetches when the search changes', () => {
-    expect(page).toMatch(/\[query\]/);
+    // Alongside the filter key since MEM-26 — both narrow the same request,
+    // and either changing means the list starts again from page one.
+    expect(page).toMatch(/\[query, filterKey\]/);
   });
 
   it('waits before searching, rather than firing on every keystroke', () => {
