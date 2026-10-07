@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { RESEND_SCOPES, type ResendScope } from '../sign-in-audit';
 
 /**
  * Sending a roster its way in (MEM-18).
@@ -27,4 +28,20 @@ export class SendSignInLinksDto {
   @IsOptional()
   @IsBoolean()
   dryRun?: boolean;
+
+  /**
+   * Which group to write to (MEM-24).
+   *
+   * `waiting` is the original migration send and the default, so an older
+   * client keeps the behaviour it had. `undelivered` reaches the people the
+   * audit found Postmark never accepted a message for — the ones a capped plan
+   * swallowed. `not-signed-in` nudges the people who got their link and have
+   * not used it.
+   *
+   * Bounced addresses are in none of them: see `scopeFilter`.
+   */
+  @ApiPropertyOptional({ enum: RESEND_SCOPES, example: 'undelivered' })
+  @IsOptional()
+  @IsIn(RESEND_SCOPES)
+  scope?: ResendScope;
 }

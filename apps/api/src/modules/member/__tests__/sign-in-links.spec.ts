@@ -138,14 +138,87 @@ describe('sending a roster its way in', () => {
     }
   });
 
+  /*
+    What the hundred-message cap taught (MEM-24).
+
+    Postmark's plan stopped accepting at a hundred, MaybeOS marked four hundred
+    and thirty-five, and nothing noticed: `sendRaw` returned false for every
+    refusal and the loop threw the answer away with a bare `return true`. The
+    screen then reported nobody left waiting, because it was reading its own
+    marks. These are the two halves of not doing that again.
+  */
+  it('takes the mark back when the provider refuses', async () => {
+    email.sendRaw.mockResolvedValue(false);
+
+    const result = await service.sendSignInLinks('org-1');
+
+    // Back to null, which puts them in the queue the next press works through.
+    // Keeping the mark after a refusal does not prevent a second send, it
+    // prevents the only send.
+    const takenBack = prisma.userOrg.update.mock.calls.filter(
+      (call: any[]) => call[0].data.signInSentAt === null,
+    );
+    expect(takenBack).toHaveLength(2);
+
+    expect(result.sent).toBe(0);
+    expect(result.failed).toBe(2);
+    // Still waiting — the count was taken before the loop and nobody went.
+    expect(result.remaining).toBe(2);
+  });
+
+  it('tags the message, so a later audit is a lookup and not an inference', async () => {
+    await service.sendSignInLinks('org-1');
+
+    expect(email.sendRaw.mock.calls[0][3]).toBe('sign-in-link');
+  });
+
+  it('clears an earlier audit’s verdict when it writes again', async () => {
+    await service.sendSignInLinks('org-1');
+
+    const marking = prisma.userOrg.update.mock.calls.find(
+      (call: any[]) => call[0].data.signInSentAt instanceof Date,
+    );
+
+    // A re-send is a fresh question. Leaving a previous "delivered" in place
+    // would mean the next audit had nothing to find out about this member, and
+    // they would read as reached on the strength of an older message.
+    expect(marking[0].data.signInDeliveredAt).toBeNull();
+    expect(marking[0].data.signInAuditedAt).toBeNull();
+  });
+
+  it('writes to the group the caller asked for, not always the untouched one', async () => {
+    await service.sendSignInLinks('org-1', { scope: 'undelivered' });
+
+    const where = prisma.userOrg.findMany.mock.calls[0][0].where;
+
+    // The people a capped plan swallowed: marked as sent, audited, and the
+    // provider has no record of it.
+    expect(where.signInSentAt).toEqual({ not: null });
+    expect(where.signInAuditedAt).toEqual({ not: null });
+    expect(where.signInDeliveredAt).toBeNull();
+    // Never a bounced address, in any scope.
+    expect(where.signInBouncedAt).toBeNull();
+  });
+
+  it('nudges the people who got their link and never used it', async () => {
+    await service.sendSignInLinks('org-1', { scope: 'not-signed-in' });
+
+    const where = prisma.userOrg.findMany.mock.calls[0][0].where;
+
+    expect(where.signInDeliveredAt).toEqual({ not: null });
+    expect(where.user).toEqual({ passwordHash: null, lastLoginAt: null });
+  });
+
   it('shows the list without sending when asked to look first', async () => {
     const result = await service.sendSignInLinks('org-1', { dryRun: true });
 
     expect(result).toEqual({
       sent: 0,
+      failed: 0,
       remaining: 2,
       recipients: ['ada@example.com', 'bo@example.com'],
       dryRun: true,
+      scope: 'waiting',
     });
     expect(email.sendRaw).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();

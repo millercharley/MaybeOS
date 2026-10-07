@@ -3,6 +3,19 @@ import { assertMemberRoom, countsAsMember, memberRoom } from './member-capacity'
 import { tierIdFor } from './import-tier';
 import { manualStatusRefusal, type ManualStatus } from './manual-status';
 import { pageWindow } from './page-window';
+import {
+  SIGN_IN_TAG,
+  beyondRetention,
+  indexBounces,
+  indexDelivered,
+  inconclusive,
+  memberAddresses,
+  postmarkDay,
+  scopeFilter,
+  verdictFor,
+  type AuditTally,
+  type ResendScope,
+} from './sign-in-audit';
 import { FREE_PLAN_MEMBER_LIMIT } from '../stripe/dues-pricing';
 import {
   Injectable,
@@ -1450,22 +1463,40 @@ export class MemberService {
    */
   async sendSignInLinks(
     orgId: string,
-    options: { limit?: number; dryRun?: boolean } = {},
-  ): Promise<{ sent: number; remaining: number; recipients: string[]; dryRun: boolean }> {
+    options: { limit?: number; dryRun?: boolean; scope?: ResendScope } = {},
+  ): Promise<{
+    sent: number;
+    failed: number;
+    remaining: number;
+    recipients: string[];
+    dryRun: boolean;
+    scope: ResendScope;
+  }> {
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
       select: { id: true, name: true, inviteExpiryDays: true },
     });
     if (!org) throw new NotFoundException('Organization not found');
 
+    const scope = options.scope ?? 'waiting';
+
+    /*
+      Who this send is for (MEM-24).
+
+      Three different groups, and the difference between them is not a detail:
+      `waiting` has never been written to, `undelivered` was written to and the
+      provider never accepted it, `not-signed-in` got the link and has not used
+      it. The conditions live in `scopeFilter`, next to the reasoning.
+
+      This used to be one hard-coded `signInSentAt: null`, which was correct
+      right up until Postmark's plan capped at a hundred messages. After that
+      the only group the screen could reach was empty, and the three hundred
+      and thirty-five people who needed an email were invisible to it.
+    */
     const where: Prisma.UserOrgWhereInput = {
       orgId,
       role: { in: ['ADMIN', 'STAFF', 'MEMBER'] },
-      signInSentAt: null,
-      // Never set a password, so they have no way in yet. Somebody who has
-      // signed in — by password or by asking for a link — does not need
-      // telling how.
-      user: { passwordHash: null },
+      ...(scopeFilter(scope) as Prisma.UserOrgWhereInput),
     };
 
     const limit = Math.min(options.limit ?? MemberService.SIGN_IN_BATCH, MemberService.SIGN_IN_BATCH);
@@ -1487,9 +1518,11 @@ export class MemberService {
     if (options.dryRun) {
       return {
         sent: 0,
+        failed: 0,
         remaining: total,
         recipients: waiting.map((m) => m.user.email),
         dryRun: true,
+        scope,
       };
     }
 
@@ -1512,6 +1545,7 @@ export class MemberService {
     const webUrl = this.webUrl();
 
     let sent = 0;
+    let failed = 0;
 
     /*
       In small groups rather than one at a time.
@@ -1544,7 +1578,19 @@ export class MemberService {
             }),
             this.prisma.userOrg.update({
               where: { id: member.id },
-              data: { signInSentAt: new Date() },
+              data: {
+                signInSentAt: new Date(),
+                /*
+                  A re-send is a fresh question, so the old answers go (MEM-24).
+
+                  Leaving `signInDeliveredAt` set from a previous audit would
+                  mean the next audit had nothing to find out, and this member
+                  would read as reached on the strength of a message that is no
+                  longer the one they are waiting for.
+                */
+                signInDeliveredAt: null,
+                signInAuditedAt: null,
+              },
             }),
           ]);
 
@@ -1558,24 +1604,431 @@ export class MemberService {
           // Both addresses (MEM-19). This is the send where choosing wrong is
           // worst: the link arrives somewhere they never look, and the member
           // concludes MaybeOS does not work.
-          await this.emailService.sendRaw(
+          const accepted = await this.emailService.sendRaw(
             { primary: member.user.email, also: member.altEmail },
             subject,
             html,
+            SIGN_IN_TAG,
           );
+
+          /*
+            Take the mark back when the provider says no (MEM-24).
+
+            `sendRaw` returns false only for an explicit refusal — a quota
+            exhausted, an address Postmark will not accept — and that is the
+            one case where we know the member was not reached. The mark existed
+            to stop a second send; keeping it after a refusal stops the *only*
+            send. This return value was already here and was being thrown away,
+            which is how a hundred-message cap turned into four hundred and
+            thirty-five people recorded as told.
+
+            Silence is still treated as success, as it always was: a timeout
+            may well have delivered, and a roster emailed twice is worse than
+            a member the audit will catch.
+          */
+          if (!accepted) {
+            await this.prisma.userOrg.update({
+              where: { id: member.id },
+              data: { signInSentAt: null },
+            });
+            return false;
+          }
+
           return true;
         }),
       );
 
       sent += results.filter(Boolean).length;
+      failed += results.filter((ok) => !ok).length;
     }
 
-    return { sent, remaining: Math.max(0, total - sent), recipients: [], dryRun: false };
+    /*
+      What is left.
+
+      `total` was counted before the loop and `sent` is what went, so the
+      difference is the queue — and a refusal puts that member straight back
+      into it, which is why `failed` is not subtracted. It is reported
+      separately because an admin pressing again and seeing the same number is
+      owed an explanation.
+    */
+    return {
+      sent,
+      failed,
+      remaining: Math.max(0, total - sent),
+      recipients: [],
+      dryRun: false,
+      scope,
+    };
   }
 
   /** Visible to the tests that prove the deadline exists (MEM-23). */
   static get signInDeadlineMs(): number {
     return MemberService.SIGN_IN_DEADLINE_MS;
+  }
+
+  /** One page of provider records. Postmark's own ceiling is five hundred. */
+  private static readonly AUDIT_PAGE = 500;
+
+  /** How many pages one audit may read before it gives up and says so. */
+  private static readonly AUDIT_MAX_PAGES = 10;
+
+  /**
+   * Ask Postmark what actually happened to the sign-in links (MEM-24).
+   *
+   * **Why this exists.** `signInSentAt` is written before the provider is
+   * called, so it records an attempt. The first real migration send is what
+   * that cost: the Postmark plan stopped accepting at a hundred messages,
+   * MaybeOS marked four hundred and thirty-five, and the other three hundred
+   * and thirty-five were recorded as told. The screen said nobody was left
+   * waiting. It was reading its own marks.
+   *
+   * So this reads the provider instead, and writes down three things MaybeOS
+   * could not previously know: the message was accepted, the message bounced,
+   * or Postmark has never heard of it.
+   *
+   * **It changes no marks and sends no mail.** Reconciliation only — the
+   * re-sending is a separate, confirmed action, because the whole lesson here
+   * is that four hundred inboxes should not be written to by a side effect.
+   *
+   * **It refuses rather than guesses.** The historical messages carry no tag,
+   * so they are matched by subject, and a subject the admin has since reworded
+   * would match nothing. Reporting everybody as unsent on the back of that
+   * would send a second copy to everybody who already has one, so when the
+   * matching looks broken the audit says so and writes nothing.
+   */
+  async auditSignInLinks(orgId: string): Promise<{
+    checked: boolean;
+    /** Why not, when `checked` is false. Always safe to show an admin. */
+    reason?: 'no-provider' | 'nobody-sent' | 'unrecognised' | 'incomplete';
+    tally: AuditTally;
+    /** The addresses to fix, with Postmark's reason. */
+    bounced: Array<{ userId: string; name: string | null; email: string; kind: string }>;
+    /** True when the send is old enough that Postmark may have forgotten it. */
+    beyondRetention: boolean;
+    checkedAt: string | null;
+  }> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { id: true, name: true, inviteExpiryDays: true },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    const empty: AuditTally = {
+      marked: 0,
+      delivered: 0,
+      bounced: 0,
+      missing: 0,
+      stalled: 0,
+      neverSent: 0,
+    };
+
+    const neverSent = await this.prisma.userOrg.count({
+      where: {
+        orgId,
+        role: { in: ['ADMIN', 'STAFF', 'MEMBER'] },
+        signInSentAt: null,
+        user: { passwordHash: null },
+      },
+    });
+
+    // No provider means development, and an audit that reported every member
+    // as unreached because there is no Postmark would be worse than silence.
+    if (!this.emailService.hasProvider) {
+      return {
+        checked: false,
+        reason: 'no-provider',
+        tally: { ...empty, neverSent },
+        bounced: [],
+        beyondRetention: false,
+        checkedAt: null,
+      };
+    }
+
+    const marked = await this.prisma.userOrg.findMany({
+      where: {
+        orgId,
+        role: { in: ['ADMIN', 'STAFF', 'MEMBER'] },
+        signInSentAt: { not: null },
+      },
+      select: {
+        id: true,
+        userId: true,
+        altEmail: true,
+        signInSentAt: true,
+        user: { select: { email: true, name: true, lastLoginAt: true, passwordHash: true } },
+      },
+    });
+
+    if (marked.length === 0) {
+      return {
+        checked: false,
+        reason: 'nobody-sent',
+        tally: { ...empty, neverSent },
+        bounced: [],
+        beyondRetention: false,
+        checkedAt: null,
+      };
+    }
+
+    const stamps = marked
+      .map((m) => m.signInSentAt!.getTime())
+      .sort((a, b) => a - b);
+    const earliest = new Date(stamps[0]);
+    const latest = new Date(stamps[stamps.length - 1]);
+    const now = new Date();
+
+    /*
+      Two windows, because delivery and bouncing happen on different clocks.
+
+      Postmark accepts a message within seconds of the mark, so the message
+      window is the days the send itself touched — which keeps the page count
+      down to the sign-in mail and whatever else went out alongside it. A
+      bounce comes back whenever the receiving server gets round to it,
+      sometimes days later, so that window runs to today.
+
+      Whole days, and a day either side, because Postmark's message search
+      filters by date and not by time: asking it for a twenty-one minute window
+      would widen to the day regardless, and a send that straddled midnight in
+      UTC would fall half outside a window cut to the minute.
+    */
+    const messageWindow = {
+      fromDate: postmarkDay(earliest, -1),
+      toDate: postmarkDay(latest, 1),
+    };
+    const bounceWindow = {
+      fromDate: postmarkDay(earliest, -1),
+      toDate: postmarkDay(now, 1),
+    };
+
+    // The subject those messages went out under — the same render the send
+    // does, with the same template, so it matches character for character.
+    const custom = await this.prisma.belongingEmailTemplate.findUnique({
+      where: { orgId_kind: { orgId, kind: 'SIGN_IN' } },
+    });
+    const { subject: expectedSubject } = renderTemplate(custom ?? DEFAULT_TEMPLATES.SIGN_IN, {
+      member_name: 'there',
+      community_name: org.name,
+      sign_in_url: '',
+      expiry_days: String(org.inviteExpiryDays),
+    });
+
+    const stopBy = Date.now() + MemberService.SIGN_IN_DEADLINE_MS;
+
+    const messages = await this.readAllPages(stopBy, (offset) =>
+      this.emailService.outboundMessages({
+        ...messageWindow,
+        count: MemberService.AUDIT_PAGE,
+        offset,
+      }),
+    );
+    const bounceRows = await this.readAllPages(stopBy, (offset) =>
+      this.emailService.bounces({
+        ...bounceWindow,
+        count: MemberService.AUDIT_PAGE,
+        offset,
+      }),
+    );
+
+    /*
+      Partial is not usable here.
+
+      A half-read list of accepted messages makes the unread half look like
+      messages Postmark never had, and that is the half an admin would then
+      re-send to. Better to read nothing into it and ask for another press.
+    */
+    if (!messages.complete || !bounceRows.complete) {
+      return {
+        checked: false,
+        reason: 'incomplete',
+        tally: { ...empty, marked: marked.length, neverSent },
+        bounced: [],
+        beyondRetention: beyondRetention(earliest, now),
+        checkedAt: null,
+      };
+    }
+
+    const delivered = indexDelivered(messages.rows, expectedSubject);
+    const bounced = indexBounces(bounceRows.rows);
+
+    const signInMessagesMatched = delivered.size;
+    if (inconclusive({ messagesInWindow: messages.rows.length, signInMessagesMatched })) {
+      return {
+        checked: false,
+        reason: 'unrecognised',
+        tally: { ...empty, marked: marked.length, neverSent },
+        bounced: [],
+        beyondRetention: beyondRetention(earliest, now),
+        checkedAt: null,
+      };
+    }
+
+    const wasDelivered: string[] = [];
+    const didBounce: Array<{ id: string; at: Date; kind: string }> = [];
+    const wentNowhere: string[] = [];
+    const flagged: Array<{ userId: string; name: string | null; email: string; kind: string }> = [];
+    let stalled = 0;
+
+    for (const member of marked) {
+      const verdict = verdictFor(
+        memberAddresses({ email: member.user?.email, altEmail: member.altEmail }),
+        delivered,
+        bounced,
+      );
+
+      if (verdict.outcome === 'bounced') {
+        didBounce.push({ id: member.id, at: verdict.at!, kind: verdict.kind! });
+        flagged.push({
+          userId: member.userId,
+          name: member.user?.name ?? null,
+          // The admin cannot fix an address they cannot see, and this is their
+          // own roster — the same list the member editor already shows them.
+          email: member.user?.email ?? '',
+          kind: verdict.kind!,
+        });
+      } else if (verdict.outcome === 'delivered') {
+        wasDelivered.push(member.id);
+        if (!member.user?.lastLoginAt && !member.user?.passwordHash) stalled += 1;
+      } else {
+        wentNowhere.push(member.id);
+      }
+    }
+
+    const checkedAt = new Date();
+
+    // Three statements rather than four hundred: every member in a group gets
+    // the same row written, and the group is the whole difference.
+    await this.writeVerdicts(wasDelivered, checkedAt, {
+      signInDeliveredAt: checkedAt,
+      signInBouncedAt: null,
+      signInBounceKind: null,
+    });
+    await this.writeVerdicts(wentNowhere, checkedAt, {
+      signInDeliveredAt: null,
+      signInBouncedAt: null,
+      signInBounceKind: null,
+    });
+    for (const row of didBounce) {
+      await this.prisma.userOrg.update({
+        where: { id: row.id },
+        data: {
+          signInAuditedAt: checkedAt,
+          signInBouncedAt: row.at,
+          signInBounceKind: row.kind,
+          signInDeliveredAt: null,
+        },
+      });
+    }
+
+    return {
+      checked: true,
+      tally: {
+        marked: marked.length,
+        delivered: wasDelivered.length,
+        bounced: didBounce.length,
+        missing: wentNowhere.length,
+        stalled,
+        neverSent,
+      },
+      bounced: flagged,
+      beyondRetention: beyondRetention(earliest, now),
+      checkedAt: checkedAt.toISOString(),
+    };
+  }
+
+  /**
+   * Page through a provider list until it ends, the clock runs out, or the
+   * page cap is hit.
+   *
+   * `complete` is the honest part: every caller here treats a short read as
+   * unusable rather than as a result, so the flag has to be the first thing
+   * they see.
+   */
+  private async readAllPages<T>(
+    stopBy: number,
+    page: (offset: number) => Promise<{ total: number; messages?: T[]; bounces?: T[] } | null>,
+  ): Promise<{ rows: T[]; complete: boolean }> {
+    const rows: T[] = [];
+
+    for (let i = 0; i < MemberService.AUDIT_MAX_PAGES; i += 1) {
+      if (Date.now() > stopBy) return { rows, complete: false };
+
+      const result = await page(rows.length);
+      if (!result) return { rows, complete: false };
+
+      const batch = result.messages ?? result.bounces ?? [];
+      rows.push(...batch);
+
+      if (rows.length >= result.total || batch.length === 0) {
+        return { rows, complete: true };
+      }
+    }
+
+    return { rows, complete: false };
+  }
+
+  /**
+   * "I have sorted that address out — try them again" (MEM-24).
+   *
+   * Every re-send scope excludes a bounced address, which is right: writing
+   * again to an address that refused the first message spends quota the
+   * reachable members need. But it is also a dead end, because nothing else
+   * clears the flag — without this, a bounce in October is a member MaybeOS
+   * will never write to again.
+   *
+   * So the admin gets to say the problem is fixed. Clearing the flag returns
+   * the member to `undelivered`, which is the honest description of where they
+   * then stand: marked as sent, and no evidence it arrived.
+   *
+   * **A spam complaint or an unsubscribe cannot be cleared.** Those are not
+   * broken addresses, they are people who asked not to be written to, and an
+   * admin pressing a button is not them changing their mind.
+   */
+  async clearSignInBounce(orgId: string, userId: string) {
+    // findFirst with the orgId, never findUnique on the id alone: a membership
+    // is tenant-owned and one co-op must not reach into another's (SEC-04).
+    const membership = await this.prisma.userOrg.findFirst({
+      where: { orgId, userId },
+      select: { id: true, signInBouncedAt: true, signInBounceKind: true },
+    });
+    if (!membership) throw new NotFoundException('Member not found');
+
+    if (!membership.signInBouncedAt) {
+      return { cleared: false, reason: 'not-bounced' as const };
+    }
+
+    const kind = membership.signInBounceKind ?? '';
+    if (/spam|unsubscrib/i.test(kind)) {
+      return { cleared: false, reason: 'refused' as const };
+    }
+
+    await this.prisma.userOrg.update({
+      where: { id: membership.id },
+      data: {
+        signInBouncedAt: null,
+        signInBounceKind: null,
+        // Audited, and nothing arrived: exactly the `undelivered` scope.
+        signInDeliveredAt: null,
+      },
+    });
+
+    return { cleared: true as const };
+  }
+
+  /** One group's verdict, in chunks a query planner is happy with. */
+  private async writeVerdicts(
+    ids: string[],
+    checkedAt: Date,
+    data: Prisma.UserOrgUpdateManyMutationInput,
+  ): Promise<void> {
+    const CHUNK = 200;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const slice = ids.slice(i, i + CHUNK);
+      if (slice.length === 0) continue;
+      await this.prisma.userOrg.updateMany({
+        where: { id: { in: slice } },
+        data: { ...data, signInAuditedAt: checkedAt },
+      });
+    }
   }
 
   async importMembers(orgId: string, rows: ImportMemberRowDto[]) {

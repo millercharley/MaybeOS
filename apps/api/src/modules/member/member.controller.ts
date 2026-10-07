@@ -185,6 +185,28 @@ export class MemberController {
     return this.memberService.sendSignInLinks(orgId, dto);
   }
 
+  @Post('members/sign-in-audit')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Ask the email provider what happened to the sign-in links (MEM-24)',
+  })
+  auditSignInLinks(@Param('orgId') orgId: string) {
+    return this.memberService.auditSignInLinks(orgId);
+  }
+
+  @Post('members/:userId/sign-in-bounce/clear')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'The address is fixed — let this member be written to again (MEM-24)',
+  })
+  clearSignInBounce(@Param('orgId') orgId: string, @Param('userId') userId: string) {
+    return this.memberService.clearSignInBounce(orgId, userId);
+  }
+
   @Post('members/invite')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')

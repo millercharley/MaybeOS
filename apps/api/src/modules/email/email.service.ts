@@ -47,6 +47,21 @@ export function addresses(to: string | Addresses): { primary: string; also?: str
   return also && also.toLowerCase() !== primary.toLowerCase() ? { primary, also } : { primary };
 }
 
+/** One outbound message as Postmark reports it, reduced to what MaybeOS reads. */
+export interface ProviderMessage {
+  recipients: string[];
+  subject: string;
+  tag: string | null;
+  receivedAt: string;
+}
+
+/** One bounce as Postmark reports it. */
+export interface ProviderBounce {
+  email: string;
+  type: string;
+  bouncedAt: string;
+}
+
 export interface EmailJobData {
   type:
     | 'magic-link'
@@ -303,6 +318,14 @@ export class EmailService {
     to: string | Addresses,
     subject: string,
     htmlBody: string,
+    /**
+     * Postmark's tag, for mail that will later be audited (MEM-24).
+     *
+     * Without one, asking the provider "which of these four hundred people did
+     * you actually accept a sign-in link for" is a question about subject
+     * lines. With one it is a lookup.
+     */
+    tag?: string,
   ): Promise<boolean> {
     const { primary, also } = addresses(to);
     if (!this.client) {
@@ -321,6 +344,7 @@ export class EmailService {
         ...(also && { Cc: also }),
         Subject: subject,
         HtmlBody: htmlBody,
+        ...(tag && { Tag: tag }),
       });
       this.logger.log(`Email sent successfully to ${primary} (raw)`);
       return true;
@@ -329,6 +353,90 @@ export class EmailService {
       this.logger.error(`Failed to send email to ${primary}: ${message}`);
       return false;
     }
+  }
+
+  /**
+   * Is there a provider at all?
+   *
+   * The audit has to be able to say "I cannot check" out loud. In development
+   * there is no Postmark, and an audit that silently reported every member as
+   * never-reached would be worse than one that declines.
+   */
+  get hasProvider(): boolean {
+    return this.client !== null;
+  }
+
+  /**
+   * What Postmark has a record of accepting, for the audit (MEM-24).
+   *
+   * Paged rather than fetched whole: a page is five hundred messages, which is
+   * Postmark's own ceiling, and an org's send window can hold more than that
+   * once the rest of its mail is in there too. The caller decides when to stop
+   * — it is the one holding the request deadline.
+   *
+   * `Recipients` rather than `To` deliberately: it includes the Cc, which is
+   * where a member's alternate address ends up (MEM-19).
+   */
+  async outboundMessages(opts: {
+    fromDate: string;
+    toDate: string;
+    count: number;
+    offset: number;
+    tag?: string;
+  }): Promise<{ total: number; messages: ProviderMessage[] } | null> {
+    if (!this.client) return null;
+
+    const page = await this.client.getOutboundMessages({
+      count: opts.count,
+      offset: opts.offset,
+      fromDate: opts.fromDate,
+      toDate: opts.toDate,
+      ...(opts.tag && { tag: opts.tag }),
+    });
+
+    return {
+      // Postmark types TotalCount as a string here and returns a number.
+      total: Number(page.TotalCount ?? 0),
+      messages: (page.Messages ?? []).map((m) => ({
+        recipients: m.Recipients ?? [],
+        subject: m.Subject ?? '',
+        tag: m.Tag ?? null,
+        receivedAt: m.ReceivedAt,
+      })),
+    };
+  }
+
+  /**
+   * Bounces in a window, for the audit (MEM-24).
+   *
+   * Separate from the message list because Postmark keeps them separately, and
+   * for a reason that matters here: a bounced message still counts as accepted
+   * and still appears in the outbound list. Delivery and arrival are different
+   * questions, and only the bounce answers the second one.
+   */
+  async bounces(opts: {
+    fromDate: string;
+    toDate: string;
+    count: number;
+    offset: number;
+  }): Promise<{ total: number; bounces: ProviderBounce[] } | null> {
+    if (!this.client) return null;
+
+    const page = await this.client.getBounces({
+      count: opts.count,
+      offset: opts.offset,
+      fromDate: opts.fromDate,
+      toDate: opts.toDate,
+    });
+
+    return {
+      total: Number(page.TotalCount ?? 0),
+      bounces: (page.Bounces ?? []).map((b) => ({
+        email: b.Email,
+        type: b.Type,
+        bouncedAt: b.BouncedAt,
+      })),
+    };
   }
 
   private async send({ type, to, data }: EmailJobData): Promise<void> {
