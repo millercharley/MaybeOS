@@ -188,6 +188,27 @@ model Organization {
   /// would put "DO NOT BOOK" in front of the whole community. Null until an
   /// admin picks one, and the import simply does not offer events without it.
   eventsCalendarId            String?
+  /// Where the scheduled calendar sync has got to (CAL-13).
+  ///
+  /// Until now an import only ever happened when an admin pressed the button,
+  /// which is how the Attic stayed booked after its Google entry was deleted:
+  /// nothing was wrong with the sync, nothing had run it. This is the state
+  /// that lets it run itself.
+  ///
+  /// `calendarSyncCursor` is a position part-way through a pass — nine
+  /// calendars and a year of entries do not fit in one invocation, so a run
+  /// stops on the clock and leaves its place here. Null means no pass is in
+  /// flight, and `calendarSyncedAt` is when the last one finished. A pass that
+  /// is mid-flight continues on the next tick; a finished one waits for the
+  /// interval to come round again.
+  calendarSyncCursor          Json?
+  calendarSyncedAt            DateTime?
+  /// Why the last pass stopped, when it stopped badly. Cleared by a good one.
+  ///
+  /// Kept because this runs unattended: a sync that has been failing against
+  /// a revoked Google token for a week looks exactly like a sync with nothing
+  /// to do, and only one of those needs an admin.
+  calendarSyncError           String?
   /// Whether Radar is on for this co-op (RDR-01): a weekly digest telling a
   /// member about gatherings open to members that match what they are
   /// interested in. Off until an admin turns it on, and the switch is only

@@ -49,6 +49,20 @@ export function CalendarImport({ org }: { org: Org }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [confirming, setConfirming] = useState(false);
+  /** What the unattended sync has been doing without anybody asking (CAL-13). */
+  const [sync, setSync] = useState<{
+    syncedAt: string | null;
+    inFlight: boolean;
+    error: string | null;
+    automatic: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    // Never allowed to break the panel: the import still works whether or not
+    // this answers.
+    api.calendar.syncStatus(org.id, token).then(setSync).catch(() => setSync(null));
+  }, [token, org.id]);
 
   useEffect(() => {
     if (!token) return;
@@ -187,7 +201,45 @@ export function CalendarImport({ org }: { org: Org }) {
           you like: every entry remembers where in Google it came from, so a second run updates
           what it brought over rather than importing it twice.
         </p>
+        <p className="mt-2 max-w-prose text-sm text-gray-500">
+          {/*
+            Said here because it changes what this button is for (CAL-13).
+            It used to be the only thing that ever read Google — which is how
+            a room stayed booked after its entry was deleted. Now it is the
+            way to not wait an hour.
+          */}
+          MaybeOS now also does this by itself, about once an hour, so an entry
+          deleted in Google stops holding the room without anybody pressing
+          anything. Running it here is how you stop waiting.
+        </p>
       </div>
+
+      {/* How the unattended pass is getting on (CAL-13). A field nobody reads
+          is the same as no field — the whole point is that nobody is watching. */}
+      {sync?.automatic && (
+        <div
+          className={`rounded-lg p-3 text-sm ${
+            sync.error ? 'bg-amber-50 text-amber-900' : 'bg-gray-50 text-gray-600'
+          }`}
+        >
+          {sync.error ? (
+            <>
+              <strong>The automatic sync is failing.</strong> Google said:{' '}
+              {sync.error}. Reconnecting the room that holds the Google account, on the
+              Rooms page, is usually what fixes it.
+            </>
+          ) : sync.syncedAt ? (
+            <>
+              Last synced itself {new Date(sync.syncedAt).toLocaleString()}
+              {sync.inFlight && ' — working through the rest now'}.
+            </>
+          ) : sync.inFlight ? (
+            'Working through your calendars for the first time.'
+          ) : (
+            'Waiting for its first automatic run.'
+          )}
+        </div>
+      )}
 
       {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 

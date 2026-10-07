@@ -380,6 +380,20 @@ class ApiClient {
     importableCalendars: (orgId: string, token: string) =>
       this.request<ImportableCalendar[]>(`/orgs/${orgId}/calendar/import/calendars`, { token }),
 
+    /**
+     * How the unattended sync is getting on (CAL-13).
+     *
+     * `inFlight` means a pass is part-way through, which for a co-op with nine
+     * calendars is most of the time — not a problem, and not "never synced".
+     */
+    syncStatus: (orgId: string, token: string) =>
+      this.request<{
+        syncedAt: string | null;
+        inFlight: boolean;
+        error: string | null;
+        automatic: boolean;
+      }>(`/orgs/${orgId}/calendar/import/status`, { token }),
+
     /** Null clears it, which stops the import producing events at all. */
     selectEventsCalendar: (orgId: string, calendarId: string | null, token: string) =>
       this.request<{ eventsCalendarId: string | null }>(

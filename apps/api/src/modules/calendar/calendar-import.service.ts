@@ -7,6 +7,7 @@ import { hostFields, hostKey, hostLabel, personFor } from './past-host';
 import { guestFrom } from './booking-guest';
 import { slugCandidates } from './event-slug';
 import { deadline, nextCursor, startOf, type ImportCursor } from './import-cursor';
+import { SYNC_MONTHS_BACK, afterChunk, afterFailure, nextToSync } from './sync-schedule';
 import { ImportedEntry, cancelledId, importWindow, toEntry } from './calendar-import';
 
 /** A year back is the default; two years ahead is the ceiling (see `importWindow`). */
@@ -160,6 +161,129 @@ export class CalendarImportService {
     }
 
     return room;
+  }
+
+  /**
+   * How the unattended sync is getting on (CAL-13).
+   *
+   * `inFlight` is a pass part-way through rather than a problem — MaybeItsFate
+   * is nine calendars and does not finish in one tick — so the screen should
+   * say "working through them" and not "never synced".
+   */
+  async syncStatus(orgId: string): Promise<{
+    syncedAt: string | null;
+    inFlight: boolean;
+    error: string | null;
+    automatic: boolean;
+  }> {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { calendarSyncedAt: true, calendarSyncCursor: true, calendarSyncError: true },
+    });
+    if (!org) throw new NotFoundException('Community not found');
+
+    // Nothing syncs itself until a calendar is connected, and saying so is
+    // more useful than an empty date.
+    const connected = await this.prisma.room.count({
+      where: { orgId, googleTokens: { not: Prisma.JsonNull } },
+    });
+
+    return {
+      syncedAt: org.calendarSyncedAt?.toISOString() ?? null,
+      inFlight: org.calendarSyncCursor != null,
+      error: org.calendarSyncError,
+      automatic: connected > 0,
+    };
+  }
+
+  /**
+   * One tick of the unattended sync (CAL-13).
+   *
+   * **The thing that was missing.** Every other kind of staleness in MaybeOS
+   * has a scheduled task behind it; the calendar had only a button. A Google
+   * entry deleted on Monday stayed booked until somebody happened to press
+   * import, and the Attic is what that looks like from a member's side.
+   *
+   * One co-op per tick, continuing whatever is mid-pass before starting
+   * anything new. A pass is nine calendars for MaybeItsFate and does not fit
+   * in one invocation, so it leaves a cursor and the next tick picks it up —
+   * the same machinery the manual import already used to survive a Lambda's
+   * wall clock, pointed at a scheduler instead of at a browser.
+   *
+   * **Never throws.** It runs beside ten other tasks, and a revoked Google
+   * token must not cost a co-op its dues reminders. The reason is written to
+   * the org so an admin can be told, because a sync failing all week against
+   * a dead token looks exactly like a sync with nothing to do.
+   */
+  async runScheduled(now: Date = new Date()): Promise<{
+    orgId: string | null;
+    events: number;
+    bookings: number;
+    released: number;
+    finished: boolean;
+    error?: string;
+  }> {
+    const idle = { orgId: null, events: 0, bookings: 0, released: 0, finished: true };
+
+    /*
+      Only co-ops that have actually connected something.
+
+      A room holding live Google tokens is what `run` needs to read anything at
+      all — it refuses outright without one — so asking for it here is the
+      difference between skipping a co-op and logging an exception for every
+      co-op that has never touched Google.
+    */
+    const connected = await this.prisma.organization.findMany({
+      where: { rooms: { some: { googleTokens: { not: Prisma.JsonNull } } } },
+      select: { id: true, calendarSyncCursor: true, calendarSyncedAt: true },
+    });
+    if (connected.length === 0) return idle;
+
+    const due = nextToSync(
+      connected.map((org) => ({
+        orgId: org.id,
+        cursor: org.calendarSyncCursor,
+        syncedAt: org.calendarSyncedAt,
+      })),
+      now,
+    );
+    if (!due) return idle;
+
+    try {
+      const summary = await this.run(due.orgId, {
+        dryRun: false,
+        monthsBack: SYNC_MONTHS_BACK,
+        resumeFrom: (due.cursor as ImportCursor | null) ?? null,
+      });
+
+      const released = summary.calendars.reduce((n, c) => n + (c.released ?? 0), 0);
+
+      await this.prisma.organization.update({
+        where: { id: due.orgId },
+        data: afterChunk(summary.next ?? null, now) as Prisma.OrganizationUpdateInput,
+      });
+
+      return {
+        orgId: due.orgId,
+        events: summary.events,
+        bookings: summary.bookings,
+        released,
+        finished: !summary.next,
+      };
+    } catch (error) {
+      const reason = (error as Error).message;
+      this.logger.warn(`Scheduled calendar sync failed for org ${due.orgId}: ${reason}`);
+
+      await this.prisma.organization
+        .update({
+          where: { id: due.orgId },
+          data: afterFailure(reason) as Prisma.OrganizationUpdateInput,
+        })
+        // Writing down the failure must not itself fail the task.
+        .catch(() => {});
+
+      return { orgId: due.orgId, events: 0, bookings: 0, released: 0, finished: false, error: reason };
+    }
   }
 
   /**
