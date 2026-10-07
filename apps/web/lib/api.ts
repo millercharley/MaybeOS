@@ -662,12 +662,32 @@ class ApiClient {
      * filter the rows it happened to be holding, so searching a 426-member
      * co-op looked through the first 50 and said nobody matched.
      */
-    list: (orgId: string, token: string, page = 1, perPage = 25, search?: string) =>
-      this.request<PaginatedResponse<Member>>(
-        `/orgs/${orgId}/members?page=${page}&perPage=${perPage}` +
-          (search?.trim() ? `&search=${encodeURIComponent(search.trim())}` : ''),
+    list: (
+      orgId: string,
+      token: string,
+      page = 1,
+      perPage = 25,
+      search?: string,
+      /**
+       * Narrowing and ordering, for the admin roster (MEM-26).
+       *
+       * Sent as given and read by the server against the viewer: most of these
+       * are an organiser's alone, and one an ordinary member asks for is
+       * dropped rather than refused.
+       */
+      filters: MemberListFilters = {},
+    ) => {
+      const query = new URLSearchParams({ page: String(page), perPage: String(perPage) });
+      if (search?.trim()) query.set('search', search.trim());
+      for (const [key, value] of Object.entries(filters)) {
+        if (value) query.set(key, value);
+      }
+
+      return this.request<PaginatedResponse<Member> & { meta: MemberListMeta }>(
+        `/orgs/${orgId}/members?${query.toString()}`,
         { token },
-      ),
+      );
+    },
 
     /**
      * Edit your own entry in a co-op's directory (MEM-09). No userId — the
@@ -3496,6 +3516,39 @@ export interface MembershipTier {
 }
 
 /** One row of an export, in MaybeOS's own field names (MEM-06). */
+/** How the admin roster can be narrowed and ordered (MEM-26). */
+export type MemberSort =
+  | 'joined-desc'
+  | 'joined-asc'
+  | 'name-asc'
+  | 'name-desc'
+  | 'last-seen-desc'
+  | 'last-seen-asc'
+  | 'tier'
+  | 'status';
+
+export interface MemberListFilters {
+  role?: string;
+  /** A tier's id, or `none` for members who are not on one. */
+  tierId?: string;
+  status?: string;
+  /** Whether they have ever signed in. */
+  activity?: 'signed-in' | 'never' | '';
+  /** Something to act on rather than a property: a bounced address, no tier, hidden. */
+  flag?: 'bounced' | 'no-tier' | 'hidden' | '';
+  sort?: MemberSort;
+}
+
+export interface MemberListMeta {
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
+  /** What the server actually ordered by, which is not always what was asked. */
+  sort?: MemberSort;
+  narrowed?: boolean;
+}
+
 export interface ImportMemberRow {
   email: string;
   name?: string;

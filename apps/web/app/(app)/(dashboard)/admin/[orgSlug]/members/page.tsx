@@ -20,6 +20,16 @@ import { Modal } from '@/components/ui/modal';
 import { PageHeader } from '@/components/layout/page-header';
 import { MemberName } from '@/components/member/member-name';
 import { lastSeenLabel, neverSignedIn } from '@/lib/last-seen';
+import {
+  MEMBER_FILTER_GROUPS,
+  SORT_OPTIONS,
+  activeFilterCount,
+  clearedFilters,
+  describeActive,
+  emptyMessage,
+  withFilter,
+} from '@/lib/member-filters';
+import type { MemberListFilters } from '@/lib/api';
 
 const roleBadge: Record<string, string> = {
   ADMIN: 'badge-success',
@@ -46,6 +56,14 @@ export default function MembersPage() {
    * answered "No members found".
    */
   const [query, setQuery] = useState('');
+  /**
+   * Narrowing and ordering the roster (MEM-26).
+   *
+   * One object rather than five pieces of state, because every change to any
+   * of them has the same consequence — the list starts again from page one —
+   * and it is what the request takes.
+   */
+  const [filters, setFilters] = useState<MemberListFilters>({ sort: 'joined-desc' });
   const [more, setMore] = useState<Member[]>([]);
   const [page, setPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -98,9 +116,18 @@ export default function MembersPage() {
     return () => clearTimeout(id);
   }, [search]);
 
+  /*
+    One key for every way the list can be narrowed.
+
+    `useApi` re-runs on a changed dependency, and passing the object itself
+    would re-run on every render — a new object each time, never equal to the
+    last. The string is stable and changes exactly when the request would.
+  */
+  const filterKey = JSON.stringify(filters);
+
   const { data, loading, error, refetch } = useApi(
-    (token, orgId) => api.members.list(orgId, token, 1, PER_PAGE, query || undefined),
-    [query],
+    (token, orgId) => api.members.list(orgId, token, 1, PER_PAGE, query || undefined, filters),
+    [query, filterKey],
   );
 
   // A new first page replaces everything after it; the pages that followed
@@ -199,6 +226,13 @@ export default function MembersPage() {
     (inv) => !inv.acceptedAt,
   );
 
+  /*
+    Everything narrowing this list is the server's (MEM-22, MEM-26).
+
+    Kept as a name rather than inlined because the rows are read in a dozen
+    places below, and the one thing this must never become again is a filter
+    applied to whichever page the browser happens to be holding.
+  */
   const filtered = shown;
 
 
@@ -262,6 +296,9 @@ export default function MembersPage() {
         page + 1,
         PER_PAGE,
         query || undefined,
+        // The same narrowing as page one, or "load more" fetches a different
+        // list and appends it to this one.
+        filters,
       );
       // Deduplicated: the roster is ordered by join date, so somebody
       // joining while this page is open shifts every later row down one and
@@ -581,6 +618,101 @@ export default function MembersPage() {
         />
       </div>
 
+      {/*
+        Narrowing and ordering the roster (MEM-26).
+
+        Plain selects rather than a popover of checkboxes: one value per
+        question is what the server takes, and a roster of four hundred is
+        searched by somebody who knows which question they are asking.
+      */}
+      <div className="flex flex-wrap items-end gap-2">
+        {MEMBER_FILTER_GROUPS.map((group) => (
+          <label key={group.key} className="flex flex-col gap-1">
+            <span className="text-xs font-medium uppercase tracking-wider text-gray-500">
+              {group.label}
+            </span>
+            <select
+              value={filters[group.key] ?? ''}
+              onChange={(e) => setFilters((f) => withFilter(f, group.key, e.target.value))}
+              className="rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            >
+              <option value="">{group.anyLabel}</option>
+              {group.options.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium uppercase tracking-wider text-gray-500">Tier</span>
+          <select
+            value={filters.tierId ?? ''}
+            onChange={(e) => setFilters((f) => withFilter(f, 'tierId', e.target.value))}
+            className="rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+          >
+            <option value="">Any tier</option>
+            {(tiers ?? []).map((tier) => (
+              <option key={tier.id} value={tier.id}>
+                {tier.name}
+              </option>
+            ))}
+            <option value="none">On no tier</option>
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium uppercase tracking-wider text-gray-500">
+            Sort by
+          </span>
+          <select
+            value={filters.sort ?? 'joined-desc'}
+            onChange={(e) => setFilters((f) => withFilter(f, 'sort', e.target.value))}
+            className="rounded-lg border border-gray-300 bg-white px-2 py-2 text-sm text-gray-900 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+          >
+            {SORT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {activeFilterCount(filters) > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-gray-500">
+            {/*
+              The count the server returned, which is the whole point of
+              filtering on the server: it is how many match, not how many of
+              them happen to be loaded.
+            */}
+            {data?.meta?.total ?? 0} {data?.meta?.total === 1 ? 'member' : 'members'} match
+          </span>
+          {describeActive(filters, tiers ?? []).map((chip) => (
+            <button
+              key={String(chip.key)}
+              type="button"
+              onClick={() => setFilters((f) => withFilter(f, chip.key, ''))}
+              className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200"
+            >
+              {chip.label}
+              <span aria-hidden="true">&times;</span>
+              <span className="sr-only">Remove this filter</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setFilters(clearedFilters())}
+            className="text-xs font-medium text-brand-600 hover:underline"
+          >
+            Clear all
+          </button>
+        </div>
+      )}
+
       {/* `overflow-hidden` clipped the table on a narrow screen rather than
           letting it scroll, so the last columns were unreachable on a phone
           (UI-01). `overflow-x-auto` keeps the rounded corners and gives the
@@ -796,9 +928,12 @@ export default function MembersPage() {
             {filtered.length === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-12 text-center text-sm text-gray-500">
-                  {query
-                    ? 'No members match that search.'
-                    : 'No members yet.'}
+                  {/*
+                    A filtered list that came back empty is not an empty
+                    roster, and saying "no members yet" to somebody whose
+                    import worked is how they go looking for a bug (MEM-26).
+                  */}
+                  {emptyMessage(filters, Boolean(query))}
                 </td>
               </tr>
             )}

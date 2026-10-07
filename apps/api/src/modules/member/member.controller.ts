@@ -23,6 +23,7 @@ import { CurrentUser, RequestUser } from '../../common/decorators/current-user.d
 import { viewerFor } from '../../common/access/contact-visibility';
 import { UpdateMyMembershipDto } from './dto/update-my-membership.dto';
 import { MemberService, type EmailChangeRefusal } from './member.service';
+import { MEMBER_ROLES, MEMBER_SORTS, MEMBER_STATUSES } from './member-filters';
 import { MemberProfileService } from './member-profile.service';
 import { CreateTierDto } from './dto/create-tier.dto';
 import { ImportMembersDto, ImportAvatarsDto } from './dto/import-members.dto';
@@ -52,12 +53,31 @@ export class MemberController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'perPage', required: false, type: Number })
   @ApiQuery({ name: 'search', required: false, type: String })
+  @ApiQuery({ name: 'role', required: false, enum: MEMBER_ROLES })
+  @ApiQuery({ name: 'tierId', required: false, type: String, description: 'A tier id, or "none"' })
+  @ApiQuery({ name: 'status', required: false, enum: MEMBER_STATUSES })
+  @ApiQuery({ name: 'activity', required: false, enum: ['signed-in', 'never'] })
+  @ApiQuery({ name: 'flag', required: false, enum: ['bounced', 'no-tier', 'hidden'] })
+  @ApiQuery({ name: 'sort', required: false, enum: MEMBER_SORTS })
   listMembers(
     @Param('orgId') orgId: string,
     @CurrentUser() user: RequestUser,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('perPage', new DefaultValuePipe(20), ParseIntPipe) perPage: number,
     @Query('search') search?: string,
+    /*
+      Taken loosely and parsed in the service (MEM-26).
+
+      Deliberately not a validated DTO: these are read against the viewer, and
+      a filter an ordinary member may not use is dropped rather than refused.
+      A 400 would itself be an answer about what exists.
+    */
+    @Query('role') role?: string,
+    @Query('tierId') tierId?: string,
+    @Query('status') status?: string,
+    @Query('activity') activity?: string,
+    @Query('flag') flag?: string,
+    @Query('sort') sort?: string,
   ) {
     return this.memberService.listMembers(
       orgId,
@@ -65,6 +85,7 @@ export class MemberController {
       page,
       perPage,
       search,
+      { role, tierId, status, activity, flag, sort },
     );
   }
 
