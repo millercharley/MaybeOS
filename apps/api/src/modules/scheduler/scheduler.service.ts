@@ -9,6 +9,7 @@ import { RadarService } from '../radar/radar.service';
 import { RecapService } from '../recap/recap.service';
 import { HostBriefingService } from '../service/host-briefing.service';
 import { ServiceService } from '../service/service.service';
+import { CalendarImportService } from '../calendar/calendar-import.service';
 
 export interface TaskResult {
   task: string;
@@ -56,6 +57,7 @@ export class SchedulerService {
     private readonly radar: RadarService,
     private readonly recap: RecapService,
     private readonly rota: ServiceService,
+    private readonly calendars: CalendarImportService,
   ) {}
 
   async runDueTasks(now: Date = new Date()): Promise<RunResult> {
@@ -75,6 +77,7 @@ export class SchedulerService {
       { name: 'send-host-briefings', run: () => this.sendHostBriefings(now) },
       { name: 'send-duty-reminders', run: () => this.sendDutyReminders(now) },
       { name: 'sync-door-codes', run: () => this.syncDoorCodes() },
+      { name: 'sync-calendars', run: () => this.syncCalendars(now) },
       { name: 'remove-dues-fees-after-upgrade', run: () => this.removeDuesFees() },
     { name: 'send-radar-digests',             run: () => this.sendRadarDigests(now) },
     { name: 'draft-monthly-recaps',           run: () => this.draftMonthlyRecaps(now) },
@@ -185,6 +188,54 @@ export class SchedulerService {
     } catch (error) {
       const message = (error as Error).message;
       return { task: 'sync-door-codes', processed: 0, failed: 1, errors: [message] };
+    }
+  }
+
+  /**
+   * Keep the imported calendars true (CAL-13).
+   *
+   * The gap this closes: every other kind of staleness in MaybeOS had a task
+   * behind it, and the calendar had only a button. A Google entry deleted on
+   * Monday stayed booked until somebody pressed import — which is how the
+   * Attic showed as taken for an evening that was free.
+   *
+   * One co-op per tick, continuing anything mid-pass first. `runScheduled`
+   * swallows its own failures and records them on the co-op, so this reports
+   * rather than throws: a revoked Google token must not cost the co-op its
+   * dues reminders.
+   */
+  private async syncCalendars(now: Date): Promise<TaskResult> {
+    try {
+      const { orgId, events, bookings, released, finished, error } =
+        await this.calendars.runScheduled(now);
+
+      if (!orgId) {
+        return { task: 'sync-calendars', processed: 0, failed: 0, errors: [] };
+      }
+
+      if (error) {
+        return { task: 'sync-calendars', processed: 0, failed: 1, errors: [error] };
+      }
+
+      if (events || bookings || released) {
+        this.logger.log(
+          `Calendars for ${orgId}: ${events} event(s), ${bookings} booking(s), ${released} released` +
+            (finished ? '' : ' — more to do next tick'),
+        );
+      }
+
+      // Releases count: a booking let go is the whole reason this runs
+      // unattended, and a tick that only freed rooms did real work.
+      return {
+        task: 'sync-calendars',
+        processed: events + bookings + released,
+        failed: 0,
+        errors: [],
+      };
+    } catch (error) {
+      const message = (error as Error).message;
+      this.logger.error('Failed to sync calendars', error as Error);
+      return { task: 'sync-calendars', processed: 0, failed: 1, errors: [message] };
     }
   }
 

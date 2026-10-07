@@ -8,6 +8,7 @@ import { DoorModule } from '../door/door.module';
 import { StripeModule } from '../stripe/stripe.module';
 import { RadarModule } from '../radar/radar.module';
 import { RecapModule } from '../recap/recap.module';
+import { CalendarModule } from '../calendar/calendar.module';
 import { SchedulerService } from './scheduler.service';
 
 /**
@@ -26,6 +27,8 @@ import { SchedulerService } from './scheduler.service';
     StripeModule,
     RadarModule,
     RecapModule,
+    // Keeping the imported calendars true, unattended (CAL-13).
+    CalendarModule,
   ],
   providers: [PrismaService, SchedulerService],
   exports: [SchedulerService],

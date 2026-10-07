@@ -52,6 +52,23 @@ export class CalendarController {
     return this.importer.available(orgId);
   }
 
+  /**
+   * How the unattended sync is getting on (CAL-13).
+   *
+   * Worth a route of its own, because the alternative is a field nobody
+   * reads. A sync that has been failing all week against a revoked Google
+   * token looks exactly like a sync with nothing to do, and the whole point
+   * of running it unattended is that nobody is watching.
+   */
+  @Get('orgs/:orgId/calendar/import/status')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'When the calendars last synced themselves, and whether it worked' })
+  syncStatus(@Param('orgId') orgId: string) {
+    return this.importer.syncStatus(orgId);
+  }
+
   @Put('orgs/:orgId/calendar/import/events-calendar')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')

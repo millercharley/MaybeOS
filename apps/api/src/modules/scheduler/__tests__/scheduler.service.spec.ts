@@ -10,6 +10,7 @@ import { RadarService } from '../../radar/radar.service';
 import { RecapService } from '../../recap/recap.service';
 import { HostBriefingService } from '../../service/host-briefing.service';
 import { ServiceService } from '../../service/service.service';
+import { CalendarImportService } from '../../calendar/calendar-import.service';
 
 /**
  * The scheduler's correctness is mostly about what it *doesn't* touch: rows
@@ -63,6 +64,16 @@ describe('SchedulerService', () => {
         {
           provide: ServiceService,
           useValue: { remindDue: jest.fn().mockResolvedValue({ sent: 0, failed: 0, errors: [] }) },
+        },
+        // CAL-13. One co-op per tick, and none at all when nobody has
+        // connected a Google calendar.
+        {
+          provide: CalendarImportService,
+          useValue: {
+            runScheduled: jest
+              .fn()
+              .mockResolvedValue({ orgId: null, events: 0, bookings: 0, released: 0, finished: true }),
+          },
         },
         // DOR-01. The door pass is reconciliation, so it does nothing at all
         // unless a co-op has switched door access on and named a sheet.
@@ -218,6 +229,7 @@ describe('SchedulerService — compose-pending-reports', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SchedulerService,
+        { provide: CalendarImportService, useValue: { runScheduled: jest.fn().mockResolvedValue({ orgId: null, events: 0, bookings: 0, released: 0, finished: true }) } },
         { provide: PrismaService, useValue: prisma },
         { provide: CommonsService, useValue: { closeProposal: jest.fn() } },
         { provide: ReportService, useValue: reports },
