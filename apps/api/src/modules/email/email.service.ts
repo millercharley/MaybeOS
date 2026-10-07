@@ -48,18 +48,21 @@ export function addresses(to: string | Addresses): { primary: string; also?: str
 }
 
 /**
- * A date window spelled both ways Postmark might read it (MEM-25).
+ * A date window, spelled once (MEM-25).
  *
  * The SDK types these as `fromDate` and puts them on the query string exactly
- * as given; Postmark's own documentation calls them `fromdate`. In practice it
- * accepts either, and betting the audit on that would be a poor trade: an
- * unrecognised filter is not an error, it is *no filter*, which returns every
- * message the server has ever sent and looks from the outside like a lookup
- * that keeps running out of time. Sending both spellings of the same value
- * costs a few bytes and removes the question.
+ * as given, while Postmark's documentation calls them `fromdate`. Sending both
+ * spellings to cover either reading was not the free insurance it looked like:
+ * Postmark lowercases parameter names, so the two collapsed into one parameter
+ * carrying two values, and a doubled value is not a parseable date —
+ * "Parameter 'fromdate' should be date/time value", on every audit.
+ *
+ * That error is also the answer. Postmark reported the name it had normalised
+ * ours to, which is only possible if it reads the camelCase spelling, so one
+ * is all it ever needed.
  */
 function dateWindow(fromDate: string, toDate: string): Record<string, string> {
-  return { fromDate, toDate, fromdate: fromDate, todate: toDate };
+  return { fromDate, toDate };
 }
 
 /** One outbound message as Postmark reports it, reduced to what MaybeOS reads. */
