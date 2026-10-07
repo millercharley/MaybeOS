@@ -40,9 +40,13 @@ import {
 import { StripeService } from '../stripe/stripe.service';
 import { StorageService } from '../storage/storage.service';
 import { BuddyService } from '../belonging/buddy.service';
+import { AuditService } from '../platform/audit.service';
 import { ImportMemberRowDto, ImportAvatarsDto } from './dto/import-members.dto';
 import { CreateTierDto } from './dto/create-tier.dto';
 import { ContactViewer } from '../../common/access/contact-visibility';
+
+/** Why an address could not be corrected (MEM-25). Each needs a different next step. */
+export type EmailChangeRefusal = 'unchanged' | 'taken' | 'shared-login';
 
 /**
  * A member as another member may see them.
@@ -151,6 +155,7 @@ export class MemberService {
     private readonly stripeService: StripeService,
     private readonly storage: StorageService,
     private readonly buddies: BuddyService,
+    private readonly audit: AuditService,
   ) {}
 
   // ─── Members ────────────────────────────────────────────────
@@ -1985,6 +1990,122 @@ export class MemberService {
     }
 
     return { rows, complete: false };
+  }
+
+  /**
+   * Correct the address a member is reachable at (MEM-25).
+   *
+   * The other half of the bounce list. Flagging a dead address and then
+   * offering nothing but "try again" is a loop with no exit: the audit finds
+   * the bounce, the admin clears the flag, the next send bounces at the same
+   * address. Somebody has to be able to type the right one.
+   *
+   * **This is a credential, not a profile field.** `user.email` is what the
+   * member signs in with and what a magic link is sent to, so three things are
+   * refused rather than resolved:
+   *
+   * - *An address another account already has.* The column is unique, so the
+   *   write would fail anyway — but failing here says which address and why,
+   *   instead of surfacing a constraint violation.
+   * - *A member of more than one co-op.* One login spans all of them, so this
+   *   admin would be changing how somebody signs in to a community they have
+   *   nothing to do with. That is the member's own to change.
+   * - *The address it already is.* Nothing to do, and a no-op that reported
+   *   success would look like a fix that did not take.
+   *
+   * The new address starts with a clean slate: never written to, nothing known
+   * about it. Which is true, and puts the member back in the ordinary queue
+   * the "send the next batch" button already works through.
+   */
+  async changeMemberEmail(
+    orgId: string,
+    userId: string,
+    rawEmail: string,
+    actorId: string | null,
+    /*
+      One shape with optional halves, rather than a union discriminated on
+      `changed`. This project builds with `strictNullChecks` off, and without
+      it TypeScript will not narrow a union by a boolean literal — the caller
+      could see `changed` was false and still not be allowed to read `reason`.
+    */
+  ): Promise<{ changed: boolean; email?: string; reason?: EmailChangeRefusal }> {
+    // findFirst with the orgId, never findUnique on the userId alone: a
+    // membership is tenant-owned and one co-op must not reach into another's
+    // roster (SEC-04).
+    const membership = await this.prisma.userOrg.findFirst({
+      where: { orgId, userId },
+      select: { id: true, user: { select: { id: true, email: true } } },
+    });
+    if (!membership?.user) throw new NotFoundException('Member not found');
+
+    const email = rawEmail.trim().toLowerCase();
+    if (email === membership.user.email.trim().toLowerCase()) {
+      return { changed: false, reason: 'unchanged' };
+    }
+
+    const taken = await this.prisma.user.findFirst({
+      where: { email, NOT: { id: userId } },
+      select: { id: true },
+    });
+    if (taken) return { changed: false, reason: 'taken' };
+
+    const elsewhere = await this.prisma.userOrg.count({
+      where: { userId, NOT: { orgId } },
+    });
+    if (elsewhere > 0) return { changed: false, reason: 'shared-login' };
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          email,
+          // Unproven until somebody opens a link sent to it. Nothing gates on
+          // this today, but leaving it true would carry the old address's
+          // verification across to an address nobody has answered at.
+          emailVerified: false,
+          /*
+            The old link is dead too.
+
+            It was minted for an address that bounced, and any copy of it still
+            in flight points at this account. Cheap to invalidate, and the
+            member is about to be sent a new one.
+          */
+          magicLinkToken: null,
+          magicLinkExpiry: null,
+        },
+      }),
+      this.prisma.userOrg.update({
+        where: { id: membership.id },
+        data: {
+          // Nothing has ever been sent to this address, which is exactly what
+          // the first-time send is for. The bounce belonged to the old one.
+          signInSentAt: null,
+          signInDeliveredAt: null,
+          signInBouncedAt: null,
+          signInBounceKind: null,
+          signInAuditedAt: null,
+        },
+      }),
+    ]);
+
+    /*
+      Written down, because this one is an escalation.
+
+      An admin who can change the address a magic link is sent to can send it
+      somewhere they read. That is a reasonable power for somebody running the
+      co-op's roster and an unreasonable one to leave no trace of, so it goes
+      in the log the co-op can read about itself (PLT-01).
+    */
+    await this.audit.record({
+      orgId,
+      actorId,
+      action: 'member.email_changed',
+      entityType: 'user',
+      entityId: userId,
+      metadata: { from: membership.user.email, to: email },
+    });
+
+    return { changed: true, email };
   }
 
   /**

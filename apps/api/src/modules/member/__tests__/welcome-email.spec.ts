@@ -4,6 +4,7 @@ import { MemberService } from '../member.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { EmailService } from '../../email/email.service';
 import { BuddyService } from '../../belonging/buddy.service';
+import { AuditService } from '../../platform/audit.service';
 import { StripeService } from '../../stripe/stripe.service';
 import { StorageService } from '../../storage/storage.service';
 
@@ -49,6 +50,7 @@ describe('welcoming a new member', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: EmailService, useValue: email },
         { provide: BuddyService, useValue: { onMemberJoined: jest.fn() } },
+        { provide: AuditService, useValue: { record: jest.fn() } },
         { provide: StripeService, useValue: {} },
         { provide: StorageService, useValue: {} },
         { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },
@@ -209,6 +211,7 @@ describe('a member with two addresses', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: EmailService, useValue: email },
         { provide: BuddyService, useValue: { onMemberJoined: jest.fn() } },
+        { provide: AuditService, useValue: { record: jest.fn() } },
         { provide: StripeService, useValue: {} },
         { provide: StorageService, useValue: {} },
         { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },

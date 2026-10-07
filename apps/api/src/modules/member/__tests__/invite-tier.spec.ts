@@ -7,6 +7,7 @@ import { EmailService } from '../../email/email.service';
 import { StripeService } from '../../stripe/stripe.service';
 import { StorageService } from '../../storage/storage.service';
 import { BuddyService } from '../../belonging/buddy.service';
+import { AuditService } from '../../platform/audit.service';
 
 /**
  * An invitation carries the tier it is inviting somebody onto (MEM-04).
@@ -65,6 +66,7 @@ describe('MemberService — invitations with a tier', () => {
         { provide: StorageService, useValue: {} },
         // Never reached here: the buddy search is fire-and-forget and off by default.
         { provide: BuddyService, useValue: { onMemberJoined: jest.fn().mockResolvedValue(null) } },
+        { provide: AuditService, useValue: { record: jest.fn() } },
       ],
     }).compile();
 

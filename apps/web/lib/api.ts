@@ -782,6 +782,20 @@ class ApiClient {
         token,
       }),
 
+    /**
+     * Correct the address a member is reachable at (MEM-25).
+     *
+     * `user.email` is a credential, not a profile field — it is what they sign
+     * in with and where a magic link goes. The API refuses an address another
+     * account holds, and refuses outright for somebody who belongs to more
+     * than one community, since one sign-in covers all of them.
+     */
+    changeEmail: (orgId: string, userId: string, email: string, token: string) =>
+      this.request<{ changed: boolean; email?: string }>(
+        `/orgs/${orgId}/members/${userId}/email`,
+        { method: 'PATCH', body: JSON.stringify({ email }), token },
+      ),
+
     /** The address is fixed — let this member be written to again (MEM-25). */
     clearSignInBounce: (orgId: string, userId: string, token: string) =>
       this.request<{ cleared: boolean; reason?: 'not-bounced' | 'refused' }>(

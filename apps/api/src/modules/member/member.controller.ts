@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -21,7 +22,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { viewerFor } from '../../common/access/contact-visibility';
 import { UpdateMyMembershipDto } from './dto/update-my-membership.dto';
-import { MemberService } from './member.service';
+import { MemberService, type EmailChangeRefusal } from './member.service';
 import { MemberProfileService } from './member-profile.service';
 import { CreateTierDto } from './dto/create-tier.dto';
 import { ImportMembersDto, ImportAvatarsDto } from './dto/import-members.dto';
@@ -32,6 +33,7 @@ import { UpdateTierDto } from './dto/update-tier.dto';
 import { ReorderTiersDto } from './dto/reorder-tiers.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { SendSignInLinksDto } from './dto/sign-in-links.dto';
+import { ChangeMemberEmailDto } from './dto/change-member-email.dto';
 
 @ApiTags('members')
 @Controller('orgs/:orgId')
@@ -205,6 +207,43 @@ export class MemberController {
   })
   clearSignInBounce(@Param('orgId') orgId: string, @Param('userId') userId: string) {
     return this.memberService.clearSignInBounce(orgId, userId);
+  }
+
+  @Patch('members/:userId/email')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Correct the address a member is reachable at (MEM-25)' })
+  async changeMemberEmail(
+    @Param('orgId') orgId: string,
+    @Param('userId') userId: string,
+    @Body() dto: ChangeMemberEmailDto,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    const result = await this.memberService.changeMemberEmail(
+      orgId,
+      userId,
+      dto.email,
+      actor.userId,
+    );
+
+    if (!result.reason) return result;
+
+    /*
+      A refusal the admin can act on, rather than a constraint violation.
+
+      Each of these has a different next step — look for the duplicate, ask the
+      member to change it themselves, or stop because there is nothing to do —
+      and a shared 400 would leave them guessing which.
+    */
+    const reasons: Record<EmailChangeRefusal, string> = {
+      unchanged: 'That is already their address.',
+      taken: 'Another member already uses that address. Check whether they have two accounts here.',
+      'shared-login':
+        'This person belongs to more than one community on MaybeOS, and one sign-in covers all of them. Changing it here would change how they sign in somewhere else, so they need to change it themselves from their own profile.',
+    };
+
+    throw new BadRequestException(reasons[result.reason]);
   }
 
   @Post('members/invite')
