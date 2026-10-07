@@ -36,6 +36,23 @@ export interface AuditMessage {
   subject: string;
   tag?: string | null;
   receivedAt: string;
+  /** Postmark's own: Sent, Queued or Processed. */
+  status?: string | null;
+}
+
+/**
+ * Did the provider actually put this message on the wire?
+ *
+ * A message can sit in the outbound list without having gone anywhere — that
+ * is what `Queued` means — and counting one as reached is the same mistake
+ * MaybeOS already made by trusting its own mark. Missing status is treated as
+ * sent, because that is what every historical record had before the audit
+ * started asking.
+ */
+export function wasSent(message: AuditMessage): boolean {
+  if (!message.status) return true;
+  const status = message.status.trim().toLowerCase();
+  return status === 'sent' || status === 'processed';
 }
 
 /** One bounce, likewise reduced. */
@@ -112,6 +129,7 @@ export function indexDelivered(
 
   for (const message of messages) {
     if (!isSignInMessage(message, expectedSubject)) continue;
+    if (!wasSent(message)) continue;
 
     const at = new Date(message.receivedAt);
     if (Number.isNaN(at.getTime())) continue;
@@ -138,6 +156,8 @@ export function indexBounces(bounces: AuditBounce[]): Map<string, AuditBounce> {
   for (const bounce of bounces) {
     const email = normalizeEmail(bounce.email);
     if (!email) continue;
+    // An out-of-office reply is proof the address works, not that it failed.
+    if (!isDeliveryFailure(bounce.type)) continue;
 
     const at = new Date(bounce.bouncedAt).getTime();
     if (Number.isNaN(at)) continue;
@@ -177,6 +197,31 @@ export function bounceKind(type: string): string {
 /** Bounces that mean "never write here again", whatever the admin does. */
 export function isPermanentRefusal(type: string): boolean {
   return type === 'SpamComplaint' || type === 'Unsubscribe';
+}
+
+/**
+ * Records Postmark files under bounces that are not delivery failures.
+ *
+ * An out-of-office reply is the clearest case, and the first audit of the real
+ * roster found one: a member whose mail server answered automatically was
+ * recorded as a bounced address, shown to the admin as needing to be fixed,
+ * and left out of every re-send — on the strength of a message that proves
+ * their address works. `Subscribe` and `AddressChange` are the same shape of
+ * mistake, and `ChallengeVerification` is a human asking to confirm, not a
+ * server refusing.
+ *
+ * Postmark calls these bounces because they all arrive back down the same
+ * pipe. Only some of them mean the mail did not land.
+ */
+export function isDeliveryFailure(type: string): boolean {
+  const notFailures = new Set([
+    'AutoResponder',
+    'Subscribe',
+    'AddressChange',
+    'ChallengeVerification',
+    'OpenRelayTest',
+  ]);
+  return !notFailures.has(type);
 }
 
 /**

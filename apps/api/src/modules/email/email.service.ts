@@ -71,6 +71,7 @@ export interface ProviderMessage {
   subject: string;
   tag: string | null;
   receivedAt: string;
+  status: string | null;
 }
 
 /** One bounce as Postmark reports it. */
@@ -419,6 +420,9 @@ export class EmailService {
         subject: m.Subject ?? '',
         tag: m.Tag ?? null,
         receivedAt: m.ReceivedAt,
+        // Sent, Queued or Processed. A queued message is in this list and has
+        // not gone anywhere, which is the same trap as trusting our own mark.
+        status: m.Status ?? null,
       })),
     };
   }
