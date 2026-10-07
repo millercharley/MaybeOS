@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ValidationPipe, ForbiddenException, BadRequestException, NotFoundException } from '@nestjs/common';
 import { CommonsService } from '../commons.service';
+import { StorageService } from '../../storage/storage.service';
+import { AuditService } from '../../platform/audit.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { CreateChannelDto } from '../dto/create-channel.dto';
 import { UpdateChannelDto } from '../dto/update-channel.dto';
@@ -37,6 +39,8 @@ describe('CommonsService — member channels, sections and invitations', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CommonsService,
+        { provide: StorageService, useValue: { deleteAttachment: jest.fn() } },
+        { provide: AuditService, useValue: { record: jest.fn() } },
         // The badge counts threads now (CMN-16); these tests are about the
         // Commons half of it.
         {

@@ -2381,6 +2381,26 @@ class ApiClient {
         token,
       }),
 
+    /**
+     * Take a post down, whoever wrote it (CMN-18).
+     *
+     * Admins only, and it takes the comments, replies and attached files with
+     * it. Distinct from editing, which is authorship and stays with the author
+     * whatever their role — this is the co-op removing something.
+     */
+    deletePost: (orgId: string, postId: string, token: string) =>
+      this.request<{ deleted: boolean }>(`/orgs/${orgId}/posts/${postId}`, {
+        method: 'DELETE',
+        token,
+      }),
+
+    /** Take a comment and its replies down, whoever wrote them (CMN-18). */
+    deleteComment: (orgId: string, commentId: string, token: string) =>
+      this.request<{ deleted: boolean }>(`/orgs/${orgId}/comments/${commentId}`, {
+        method: 'DELETE',
+        token,
+      }),
+
     addReaction: (orgId: string, postId: string, emoji: string, token: string) =>
       this.request(`/orgs/${orgId}/posts/${postId}/reactions`, {
         method: 'POST',
@@ -2501,7 +2521,7 @@ class ApiClient {
         token,
       }),
 
-    // ── Reactions on messages (CMN-17) ──
+    // ── Reactions on messages (CMN-18) ──
 
     /** Toggle an emoji on a message in a conversation. Returns the new list. */
     reactToMessage: (
@@ -4563,7 +4583,7 @@ export interface Comment {
    */
   editedAt?: string | null;
   replies: Comment[];
-  /** Grouped per emoji, with whether the reader is one of them (CMN-17). */
+  /** Grouped per emoji, with whether the reader is one of them (CMN-18). */
   reactions?: ReactionGroup[];
 }
 
@@ -4677,7 +4697,7 @@ export interface ThreadMessage {
   body: string;
   createdAt: string;
   sender?: { id: string; name: string | null; avatarUrl: string | null };
-  /** Grouped per emoji, with whether the reader is one of them (CMN-17). */
+  /** Grouped per emoji, with whether the reader is one of them (CMN-18). */
   reactions?: ReactionGroup[];
 }
 

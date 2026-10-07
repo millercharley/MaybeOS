@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { CommonsService } from '../commons.service';
+import { StorageService } from '../../storage/storage.service';
+import { AuditService } from '../../platform/audit.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { ThreadsService } from '../threads.service';
 
@@ -29,6 +31,8 @@ describe('CommonsService — tenant isolation (CMN-07)', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CommonsService,
+        { provide: StorageService, useValue: { deleteAttachment: jest.fn() } },
+        { provide: AuditService, useValue: { record: jest.fn() } },
         // The badge counts threads now (CMN-16); these tests are about the
         // Commons half of it.
         {
@@ -206,6 +210,8 @@ describe('CommonsService — voting is only open while a proposal is open', () =
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CommonsService,
+        { provide: StorageService, useValue: { deleteAttachment: jest.fn() } },
+        { provide: AuditService, useValue: { record: jest.fn() } },
         // The badge counts threads now (CMN-16); these tests are about the
         // Commons half of it.
         {
