@@ -1642,11 +1642,27 @@ class ApiClient {
       ),
 
     /**
-     * The post carrying an event's comments, created on first use (EVT-11).
+     * The post carrying an event's comments, if it has one yet (EVT-42).
+     *
+     * A read. Loading a page must not write to the Commons — when this was a
+     * POST, opening an event posted to #Events under the name of whoever
+     * opened it.
      *
      * Members only. An event page is public; its conversation is not.
      */
     thread: (orgId: string, eventId: string, token: string) =>
+      this.request<{ postId: string | null }>(`/orgs/${orgId}/events/${eventId}/thread`, {
+        token,
+      }),
+
+    /**
+     * Make the post that will carry this event's comments (EVT-42).
+     *
+     * Called when somebody writes the first comment, and at no other time.
+     * Returns a null `postId` for a private event, which never gets a thread
+     * in the channel the whole co-op reads.
+     */
+    startThread: (orgId: string, eventId: string, token: string) =>
       this.request<{ postId: string | null }>(`/orgs/${orgId}/events/${eventId}/thread`, {
         method: 'POST',
         token,
