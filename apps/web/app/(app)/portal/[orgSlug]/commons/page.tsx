@@ -805,6 +805,9 @@ function PostCard({
   */
   const viewer = useAuthStore((state) => state.user);
   const isAdmin = Boolean(viewer?.orgs?.find((o) => o.orgId === orgId)?.role === 'ADMIN');
+  // Withdrawing what you said, as well as the co-op taking it down (CMN-19).
+  const wroteIt = Boolean(viewer?.id && post.author?.id === viewer.id);
+  const canDelete = wroteIt || isAdmin;
   const [removing, setRemoving] = useState(false);
 
   async function remove() {
@@ -939,7 +942,7 @@ function PostCard({
             ? open ? 'Hide' : 'Reply'
             : `${commentCount} ${commentCount === 1 ? 'reply' : 'replies'}`}
         </button>
-        {isAdmin && (
+        {canDelete && (
           <button
             onClick={remove}
             disabled={removing}
@@ -1039,6 +1042,9 @@ function CommentNode({
   const isAdmin = Boolean(
     org && user?.orgs?.find((o) => o.orgId === org.id)?.role === 'ADMIN',
   );
+  // Their own, or anybody's if they run the place (CMN-19). Two different
+  // rights that happen to reach the same button.
+  const canDelete = isAuthor || isAdmin;
   const [deleting, setDeleting] = useState(false);
 
   async function remove() {
@@ -1162,7 +1168,7 @@ function CommentNode({
                   Edit
                 </button>
               )}
-              {isAdmin && (
+              {canDelete && (
                 <button
                   onClick={remove}
                   disabled={deleting}

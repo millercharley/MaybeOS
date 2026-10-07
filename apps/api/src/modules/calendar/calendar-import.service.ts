@@ -7,7 +7,7 @@ import { hostFields, hostKey, hostLabel, personFor } from './past-host';
 import { guestFrom } from './booking-guest';
 import { slugCandidates } from './event-slug';
 import { deadline, nextCursor, startOf, type ImportCursor } from './import-cursor';
-import { ImportedEntry, importWindow, toEntry } from './calendar-import';
+import { ImportedEntry, cancelledId, importWindow, toEntry } from './calendar-import';
 
 /** A year back is the default; two years ahead is the ceiling (see `importWindow`). */
 const MONTHS_BACK = 12;
@@ -27,6 +27,14 @@ export interface ImportSummary {
     kind: 'events' | 'room' | 'shared';
     found: number;
     written: number;
+    /**
+     * How many were let go because their Google entry was deleted (CAL-12).
+     *
+     * Reported rather than done quietly: this is the one number in an import
+     * that takes something away, and an admin who sees a room free up is owed
+     * the reason.
+     */
+    released?: number;
     /** Why this one produced nothing, where that needs saying. */
     note?: string;
   }[];
@@ -228,6 +236,8 @@ export class CalendarImportService {
       const slice = entries.slice(startAt);
       const failures: Array<{ title: string; reason: string }> = [];
       const written = dryRun ? 0 : await this.writeEvents(org, slice, failures, outOfTime);
+      // Deletions are the page's news as much as its entries are (CAL-12).
+      const cancelled = dryRun ? 0 : await this.cancelEvents(org.id, read.cancelled);
 
       next = dryRun
         ? null
@@ -245,6 +255,7 @@ export class CalendarImportService {
         kind: 'events',
         found: entries.length,
         written,
+        ...(cancelled > 0 && { released: cancelled }),
         // Named, not just counted (CAL-04). The first real import stopped on
         // one row and reported "request failed", which told the organiser
         // neither what broke nor that most of it had worked.
@@ -301,6 +312,14 @@ export class CalendarImportService {
         const written = dryRun
           ? 0
           : await this.writeBookings(orgId, room.id, slice, outOfTime);
+        /*
+          And let go of the rooms whose entries were deleted (CAL-12).
+
+          Run whether or not the write ran out of time: it is one statement
+          over a handful of ids, and a room left booked after its entry was
+          deleted is the visible half of this bug.
+        */
+        const cancelled = dryRun ? 0 : await this.releaseBookings(room.id, read.cancelled);
 
         next = dryRun
           ? null
@@ -318,6 +337,10 @@ export class CalendarImportService {
           kind: 'room',
           found: entries.length,
           written,
+          ...(cancelled > 0 && {
+            released: cancelled,
+            note: `${cancelled} ${cancelled === 1 ? 'booking was' : 'bookings were'} released — deleted in Google.`,
+          }),
         });
         summary.bookings += dryRun ? entries.length : written;
         summary.skipped += skipped;
@@ -350,6 +373,62 @@ export class CalendarImportService {
    * again each time. Forty requests went on re-reading and 274 reservations
    * got written. One page in, one page written.
    */
+  /**
+   * Let a room go when its Google entry was deleted (CAL-12).
+   *
+   * **Cancelled, not deleted.** The booking is the co-op's record that the
+   * room was held, and a member looking at why their evening vanished is
+   * better served by a cancelled booking than by nothing at all. It also
+   * matches what cancelling by hand does, so there is one shape of
+   * "this is over" rather than two.
+   *
+   * `status` is what actually frees the slot — the availability query reads it
+   * and never looks at `canceledAt` — so setting the timestamp alone would
+   * have left the room exactly as booked as before, which is the bug this is
+   * fixing one layer down.
+   */
+  private async releaseBookings(roomId: string, googleEventIds: string[]): Promise<number> {
+    if (googleEventIds.length === 0) return 0;
+
+    const { count } = await this.prisma.booking.updateMany({
+      where: {
+        roomId,
+        googleEventId: { in: googleEventIds },
+        // Already gone is not a change. Without this every run would restamp
+        // `canceledAt` on everything ever deleted.
+        status: { not: 'CANCELED' },
+      },
+      data: { status: 'CANCELED', canceledAt: new Date() },
+    });
+
+    if (count > 0) {
+      this.logger.log(`Released ${count} booking(s) in room ${roomId}: deleted in Google`);
+    }
+    return count;
+  }
+
+  /**
+   * Mark an event cancelled when its Google entry was deleted (CAL-12).
+   *
+   * The event stays, carrying `canceledAt`, because people may have RSVPed to
+   * it and a co-op's record of what it ran should not disappear because a
+   * calendar row did. The import's own update clears `canceledAt` again if the
+   * entry comes back, so this is reversible by the thing that caused it.
+   */
+  private async cancelEvents(orgId: string, googleEventIds: string[]): Promise<number> {
+    if (googleEventIds.length === 0) return 0;
+
+    const { count } = await this.prisma.event.updateMany({
+      where: { orgId, googleEventId: { in: googleEventIds }, canceledAt: null },
+      data: { canceledAt: new Date() },
+    });
+
+    if (count > 0) {
+      this.logger.log(`Cancelled ${count} event(s) in org ${orgId}: deleted in Google`);
+    }
+    return count;
+  }
+
   private async readPage(
     source: { id: string; googleTokens: unknown },
     calendarId: string,
@@ -357,7 +436,12 @@ export class CalendarImportService {
     to: Date,
     timeZone: string,
     pageToken: string | null,
-  ): Promise<{ entries: ImportedEntry[]; skipped: number; nextPageToken: string | null }> {
+  ): Promise<{
+    entries: ImportedEntry[];
+    cancelled: string[];
+    skipped: number;
+    nextPageToken: string | null;
+  }> {
     const client = await this.calendar.clientFor(source as never);
     const { data }: { data: calendar_v3.Schema$Events } = await client.events.list({
       calendarId,
@@ -366,12 +450,24 @@ export class CalendarImportService {
       singleEvents: true,
       orderBy: 'startTime',
       maxResults: PAGE,
+      // Without this Google omits deleted rows entirely (CAL-12), so a
+      // deletion was not something MaybeOS handled badly — it was something
+      // MaybeOS never heard about. The Attic stayed booked in the room
+      // calendar after its entry was taken off the Google one.
+      showDeleted: true,
       ...(pageToken ? { pageToken } : {}),
     });
 
     const entries: ImportedEntry[] = [];
+    const cancelled: string[] = [];
     let skipped = 0;
     for (const raw of data.items ?? []) {
+      const gone = cancelledId(raw);
+      if (gone) {
+        cancelled.push(gone);
+        continue;
+      }
+
       const entry = toEntry(raw, timeZone);
       // A shared calendar names itself as the organiser, so who the person
       // is can only be decided here, where the calendar id is known (CAL-07).
@@ -379,7 +475,7 @@ export class CalendarImportService {
       else skipped += 1;
     }
 
-    return { entries, skipped, nextPageToken: data.nextPageToken ?? null };
+    return { entries, cancelled, skipped, nextPageToken: data.nextPageToken ?? null };
   }
 
   /** Every entry in the window, following Google's paging. For a preview. */
@@ -389,9 +485,10 @@ export class CalendarImportService {
     from: Date,
     to: Date,
     timeZone: string,
-  ): Promise<{ entries: ImportedEntry[]; skipped: number }> {
+  ): Promise<{ entries: ImportedEntry[]; cancelled: string[]; skipped: number }> {
     const client = await this.calendar.clientFor(source as never);
     const entries: ImportedEntry[] = [];
+    const cancelled: string[] = [];
     // Cancelled rows, and ones Google returns with no usable start. Counted
     // rather than quietly dropped: "nothing was skipped" and "I never
     // counted" look identical in a summary, and only one of them is true.
@@ -408,10 +505,18 @@ export class CalendarImportService {
         singleEvents: true,
         orderBy: 'startTime',
         maxResults: PAGE,
+        // See `readPage`: deleted rows are omitted unless asked for (CAL-12).
+        showDeleted: true,
         pageToken,
       });
 
       for (const raw of data.items ?? []) {
+        const gone = cancelledId(raw);
+        if (gone) {
+          cancelled.push(gone);
+          continue;
+        }
+
         const entry = toEntry(raw, timeZone);
         if (entry && !entry.cancelled) entries.push({ ...entry, hostPerson: personFor(entry, calendarId) });
         else skipped += 1;
@@ -420,7 +525,7 @@ export class CalendarImportService {
       pageToken = data.nextPageToken ?? undefined;
     } while (pageToken);
 
-    return { entries, skipped };
+    return { entries, cancelled, skipped };
   }
 
   /**

@@ -18,8 +18,11 @@ import { htmlToText } from './html-to-text';
  *     rather than a `dateTime`, and treating it as midnight-to-midnight in
  *     the co-op's zone is closer to what somebody meant than a UTC instant
  *     that lands on the wrong evening.
- *   - **A cancelled entry is skipped**, and on a re-run it unpublishes what
- *     it created before rather than leaving a ghost in the events list.
+ *   - **A cancelled entry is skipped** as an *import*, and taken as an
+ *     instruction to undo what it created before (CAL-12). It is not enough to
+ *     skip it: a room whose Google entry was deleted stayed booked in MaybeOS
+ *     for as long as the booking existed, because nothing ever told the
+ *     booking otherwise.
  *   - **The organiser's email is how a host is found.** It is the only
  *     identity Google carries that MaybeOS also holds.
  */
@@ -129,4 +132,24 @@ export function importWindow(now: Date, monthsBack: number): { from: Date; to: D
   to.setFullYear(to.getFullYear() + 2);
 
   return { from, to };
+}
+
+/**
+ * The id of an entry Google is reporting as deleted (CAL-12).
+ *
+ * Separate from `toEntry`, and it has to be: a cancelled row usually arrives
+ * with nothing but an id and a status — no start, no title — and `toEntry`
+ * answers null for anything without a start. Reading cancellations through it
+ * threw away the one field that says *which* booking to release.
+ *
+ * Only meaningful when the request asked for deleted rows. Google omits them
+ * by default, which is why a deletion was invisible rather than merely
+ * unhandled: the entry never arrived at all.
+ */
+export function cancelledId(raw: {
+  id?: string | null;
+  status?: string | null;
+}): string | null {
+  if (raw.status !== 'cancelled') return null;
+  return raw.id?.trim() || null;
 }

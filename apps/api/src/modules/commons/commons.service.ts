@@ -748,8 +748,27 @@ export class CommonsService {
    * Written to the co-op's audit log (PLT-01). Removing somebody else's words
    * is the kind of power a co-op should be able to see being used.
    */
-  async deletePost(orgId: string, postId: string, actorId: string) {
+  async deletePost(
+    orgId: string,
+    postId: string,
+    actor: { userId: string; isAdmin: boolean },
+  ) {
     const post = await this.findPostInOrg(orgId, postId);
+
+    /*
+      Two ways to be allowed, and they mean different things (CMN-19).
+
+      An admin may take down anybody's: that is the co-op removing something.
+      Anyone else may take down their own, which is a person withdrawing what
+      they said — the same reasoning that gives an author the edit and gives it
+      to nobody else.
+
+      Checked here rather than at the route, because the route cannot see who
+      wrote it. `@Roles('ADMIN')` would have refused every author.
+    */
+    if (!actor.isAdmin && post.authorId !== actor.userId) {
+      throw new ForbiddenException('Only the person who wrote this, or an admin, can delete it.');
+    }
 
     /*
       Every file under this post, gathered before the rows are gone.
@@ -777,13 +796,20 @@ export class CommonsService {
 
     await this.audit.record({
       orgId,
-      actorId,
+      actorId: actor.userId,
       action: 'commons.post_deleted',
       entityType: 'post',
       entityId: post.id,
       // The author and the title, not the body: enough to answer "what was
       // taken down and whose was it" without copying the thing back out.
-      metadata: { authorId: post.authorId, title: post.title ?? null, files: files.length },
+      metadata: {
+        authorId: post.authorId,
+        title: post.title ?? null,
+        files: files.length,
+        // Whether this was moderation or somebody withdrawing their own words.
+        // The same row otherwise, and they are not the same event.
+        own: post.authorId === actor.userId,
+      },
     });
 
     return { deleted: true };
@@ -797,8 +823,17 @@ export class CommonsService {
    * nobody, and in a moderation case the replies are usually quoting the thing
    * being removed.
    */
-  async deleteComment(orgId: string, commentId: string, actorId: string) {
+  async deleteComment(
+    orgId: string,
+    commentId: string,
+    actor: { userId: string; isAdmin: boolean },
+  ) {
     const comment = await this.findCommentInOrg(orgId, commentId);
+
+    // An admin, or the person who wrote it (CMN-19). See `deletePost`.
+    if (!actor.isAdmin && comment.authorId !== actor.userId) {
+      throw new ForbiddenException('Only the person who wrote this, or an admin, can delete it.');
+    }
 
     /*
       Every reply beneath it, to any depth.
@@ -844,7 +879,7 @@ export class CommonsService {
 
     await this.audit.record({
       orgId,
-      actorId,
+      actorId: actor.userId,
       action: 'commons.comment_deleted',
       entityType: 'comment',
       entityId: comment.id,
@@ -855,6 +890,7 @@ export class CommonsService {
         // Said out loud, because deleting one comment can remove a
         // conversation: the number is how many went with it.
         replies: doomed.size - 1,
+        own: comment.authorId === actor.userId,
       },
     });
 

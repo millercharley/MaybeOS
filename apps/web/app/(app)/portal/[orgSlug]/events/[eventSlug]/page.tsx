@@ -606,6 +606,27 @@ function EventDiscussion({ orgId, eventId, token }: { orgId: string; eventId: st
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  const viewer = useAuthStore((state) => state.user);
+  const viewerIsAdmin = Boolean(
+    viewer?.orgs?.find((o) => o.orgId === orgId)?.role === 'ADMIN',
+  );
+
+  /** Withdraw a comment, or take one down (CMN-19). */
+  async function removeComment(commentId: string) {
+    if (busy) return;
+    if (!window.confirm('Delete this comment? This cannot be undone.')) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.commons.deleteComment(orgId, commentId, token);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'That could not be deleted');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const load = useCallback(async () => {
     try {
       /*
@@ -697,6 +718,21 @@ function EventDiscussion({ orgId, eventId, token }: { orgId: string; eventId: st
               dangerouslySetInnerHTML={{ __html: renderBodyHtml(comment.body) }}
             />
             <AttachmentList orgId={orgId} token={token} commentId={comment.id} />
+            {/*
+              Their own, or anybody's if they run the place (CMN-19). An event's
+              comments are ordinary Commons comments — the same post, the same
+              endpoint — so they get the same right to be withdrawn.
+            */}
+            {(comment.author?.id === viewer?.id || viewerIsAdmin) && (
+              <button
+                type="button"
+                onClick={() => removeComment(comment.id)}
+                disabled={busy}
+                className="mt-1 text-xs text-gray-400 hover:text-red-600"
+              >
+                Delete
+              </button>
+            )}
           </div>
         ))}
       </div>
