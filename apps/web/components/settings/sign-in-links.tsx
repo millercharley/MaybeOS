@@ -45,6 +45,8 @@ export function SignInLinks({ org }: { org: Org }) {
   const [error, setError] = useState('');
   const [confirming, setConfirming] = useState<ResendScope | null>(null);
   const [audit, setAudit] = useState<SignInAudit | null>(null);
+  /** The member whose address is open for editing, and what has been typed. */
+  const [editing, setEditing] = useState<{ userId: string; email: string } | null>(null);
 
   async function look() {
     if (!token || busy) return;
@@ -96,6 +98,39 @@ export function SignInLinks({ org }: { org: Org }) {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'That did not send');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Correct the address and re-check (MEM-25).
+   *
+   * The bounce list is where a dead address is discovered, so it is where it
+   * should be fixable. Anything else means reading an address off this screen,
+   * finding the member somewhere else, and typing it again from memory.
+   *
+   * A corrected address has never been written to, so the member leaves this
+   * list entirely and rejoins the ordinary queue.
+   */
+  async function saveEmail() {
+    if (!token || busy || !editing) return;
+    const next = editing.email.trim();
+    if (!next) return;
+
+    setBusy(true);
+    setError('');
+    try {
+      await api.members.changeEmail(org.id, editing.userId, next, token);
+      setEditing(null);
+      setAudit(await api.members.auditSignInLinks(org.id, token));
+      // They are now somebody who has never been written to, which is the
+      // group the first-time send works through.
+      const waitingNow = await api.members.sendSignInLinks(org.id, { dryRun: true }, token);
+      setWaiting(waitingNow.recipients);
+      setRemaining(waitingNow.remaining);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'That address was not accepted');
     } finally {
       setBusy(false);
     }
@@ -273,27 +308,93 @@ export function SignInLinks({ org }: { org: Org }) {
                 </div>
                 <ul className="divide-y divide-red-50">
                   {audit.bounced.map((member) => (
-                    <li
-                      key={member.userId}
-                      className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm text-gray-900">
-                          {member.name ?? member.email}
-                        </p>
-                        <p className="truncate text-xs text-gray-500">
-                          {member.email} — {member.kind}
-                        </p>
-                      </div>
-                      {bounceIsFixable(member.kind) && (
-                        <button
-                          type="button"
-                          onClick={() => addressFixed(member.userId)}
-                          disabled={busy}
-                          className="btn-secondary shrink-0 text-xs"
+                    <li key={member.userId} className="px-3 py-2">
+                      {editing?.userId === member.userId ? (
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            void saveEmail();
+                          }}
+                          className="space-y-2"
                         >
-                          Address fixed, try again
-                        </button>
+                          <label
+                            htmlFor={`email-${member.userId}`}
+                            className="block text-sm text-gray-900"
+                          >
+                            {member.name ?? 'This member'}&rsquo;s email address
+                          </label>
+                          <div className="flex flex-wrap gap-2">
+                            <input
+                              id={`email-${member.userId}`}
+                              type="email"
+                              required
+                              autoFocus
+                              value={editing.email}
+                              onChange={(e) =>
+                                setEditing({ userId: member.userId, email: e.target.value })
+                              }
+                              className="input min-w-0 flex-1 text-sm"
+                            />
+                            <button type="submit" disabled={busy} className="btn-primary text-xs">
+                              {busy ? 'Saving…' : 'Save'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditing(null)}
+                              disabled={busy}
+                              className="btn-secondary text-xs"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                          {/*
+                            Said before they press Save, not after it fails.
+                            This is the address the member signs in with.
+                          */}
+                          <p className="text-xs text-gray-500">
+                            This is what they sign in with, and where their link will go. They
+                            will be sent a new one the next time you send.
+                          </p>
+                        </form>
+                      ) : (
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm text-gray-900">
+                              {member.name ?? member.email}
+                            </p>
+                            <p className="truncate text-xs text-gray-500">
+                              {member.email} — {member.kind}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 gap-2">
+                            {/*
+                              The way out of the loop (MEM-25). "Try again"
+                              alone sends the same message to the same dead
+                              address; somebody has to be able to type the
+                              right one, and this is where it is discovered.
+                            */}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditing({ userId: member.userId, email: member.email })
+                              }
+                              disabled={busy}
+                              className="btn-secondary text-xs"
+                            >
+                              Edit address
+                            </button>
+                            {bounceIsFixable(member.kind) && (
+                              <button
+                                type="button"
+                                onClick={() => addressFixed(member.userId)}
+                                disabled={busy}
+                                className="btn-secondary text-xs"
+                              >
+                                Address fixed, try again
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </li>
                   ))}

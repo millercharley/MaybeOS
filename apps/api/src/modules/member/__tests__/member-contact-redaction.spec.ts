@@ -6,6 +6,7 @@ import { EmailService } from '../../email/email.service';
 import { StripeService } from '../../stripe/stripe.service';
 import { StorageService } from '../../storage/storage.service';
 import { BuddyService } from '../../belonging/buddy.service';
+import { AuditService } from '../../platform/audit.service';
 
 /**
  * The member directory redacts contact and billing details.
@@ -70,6 +71,7 @@ describe('MemberService — contact redaction', () => {
         { provide: StorageService, useValue: {} },
         // Never reached here: the buddy search is fire-and-forget and off by default.
         { provide: BuddyService, useValue: { onMemberJoined: jest.fn().mockResolvedValue(null) } },
+        { provide: AuditService, useValue: { record: jest.fn() } },
       ],
     }).compile();
 

@@ -5,6 +5,7 @@ import { EmailService } from '../../email/email.service';
 import { StripeService } from '../../stripe/stripe.service';
 import { StorageService } from '../../storage/storage.service';
 import { BuddyService } from '../../belonging/buddy.service';
+import { AuditService } from '../../platform/audit.service';
 import { ConfigService } from '@nestjs/config';
 
 /**
@@ -41,6 +42,7 @@ describe('MemberService — spotlight', () => {
         { provide: StripeService, useValue: {} },
         { provide: StorageService, useValue: {} },
         { provide: BuddyService, useValue: {} },
+        { provide: AuditService, useValue: { record: jest.fn() } },
       ],
     }).compile();
 

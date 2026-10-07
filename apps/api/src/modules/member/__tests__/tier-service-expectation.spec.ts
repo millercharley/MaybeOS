@@ -7,6 +7,7 @@ import { StripeService } from '../../stripe/stripe.service';
 import { StorageService } from '../../storage/storage.service';
 import { ConfigService } from '@nestjs/config';
 import { BuddyService } from '../../belonging/buddy.service';
+import { AuditService } from '../../platform/audit.service';
 
 /**
  * A tier's service expectation travels as a pair (SRV-01).
@@ -59,6 +60,7 @@ describe('MemberService — a tier\'s service expectation', () => {
         { provide: StorageService, useValue: {} },
         { provide: ConfigService, useValue: { get: () => undefined } },
         { provide: BuddyService, useValue: {} },
+        { provide: AuditService, useValue: { record: jest.fn() } },
       ],
     }).compile();
 

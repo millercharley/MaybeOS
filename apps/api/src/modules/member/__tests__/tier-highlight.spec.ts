@@ -5,6 +5,7 @@ import { EmailService } from '../../email/email.service';
 import { StripeService } from '../../stripe/stripe.service';
 import { StorageService } from '../../storage/storage.service';
 import { BuddyService } from '../../belonging/buddy.service';
+import { AuditService } from '../../platform/audit.service';
 import { ConfigService } from '@nestjs/config';
 import { PUBLIC_TIER_SELECT } from '../tier-view';
 
@@ -48,6 +49,7 @@ describe('MemberService — the tier highlight', () => {
         { provide: StripeService, useValue: { createStripePricesForTier: jest.fn() } },
         { provide: StorageService, useValue: {} },
         { provide: BuddyService, useValue: { onMemberJoined: jest.fn() } },
+        { provide: AuditService, useValue: { record: jest.fn() } },
       ],
     }).compile();
 

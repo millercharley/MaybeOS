@@ -173,4 +173,32 @@ describe('the panel', () => {
     expect(code).toMatch(/failedTotal > 0/);
     expect(code).toMatch(/back in the queue/);
   });
+
+  /*
+    The way out of the bounce loop (MEM-25).
+
+    A hard bounce flagged with nothing but "try again" sends the same message
+    to the same dead address. The address has to be editable where it is
+    discovered, or the admin reads it off this screen and retypes it elsewhere.
+  */
+  it('lets the address be corrected from the line it bounced on', () => {
+    expect(code).toMatch(/>\s*Edit address\s*</);
+    expect(code).toMatch(/api\.members\.changeEmail\(org\.id, editing\.userId/);
+  });
+
+  it('starts the edit from the address that bounced, not an empty box', () => {
+    // Most corrections are a typo in a domain. Retyping the whole thing from
+    // scratch is how a second typo gets in.
+    expect(code).toMatch(/setEditing\(\{ userId: member\.userId, email: member\.email \}\)/);
+  });
+
+  it('says what the field is before the admin commits to it', () => {
+    // It is a credential, not a profile field.
+    expect(code).toMatch(/what they sign in with/);
+  });
+
+  it('re-reads the audit after a correction, rather than editing the list in place', () => {
+    const save = code.slice(code.indexOf('async function saveEmail'));
+    expect(save).toMatch(/setAudit\(await api\.members\.auditSignInLinks/);
+  });
 });
