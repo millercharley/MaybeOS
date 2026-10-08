@@ -605,7 +605,8 @@ export function EventForm({
             <label
               key={value}
               className={[
-                'cursor-pointer rounded-full border px-3 py-1 text-sm focus-within:ring-2 focus-within:ring-gray-900',
+                // `relative` is load-bearing — see the booking form (SPC-30).
+                'relative cursor-pointer rounded-full border px-3 py-1 text-sm focus-within:ring-2 focus-within:ring-gray-900',
                 maturityLevel === value
                   ? 'border-gray-900 bg-gray-100 font-medium text-gray-900'
                   : 'border-gray-200 text-gray-600 hover:bg-gray-50',
