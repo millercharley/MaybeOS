@@ -48,12 +48,41 @@ import { StripeService } from '../stripe/stripe.service';
 import { StorageService } from '../storage/storage.service';
 import { BuddyService } from '../belonging/buddy.service';
 import { AuditService } from '../platform/audit.service';
+import {
+  movingSummary,
+  refusalMessage,
+  takeoverRefusal,
+  type HuskBlockers,
+  type HuskContents,
+} from './member-takeover';
 import { ImportMemberRowDto, ImportAvatarsDto } from './dto/import-members.dto';
 import { CreateTierDto } from './dto/create-tier.dto';
 import { ContactViewer } from '../../common/access/contact-visibility';
 
 /** Why an address could not be corrected (MEM-25). Each needs a different next step. */
-export type EmailChangeRefusal = 'unchanged' | 'taken' | 'shared-login';
+/** No blockers, for a refusal raised before anything has been counted. */
+const EMPTY_BLOCKERS: HuskBlockers = {
+  threadMessages: 0,
+  threadParticipations: 0,
+  messageReactions: 0,
+  commentReactions: 0,
+  attachments: 0,
+  coHostings: 0,
+};
+
+export type EmailChangeRefusal =
+  | 'unchanged'
+  | 'taken'
+  /**
+   * Held by an account that was removed from this co-op (MEM-28).
+   *
+   * Distinct from `taken`, which is somebody else's live account. This one is
+   * a husk — no memberships anywhere — and the admin can take the address back
+   * from it rather than being told to go and find a second account that no
+   * longer exists.
+   */
+  | 'held-by-removed'
+  | 'shared-login';
 
 /**
  * A member as another member may see them.
@@ -2093,9 +2122,24 @@ export class MemberService {
     if (emailChanged) {
       const taken = await this.prisma.user.findFirst({
         where: { email, NOT: { id: userId } },
-        select: { id: true },
+        select: { id: true, _count: { select: { orgs: true } } },
       });
-      if (taken) return { changed: false, reason: 'taken' };
+
+      /*
+        Whether anybody is actually using it (MEM-28).
+
+        Removing a member deletes the membership and leaves the account, so the
+        thing holding an address is often a husk from a removal rather than a
+        second member. Telling an admin to "check whether they have two
+        accounts here" when one of them is the account they removed five
+        minutes ago is advice that cannot be followed.
+      */
+      if (taken) {
+        return {
+          changed: false,
+          reason: taken._count.orgs === 0 ? 'held-by-removed' : 'taken',
+        };
+      }
     }
 
     /*
@@ -2191,6 +2235,217 @@ export class MemberService {
       changed: true,
       ...(nameChanged && { name: name || '' }),
       ...(emailChanged && { email }),
+    };
+  }
+
+  /**
+   * Look an address over before taking it back (MEM-28).
+   *
+   * Reads only. The husk is rarely empty — Evan's held three imported room
+   * reservations and two share grants worth three hundred shares — and an
+   * admin who presses "take the address" and silently inherits an ownership
+   * stake has not been asked a fair question.
+   */
+  async previewTakeover(orgId: string, userId: string, rawEmail: string) {
+    const survivor = await this.prisma.userOrg.findFirst({
+      where: { orgId, userId },
+      select: { userId: true },
+    });
+    if (!survivor) throw new NotFoundException('Member not found');
+
+    const email = rawEmail.trim().toLowerCase();
+    const holder = await this.prisma.user.findFirst({
+      where: { email },
+      select: {
+        id: true,
+        name: true,
+        passwordHash: true,
+        lastLoginAt: true,
+        _count: { select: { orgs: true } },
+      },
+    });
+
+    if (!holder) {
+      return { can: false, reason: 'nothing-to-take' as const, message: refusalMessage('nothing-to-take', EMPTY_BLOCKERS) };
+    }
+
+    const blockers = await this.huskBlockers(holder.id);
+    const refusal = takeoverRefusal(
+      {
+        id: holder.id,
+        memberships: holder._count.orgs,
+        hasPassword: holder.passwordHash !== null,
+        hasSignedIn: holder.lastLoginAt !== null,
+      },
+      userId,
+      blockers,
+    );
+
+    if (refusal) {
+      return { can: false, reason: refusal, message: refusalMessage(refusal, blockers) };
+    }
+
+    const contents = await this.huskContents(holder.id);
+    return {
+      can: true as const,
+      name: holder.name,
+      contents,
+      message: movingSummary(contents),
+    };
+  }
+
+  /**
+   * Take the address back, bringing what it still carries (MEM-28).
+   *
+   * **What moves and what cannot.** Bookings and share grants move, because
+   * they are the person's and the person is the member who is still here.
+   * Everything else is left to the database: a relation that cascades would be
+   * destroyed, so `previewTakeover` refuses when the husk has any, and a
+   * relation that is required refuses the delete itself — Postgres will not
+   * orphan a row. Between them nothing is lost quietly, which is the only
+   * property that makes a one-press merge defensible.
+   *
+   * One transaction. A half-done takeover is two accounts both holding part of
+   * somebody, which is worse than the duplicate it was meant to fix.
+   */
+  async takeOverAddress(
+    orgId: string,
+    userId: string,
+    rawEmail: string,
+    actorId: string | null,
+  ) {
+    const preview = await this.previewTakeover(orgId, userId, rawEmail);
+    if (!preview.can) {
+      throw new BadRequestException(preview.message);
+    }
+
+    const email = rawEmail.trim().toLowerCase();
+    const holder = await this.prisma.user.findFirst({
+      where: { email },
+      select: { id: true, name: true },
+    });
+    // Checked a moment ago; gone now means somebody else got there first.
+    if (!holder) throw new BadRequestException('That address is no longer held by anybody. Try saving it again.');
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.booking.updateMany({
+        where: { userId: holder.id },
+        data: { userId },
+      });
+
+      /*
+        The grants move *and* are re-addressed.
+
+        `holderEmail` is how an unclaimed grant finds its owner again
+        (`ownedBy` matches a null `userId` by address), so leaving the old one
+        on a grant that now belongs to somebody else would be a second way to
+        read it, disagreeing with the first.
+      */
+      await tx.shareGrant.updateMany({
+        where: { userId: holder.id },
+        data: { userId, holderEmail: email },
+      });
+
+      // Anything still pointing at it that is not allowed to be orphaned will
+      // refuse this, and the whole transaction goes back.
+      await tx.user.delete({ where: { id: holder.id } });
+
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          email,
+          // Unproven until somebody opens a link sent to it.
+          emailVerified: false,
+          magicLinkToken: null,
+          magicLinkExpiry: null,
+        },
+      });
+
+      await tx.userOrg.updateMany({
+        where: { orgId, userId },
+        data: {
+          signInSentAt: null,
+          signInDeliveredAt: null,
+          signInBouncedAt: null,
+          signInBounceKind: null,
+          signInAuditedAt: null,
+        },
+      });
+    });
+
+    /*
+      Written down in full, because this is the heaviest thing an admin can do
+      to a roster: it removes an account and moves somebody's ownership between
+      two of them. The numbers go in the entry so the co-op's own log answers
+      "where did those shares come from" without anybody reconstructing it.
+    */
+    await this.audit.record({
+      orgId,
+      actorId,
+      action: 'member.address_taken_over',
+      entityType: 'user',
+      entityId: userId,
+      metadata: {
+        email,
+        removedAccountId: holder.id,
+        removedAccountName: holder.name,
+        bookingsMoved: preview.contents.bookings,
+        shareGrantsMoved: preview.contents.shareGrants,
+        sharesMoved: preview.contents.shares,
+      },
+    });
+
+    return { taken: true as const, email, moved: preview.contents };
+  }
+
+  /** What a takeover would carry across. */
+  private async huskContents(holderId: string): Promise<HuskContents> {
+    const [bookings, grants] = await Promise.all([
+      this.prisma.booking.count({ where: { userId: holderId } }),
+      this.prisma.shareGrant.findMany({
+        where: { userId: holderId },
+        select: { shares: true },
+      }),
+    ]);
+
+    return {
+      bookings,
+      shareGrants: grants.length,
+      shares: grants.reduce((sum, g) => sum + g.shares, 0),
+    };
+  }
+
+  /**
+   * What a delete would destroy rather than preserve.
+   *
+   * Exactly the relations that cascade from a user. Everything else either
+   * survives unlinked or refuses the delete, and neither of those loses
+   * anything — see `takeOverAddress`.
+   */
+  private async huskBlockers(holderId: string): Promise<HuskBlockers> {
+    const [
+      threadMessages,
+      threadParticipations,
+      messageReactions,
+      commentReactions,
+      attachments,
+      coHostings,
+    ] = await Promise.all([
+      this.prisma.threadMessage.count({ where: { senderId: holderId } }),
+      this.prisma.threadParticipant.count({ where: { userId: holderId } }),
+      this.prisma.threadMessageReaction.count({ where: { userId: holderId } }),
+      this.prisma.commentReaction.count({ where: { userId: holderId } }),
+      this.prisma.attachment.count({ where: { uploaderId: holderId } }),
+      this.prisma.eventCoHost.count({ where: { userId: holderId } }),
+    ]);
+
+    return {
+      threadMessages,
+      threadParticipations,
+      messageReactions,
+      commentReactions,
+      attachments,
+      coHostings,
     };
   }
 
