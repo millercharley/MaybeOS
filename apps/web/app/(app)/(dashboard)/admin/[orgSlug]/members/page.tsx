@@ -88,6 +88,14 @@ export default function MembersPage() {
     left: number;
   } | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<Member | null>(null);
+  /** The member whose name or address is open for correction (MEM-27). */
+  const [editing, setEditing] = useState<{
+    member: Member;
+    name: string;
+    email: string;
+  } | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState('');
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState('');
 
@@ -235,6 +243,47 @@ export default function MembersPage() {
   */
   const filtered = shown;
 
+
+  /**
+   * Save a corrected name or address (MEM-27).
+   *
+   * Only what actually changed is sent. The address half resets what MaybeOS
+   * knows about reaching them — a new address has never been written to — and
+   * sending it unchanged alongside a name fix would throw that away for
+   * somebody perfectly reachable.
+   */
+  async function saveEdit() {
+    if (!editing || !token || !currentOrgId || savingEdit) return;
+
+    const changes: { name?: string; email?: string } = {};
+    const name = editing.name.trim();
+    const email = editing.email.trim();
+    if (name && name !== (editing.member.user.name ?? '')) changes.name = name;
+    if (email && email.toLowerCase() !== (editing.member.user.email ?? '').toLowerCase()) {
+      changes.email = email;
+    }
+
+    if (Object.keys(changes).length === 0) {
+      setEditing(null);
+      return;
+    }
+
+    setSavingEdit(true);
+    setEditError('');
+    try {
+      await api.members.updateIdentity(currentOrgId, editing.member.user.id, changes, token);
+      setEditing(null);
+      // Re-read rather than patching the row: the list is paged and filtered,
+      // and a corrected name may no longer match the search it was found by.
+      refetch();
+      setMore([]);
+      setPage(1);
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'That could not be saved');
+    } finally {
+      setSavingEdit(false);
+    }
+  }
 
   async function changeRole(userId: string, role: string) {
     if (!token || !currentOrgId) return;
@@ -489,6 +538,28 @@ export default function MembersPage() {
             style={{ top: openMenu.top, left: openMenu.left, width: MENU_WIDTH }}
             className="fixed z-50 rounded-lg border border-gray-200 bg-white py-1 text-left shadow-lg"
           >
+            {/*
+              Correcting who somebody is (MEM-27). First in the menu because it
+              is the thing an admin reaches for most and the only one that is
+              not destructive — a roster that came out of a spreadsheet is full
+              of "SMITH, JANE" and addresses with a typo in the domain.
+            */}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setEditing({
+                  member: openMenu.member,
+                  name: openMenu.member.user.name ?? '',
+                  email: openMenu.member.user.email ?? '',
+                });
+                setEditError('');
+                setOpenMenu(null);
+              }}
+              className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Edit name or email
+            </button>
             <button
               type="button"
               role="menuitem"
@@ -504,6 +575,88 @@ export default function MembersPage() {
           </div>
         </>
       )}
+
+      {/* Correcting who somebody is (MEM-27). */}
+      <Modal
+        open={editing !== null}
+        onClose={() => {
+          if (!savingEdit) {
+            setEditing(null);
+            setEditError('');
+          }
+        }}
+        title="Edit this member"
+      >
+        {editing && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void saveEdit();
+            }}
+            className="space-y-4"
+          >
+            <div>
+              <label htmlFor="member-name" className="block text-sm font-medium text-gray-700">
+                Name
+              </label>
+              <input
+                id="member-name"
+                type="text"
+                value={editing.name}
+                onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                className="input mt-1 w-full"
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label htmlFor="member-email" className="block text-sm font-medium text-gray-700">
+                Email address
+              </label>
+              <input
+                id="member-email"
+                type="email"
+                value={editing.email}
+                onChange={(e) => setEditing({ ...editing, email: e.target.value })}
+                className="input mt-1 w-full"
+              />
+              {/*
+                Said before they save, not after it fails. Changing the address
+                is not the same size of act as fixing a spelling, and the
+                difference is invisible in two identical text boxes.
+              */}
+              <p className="mt-1 text-xs text-gray-500">
+                This is what they sign in with and where their sign-in link goes. Changing it
+                starts them over as somebody who has not been written to yet, so they will need
+                a new link.
+              </p>
+            </div>
+
+            {editError && (
+              <p className="text-sm text-red-600" role="alert">
+                {editError}
+              </p>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <button type="submit" disabled={savingEdit} className="btn-primary text-sm">
+                {savingEdit ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditing(null);
+                  setEditError('');
+                }}
+                disabled={savingEdit}
+                className="btn-secondary text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
+      </Modal>
 
       <Modal
         open={confirmRemove !== null}

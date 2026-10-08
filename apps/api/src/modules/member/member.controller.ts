@@ -34,7 +34,7 @@ import { UpdateTierDto } from './dto/update-tier.dto';
 import { ReorderTiersDto } from './dto/reorder-tiers.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { SendSignInLinksDto } from './dto/sign-in-links.dto';
-import { ChangeMemberEmailDto } from './dto/change-member-email.dto';
+import { UpdateMemberIdentityDto } from './dto/update-member-identity.dto';
 
 @ApiTags('members')
 @Controller('orgs/:orgId')
@@ -230,21 +230,21 @@ export class MemberController {
     return this.memberService.clearSignInBounce(orgId, userId);
   }
 
-  @Patch('members/:userId/email')
+  @Patch('members/:userId/identity')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Correct the address a member is reachable at (MEM-25)' })
-  async changeMemberEmail(
+  @ApiOperation({ summary: 'Correct a member’s name or email address (MEM-27)' })
+  async updateMemberIdentity(
     @Param('orgId') orgId: string,
     @Param('userId') userId: string,
-    @Body() dto: ChangeMemberEmailDto,
+    @Body() dto: UpdateMemberIdentityDto,
     @CurrentUser() actor: RequestUser,
   ) {
-    const result = await this.memberService.changeMemberEmail(
+    const result = await this.memberService.updateMemberIdentity(
       orgId,
       userId,
-      dto.email,
+      { name: dto.name, email: dto.email },
       actor.userId,
     );
 
@@ -258,7 +258,7 @@ export class MemberController {
       and a shared 400 would leave them guessing which.
     */
     const reasons: Record<EmailChangeRefusal, string> = {
-      unchanged: 'That is already their address.',
+      unchanged: 'Nothing was different, so nothing was changed.',
       taken: 'Another member already uses that address. Check whether they have two accounts here.',
       'shared-login':
         'This person belongs to more than one community on MaybeOS, and one sign-in covers all of them. Changing it here would change how they sign in somewhere else, so they need to change it themselves from their own profile.',

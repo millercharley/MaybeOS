@@ -817,17 +817,25 @@ class ApiClient {
       }),
 
     /**
-     * Correct the address a member is reachable at (MEM-25).
+     * Correct a member's name or email address (MEM-27).
      *
-     * `user.email` is a credential, not a profile field — it is what they sign
-     * in with and where a magic link goes. The API refuses an address another
-     * account holds, and refuses outright for somebody who belongs to more
-     * than one community, since one sign-in covers all of them.
+     * The name is a label and goes through. The address is a credential — it
+     * is what they sign in with and where a magic link goes — so the API
+     * refuses one another account holds, and refuses outright for somebody who
+     * belongs to more than one community, since one sign-in covers all of them.
+     *
+     * Either field alone is fine; sending neither, or sending what is already
+     * there, is answered rather than silently accepted.
      */
-    changeEmail: (orgId: string, userId: string, email: string, token: string) =>
-      this.request<{ changed: boolean; email?: string }>(
-        `/orgs/${orgId}/members/${userId}/email`,
-        { method: 'PATCH', body: JSON.stringify({ email }), token },
+    updateIdentity: (
+      orgId: string,
+      userId: string,
+      changes: { name?: string; email?: string },
+      token: string,
+    ) =>
+      this.request<{ changed: boolean; name?: string; email?: string }>(
+        `/orgs/${orgId}/members/${userId}/identity`,
+        { method: 'PATCH', body: JSON.stringify(changes), token },
       ),
 
     /** The address is fixed — let this member be written to again (MEM-25). */

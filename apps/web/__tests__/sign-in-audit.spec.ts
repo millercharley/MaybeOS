@@ -183,7 +183,7 @@ describe('the panel', () => {
   */
   it('lets the address be corrected from the line it bounced on', () => {
     expect(code).toMatch(/>\s*Edit address\s*</);
-    expect(code).toMatch(/api\.members\.changeEmail\(org\.id, editing\.userId/);
+    expect(code).toMatch(/api\.members\.updateIdentity\(org\.id, editing\.userId/);
   });
 
   it('starts the edit from the address that bounced, not an empty box', () => {
