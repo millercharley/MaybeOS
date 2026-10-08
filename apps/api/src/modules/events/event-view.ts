@@ -40,6 +40,10 @@ export const PUBLIC_EVENT_SELECT = {
   // select narrows it, so a new column is invisible here until it is named.
   imageCredit: true,
   imageCreditUrl: true,
+  // Which band of it to keep when it is cropped (EVT-43). Named here for the
+  // reason stated above: unnamed is invisible, and an unread focus is a
+  // slider that does nothing.
+  imageFocusY: true,
   startTime: true,
   endTime: true,
   timezone: true,
