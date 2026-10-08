@@ -13,6 +13,7 @@ import { ClosureEditor } from '@/components/rooms/closure-editor';
 import { HostDuties } from '@/components/rooms/host-duties';
 import { calendarNotice } from '@/lib/room-calendar';
 import { PageHeader } from '@/components/layout/page-header';
+import { BookingApprovals } from '@/components/rooms/booking-approvals';
 import { useReveal } from '@/hooks/use-reveal';
 
 type Draft = {
@@ -213,6 +214,13 @@ export default function AdminRoomsPage() {
           </button>
         )}
       </div>
+
+      {/*
+        Above everything else on purpose (SPC-32). An approval queue is only
+        useful if it is in the way — this is the screen whose absence meant a
+        launch party sat in `PENDING` for a day with the gallery held.
+      */}
+      {orgId && <BookingApprovals orgId={orgId} />}
 
       {notice && (
         <div className="card mt-6 flex gap-3 border-[var(--success)]">

@@ -800,8 +800,123 @@ export class SpaceService {
     // auto-approves and the member can just turn up.
     await this.notifyBooking(created.id, status === 'PENDING' ? 'received' : 'confirmed');
 
+    /*
+      And tell somebody who can actually act on it (SPC-32).
+
+      The 'received' email above goes to the member — it always did, and it is
+      the only one that was ever sent. So a request arrived, the member was
+      told an organiser would look at it, and no organiser was told anything.
+      MaybeItsFate had three waiting, one of them a launch party booked that
+      morning, and the room was being held for all of them.
+    */
+    if (status === 'PENDING') await this.tellOrganisersOfRequest(orgId, created.id);
+
     return created;
   }
+
+  /**
+   * Tell the people who can approve it that a room is being asked for (SPC-32).
+   *
+   * Never allowed to fail the booking. The member has made their request and
+   * the room is held either way; a mail server having a bad afternoon must not
+   * turn that into an error on their screen.
+   */
+  private async tellOrganisersOfRequest(orgId: string, bookingId: string): Promise<void> {
+    try {
+      // Through the org, never by bare id (SEC-04). The id here is one this
+      // method just created, so it is not anybody's to forge — but the rule
+      // exists so that nobody has to work that out when they read it later.
+      const booking = await this.prisma.booking.findFirst({
+        where: { id: bookingId, room: { orgId } },
+        select: {
+          title: true,
+          startTime: true,
+          endTime: true,
+          user: { select: { name: true } },
+          room: {
+            select: {
+              name: true,
+              org: { select: { name: true, slug: true, timezone: true } },
+            },
+          },
+        },
+      });
+      if (!booking?.room) return;
+
+      const [organisers, waiting] = await Promise.all([
+        this.prisma.userOrg.findMany({
+          where: { orgId, role: { in: ['ADMIN', 'STAFF'] } },
+          select: { user: { select: { email: true, name: true } } },
+        }),
+        this.prisma.booking.count({
+          where: { room: { orgId }, status: 'PENDING', endTime: { gte: new Date() } },
+        }),
+      ]);
+
+      const reviewUrl = `${this.webUrl()}/admin/${booking.room.org.slug}/rooms`;
+
+      for (const organiser of organisers) {
+        if (!organiser.user?.email) continue;
+        await this.emailService.sendBookingAwaitingApproval(organiser.user.email, {
+          organiserName: organiser.user.name ?? 'there',
+          orgName: booking.room.org.name,
+          memberName: booking.user?.name ?? 'A member',
+          roomName: booking.room.name,
+          title: booking.title,
+          when: this.formatWhen(booking.startTime, booking.endTime, booking.room.org.timezone),
+          reviewUrl,
+          waiting,
+        });
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Could not tell organisers about booking ${bookingId}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Every room request waiting on an organiser (SPC-32).
+   *
+   * The screen that was missing. `approveBooking` and `rejectBooking` have
+   * worked since SpaceOS was built and nothing in the product ever called
+   * them, so a room that asks for approval collected requests nobody could
+   * see — the same shape as the Commons' flagging, where the back half existed
+   * and the front half did not.
+   *
+   * **Ones that have already happened are still listed.** A request for last
+   * Tuesday that nobody answered is not tidy; it is a member who was left
+   * waiting, and hiding it would hide the evidence of exactly the failure this
+   * fixes. They are marked as lapsed rather than dropped.
+   */
+  async listPendingBookings(orgId: string) {
+    const rows = await this.prisma.booking.findMany({
+      where: { room: { orgId }, status: 'PENDING' },
+      // Soonest first: the one happening on Thursday needs answering before
+      // the one in March, whatever order they were asked in.
+      orderBy: { startTime: 'asc' },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        startTime: true,
+        endTime: true,
+        createdAt: true,
+        expectedAttendance: true,
+        room: { select: { id: true, name: true } },
+        user: { select: { id: true, name: true } },
+      },
+    });
+
+    const now = new Date();
+    return rows.map((row) => ({
+      ...row,
+      /** Already over, and never answered. */
+      lapsed: row.endTime < now,
+    }));
+  }
+
+
 
   /** Where the member comes back to after Stripe. */
   private webUrl(): string {
