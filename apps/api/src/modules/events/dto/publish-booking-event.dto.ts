@@ -1,5 +1,15 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, MaxLength, Matches } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  Matches,
+} from 'class-validator';
 import { IMAGE_URL_PATTERN, IMAGE_URL_MESSAGE } from './create-event.dto';
 
 /**
@@ -78,4 +88,18 @@ export class PublishBookingEventDto {
   @IsString()
   @Matches(IMAGE_URL_PATTERN, { message: IMAGE_URL_MESSAGE })
   imageCreditUrl?: string;
+
+  /**
+   * Any *other* rooms this event occupies (SPC-31).
+   *
+   * The booking being published from is attached regardless — it is what the
+   * event was made out of, and what calls the event off if it is cancelled.
+   * This is for the ones added in the form's picker afterwards, which until
+   * now were accepted by the screen and dropped by the request.
+   */
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  bookingIds?: string[];
 }
