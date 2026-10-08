@@ -38,6 +38,13 @@ export interface EventFormValues extends CreateEventData {
    */
   host?: { id: string; name?: string } | null;
   coHosts?: { userId: string; user: { name?: string | null } }[];
+  /**
+   * The reservation this event is being published from (SPC-31).
+   *
+   * Prefills the picker and cannot be removed: it is what the event is made
+   * out of, and the server attaches it whatever the form says.
+   */
+  fixedBookingId?: string;
   /** The event's own id, so the room picker can offer its current rooms. */
   id?: string;
   /** The reservations it already holds (SPC-27). Read, never sent. */
@@ -510,13 +517,21 @@ export function EventForm({
             )}
           </span>
           <p className="mb-2 text-xs text-gray-500">
-            Pick the reservation that holds the room. Only bookings made by you or a
-            co-host appear here.
+            {/*
+              True for both readers (SPC-31). It said "only bookings made by
+              you or a co-host", which is right for a member and wrong for an
+              organiser — they are shown the whole co-op's, deliberately,
+              because sorting out a double-booked evening is their job.
+            */}
+            Pick the reservation that holds the room. Yours and your co-hosts&rsquo;
+            appear here; organisers see the whole co-op&rsquo;s. Reservations that have
+            already finished are left out.
           </p>
 
           <RoomPicker
             orgId={orgId}
             eventId={initial?.id}
+            fixedId={initial?.fixedBookingId}
             picked={rooms}
             onPick={(booking) =>
               setRooms((current) =>

@@ -115,6 +115,9 @@ export default function MemberBookingsPage() {
           imageUrl: values.imageUrl ?? undefined,
           imageCredit: values.imageCredit ?? undefined,
           imageCreditUrl: values.imageCreditUrl ?? undefined,
+          // Any *other* rooms the picker added. The booking being published
+          // from is attached by the route itself (SPC-31).
+          bookingIds: values.bookingIds,
         },
         token,
       );
@@ -481,7 +484,33 @@ export default function MemberBookingsPage() {
                     </button>
                   </div>
                   <EventForm
-                    initial={{ title: b.title, startTime: b.startTime, endTime: b.endTime }}
+                    initial={{
+                      title: b.title,
+                      startTime: b.startTime,
+                      endTime: b.endTime,
+                      /*
+                        The room is already answered (SPC-31).
+
+                        Publishing from a booking means the room is the one
+                        being held — the server attaches it either way — so the
+                        picker starting empty asked the member to re-answer a
+                        question they had answered by clicking this button, in
+                        a list where their own reservation sat among the whole
+                        co-op's.
+                      */
+                      ...(b.room
+                        ? {
+                            fixedBookingId: b.id,
+                            rooms: [
+                              {
+                                id: b.id,
+                                startTime: b.startTime,
+                                room: { id: b.room.id, name: b.room.name },
+                              },
+                            ],
+                          }
+                        : {}),
+                    }}
                     submitLabel="Publish event"
                     busy={busy}
                     onSubmit={(values) => publishAsEvent(b.id, values)}

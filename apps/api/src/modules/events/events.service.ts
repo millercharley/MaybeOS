@@ -181,6 +181,14 @@ export class EventsService {
           dto.capacity ?? booking.expectedAttendance ?? booking.room.capacity ?? undefined,
         category: dto.category ?? booking.categories[0],
         tags: booking.categories,
+        /*
+          Any other rooms the form picked (SPC-31).
+
+          The source booking is attached through `options.bookingId` below and
+          is not repeated here — it is what the event is made out of, so it is
+          not the picker's to remove.
+        */
+        bookingIds: (dto.bookingIds ?? []).filter((id) => id !== booking.id),
         imageUrl: dto.imageUrl,
         imageCredit: dto.imageCredit,
         imageCreditUrl: dto.imageCreditUrl,
@@ -1856,14 +1864,31 @@ export class EventsService {
     const from = options.from ? new Date(options.from) : new Date(around.getTime() - 14 * 86_400_000);
     const to = options.to ? new Date(options.to) : new Date(around.getTime() + 14 * 86_400_000);
 
+    /*
+      A reservation that has already finished cannot hold anything (SPC-31).
+
+      The window reaches a fortnight back so that "I booked it last week" still
+      works, and that let bookings which had already ended sit in the list — a
+      member choosing a room for next Thursday was offered four evenings in
+      September. The window stays; what has ended drops out of it.
+
+      Only for the free ones. A booking already attached to this event stays
+      whatever its date, or editing a past event would quietly lose the room it
+      was held in.
+    */
+    const now = new Date();
+
     return this.prisma.booking.findMany({
       where: {
         room: { orgId },
         isCoopHold: false,
         status: { in: ['PENDING', 'APPROVED'] },
-        // Free, or already this event's — so an event's own rooms stay in the
-        // list it is choosing from.
-        OR: [{ eventId: null }, ...(options.eventId ? [{ eventId: options.eventId }] : [])],
+        // Free and still to come, or already this event's — so an event's own
+        // rooms stay in the list it is choosing from.
+        OR: [
+          { eventId: null, endTime: { gte: now } },
+          ...(options.eventId ? [{ eventId: options.eventId }] : []),
+        ],
         ...(who.anyone ? {} : { userId: { in: who.userIds } }),
         startTime: { gte: from, lte: to },
       },
@@ -1877,7 +1902,15 @@ export class EventsService {
         room: { select: { id: true, name: true } },
         user: { select: { id: true, name: true } },
       },
-      orderBy: { startTime: 'asc' },
+      /*
+        By room, then by date (SPC-31).
+
+        Charley's call. A member picking a room is looking for a room: all the
+        Attic's reservations together, in the order they happen, beats a single
+        chronological list where the same room appears four times among three
+        others.
+      */
+      orderBy: [{ room: { name: 'asc' } }, { startTime: 'asc' }],
       take: 50,
     });
   }

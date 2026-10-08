@@ -4311,6 +4311,14 @@ export interface PublishBookingEventData {
   imageUrl?: string;
   imageCredit?: string;
   imageCreditUrl?: string;
+  /**
+   * Any *other* rooms the form's picker added (SPC-31).
+   *
+   * The booking being published from is attached by the route itself — it is
+   * what the event is made out of — so it does not need naming here, and the
+   * API filters it out if it is.
+   */
+  bookingIds?: string[];
   // `priceCents` was declared here and is not on `PublishBookingEventDto`,
   // so sending it would have failed the whole request rather than the field
   // (EVT-21). Nothing ever set it — publishing from a booking does not offer

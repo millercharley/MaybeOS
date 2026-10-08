@@ -24,12 +24,22 @@ export function RoomPicker({
   picked,
   onPick,
   onDrop,
+  fixedId,
 }: {
   orgId: string;
   eventId?: string;
   picked: { id: string; label: string }[];
   onPick: (booking: AttachableBooking) => void;
   onDrop: (bookingId: string) => void;
+  /**
+   * A reservation that cannot be taken off (SPC-31).
+   *
+   * Publishing an event *from* a booking makes that booking the thing the
+   * event is made out of — it is what calls the event off if it is cancelled
+   * — so the server attaches it either way. Offering an × that does nothing
+   * would be worse than offering none.
+   */
+  fixedId?: string;
 }) {
   const token = useAuthStore((s) => s.token);
   const [options, setOptions] = useState<AttachableBooking[] | null>(null);
@@ -71,14 +81,18 @@ export function RoomPicker({
             >
               <DoorOpen className="h-3.5 w-3.5 text-gray-400" />
               {p.label}
-              <button
-                type="button"
-                aria-label={`Remove ${p.label}`}
-                onClick={() => onDrop(p.id)}
-                className="text-gray-400 hover:text-red-700"
-              >
-                ×
-              </button>
+              {p.id === fixedId ? (
+                <span className="text-xs text-gray-400">held for this</span>
+              ) : (
+                <button
+                  type="button"
+                  aria-label={`Remove ${p.label}`}
+                  onClick={() => onDrop(p.id)}
+                  className="text-gray-400 hover:text-red-700"
+                >
+                  ×
+                </button>
+              )}
             </li>
           ))}
         </ul>
