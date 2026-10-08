@@ -200,7 +200,11 @@ export function BookingDetailsForm({
             <label
               key={value}
               className={[
-                'cursor-pointer rounded-full border px-3 py-1 text-sm transition-colors focus-within:ring-2 focus-within:ring-[var(--text-primary)]',
+                // `relative` is load-bearing (SPC-30). The radio inside is
+                // `sr-only`, which is `position: absolute` — without a
+                // positioned ancestor it is placed against the page instead of
+                // this chip, and clicking the label scrolls the window to it.
+                'relative cursor-pointer rounded-full border px-3 py-1 text-sm transition-colors focus-within:ring-2 focus-within:ring-[var(--text-primary)]',
                 maturityLevel === value
                   ? 'border-[var(--text-primary)] bg-[var(--surface-sunken)] font-medium'
                   : 'border-[var(--border)] hover:bg-[var(--surface-sunken)]',
