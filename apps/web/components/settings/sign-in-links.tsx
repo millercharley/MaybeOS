@@ -121,7 +121,7 @@ export function SignInLinks({ org }: { org: Org }) {
     setBusy(true);
     setError('');
     try {
-      await api.members.changeEmail(org.id, editing.userId, next, token);
+      await api.members.updateIdentity(org.id, editing.userId, { email: next }, token);
       setEditing(null);
       setAudit(await api.members.auditSignInLinks(org.id, token));
       // They are now somebody who has never been written to, which is the

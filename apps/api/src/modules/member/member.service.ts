@@ -2045,10 +2045,10 @@ export class MemberService {
    * about it. Which is true, and puts the member back in the ordinary queue
    * the "send the next batch" button already works through.
    */
-  async changeMemberEmail(
+  async updateMemberIdentity(
     orgId: string,
     userId: string,
-    rawEmail: string,
+    changes: { name?: string; email?: string },
     actorId: string | null,
     /*
       One shape with optional halves, rather than a union discriminated on
@@ -2056,84 +2056,142 @@ export class MemberService {
       it TypeScript will not narrow a union by a boolean literal — the caller
       could see `changed` was false and still not be allowed to read `reason`.
     */
-  ): Promise<{ changed: boolean; email?: string; reason?: EmailChangeRefusal }> {
+  ): Promise<{
+    changed: boolean;
+    name?: string;
+    email?: string;
+    reason?: EmailChangeRefusal;
+  }> {
     // findFirst with the orgId, never findUnique on the userId alone: a
     // membership is tenant-owned and one co-op must not reach into another's
     // roster (SEC-04).
     const membership = await this.prisma.userOrg.findFirst({
       where: { orgId, userId },
-      select: { id: true, user: { select: { id: true, email: true } } },
+      select: { id: true, user: { select: { id: true, email: true, name: true } } },
     });
     if (!membership?.user) throw new NotFoundException('Member not found');
 
-    const email = rawEmail.trim().toLowerCase();
-    if (email === membership.user.email.trim().toLowerCase()) {
+    /*
+      The name is the easy half, and it is still not nothing (MEM-27).
+
+      It lives on the account rather than the membership, so it is how this
+      person is known everywhere on MaybeOS — but it is a label and not a
+      credential, so it carries none of the refusals below. An admin fixing
+      "SMITH, JANE" out of a spreadsheet import should not be stopped.
+    */
+    const name = changes.name?.trim();
+    const nameChanged = name !== undefined && name !== (membership.user.name ?? '');
+
+    const email = changes.email?.trim().toLowerCase();
+    const emailChanged =
+      email !== undefined && email !== membership.user.email.trim().toLowerCase();
+
+    if (!nameChanged && !emailChanged) {
       return { changed: false, reason: 'unchanged' };
     }
 
-    const taken = await this.prisma.user.findFirst({
-      where: { email, NOT: { id: userId } },
-      select: { id: true },
-    });
-    if (taken) return { changed: false, reason: 'taken' };
+    if (emailChanged) {
+      const taken = await this.prisma.user.findFirst({
+        where: { email, NOT: { id: userId } },
+        select: { id: true },
+      });
+      if (taken) return { changed: false, reason: 'taken' };
+    }
 
-    const elsewhere = await this.prisma.userOrg.count({
-      where: { userId, NOT: { orgId } },
-    });
-    if (elsewhere > 0) return { changed: false, reason: 'shared-login' };
+    /*
+      Only the address is refused for a shared login (MEM-27).
 
-    await this.prisma.$transaction([
+      One sign-in spans every community somebody belongs to, so changing the
+      address changes how they get into a co-op this admin has nothing to do
+      with — and an admin who can redirect a magic link can redirect it to
+      themselves. A name is a label: it travels too, but changing it takes
+      nobody's account anywhere.
+    */
+    if (emailChanged) {
+      const elsewhere = await this.prisma.userOrg.count({
+        where: { userId, NOT: { orgId } },
+      });
+      if (elsewhere > 0) return { changed: false, reason: 'shared-login' };
+    }
+
+    const writes: Prisma.PrismaPromise<unknown>[] = [
       this.prisma.user.update({
         where: { id: userId },
         data: {
-          email,
-          // Unproven until somebody opens a link sent to it. Nothing gates on
-          // this today, but leaving it true would carry the old address's
-          // verification across to an address nobody has answered at.
-          emailVerified: false,
-          /*
-            The old link is dead too.
+          ...(nameChanged && { name: name || null }),
+          ...(emailChanged && {
+            email,
+            // Unproven until somebody opens a link sent to it. Nothing gates
+            // on this today, but leaving it true would carry the old
+            // address's verification across to one nobody has answered at.
+            emailVerified: false,
+            /*
+              The old link is dead too.
 
-            It was minted for an address that bounced, and any copy of it still
-            in flight points at this account. Cheap to invalidate, and the
-            member is about to be sent a new one.
-          */
-          magicLinkToken: null,
-          magicLinkExpiry: null,
+              It was minted for an address that is no longer theirs, and any
+              copy still in flight points at this account. Cheap to
+              invalidate, and they are about to be sent a new one.
+            */
+            magicLinkToken: null,
+            magicLinkExpiry: null,
+          }),
         },
       }),
-      this.prisma.userOrg.update({
-        where: { id: membership.id },
-        data: {
-          // Nothing has ever been sent to this address, which is exactly what
-          // the first-time send is for. The bounce belonged to the old one.
-          signInSentAt: null,
-          signInDeliveredAt: null,
-          signInBouncedAt: null,
-          signInBounceKind: null,
-          signInAuditedAt: null,
-        },
-      }),
-    ]);
+    ];
 
     /*
-      Written down, because this one is an escalation.
+      Only an address change resets what we know about reaching them.
 
-      An admin who can change the address a magic link is sent to can send it
-      somewhere they read. That is a reasonable power for somebody running the
-      co-op's roster and an unreasonable one to leave no trace of, so it goes
-      in the log the co-op can read about itself (PLT-01).
+      Correcting a spelling of somebody's name does not mean their sign-in
+      link never arrived, and clearing the record here would put a member who
+      is perfectly reachable back into the queue to be written to again.
+    */
+    if (emailChanged) {
+      writes.push(
+        this.prisma.userOrg.update({
+          where: { id: membership.id },
+          data: {
+            // Nothing has ever been sent to this address, which is exactly
+            // what the first-time send is for. Any bounce belonged to the old
+            // one.
+            signInSentAt: null,
+            signInDeliveredAt: null,
+            signInBouncedAt: null,
+            signInBounceKind: null,
+            signInAuditedAt: null,
+          },
+        }),
+      );
+    }
+
+    await this.prisma.$transaction(writes);
+
+    /*
+      Written down, because the address half is an escalation.
+
+      An admin who can change where a magic link is sent can send it somewhere
+      they read. That is a reasonable power for somebody running the co-op's
+      roster and an unreasonable one to leave no trace of, so it goes in the
+      log the co-op can read about itself (PLT-01). The name goes in the same
+      entry: less serious, and still somebody else's record being rewritten.
     */
     await this.audit.record({
       orgId,
       actorId,
-      action: 'member.email_changed',
+      action: 'member.identity_changed',
       entityType: 'user',
       entityId: userId,
-      metadata: { from: membership.user.email, to: email },
+      metadata: {
+        ...(emailChanged && { emailFrom: membership.user.email, emailTo: email }),
+        ...(nameChanged && { nameFrom: membership.user.name ?? null, nameTo: name || null }),
+      },
     });
 
-    return { changed: true, email };
+    return {
+      changed: true,
+      ...(nameChanged && { name: name || '' }),
+      ...(emailChanged && { email }),
+    };
   }
 
   /**

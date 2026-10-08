@@ -27,7 +27,7 @@ describe('correcting a member’s address', () => {
 
   const MEMBERSHIP = {
     id: 'm1',
-    user: { id: 'u1', email: 'derekmatt@me.com' },
+    user: { id: 'u1', email: 'derekmatt@me.com', name: 'Derek Matt' },
   };
 
   beforeEach(async () => {
@@ -59,7 +59,7 @@ describe('correcting a member’s address', () => {
   });
 
   it('writes the corrected address, lowercased and trimmed', async () => {
-    const result = await service.changeMemberEmail('org-1', 'u1', '  Derek@Example.COM ', 'admin-1');
+    const result = await service.updateMemberIdentity('org-1', 'u1', { email: '  Derek@Example.COM ' }, 'admin-1');
 
     expect(result).toEqual({ changed: true, email: 'derek@example.com' });
 
@@ -68,7 +68,7 @@ describe('correcting a member’s address', () => {
   });
 
   it('gives the new address a clean slate', async () => {
-    await service.changeMemberEmail('org-1', 'u1', 'derek@example.com', 'admin-1');
+    await service.updateMemberIdentity('org-1', 'u1', { email: 'derek@example.com' }, 'admin-1');
 
     const [membershipWrite] = prisma.userOrg.update.mock.calls[0];
 
@@ -84,7 +84,7 @@ describe('correcting a member’s address', () => {
   });
 
   it('stops treating the old address’s verification as proof of the new one', async () => {
-    await service.changeMemberEmail('org-1', 'u1', 'derek@example.com', 'admin-1');
+    await service.updateMemberIdentity('org-1', 'u1', { email: 'derek@example.com' }, 'admin-1');
 
     const [userWrite] = prisma.user.update.mock.calls[0];
     expect(userWrite.data.emailVerified).toBe(false);
@@ -97,7 +97,7 @@ describe('correcting a member’s address', () => {
     // which address and why, instead of surfacing a constraint violation.
     prisma.user.findFirst.mockResolvedValue({ id: 'u2' });
 
-    const result = await service.changeMemberEmail('org-1', 'u1', 'taken@example.com', 'admin-1');
+    const result = await service.updateMemberIdentity('org-1', 'u1', { email: 'taken@example.com' }, 'admin-1');
 
     expect(result).toMatchObject({ changed: false, reason: 'taken' });
     expect(prisma.$transaction).not.toHaveBeenCalled();
@@ -108,21 +108,21 @@ describe('correcting a member’s address', () => {
     // would be changing how they get into one they have nothing to do with.
     prisma.userOrg.count.mockResolvedValue(1);
 
-    const result = await service.changeMemberEmail('org-1', 'u1', 'derek@example.com', 'admin-1');
+    const result = await service.updateMemberIdentity('org-1', 'u1', { email: 'derek@example.com' }, 'admin-1');
 
     expect(result).toMatchObject({ changed: false, reason: 'shared-login' });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('refuses the address it already is, rather than reporting a fix', async () => {
-    const result = await service.changeMemberEmail('org-1', 'u1', 'DerekMatt@me.com', 'admin-1');
+    const result = await service.updateMemberIdentity('org-1', 'u1', { email: 'DerekMatt@me.com' }, 'admin-1');
 
     expect(result).toMatchObject({ changed: false, reason: 'unchanged' });
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('scopes the lookup to this co-op', async () => {
-    await service.changeMemberEmail('org-1', 'u1', 'derek@example.com', 'admin-1');
+    await service.updateMemberIdentity('org-1', 'u1', { email: 'derek@example.com' }, 'admin-1');
 
     // Never findUnique on the userId alone: a membership is tenant-owned, and
     // one co-op must not reach into another's roster (SEC-04).
@@ -133,7 +133,7 @@ describe('correcting a member’s address', () => {
   });
 
   it('leaves a line in the log the co-op can read about itself', async () => {
-    await service.changeMemberEmail('org-1', 'u1', 'derek@example.com', 'admin-1');
+    await service.updateMemberIdentity('org-1', 'u1', { email: 'derek@example.com' }, 'admin-1');
 
     // An admin who can change where a magic link is sent can send it somewhere
     // they read. A reasonable power; not one to leave no trace of (PLT-01).
@@ -141,24 +141,123 @@ describe('correcting a member’s address', () => {
       expect.objectContaining({
         orgId: 'org-1',
         actorId: 'admin-1',
-        action: 'member.email_changed',
-        metadata: { from: 'derekmatt@me.com', to: 'derek@example.com' },
+        action: 'member.identity_changed',
+        metadata: { emailFrom: 'derekmatt@me.com', emailTo: 'derek@example.com' },
       }),
     );
   });
 
   it('records nothing when it refused', async () => {
     prisma.user.findFirst.mockResolvedValue({ id: 'u2' });
-    await service.changeMemberEmail('org-1', 'u1', 'taken@example.com', 'admin-1');
+    await service.updateMemberIdentity('org-1', 'u1', { email: 'taken@example.com' }, 'admin-1');
 
     expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  describe('the name half', () => {
+    it('corrects the name without touching anything else', async () => {
+      // The common case: a roster out of a spreadsheet, full of "SMITH, JANE".
+      const result = await service.updateMemberIdentity(
+        'org-1',
+        'u1',
+        { name: 'Derek Matthews' },
+        'admin-1',
+      );
+
+      expect(result).toEqual({ changed: true, name: 'Derek Matthews' });
+
+      const [userWrite] = prisma.user.update.mock.calls[0];
+      expect(userWrite.data.name).toBe('Derek Matthews');
+      // Not a new address, so none of the address machinery fires.
+      expect(userWrite.data).not.toHaveProperty('email');
+      expect(userWrite.data).not.toHaveProperty('emailVerified');
+      expect(userWrite.data).not.toHaveProperty('magicLinkToken');
+    });
+
+    it('does not reset what we know about reaching them', async () => {
+      /*
+        The mistake worth guarding.
+
+        Correcting a spelling does not mean their sign-in link never arrived.
+        Clearing the record here would put a perfectly reachable member back
+        into the queue to be written to again — four hundred of those is the
+        whole reason the audit exists.
+      */
+      await service.updateMemberIdentity('org-1', 'u1', { name: 'Derek Matthews' }, 'admin-1');
+
+      expect(prisma.userOrg.update).not.toHaveBeenCalled();
+    });
+
+    it('is allowed for somebody who belongs to more than one co-op', async () => {
+      // A name travels across communities too, but changing it takes nobody's
+      // account anywhere. Only the credential is refused.
+      prisma.userOrg.count.mockResolvedValue(1);
+
+      await expect(
+        service.updateMemberIdentity('org-1', 'u1', { name: 'Derek Matthews' }, 'admin-1'),
+      ).resolves.toMatchObject({ changed: true });
+    });
+
+    it('still refuses the address for that person', async () => {
+      prisma.userOrg.count.mockResolvedValue(1);
+
+      await expect(
+        service.updateMemberIdentity('org-1', 'u1', { email: 'derek@example.com' }, 'admin-1'),
+      ).resolves.toMatchObject({ changed: false, reason: 'shared-login' });
+    });
+
+    it('changes both in one write when both are given', async () => {
+      const result = await service.updateMemberIdentity(
+        'org-1',
+        'u1',
+        { name: 'Derek Matthews', email: 'derek@example.com' },
+        'admin-1',
+      );
+
+      expect(result).toEqual({
+        changed: true,
+        name: 'Derek Matthews',
+        email: 'derek@example.com',
+      });
+
+      const [userWrite] = prisma.user.update.mock.calls[0];
+      expect(userWrite.data).toMatchObject({
+        name: 'Derek Matthews',
+        email: 'derek@example.com',
+      });
+      // And the address half does reset the sign-in record.
+      expect(prisma.userOrg.update).toHaveBeenCalled();
+    });
+
+    it('says nothing changed when the name is the one they already have', async () => {
+      // A no-op reporting success looks like a fix that did not take.
+      await expect(
+        service.updateMemberIdentity('org-1', 'u1', { name: '  Derek Matt  ' }, 'admin-1'),
+      ).resolves.toMatchObject({ changed: false, reason: 'unchanged' });
+    });
+
+    it('says nothing changed when nothing was sent at all', async () => {
+      await expect(
+        service.updateMemberIdentity('org-1', 'u1', {}, 'admin-1'),
+      ).resolves.toMatchObject({ changed: false, reason: 'unchanged' });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('records the name it replaced, as well as the one it set', async () => {
+      await service.updateMemberIdentity('org-1', 'u1', { name: 'Derek Matthews' }, 'admin-1');
+
+      expect(audit.record.mock.calls[0][0].metadata).toEqual({
+        nameFrom: 'Derek Matt',
+        nameTo: 'Derek Matthews',
+      });
+    });
   });
 
   it('refuses somebody who is not in this co-op', async () => {
     prisma.userOrg.findFirst.mockResolvedValue(null);
 
     await expect(
-      service.changeMemberEmail('org-1', 'stranger', 'derek@example.com', 'admin-1'),
+      service.updateMemberIdentity('org-1', 'stranger', { email: 'derek@example.com' }, 'admin-1'),
     ).rejects.toThrow('Member not found');
   });
 });
