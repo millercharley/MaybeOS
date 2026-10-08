@@ -95,7 +95,7 @@ describe('correcting a member’s address', () => {
   it('refuses an address another account already holds', async () => {
     // The column is unique, so the write would fail regardless — this says
     // which address and why, instead of surfacing a constraint violation.
-    prisma.user.findFirst.mockResolvedValue({ id: 'u2' });
+    prisma.user.findFirst.mockResolvedValue({ id: 'u2', _count: { orgs: 1 } });
 
     const result = await service.updateMemberIdentity('org-1', 'u1', { email: 'taken@example.com' }, 'admin-1');
 
@@ -148,10 +148,26 @@ describe('correcting a member’s address', () => {
   });
 
   it('records nothing when it refused', async () => {
-    prisma.user.findFirst.mockResolvedValue({ id: 'u2' });
+    prisma.user.findFirst.mockResolvedValue({ id: 'u2', _count: { orgs: 1 } });
     await service.updateMemberIdentity('org-1', 'u1', { email: 'taken@example.com' }, 'admin-1');
 
     expect(audit.record).not.toHaveBeenCalled();
+  });
+
+  it('tells a live account apart from one that was removed', async () => {
+    /*
+      The dead end this fixes (MEM-28).
+
+      Removing a member deletes their membership and leaves their account, so
+      the thing holding an address is often a husk rather than a second member
+      — and "check whether they have two accounts here" is advice that cannot
+      be followed when one of them is the account you removed five minutes ago.
+    */
+    prisma.user.findFirst.mockResolvedValue({ id: 'u2', _count: { orgs: 0 } });
+
+    await expect(
+      service.updateMemberIdentity('org-1', 'u1', { email: 'taken@example.com' }, 'admin-1'),
+    ).resolves.toMatchObject({ changed: false, reason: 'held-by-removed' });
   });
 
   describe('the name half', () => {

@@ -29,7 +29,7 @@ import {
   emptyMessage,
   withFilter,
 } from '@/lib/member-filters';
-import type { MemberListFilters } from '@/lib/api';
+import type { AddressTakeover, MemberListFilters } from '@/lib/api';
 
 const roleBadge: Record<string, string> = {
   ADMIN: 'badge-success',
@@ -96,6 +96,14 @@ export default function MembersPage() {
   } | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState('');
+  /**
+   * An address still held by an account that was removed (MEM-28).
+   *
+   * Set when a save is refused for that reason, which turns the refusal into
+   * an offer: the husk can be absorbed, and what it carries said first.
+   */
+  const [takeover, setTakeover] = useState<AddressTakeover | null>(null);
+  const [takingOver, setTakingOver] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState('');
 
@@ -270,6 +278,7 @@ export default function MembersPage() {
 
     setSavingEdit(true);
     setEditError('');
+    setTakeover(null);
     try {
       await api.members.updateIdentity(currentOrgId, editing.member.user.id, changes, token);
       setEditing(null);
@@ -279,9 +288,52 @@ export default function MembersPage() {
       setMore([]);
       setPage(1);
     } catch (err) {
-      setEditError(err instanceof Error ? err.message : 'That could not be saved');
+      const message = err instanceof Error ? err.message : 'That could not be saved';
+      setEditError(message);
+
+      /*
+        Turn the refusal into an offer (MEM-28).
+
+        A removed member's account goes on holding their address, and the old
+        answer was to send the admin looking for a second account that no
+        longer exists. If that is what blocked the save, ask the server what
+        taking it back would involve and show them.
+      */
+      if (changes.email && /removed/i.test(message)) {
+        api.members
+          .previewTakeover(currentOrgId, editing.member.user.id, changes.email, token)
+          .then(setTakeover)
+          .catch(() => setTakeover(null));
+      }
     } finally {
       setSavingEdit(false);
+    }
+  }
+
+  /** Absorb the removed account, then finish the rename it was blocking. */
+  async function confirmTakeover() {
+    if (!editing || !token || !currentOrgId || takingOver) return;
+    const email = editing.email.trim();
+
+    setTakingOver(true);
+    setEditError('');
+    try {
+      await api.members.takeOverAddress(currentOrgId, editing.member.user.id, email, token);
+      // The takeover sets the address itself, so there is nothing left to save
+      // — but the name may also have been edited in the same dialog.
+      const name = editing.name.trim();
+      if (name && name !== (editing.member.user.name ?? '')) {
+        await api.members.updateIdentity(currentOrgId, editing.member.user.id, { name }, token);
+      }
+      setTakeover(null);
+      setEditing(null);
+      refetch();
+      setMore([]);
+      setPage(1);
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'That could not be done');
+    } finally {
+      setTakingOver(false);
     }
   }
 
@@ -580,9 +632,10 @@ export default function MembersPage() {
       <Modal
         open={editing !== null}
         onClose={() => {
-          if (!savingEdit) {
+          if (!savingEdit && !takingOver) {
             setEditing(null);
             setEditError('');
+            setTakeover(null);
           }
         }}
         title="Edit this member"
@@ -636,6 +689,62 @@ export default function MembersPage() {
               <p className="text-sm text-red-600" role="alert">
                 {editError}
               </p>
+            )}
+
+            {/*
+              The way out of the dead end (MEM-28). Removing a member deletes
+              their membership and leaves their account, which goes on holding
+              the address — so this is where that account gets absorbed rather
+              than the admin being told to find a second one that is gone.
+            */}
+            {takeover && (
+              <div
+                className={`rounded-lg border p-3 text-sm ${
+                  takeover.can
+                    ? 'border-amber-200 bg-amber-50 text-amber-900'
+                    : 'border-gray-200 bg-gray-50 text-gray-600'
+                }`}
+              >
+                {takeover.can ? (
+                  <>
+                    <p className="font-medium">
+                      That address belongs to an account you removed
+                      {takeover.name ? ` — ${takeover.name}` : ''}.
+                    </p>
+                    {/*
+                      Said before the button, because the husk is rarely empty.
+                      One held three hundred shares, and an admin who presses
+                      this and silently inherits an ownership stake has not
+                      been asked a fair question.
+                    */}
+                    <p className="mt-1">{takeover.message}</p>
+                    <p className="mt-1 text-xs">
+                      The removed account is then deleted. This cannot be undone, and it will
+                      show in your audit log.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={confirmTakeover}
+                        disabled={takingOver}
+                        className="btn-primary text-sm"
+                      >
+                        {takingOver ? 'Taking it over…' : 'Take the address and what it holds'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTakeover(null)}
+                        disabled={takingOver}
+                        className="btn-secondary text-sm"
+                      >
+                        Leave it
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <p>{takeover.message}</p>
+                )}
+              </div>
             )}
 
             <div className="flex flex-wrap gap-2">

@@ -35,6 +35,7 @@ import { ReorderTiersDto } from './dto/reorder-tiers.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
 import { SendSignInLinksDto } from './dto/sign-in-links.dto';
 import { UpdateMemberIdentityDto } from './dto/update-member-identity.dto';
+import { TakeOverAddressDto } from './dto/take-over-address.dto';
 
 @ApiTags('members')
 @Controller('orgs/:orgId')
@@ -230,6 +231,44 @@ export class MemberController {
     return this.memberService.clearSignInBounce(orgId, userId);
   }
 
+  /**
+   * What taking that address back would involve (MEM-28).
+   *
+   * Reads only, and said before the button: the account holding it is rarely
+   * empty — one held three hundred shares — and an admin who presses "take the
+   * address" and silently inherits an ownership stake has not been asked a
+   * fair question.
+   */
+  @Get('members/:userId/address-takeover')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiQuery({ name: 'email', required: true, type: String })
+  @ApiOperation({ summary: 'What taking a removed account’s address would move (MEM-28)' })
+  previewTakeover(
+    @Param('orgId') orgId: string,
+    @Param('userId') userId: string,
+    @Query('email') email: string,
+  ) {
+    return this.memberService.previewTakeover(orgId, userId, email ?? '');
+  }
+
+  @Post('members/:userId/address-takeover')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Take an address back from a removed account, bringing what it holds (MEM-28)',
+  })
+  takeOverAddress(
+    @Param('orgId') orgId: string,
+    @Param('userId') userId: string,
+    @Body() dto: TakeOverAddressDto,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    return this.memberService.takeOverAddress(orgId, userId, dto.email, actor.userId);
+  }
+
   @Patch('members/:userId/identity')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
@@ -260,6 +299,8 @@ export class MemberController {
     const reasons: Record<EmailChangeRefusal, string> = {
       unchanged: 'Nothing was different, so nothing was changed.',
       taken: 'Another member already uses that address. Check whether they have two accounts here.',
+      'held-by-removed':
+        'That address is still held by an account you removed from this community. You can take it back — see the option offered beside the address.',
       'shared-login':
         'This person belongs to more than one community on MaybeOS, and one sign-in covers all of them. Changing it here would change how they sign in somewhere else, so they need to change it themselves from their own profile.',
     };

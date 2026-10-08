@@ -838,6 +838,25 @@ class ApiClient {
         { method: 'PATCH', body: JSON.stringify(changes), token },
       ),
 
+    /**
+     * What taking a removed account's address back would involve (MEM-28).
+     *
+     * Reads only. The account holding it is rarely empty — one held three
+     * hundred shares — so the admin is shown what moves before they agree.
+     */
+    previewTakeover: (orgId: string, userId: string, email: string, token: string) =>
+      this.request<AddressTakeover>(
+        `/orgs/${orgId}/members/${userId}/address-takeover?email=${encodeURIComponent(email)}`,
+        { token },
+      ),
+
+    /** Take it back, bringing what it still carries (MEM-28). */
+    takeOverAddress: (orgId: string, userId: string, email: string, token: string) =>
+      this.request<{ taken: boolean; email: string; moved: TakeoverContents }>(
+        `/orgs/${orgId}/members/${userId}/address-takeover`,
+        { method: 'POST', body: JSON.stringify({ email }), token },
+      ),
+
     /** The address is fixed — let this member be written to again (MEM-25). */
     clearSignInBounce: (orgId: string, userId: string, token: string) =>
       this.request<{ cleared: boolean; reason?: 'not-bounced' | 'refused' }>(
@@ -3558,6 +3577,28 @@ export interface MembershipTier {
 }
 
 /** One row of an export, in MaybeOS's own field names (MEM-06). */
+/** What a removed account still carries (MEM-28). */
+export interface TakeoverContents {
+  bookings: number;
+  shareGrants: number;
+  shares: number;
+}
+
+/**
+ * Whether a removed account's address can be taken back, and what comes with it.
+ *
+ * `can: false` is an answer, not an error — the address may belong to somebody
+ * who is still a member, or to an account somebody signs in with.
+ */
+export interface AddressTakeover {
+  can: boolean;
+  reason?: 'nothing-to-take' | 'still-a-member' | 'in-use' | 'carries-things' | 'already-theirs';
+  /** Always safe to show an admin. */
+  message: string;
+  name?: string | null;
+  contents?: TakeoverContents;
+}
+
 /** How the admin roster can be narrowed and ordered (MEM-26). */
 export type MemberSort =
   | 'joined-desc'
