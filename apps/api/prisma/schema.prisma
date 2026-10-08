@@ -913,6 +913,19 @@ model Event {
   /// nobody to credit.
   imageCredit         String?
   imageCreditUrl      String?
+  /// Which band of the picture to keep when it is cropped (EVT-43).
+  ///
+  /// A percentage down the image, 0 the top and 100 the bottom, used as the
+  /// vertical half of `object-position`. Every frame an event's art appears in
+  /// is wider than it is tall — the card, the list thumbnail, the dashboard —
+  /// so a portrait photograph is cropped top and bottom, and the default of
+  /// centre is exactly wrong for the most common subject there is: a person,
+  /// whose head is at the top. JG Shadid's event is what prompted this; the
+  /// card showed him from the shoulders down.
+  ///
+  /// 50 keeps what every existing event already looks like, so this changes
+  /// nothing until somebody moves the slider.
+  imageFocusY         Int       @default(50)
   startTime           DateTime
   endTime             DateTime
   timezone            String          @default("America/New_York")

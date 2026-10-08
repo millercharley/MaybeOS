@@ -14,6 +14,7 @@ import { RsvpFaces } from '@/components/events/rsvp-faces';
 import { uploadAttachments } from '@/lib/attachments';
 import { ticketCost, describeFees, money } from '@/lib/fees';
 import { eventArt } from '@/lib/event-art';
+import { focusStyle } from '@/lib/image-focus';
 import { PageHeader } from '@/components/layout/page-header';
 import { maturityBadge } from '@/lib/maturity';
 import { MemberName } from '@/components/member/member-name';
@@ -314,6 +315,7 @@ export default function PortalEventPage(props: {
           imageUrl: event.imageUrl,
         })}
         alt=""
+        style={focusStyle(event.imageFocusY)}
         className="max-h-96 w-full rounded-2xl object-cover"
       />
 

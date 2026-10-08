@@ -6,6 +6,8 @@ import { EventImagePicker, EventImageValue } from '@/components/events/event-ima
 import { CreateEventData, api } from '@/lib/api';
 import { PLATFORM_FEE_CENTS } from '@/lib/fees';
 import { GATHERING_KINDS } from '@/components/rooms/booking-details';
+import { EventArtFocus } from '@/components/events/event-art-focus';
+import { DEFAULT_FOCUS_Y } from '@/lib/image-focus';
 import { MemberPicker } from '@/components/member/member-picker';
 import { RoomPicker } from '@/components/events/room-picker';
 import { MATURITY_LEVELS, type MaturityLevel } from '@/lib/maturity';
@@ -38,6 +40,7 @@ export interface EventFormValues extends CreateEventData {
    */
   host?: { id: string; name?: string } | null;
   coHosts?: { userId: string; user: { name?: string | null } }[];
+  imageFocusY?: number;
   /**
    * The reservation this event is being published from (SPC-31).
    *
@@ -137,6 +140,13 @@ export function EventForm({
   // The picture, and whoever has to be credited for it (EVT-22). One piece of
   // state, because a credit belonging to a different photograph is worse than
   // no credit at all.
+  /**
+   * Which band of the picture the card keeps (EVT-43).
+   *
+   * Defaults to the middle, which is what every event looked like before this
+   * existed — so an edit that never touches the slider changes nothing.
+   */
+  const [focusYValue, setFocusY] = useState<number>(initial?.imageFocusY ?? DEFAULT_FOCUS_Y);
   const [image, setImage] = useState<EventImageValue>({
     imageUrl: initial?.imageUrl ?? '',
     imageCredit: initial?.imageCredit ?? '',
@@ -273,6 +283,7 @@ export function EventForm({
       imageUrl: image.imageUrl,
       imageCredit: image.imageCredit,
       imageCreditUrl: image.imageCreditUrl,
+      imageFocusY: focusYValue,
       // The inputs are local time; the API stores instants.
       startTime: new Date(startTime).toISOString(),
       endTime: new Date(endTime).toISOString(),
@@ -371,6 +382,14 @@ export function EventForm({
         <div>
           <span className="mb-1 block text-sm font-medium text-gray-900">A picture</span>
           <EventImagePicker orgId={orgId} token={token} value={image} onChange={setImage} />
+          {/*
+            Only once there is a picture to aim at (EVT-43). A crop control
+            above an empty frame is a question about nothing, and the drawn
+            fallback art is generated to fit — it has no subject to miss.
+          */}
+          {image.imageUrl && (
+            <EventArtFocus imageUrl={image.imageUrl} value={focusYValue} onChange={setFocusY} />
+          )}
         </div>
       )}
 

@@ -226,6 +226,21 @@ export class CreateEventDto {
   @IsString()
   @Matches(IMAGE_URL_PATTERN, { message: IMAGE_URL_MESSAGE })
   imageCreditUrl?: string;
+
+  /**
+   * Which band of the picture to keep when it is cropped (EVT-43).
+   *
+   * A percentage down the image: 0 the top, 100 the bottom. Every frame an
+   * event's art appears in is wider than it is tall, so a portrait photograph
+   * loses its top and bottom — and the subject is usually a person, whose head
+   * is at the top.
+   */
+  @ApiPropertyOptional({ minimum: 0, maximum: 100, example: 25 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  imageFocusY?: number;
 }
 
 export class UpdateEventDto {
@@ -344,6 +359,21 @@ export class UpdateEventDto {
   @IsString()
   @Matches(IMAGE_URL_PATTERN, { message: IMAGE_URL_MESSAGE })
   imageCreditUrl?: string;
+
+  /**
+   * Which band of the picture to keep when it is cropped (EVT-43).
+   *
+   * A percentage down the image: 0 the top, 100 the bottom. Every frame an
+   * event's art appears in is wider than it is tall, so a portrait photograph
+   * loses its top and bottom — and the subject is usually a person, whose head
+   * is at the top.
+   */
+  @ApiPropertyOptional({ minimum: 0, maximum: 100, example: 25 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  imageFocusY?: number;
 
   /**
    * Whether the host charges attendees (EVT-17). Absent from this DTO until

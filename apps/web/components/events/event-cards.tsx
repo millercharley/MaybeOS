@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { CalendarDays, DoorOpen, MapPin, Ticket, Users } from 'lucide-react';
 import type { Event } from '@/lib/api';
 import { eventArt } from '@/lib/event-art';
+import { focusStyle } from '@/lib/image-focus';
 import { doorCost, startsIn, whenLabel } from '@/lib/event-list';
 import { RsvpFaces } from '@/components/events/rsvp-faces';
 import { ticketCost, money } from '@/lib/fees';
@@ -136,7 +137,13 @@ export function NextEventCard({
     <article className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
       <Link href={`/portal/${actions.orgSlug}/events/${event.slug}`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={eventArt(artOf(event))} alt="" className="h-56 w-full object-cover sm:h-64" />
+        {/* Where the host chose to crop it (EVT-43). */}
+        <img
+          src={eventArt(artOf(event))}
+          alt=""
+          style={focusStyle(event.imageFocusY)}
+          className="h-56 w-full object-cover sm:h-64"
+        />
       </Link>
 
       <div className="p-5">
@@ -211,6 +218,7 @@ export function EventRow({ event, actions }: { event: Event; actions: EventActio
         <img
           src={eventArt(artOf(event))}
           alt=""
+          style={focusStyle(event.imageFocusY)}
           className="h-16 w-28 rounded-lg object-cover sm:h-20 sm:w-36"
         />
       </Link>

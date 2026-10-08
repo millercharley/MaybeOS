@@ -4081,6 +4081,13 @@ export interface Event {
    */
   imageCredit?: string | null;
   imageCreditUrl?: string | null;
+  /**
+   * Which band of the picture to keep when it is cropped (EVT-43).
+   *
+   * Percent down the image. Every frame an event's art appears in is wider
+   * than it is tall, so a portrait photograph loses its top and bottom.
+   */
+  imageFocusY?: number;
   startTime: string;
   endTime: string;
   timezone: string;
@@ -4237,6 +4244,13 @@ export interface CreateEventData {
   imageUrl?: string | null;
   imageCredit?: string | null;
   imageCreditUrl?: string | null;
+  /**
+   * Which band of the picture to keep when it is cropped (EVT-43).
+   *
+   * Percent down the image. Every frame an event's art appears in is wider
+   * than it is tall, so a portrait photograph loses its top and bottom.
+   */
+  imageFocusY?: number;
   description?: string;
   startTime: string;
   endTime: string;
@@ -4311,6 +4325,8 @@ export interface PublishBookingEventData {
   imageUrl?: string;
   imageCredit?: string;
   imageCreditUrl?: string;
+  /** Where to crop it (EVT-43). */
+  imageFocusY?: number;
   /**
    * Any *other* rooms the form's picker added (SPC-31).
    *

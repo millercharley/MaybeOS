@@ -289,6 +289,9 @@ export class EventsService {
         imageUrl: dto.imageUrl?.trim() || null,
         imageCredit: dto.imageCredit?.trim() || null,
         imageCreditUrl: dto.imageCreditUrl?.trim() || null,
+        // Where to crop it (EVT-43). The column defaults to the middle, so
+        // leaving this out keeps what every event already looks like.
+        ...(dto.imageFocusY !== undefined && { imageFocusY: dto.imageFocusY }),
       },
     });
 
@@ -594,6 +597,7 @@ export class EventsService {
         ...(dto.imageCreditUrl !== undefined && {
           imageCreditUrl: dto.imageCreditUrl?.trim() || null,
         }),
+        ...(dto.imageFocusY !== undefined && { imageFocusY: dto.imageFocusY }),
         ...(slug && { slug }),
       },
     });
