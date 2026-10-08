@@ -326,6 +326,20 @@ export class SpaceController {
     );
   }
 
+  /**
+   * Every room request waiting on an organiser (SPC-32).
+   *
+   * The screen that was missing. Approve and reject have worked since SpaceOS
+   * was built and nothing ever called them, so a room that asks for approval
+   * collected requests nobody could see.
+   */
+  @Get('bookings/pending')
+  @Roles('ADMIN', 'STAFF')
+  @ApiOperation({ summary: 'Room requests waiting on an organiser (SPC-32)' })
+  pendingBookings(@Param('orgId', ParseUUIDPipe) orgId: string) {
+    return this.spaceService.listPendingBookings(orgId);
+  }
+
   @Post('bookings/:bookingId/approve')
   @Roles('ADMIN', 'STAFF')
   @ApiOperation({ summary: 'Approve a pending booking' })

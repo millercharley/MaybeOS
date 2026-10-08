@@ -2057,14 +2057,32 @@ class ApiClient {
         token,
       }),
 
-    approveBooking: (orgId: string, roomId: string, bookingId: string, token: string) =>
-      this.request<Booking>(`/orgs/${orgId}/rooms/${roomId}/bookings/${bookingId}/approve`, {
+    /**
+     * Room requests waiting on an organiser (SPC-32).
+     *
+     * The screen behind this was never built, so approve and reject sat unused
+     * since SpaceOS — and a room that asks for approval collected requests
+     * nobody could see.
+     */
+    pendingBookings: (orgId: string, token: string) =>
+      this.request<PendingBooking[]>(`/orgs/${orgId}/bookings/pending`, { token }),
+
+    /*
+      No `roomId` in these paths (SPC-32).
+
+      Both wrappers built `/orgs/:orgId/rooms/:roomId/bookings/:id/approve`,
+      which the API has never served — it is `/orgs/:orgId/bookings/:id/approve`
+      — so the one thing stopping these from working was not only the missing
+      screen. A button wired to the old wrapper would have answered 404.
+    */
+    approveBooking: (orgId: string, bookingId: string, token: string) =>
+      this.request<Booking>(`/orgs/${orgId}/bookings/${bookingId}/approve`, {
         method: 'POST',
         token,
       }),
 
-    rejectBooking: (orgId: string, roomId: string, bookingId: string, token: string) =>
-      this.request<Booking>(`/orgs/${orgId}/rooms/${roomId}/bookings/${bookingId}/reject`, {
+    rejectBooking: (orgId: string, bookingId: string, token: string) =>
+      this.request<Booking>(`/orgs/${orgId}/bookings/${bookingId}/reject`, {
         method: 'POST',
         token,
       }),
@@ -3577,6 +3595,21 @@ export interface MembershipTier {
 }
 
 /** One row of an export, in MaybeOS's own field names (MEM-06). */
+/** A room request waiting on an organiser (SPC-32). */
+export interface PendingBooking {
+  id: string;
+  title: string;
+  description?: string | null;
+  startTime: string;
+  endTime: string;
+  createdAt: string;
+  expectedAttendance?: number | null;
+  room: { id: string; name: string };
+  user: { id: string; name?: string | null };
+  /** Already over, and never answered — kept rather than hidden. */
+  lapsed: boolean;
+}
+
 /** What a removed account still carries (MEM-28). */
 export interface TakeoverContents {
   bookings: number;

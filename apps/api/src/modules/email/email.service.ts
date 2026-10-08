@@ -65,6 +65,27 @@ function dateWindow(fromDate: string, toDate: string): Record<string, string> {
   return { fromDate, toDate };
 }
 
+/**
+ * A room request waiting on an organiser (SPC-32).
+ *
+ * The one email in this file addressed to the people who run the co-op rather
+ * than to the member. A request that needs approving told the member it had
+ * been received and told nobody who could approve it.
+ */
+export interface BookingApprovalData {
+  organiserName: string;
+  orgName: string;
+  memberName: string;
+  roomName: string;
+  title: string;
+  /** Already formatted in the co-op's own timezone by the caller. */
+  when: string;
+  /** The queue, not the booking: an organiser usually has more than one. */
+  reviewUrl: string;
+  /** How many are waiting in total, so the email says whether this is a pile. */
+  waiting: number;
+}
+
 /** One outbound message as Postmark reports it, reduced to what MaybeOS reads. */
 export interface ProviderMessage {
   recipients: string[];
@@ -97,7 +118,8 @@ export interface EmailJobData {
     | 'door-code'
     | 'radar-digest'
     | 'recap'
-    | 'recap-ready';
+    | 'recap-ready'
+    | 'booking-awaiting-approval';
   to: string;
   data: Record<string, any>;
 }
@@ -459,6 +481,11 @@ export class EmailService {
     };
   }
 
+  /** Tell an organiser a room request is waiting on them (SPC-32). */
+  async sendBookingAwaitingApproval(to: string, d: BookingApprovalData) {
+    await this.send({ type: 'booking-awaiting-approval', to, data: d });
+  }
+
   private async send({ type, to, data }: EmailJobData): Promise<void> {
     const { subject, htmlBody } = this.buildEmail(type, data);
 
@@ -563,6 +590,26 @@ export class EmailService {
               &middot;
               <a href="${escapeHtml(d.unsubscribeUrl)}">Unsubscribe from radar emails</a>
             </p>
+          `,
+        };
+      }
+
+      case 'booking-awaiting-approval': {
+        const d = data as BookingApprovalData;
+        const others = d.waiting - 1;
+        return {
+          subject: `${d.orgName}: ${d.memberName} is asking for the ${d.roomName}`,
+          htmlBody: `
+            <h1>A room request is waiting</h1>
+            <p>Hello ${escapeHtml(d.organiserName)}, ${escapeHtml(d.memberName)} has asked to use the ${escapeHtml(d.roomName)}.</p>
+            <p><strong>${escapeHtml(d.title)}</strong><br />${escapeHtml(d.when)}</p>
+            <p>The room is held for them until you decide, and they have been told it is waiting on you.</p>
+            ${
+              others > 0
+                ? `<p>${others === 1 ? 'One other request is' : `${others} other requests are`} waiting too.</p>`
+                : ''
+            }
+            <p><a href="${escapeHtml(d.reviewUrl)}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:#fff;border-radius:6px;text-decoration:none;">Review the request</a></p>
           `,
         };
       }
