@@ -58,13 +58,21 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
   */
   const orgId = currentOrgId ?? undefined;
 
-  const load = useCallback(async () => {
+  /**
+   * `background` is true only for the ticks of the timer (OPS-09).
+   *
+   * Not for the first load, and not for `refresh()` — that one runs when
+   * somebody has just opened a thread and is watching the badge go down.
+   * Those are worth reporting if the API cannot be reached; a tick that
+   * failed while the laptop was shut is not.
+   */
+  const load = useCallback(async (background = false) => {
     if (!orgId || !token) {
       setCounts(NO_UNREAD);
       return;
     }
     try {
-      setCounts(await api.commons.unread(orgId, token));
+      setCounts(await api.commons.unread(orgId, token, background));
     } catch {
       /*
         Quiet. This is an adornment on the navigation, polled every minute,
@@ -79,12 +87,19 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
     load();
     if (!orgId || !token) return;
 
-    const timer = setInterval(load, EVERY);
+    // Not `setInterval(load, …)` — the timer hands its callback an argument,
+    // and `load`'s first parameter is the one that decides whether a failure
+    // is reported.
+    const timer = setInterval(() => load(true), EVERY);
     return () => clearInterval(timer);
   }, [load, orgId, token]);
 
+  const refresh = useCallback(() => {
+    void load();
+  }, [load]);
+
   return (
-    <UnreadContext.Provider value={{ ...counts, refresh: load, settle: setCounts }}>
+    <UnreadContext.Provider value={{ ...counts, refresh, settle: setCounts }}>
       {children}
     </UnreadContext.Provider>
   );

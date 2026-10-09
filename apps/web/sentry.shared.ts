@@ -82,7 +82,40 @@ const IGNORED_ERRORS = [
   'ResizeObserver loop',
 ];
 
-export function scrubEvent(event: ErrorEvent, _hint: EventHint): ErrorEvent | null {
+/**
+ * Whether this is the API declining, correctly, in the way it was designed to
+ * (OPS-09).
+ *
+ * The API client only reports a 4xx when the response is 5xx, so these do not
+ * arrive through it — they arrive as unhandled rejections, when a caller
+ * awaits a request and lets the refusal propagate. Sentry's global handler
+ * picks those up and cannot tell a bug from a boundary.
+ *
+ * The clearest example is the one that prompted this: "Before you can take
+ * part here, this community asks you to read and agree to the Code of
+ * Conduct." That is a 403 raised deliberately by `RequiredReadingInterceptor`,
+ * with the article attached so the member can go and read it. It is the
+ * product working. A 401 on an expired session and a 409 on a duplicate are
+ * the same kind of thing.
+ *
+ * 5xx is left alone — that is our defect, and the API client reports it on
+ * purpose with a route and a fingerprint.
+ *
+ * Duck-typed rather than `instanceof ApiError`: `lib/api.ts` imports Sentry,
+ * and importing it back from here to get the class would be a cycle.
+ */
+function isExpectedRefusal(hint: EventHint): boolean {
+  const err = hint?.originalException as { name?: string; status?: unknown } | undefined;
+  if (!err || err.name !== 'ApiError') return false;
+
+  return typeof err.status === 'number' && err.status >= 400 && err.status < 500;
+}
+
+export function scrubEvent(event: ErrorEvent, hint: EventHint): ErrorEvent | null {
+  // Dropped before anything else: a refusal carries the member-facing message,
+  // which can name a person or an article, and there is no reason to ship it.
+  if (isExpectedRefusal(hint)) return null;
+
   // No IP addresses leave the application, which is what the privacy statement
   // promises. Two things had to be true for that, not one:
   //
