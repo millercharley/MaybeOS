@@ -8,6 +8,7 @@ import {
   recipientProblem,
   threadName,
 } from './threads';
+import { readWindows } from './read-windows';
 
 /** What a conversation looks like in a list. */
 export interface ThreadSummary {
@@ -325,19 +326,27 @@ export class ThreadsService {
     });
     if (seats.length === 0) return 0;
 
-    const counts = await Promise.all(
-      seats.map((seat) =>
-        this.prisma.threadMessage.count({
-          where: {
-            threadId: seat.threadId,
-            senderId: { not: userId },
-            ...(seat.lastReadAt ? { createdAt: { gt: seat.lastReadAt } } : {}),
-          },
-        }),
-      ),
+    /*
+      One query, whatever the number of threads (CMN-25).
+
+      It was a `count` per seat, all at once, on the same sixty-second timer
+      as the Commons badge beside it. Threads per member are few today, which
+      is exactly why this was easy to miss — the cost is paid per signed-in
+      member per minute, not per thread.
+    */
+    const windows = readWindows(
+      seats.map((seat) => ({ id: seat.threadId, after: seat.lastReadAt })),
     );
 
-    return counts.reduce((sum, n) => sum + n, 0);
+    return this.prisma.threadMessage.count({
+      where: {
+        senderId: { not: userId },
+        OR: windows.map((w) => ({
+          threadId: { in: w.ids },
+          ...(w.after ? { createdAt: { gt: w.after } } : {}),
+        })),
+      },
+    });
   }
 
   // ─── Shared ───────────────────────────────────────────────────

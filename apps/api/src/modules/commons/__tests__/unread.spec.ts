@@ -17,6 +17,44 @@ import { PrismaService } from '../../../config/prisma.service';
  * people stop believing, and a badge nobody believes is worse than none —
  * so most of these tests are about it being wrong in a plausible way.
  */
+/**
+ * A stand-in for the database that actually reads the query.
+ *
+ * These tests used to mock `count` with a fixed number, so "two channels,
+ * two posts each" asserted 4 — which measured the old one-query-per-channel
+ * shape, not the answer. Collapsing the queries changed that number without
+ * changing a single badge.
+ *
+ * This interprets the `where` instead: give it rows, and it counts the ones
+ * the query actually asks for. It knows nothing about how the clauses are
+ * built, so a wrong cutoff or a dropped channel comes out as a wrong total.
+ */
+interface Row {
+  channelId: string;
+  authorId: string;
+  createdAt: Date;
+}
+
+type Clause = {
+  channelId?: { in: string[] };
+  post?: { channelId: { in: string[] } };
+  createdAt?: { gt: Date };
+};
+type Where = { authorId?: { not: string }; OR?: Clause[] };
+
+function countRows(rows: Row[], where: Where): number {
+  return rows.filter((row) => {
+    if (where.authorId?.not !== undefined && row.authorId === where.authorId.not) return false;
+
+    return (where.OR ?? []).some((clause) => {
+      const ids = clause.channelId?.in ?? clause.post?.channelId.in ?? [];
+      if (!ids.includes(row.channelId)) return false;
+      if (clause.createdAt && !(row.createdAt > clause.createdAt.gt)) return false;
+      return true;
+    });
+  }).length;
+}
+
 describe('CommonsService — unread counts', () => {
   const ORG = 'org-1';
   const ME = 'me';
@@ -28,6 +66,8 @@ describe('CommonsService — unread counts', () => {
     reads?: { channelId: string; lastReadAt: Date }[];
     posts?: number;
     comments?: number;
+    postRows?: Row[];
+    commentRows?: Row[];
     memberSince?: Date | null;
   } = {}) => {
     const prisma = {
@@ -50,8 +90,16 @@ describe('CommonsService — unread counts', () => {
             over.memberSince === null ? null : { memberSince: over.memberSince ?? JOINED },
           ),
       },
-      post: { count: jest.fn().mockResolvedValue(over.posts ?? 0) },
-      comment: { count: jest.fn().mockResolvedValue(over.comments ?? 0) },
+      post: {
+        count: jest.fn(({ where }: { where: Where }) =>
+          Promise.resolve(over.postRows ? countRows(over.postRows, where) : over.posts ?? 0),
+        ),
+      },
+      comment: {
+        count: jest.fn(({ where }: { where: Where }) =>
+          Promise.resolve(over.commentRows ? countRows(over.commentRows, where) : over.comments ?? 0),
+        ),
+      },
     };
 
     const threads = { unreadMessages: jest.fn().mockResolvedValue(over.dms ?? 0) };
@@ -79,31 +127,47 @@ describe('CommonsService — unread counts', () => {
   });
 
   it('adds up posts and comments across every channel', async () => {
+    const old = new Date('2025-06-01T00:00:00.000Z');
+    const recent = new Date('2026-06-01T00:00:00.000Z');
     const { service } = await build({
       channels: [{ id: 'ch-1' }, { id: 'ch-2' }],
-      posts: 2,
-      comments: 1,
+      postRows: [
+        { channelId: 'ch-1', authorId: 'someone', createdAt: recent },
+        { channelId: 'ch-2', authorId: 'someone', createdAt: recent },
+        // Before they joined, so not theirs to catch up on.
+        { channelId: 'ch-2', authorId: 'someone', createdAt: old },
+      ],
+      commentRows: [{ channelId: 'ch-1', authorId: 'someone', createdAt: recent }],
     });
 
-    // Two channels, each returning 2 posts and 1 comment.
-    expect((await service.unreadCounts(ORG, ME)).commons).toBe(6);
+    expect((await service.unreadCounts(ORG, ME)).commons).toBe(3);
   });
 
   it('does not count my own posts — writing is not reading', async () => {
-    const { service, prisma } = await build();
-    await service.unreadCounts(ORG, ME);
+    const recent = new Date('2026-06-01T00:00:00.000Z');
+    const { service, prisma } = await build({
+      postRows: [
+        { channelId: 'ch-1', authorId: ME, createdAt: recent },
+        { channelId: 'ch-1', authorId: 'someone', createdAt: recent },
+      ],
+    });
 
+    expect((await service.unreadCounts(ORG, ME)).commons).toBe(1);
     expect(prisma.post.count.mock.calls[0][0].where.authorId).toEqual({ not: ME });
-    expect(prisma.comment.count.mock.calls[0][0].where.authorId).toEqual({ not: ME });
   });
 
   it('counts from where I last read a channel', async () => {
     const lastReadAt = new Date('2026-09-01T00:00:00.000Z');
-    const { service, prisma } = await build({ reads: [{ channelId: 'ch-1', lastReadAt }] });
+    const { service } = await build({
+      reads: [{ channelId: 'ch-1', lastReadAt }],
+      postRows: [
+        { channelId: 'ch-1', authorId: 'someone', createdAt: new Date('2026-09-02T00:00:00.000Z') },
+        // After they joined but before they last looked: already seen.
+        { channelId: 'ch-1', authorId: 'someone', createdAt: new Date('2026-08-30T00:00:00.000Z') },
+      ],
+    });
 
-    await service.unreadCounts(ORG, ME);
-
-    expect(prisma.post.count.mock.calls[0][0].where.createdAt).toEqual({ gt: lastReadAt });
+    expect((await service.unreadCounts(ORG, ME)).commons).toBe(1);
   });
 
   it('counts from the day I joined in a channel I have never opened', async () => {
@@ -114,31 +178,50 @@ describe('CommonsService — unread counts', () => {
       covering the co-op's entire history — a number nobody acts on, on a
       badge people then learn to ignore.
     */
-    const { service, prisma } = await build({ reads: [] });
+    const { service } = await build({
+      reads: [],
+      postRows: [
+        { channelId: 'ch-1', authorId: 'someone', createdAt: new Date('2026-02-01T00:00:00.000Z') },
+        { channelId: 'ch-1', authorId: 'someone', createdAt: new Date('2025-02-01T00:00:00.000Z') },
+      ],
+    });
 
-    await service.unreadCounts(ORG, ME);
-
-    expect(prisma.post.count.mock.calls[0][0].where.createdAt).toEqual({ gt: JOINED });
+    expect((await service.unreadCounts(ORG, ME)).commons).toBe(1);
   });
 
   it('uses each channel\'s own line, not one line for all of them', async () => {
+    /*
+      The bug the collapsed query could plausibly introduce: one cutoff
+      applied to every channel. A member who has read ch-1 up to September
+      must still see August's posts in ch-2, which they have never opened.
+    */
     const read = new Date('2026-09-01T00:00:00.000Z');
-    const { service, prisma } = await build({
+    const august = new Date('2026-08-15T00:00:00.000Z');
+    const { service } = await build({
       channels: [{ id: 'ch-1' }, { id: 'ch-2' }],
       reads: [{ channelId: 'ch-1', lastReadAt: read }],
+      postRows: [
+        // Seen: before their line in ch-1.
+        { channelId: 'ch-1', authorId: 'someone', createdAt: august },
+        // Unseen: ch-2 has never been opened, so the line is the join date.
+        { channelId: 'ch-2', authorId: 'someone', createdAt: august },
+      ],
     });
+
+    expect((await service.unreadCounts(ORG, ME)).commons).toBe(1);
+  });
+
+  it('still asks the database only twice, however many channels there are', async () => {
+    // CMN-25. The badge was a count per channel for posts and another per
+    // channel for comments, from every signed-in page on a sixty-second
+    // timer.
+    const channels = Array.from({ length: 12 }, (_, i) => ({ id: `ch-${i}` }));
+    const { service, prisma } = await build({ channels });
 
     await service.unreadCounts(ORG, ME);
 
-    type CountArg = { where: { channelId: string; createdAt: { gt: Date } } };
-    const byChannel = new Map(
-      prisma.post.count.mock.calls.map(([arg]: [CountArg]) => [
-        arg.where.channelId,
-        arg.where.createdAt.gt,
-      ]),
-    );
-    expect(byChannel.get('ch-1')).toEqual(read);
-    expect(byChannel.get('ch-2')).toEqual(JOINED);
+    expect(prisma.post.count).toHaveBeenCalledTimes(1);
+    expect(prisma.comment.count).toHaveBeenCalledTimes(1);
   });
 
   it('says nothing is unread when the co-op has no channels', async () => {
