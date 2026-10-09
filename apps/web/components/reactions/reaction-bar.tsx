@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { SmilePlus } from 'lucide-react';
 import { COMPOSER_EMOJI } from '@/lib/emoji';
+import { popoverPosition } from '@/lib/popover';
 import {
   REACTIONS,
   looksLikeEmoji,
@@ -38,7 +39,16 @@ export function ReactionBar({
   align?: 'left' | 'right';
 }) {
   const [shown, setShown] = useState<ReactionGroup[] | null>(null);
-  const [picking, setPicking] = useState(false);
+  /**
+   * Where the panel sits, in viewport coordinates (CMN-22).
+   *
+   * Not `absolute` inside the bar. A post card and the channel feed both
+   * scroll, and an absolutely-positioned child is clipped by either — the
+   * picker opened upward from a button near the top of a card and had its
+   * first rows cut off. The row menu learned this already (UI-02); this is
+   * the same answer.
+   */
+  const [picking, setPicking] = useState<{ top: number; left: number } | null>(null);
   /** Anything not on the grid, typed in (CMN-21). */
   const [typed, setTyped] = useState('');
   const groups = shown ?? reactions;
@@ -50,10 +60,29 @@ export function ReactionBar({
   */
   const offered = [...new Set([...REACTIONS, ...COMPOSER_EMOJI])];
 
+  /** The panel's own size, which the placement has to know before it exists. */
+  const PANEL = { width: 224, height: 212 };
+
+  function openPicker(event: MouseEvent<HTMLButtonElement>) {
+    if (picking) {
+      setPicking(null);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    setPicking(
+      popoverPosition(
+        rect,
+        { width: window.innerWidth, height: window.innerHeight },
+        PANEL,
+        align,
+      ),
+    );
+  }
+
   async function press(emoji: string) {
     const guess = toggled(groups, emoji);
     setShown(guess);
-    setPicking(false);
+    setPicking(null);
     setTyped('');
 
     const settled = await onToggle(emoji);
@@ -86,15 +115,15 @@ export function ReactionBar({
       <div className="relative">
         <button
           type="button"
-          onClick={() => setPicking((p) => !p)}
+          onClick={openPicker}
           aria-label="Add a reaction"
-          aria-expanded={picking}
+          aria-expanded={picking !== null}
           className="inline-flex items-center rounded-full border border-transparent p-1 text-gray-400 hover:border-gray-200 hover:bg-white hover:text-gray-700"
         >
           <SmilePlus className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
 
-        {picking && (
+        {picking !== null && (
           <>
             {/* Anywhere else closes it. Without this the only way out is to
                 choose something, which is not what somebody who opened it by
@@ -103,13 +132,12 @@ export function ReactionBar({
               type="button"
               aria-hidden="true"
               tabIndex={-1}
-              onClick={() => setPicking(false)}
+              onClick={() => setPicking(null)}
               className="fixed inset-0 z-10 cursor-default"
             />
             <div
-              className={`absolute bottom-full z-20 mb-1 w-56 rounded-xl border border-gray-200 bg-white p-2 shadow-lg ${
-                align === 'right' ? 'right-0' : 'left-0'
-              }`}
+              style={{ top: picking.top, left: picking.left, width: PANEL.width }}
+              className="fixed z-50 rounded-xl border border-gray-200 bg-white p-2 shadow-lg"
             >
               {/*
                 A grid rather than a row (CMN-21). Charley: "offer an emoji
