@@ -1,4 +1,4 @@
-import { deadline, nextCursor, startOf, WRITE_BUDGET_MS } from '../import-cursor';
+import { deadline, nextCursor, startOf, WRITE_BUDGET_MS, budget } from '../import-cursor';
 
 /**
  * Importing a calendar in pieces (CAL-05).
@@ -114,5 +114,78 @@ describe('where to pick up next', () => {
 
   it('is finished when an empty calendar is the last one', () => {
     expect(nextCursor(8, 9, page({ nextToken: null, length: 0 }), 0, 0)).toBeNull();
+  });
+});
+
+/**
+ * Asking whether there is *enough* time, not whether there is *any* (CAL-14).
+ *
+ * `deadline()` answers the second question, which is right between entries
+ * and wrong before a read. A calendar taking five seconds against a
+ * six-second budget passed the check at zero and again at five; the function
+ * was killed at ten, and the cursor saying where to resume died with it.
+ */
+describe('budgeting for a read that has not happened yet', () => {
+  /** A clock that only moves when told. */
+  const clockFrom = (start: number) => {
+    let at = start;
+    return { now: () => at, advance: (ms: number) => (at += ms) };
+  };
+
+  it('allows a read while there is room for one', () => {
+    const c = clockFrom(0);
+    const b = budget(10_000, c.now);
+
+    expect(b.roomForRead()).toBe(true);
+  });
+
+  it('refuses one when only a sliver is left, though time remains', () => {
+    const c = clockFrom(0);
+    const b = budget(10_000, c.now);
+    c.advance(9_000);
+
+    // The old check: a whole second left, so go ahead — and overshoot.
+    expect(b.spent()).toBe(false);
+    expect(b.roomForRead()).toBe(false);
+  });
+
+  it('learns from the reads it has seen', () => {
+    /*
+      The case the estimate alone cannot catch. Six-second reads against a
+      sixteen-second budget: after two, four seconds remain — more than the
+      2.5s guess, less than the six a read actually costs. Believing the
+      guess starts a third and finishes at eighteen.
+    */
+    const c = clockFrom(0);
+    const b = budget(16_000, c.now);
+
+    let reads = 0;
+    while (b.roomForRead() && reads < 10) {
+      const startedAt = c.now();
+      c.advance(6_000);
+      b.record(startedAt);
+      reads += 1;
+    }
+
+    expect(reads).toBe(2);
+    expect(c.now()).toBeLessThanOrEqual(16_000);
+  });
+
+  it('keeps the slowest, not the latest', () => {
+    // One slow calendar among quick ones still has to be planned for.
+    const c = clockFrom(0);
+    const b = budget(16_000, c.now);
+
+    b.record(c.now());
+    c.advance(7_000);
+    b.record(c.now() - 7_000);
+    c.advance(10);
+    b.record(c.now() - 10);
+
+    // 7,010 spent, ~9,000 left, and a read has cost 7,000 — room for one more.
+    expect(b.roomForRead()).toBe(true);
+    c.advance(2_000);
+    // 9,010 spent, under 7,000 left. No.
+    expect(b.roomForRead()).toBe(false);
   });
 });

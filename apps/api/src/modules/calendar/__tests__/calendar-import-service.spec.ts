@@ -228,6 +228,114 @@ describe('looking before writing', () => {
   });
 });
 
+/**
+ * The preview has to finish too (CAL-14).
+ *
+ * `/calendar/import` returned 504, and on the preview rather than the write:
+ * "a dry run writes nothing and finishes; only a real import is rationed."
+ * The first half is true and the second does not follow — a preview writes
+ * nothing, but reads *everything*, every page of every calendar in one
+ * request, with the page token deliberately discarded.
+ *
+ * So the button an admin is told to press first was the one that failed, on
+ * exactly the co-op large enough to need a preview.
+ */
+describe('a preview too large for one request', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  /** A build whose every read from Google costs `msPerRead`, on a fake clock. */
+  const slowBuild = (msPerRead: number) => {
+    let clock = 5_000_000;
+    jest.spyOn(Date, 'now').mockImplementation(() => clock);
+
+    const made = build();
+    const client = { events: { list: jest.fn() } };
+    made.calendar.clientFor.mockResolvedValue(client);
+    client.events.list.mockImplementation(async ({ calendarId }: { calendarId: string }) => {
+      clock += msPerRead;
+      return { data: { items: [entry(`${calendarId}-a`, 'Something')], nextPageToken: null } };
+    });
+
+    return { ...made, client, elapsed: () => clock - 5_000_000 };
+  };
+
+  it('stops partway and says where, instead of reading every calendar', async () => {
+    // Five seconds a calendar against a six-second budget: one read, then a
+    // cursor. It used to read them all and run out of wall clock.
+    const { service, client, elapsed } = slowBuild(5_000);
+
+    const summary = await service.run('org-1', { dryRun: true });
+
+    expect(client.events.list).toHaveBeenCalledTimes(1);
+    expect(summary.next).not.toBeNull();
+    expect(elapsed()).toBeLessThan(10_000);
+  });
+
+  it('carries on from the cursor rather than starting again', async () => {
+    const { service, client } = slowBuild(5_000);
+
+    const first = await service.run('org-1', { dryRun: true });
+    client.events.list.mockClear();
+    const second = await service.run('org-1', { dryRun: true, resumeFrom: first.next! });
+
+    const read = client.events.list.mock.calls[0][0].calendarId;
+    expect(read).not.toBe('main-events');
+    expect(second.calendars[0].id).toBe(read);
+  });
+
+  it('still writes nothing, however many requests it takes', async () => {
+    const { service, prisma } = slowBuild(5_000);
+
+    const summary = await service.run('org-1', { dryRun: true });
+
+    expect(prisma.event.upsert).not.toHaveBeenCalled();
+    expect(prisma.booking.create).not.toHaveBeenCalled();
+    expect(summary.dryRun).toBe(true);
+  });
+
+  it('gets to the end, counting every calendar once', async () => {
+    /*
+      Driven the way the client drives it. A preview takes a page per
+      request, as the import does, so "finished" means the cursor comes back
+      null — and every calendar has to be counted exactly once along the way.
+    */
+    const { service, client } = slowBuild(10);
+    let cursor = null;
+    const seen: string[] = [];
+
+    for (let request = 0; request < 60; request++) {
+      const chunk = await service.run('org-1', { dryRun: true, ...(cursor && { resumeFrom: cursor }) });
+      seen.push(...chunk.calendars.map((c) => c.id));
+      cursor = chunk.next ?? null;
+      if (!cursor) break;
+    }
+
+    expect(cursor).toBeNull();
+    expect(seen).toEqual(['main-events', 'attic-cal', 'salon-cal']);
+    expect(client.events.list).toHaveBeenCalledTimes(3);
+  });
+
+  it("follows Google's pages rather than throwing the token away", async () => {
+    /*
+      The preview used to force `nextPageToken: null`, which is what made a
+      cursor impossible: there was nowhere to resume to inside a calendar
+      with more than one page.
+    */
+    const { service, client } = slowBuild(10);
+    client.events.list.mockImplementation(async ({ pageToken }: { pageToken?: string }) => ({
+      data: { items: [entry('e1', 'One')], nextPageToken: pageToken ? null : 'page-2' },
+    }));
+
+    const first = await service.run('org-1', { dryRun: true });
+    expect(first.next).toEqual({ calendar: 0, page: 'page-2', entry: 0 });
+
+    const second = await service.run('org-1', { dryRun: true, resumeFrom: first.next! });
+    expect(client.events.list.mock.calls[1][0].pageToken).toBe('page-2');
+    // Page done, so on to the next calendar rather than round again.
+    expect(second.next?.calendar).toBe(1);
+  });
+});
+
 describe('choosing the events calendar', () => {
   it('refuses a room’s own calendar, and says whose it is', async () => {
     const { service } = build();

@@ -54,11 +54,22 @@ describe('the request that asks for them', () => {
     'utf8',
   );
 
-  it('asks Google for deleted rows, on both reads', () => {
-    // Without this they are omitted, and the deletion is invisible rather
-    // than merely unhandled. Both the paged read and the preview read.
+  it('asks Google for deleted rows on every read there is', () => {
+    /*
+      Without this they are omitted, and the deletion is invisible rather
+      than merely unhandled.
+
+      This asserted two, for the paged read and the preview's own
+      read-everything. There is one read now: the preview was rationed in
+      CAL-14 and pages like the import, so the method it used is gone. One
+      read, which must still ask — and if a second is ever added, it has to
+      ask too, which is what counting rather than matching is for.
+    */
+    const reads = source.match(/client\.events\.list\(/g) ?? [];
     const asks = source.match(/showDeleted: true/g) ?? [];
-    expect(asks.length).toBe(2);
+
+    expect(reads.length).toBeGreaterThan(0);
+    expect(asks.length).toBe(reads.length);
   });
 
   it('frees the slot by status, which is what availability reads', () => {

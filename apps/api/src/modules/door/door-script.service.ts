@@ -26,6 +26,15 @@ interface ScriptReply {
  * credential and no access to the spreadsheet: it can add or update member
  * rows and read a member count, and that is all.
  */
+/**
+ * How long to wait on Apps Script when nobody said otherwise.
+ *
+ * Generous, because the scheduler's own pass is not answering a request and
+ * can afford to wait for a sheet that is slow. Anything serving an admin
+ * passes its own, smaller, budget — see `upsert`.
+ */
+const SCRIPT_TIMEOUT_MS = 60_000;
+
 @Injectable()
 export class DoorScriptService {
   private readonly logger = new Logger(DoorScriptService.name);
@@ -36,12 +45,22 @@ export class DoorScriptService {
     return { members: reply.members ?? 0 };
   }
 
+  /**
+   * `timeoutMs` is how long the caller can actually afford to wait (DOR-05).
+   *
+   * Not a detail the caller should have to think about, except that it is:
+   * this runs inside a Netlify function with ten seconds, and the default
+   * below was sixty. One slow sheet meant the function was killed with the
+   * request still open — a 504 for the admin — while this was still patiently
+   * waiting on a reply it had six times longer than the request to receive.
+   */
   async upsert(
     url: string,
     secret: string,
     members: DoorSheetMember[],
+    timeoutMs?: number,
   ): Promise<{ added: number; updated: number; unchanged: number; rejected: number }> {
-    const reply = await this.send(url, secret, { action: 'upsert', members });
+    const reply = await this.send(url, secret, { action: 'upsert', members }, timeoutMs);
     return {
       added: reply.added ?? 0,
       updated: reply.updated ?? 0,
@@ -50,13 +69,21 @@ export class DoorScriptService {
     };
   }
 
-  private async send(url: string, secret: string, body: DoorScriptAction): Promise<ScriptReply> {
+  private async send(
+    url: string,
+    secret: string,
+    body: DoorScriptAction,
+    timeoutMs: number = SCRIPT_TIMEOUT_MS,
+  ): Promise<ScriptReply> {
     if (!isDoorScriptUrl(url)) {
       throw new ServiceUnavailableException('The door script address is not an Apps Script web app.');
     }
 
     const request = signDoorRequest(secret, body);
-    const signal = AbortSignal.timeout(60_000);
+    // Floored: a budget already spent would abort before the call is made,
+    // which reads as "the script could not be reached" rather than "no time
+    // left". The caller stops before that, and this is the backstop.
+    const signal = AbortSignal.timeout(Math.max(500, timeoutMs));
 
     let response: Response;
     try {

@@ -58,6 +58,42 @@ export function deadline(budgetMs = WRITE_BUDGET_MS, now = () => Date.now()) {
 }
 
 /**
+ * What to assume one read from Google costs, before one has been timed.
+ *
+ * Deliberately pessimistic. Guessing high costs a calendar that would have
+ * fitted, and the client simply asks again; guessing low costs the request.
+ */
+export const FIRST_READ_ESTIMATE_MS = 2_500;
+
+/**
+ * The same clock, asked a better question (CAL-14).
+ *
+ * `deadline()` answers "is any time left", which is the right question
+ * between entries — the next one costs a millisecond. It is the wrong
+ * question before a read: a calendar taking five seconds against a
+ * six-second budget passed the check at zero and again at five, and the
+ * function was killed at ten with nothing to show.
+ *
+ * So `roomForRead` asks whether there is room for another read as slow as
+ * the slowest so far, and `record` keeps that honest after the first guess.
+ */
+export function budget(budgetMs = WRITE_BUDGET_MS, now = () => Date.now()) {
+  const stopAt = now() + budgetMs;
+  let slowestRead = FIRST_READ_ESTIMATE_MS;
+
+  return {
+    /** Between entries, where what comes next is cheap. */
+    spent: () => now() >= stopAt,
+    /** Before a read, where what comes next is not. */
+    roomForRead: () => now() + slowestRead <= stopAt,
+    /** How long the read that began at `startedAt` actually took. */
+    record: (startedAt: number) => {
+      slowestRead = Math.max(slowestRead, now() - startedAt);
+    },
+  };
+}
+
+/**
  * Where to resume, given where this chunk stopped.
  *
  * `null` means finished — there is nothing after the last calendar, and the
