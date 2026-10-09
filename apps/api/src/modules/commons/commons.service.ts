@@ -557,7 +557,13 @@ export class CommonsService {
     });
   }
 
-  async listPosts(orgId: string, channelId: string, page: number, perPage: number) {
+  async listPosts(
+    orgId: string,
+    channelId: string,
+    page: number,
+    perPage: number,
+    viewerId?: string,
+  ) {
     await this.findChannelInOrg(orgId, channelId);
 
     const skip = (page - 1) * perPage;
@@ -570,6 +576,11 @@ export class CommonsService {
         take: perPage,
         include: {
           author: { select: AUTHOR_SELECT },
+          // Grouped below (CMN-20). The list returned only a *count*, so the
+          // bar on a post in the feed could not say which emoji they were or
+          // which were the reader's own — and pressing one had to re-read the
+          // post to find out what it had just done.
+          reactions: { select: { emoji: true, userId: true } },
           _count: { select: { comments: true, reactions: true } },
         },
       }),
@@ -583,7 +594,15 @@ export class CommonsService {
     // rendered a zero rather than failing. Nothing read it until the channel
     // view needed to know whether there are older messages (CMN-11).
     return {
-      data: posts,
+      // Grouped here rather than in two screens (CMN-20), and with the viewer
+      // named so the bar can show which are theirs.
+      data: posts.map((post) => ({
+        ...post,
+        // `?? []` rather than trusting the select: a post with no reactions
+        // selected is an empty bar, where the alternative is a 500 that takes
+        // the whole channel down with it.
+        reactions: groupReactions(post.reactions ?? [], viewerId ?? ''),
+      })),
       meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
     };
   }
@@ -608,7 +627,8 @@ export class CommonsService {
             reactions: { select: { emoji: true, userId: true } },
           },
         },
-        reactions: true,
+        // Grouped below, like the comments' (CMN-20).
+        reactions: { select: { emoji: true, userId: true } },
       },
     });
 
@@ -632,7 +652,11 @@ export class CommonsService {
       }
     }
 
-    return { ...post, comments: roots };
+    return {
+      ...post,
+      reactions: groupReactions(post.reactions ?? [], viewerId ?? ''),
+      comments: roots,
+    };
   }
 
   // ─── Comments ───────────────────────────────────────────────
@@ -663,26 +687,44 @@ export class CommonsService {
 
   // ─── Reactions ──────────────────────────────────────────────
 
-  async addReaction(orgId: string, postId: string, userId: string, emoji: string) {
-    // An unchecked upsert here would attach a reaction to a post in another
-    // co-op, where it would then be visible to that co-op's members.
+  /**
+   * React to a post, or take it back (CMN-20).
+   *
+   * **A toggle that answers with the new state**, like the one on a comment
+   * (CMN-17), and for the reasons that one already proved. This was an upsert
+   * returning the row it wrote: pressing the same emoji twice did nothing
+   * visible, and the caller learned nothing it could draw, so both screens
+   * re-fetched the whole post — the admin Commons re-fetched the open thread
+   * too, which is why reacting reloaded the conversation underneath you.
+   *
+   * Returning the grouped counts is what lets the shared `ReactionBar` show a
+   * number immediately and roll back if the write fails.
+   */
+  async togglePostReaction(orgId: string, postId: string, userId: string, emoji: string) {
+    if (!isAllowedReaction(emoji)) {
+      throw new BadRequestException('That is not one of the reactions.');
+    }
+
+    // An unchecked write here would attach a reaction to a post in another
+    // co-op, where it would then be visible to that co-op's members (SEC-04).
     await this.findPostInOrg(orgId, postId);
 
-    return this.prisma.reaction.upsert({
-      where: {
-        postId_userId_emoji: { postId, userId, emoji },
-      },
-      update: {},
-      create: { postId, userId, emoji },
+    const existing = await this.prisma.reaction.findUnique({
+      where: { postId_userId_emoji: { postId, userId, emoji } },
     });
-  }
 
-  async removeReaction(orgId: string, postId: string, userId: string, emoji: string) {
-    await this.findPostInOrg(orgId, postId);
+    if (existing) {
+      await this.prisma.reaction.delete({ where: { id: existing.id } });
+    } else {
+      await this.prisma.reaction.create({ data: { postId, userId, emoji } });
+    }
 
-    await this.prisma.reaction.deleteMany({
-      where: { postId, userId, emoji },
+    const rows = await this.prisma.reaction.findMany({
+      where: { postId },
+      select: { emoji: true, userId: true },
     });
+
+    return { postId, reactions: groupReactions(rows, userId) };
   }
 
   /**

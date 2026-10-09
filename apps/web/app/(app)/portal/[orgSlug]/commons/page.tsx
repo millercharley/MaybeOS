@@ -23,8 +23,8 @@ import { AttachmentList } from '@/components/composer/attachment-list';
 import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 import { PageHeader } from '@/components/layout/page-header';
 import { MemberName } from '@/components/member/member-name';
-import { useUnread } from '@/contexts/unread-context';
 import { ReactionBar } from '@/components/reactions/reaction-bar';
+import { useUnread } from '@/contexts/unread-context';
 
 type Tab = 'channels' | 'proposals';
 
@@ -794,7 +794,6 @@ function PostCard({
   const [error, setError] = useState('');
 
   const commentCount = thread ? countThread(thread) : (post._count?.comments ?? 0);
-  const reactionCount = reactions.length || post._count?.reactions || 0;
 
   /*
     Taking a post down, whoever wrote it (CMN-18).
@@ -887,14 +886,23 @@ function PostCard({
     }
   }
 
-  async function react() {
+  /**
+   * React to the post (CMN-20).
+   *
+   * One emoji and a re-read of the whole post, which meant the count only
+   * appeared once the round trip finished and there was no way to take a
+   * reaction back. The same bar the comments use now, which draws the count
+   * immediately and offers the full set.
+   */
+  async function react(emoji: string) {
     setError('');
     try {
-      await api.commons.addReaction(orgId, post.id, '👍', token);
-      const full = await api.commons.getPost(orgId, post.id, token);
-      setReactions(full.reactions ?? []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not add that');
+      const { reactions: next } = await api.commons.reactToPost(orgId, post.id, emoji, token);
+      setReactions(next);
+      return next;
+    } catch {
+      // The bar rolls its guess back; a failed emoji is not worth a banner.
+      return null;
     }
   }
 
@@ -933,10 +941,9 @@ function PostCard({
       />
       <AttachmentList orgId={orgId} token={token} postId={post.id} />
 
+      <ReactionBar reactions={reactions} onToggle={react} />
+
       <div className="mt-3 flex items-center gap-4 border-t border-gray-100 pt-2">
-        <button onClick={react} className="text-xs text-gray-500 hover:text-gray-800">
-          👍 {reactionCount > 0 ? reactionCount : ''}
-        </button>
         <button onClick={toggle} className="text-xs font-medium text-gray-500 hover:text-gray-800">
           {commentCount === 0
             ? open ? 'Hide' : 'Reply'
