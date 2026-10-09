@@ -104,29 +104,44 @@ describe('the comment composer in a thread', () => {
 });
 
 describe('the emoji picker', () => {
-  const bar = strip(readFileSync(join(__dirname, '..', 'components', 'reactions', 'reaction-bar.tsx'), 'utf8'));
+  /*
+    The markup moved out of the bar and into its own component in CMN-24, when
+    the six-emoji grid became a searchable library. These guard the behaviour,
+    so they follow it rather than being deleted with the file they used to read.
+  */
+  const picker = strip(
+    readFileSync(join(__dirname, '..', 'components', 'reactions', 'emoji-library-picker.tsx'), 'utf8'),
+  );
 
   /**
    * Charley: "offer an emoji picker so people can get creative with their
    * emoji responses." The bar offered six and nothing else.
    */
   it('offers more than the six, without burying them', () => {
-    // A picker that hides 👍 makes the ordinary case worse to make the rare
-    // one possible.
-    expect(bar).toMatch(/\[\.\.\.new Set\(\[\.\.\.REACTIONS, \.\.\.COMPOSER_EMOJI\]\)\]/);
-    expect(bar).toMatch(/grid-cols-6/);
+    // A picker that hides 👍 behind a search makes the ordinary case worse to
+    // make the rare one possible. So: the quick six are the first row, in the
+    // order the API lists them, and everything else is below.
+    const { REACTIONS } = require('@/lib/reactions');
+    const { EMOJI_LIBRARY } = require('@/lib/emoji-library');
+
+    expect(EMOJI_LIBRARY[0].emoji.slice(0, 6).map((e: { emoji: string }) => e.emoji)).toEqual([
+      ...REACTIONS,
+    ]);
+    expect(EMOJI_LIBRARY.flatMap((g: { emoji: unknown[] }) => g.emoji).length).toBeGreaterThan(100);
+    expect(picker).toMatch(/EMOJI_LIBRARY\.map/);
   });
 
   it('takes anything at all, typed', () => {
-    // No emoji keyboard is shipped: every device already has one.
-    expect(bar).toMatch(/Any emoji…/);
-    expect(bar).toMatch(/Or use any emoji/);
+    // No emoji keyboard is shipped: every device already has one, and the
+    // library is a few hundred rather than all 3,800.
+    expect(picker).toMatch(/Any emoji…/);
+    expect(picker).toMatch(/Or use any emoji/);
   });
 
   it('answers a typo on the spot rather than by a silent rollback', () => {
-    expect(bar).toMatch(/looksLikeEmoji\(chosen\)/);
-    expect(bar).toMatch(/disabled=\{!looksLikeEmoji\(typed\)\}/);
-    expect(bar).toMatch(/That needs to be an emoji/);
+    expect(picker).toMatch(/looksLikeEmoji\(chosen\)/);
+    expect(picker).toMatch(/disabled=\{!looksLikeEmoji\(typed\)\}/);
+    expect(picker).toMatch(/That needs to be an emoji/);
   });
 });
 
