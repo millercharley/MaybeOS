@@ -5931,7 +5931,13 @@ export interface ShareOptions {
   canShare: boolean;
   reason: string | null;
   facebook: { pageName: string | null; post: SocialPostRecord | null } | null;
-  instagram: { username: string | null; post: SocialPostRecord | null; needsImage: boolean } | null;
+  /*
+    `needsImage` used to live here, meaning "the event carries no picture".
+    It drove a dead end — "Add one to the event first" — that SOC-03 removed
+    by letting the host choose a file in the dialog. A flag that no longer
+    describes a constraint is worse than no flag.
+  */
+  instagram: { username: string | null; post: SocialPostRecord | null } | null;
   imageUrl: string | null;
   body: string;
   /** The credit and link added after the body, as each platform will show them. */

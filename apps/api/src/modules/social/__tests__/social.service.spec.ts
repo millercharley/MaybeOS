@@ -187,8 +187,24 @@ describe('SocialService', () => {
     it('refuses a picture Instagram would refuse, before anything is posted', async () => {
       await expect(share(host, { image: jpeg(1080, 1920) })).rejects.toThrow(/4:5/);
       await expect(share(host, { image: Buffer.from('not a jpeg').toString('base64') })).rejects.toThrow(/JPEG/);
+      await expect(share(host, { image: jpeg(200, 200) })).rejects.toThrow(/too small/);
       expect(storage.uploadSocialImage).not.toHaveBeenCalled();
       expect(meta.publishToPage).not.toHaveBeenCalled();
+    });
+
+    it('refuses an oversized picture itself, rather than letting the upload do it', async () => {
+      /*
+        SOC-03. The storage layer caps uploads and raises a 503, which reads
+        to a host as "MaybeOS is broken" rather than "that picture is too
+        big". The browser keeps its JPEG under the cap by stepping the
+        quality down, so arriving here means something else sent it — and
+        it should still get a sentence about the picture.
+      */
+      const header = Buffer.from(jpeg(1080, 1080), 'base64');
+      const huge = Buffer.concat([header, Buffer.alloc(6 * 1024 * 1024)]).toString('base64');
+
+      await expect(share(host, { image: huge })).rejects.toThrow(/MB/);
+      expect(storage.uploadSocialImage).not.toHaveBeenCalled();
     });
 
     it('still posts to Facebook when Instagram has no picture to use', async () => {

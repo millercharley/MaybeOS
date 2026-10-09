@@ -1,19 +1,36 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { ImagePlus, RefreshCw } from 'lucide-react';
 import { api, ShareOptions, ShareResult, SocialPlatform } from '@/lib/api';
-import { instagramJpeg } from '@/lib/instagram-image';
+import { prepareFromBlob, prepareFromUrl, type Prepared } from '@/lib/instagram-image';
 import { Modal } from '@/components/ui/modal';
 
 const NAMES: Record<SocialPlatform, string> = { FACEBOOK: 'Facebook', INSTAGRAM: 'Instagram' };
 
+/** What the file picker will offer. HEIC is listed so a phone can hand one over and be told. */
+const ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif';
+
 /**
- * A host sharing their event to the co-op's Facebook Page and Instagram (SOC-01).
+ * A host sharing their event to the co-op's Facebook Page and Instagram
+ * (SOC-01, with the picture step added in SOC-03).
  *
- * The host edits the words. Their credit and the RSVP link are added by the
- * server and shown here as they will appear. The picture is cropped to fit
- * Instagram in the browser, so the host sees exactly what goes out.
+ * **The picture comes first, and there is always one.** Charley: "ask the
+ * user for an image. Supply the existing image attached to the event IF
+ * there is one, and allow for the user to choose to use a different image if
+ * desired."
+ *
+ * It used to take whatever picture the event happened to carry and offer no
+ * way to supply another — so an event with no picture simply could not go to
+ * Instagram ("Add one to the event first"), and a picture the browser was
+ * not allowed to read was the same dead end. Both are now a file away.
+ *
+ * Everything is re-encoded to a JPEG inside Instagram's 4:5–1.91:1 range
+ * before it leaves the browser, because that is what the content publishing
+ * API takes and because the host should see exactly what goes out. The API
+ * checks it again — format, ratio, width and size — since a browser is not
+ * a trusted source.
  */
 export function ShareEventDialog({
   orgId,
@@ -31,8 +48,14 @@ export function ShareEventDialog({
   const [options, setOptions] = useState<ShareOptions | null>(null);
   const [loadError, setLoadError] = useState('');
   const [body, setBody] = useState('');
-  const [jpeg, setJpeg] = useState<{ base64: string; dataUrl: string } | null>(null);
-  const [jpegState, setJpegState] = useState<'none' | 'working' | 'ready' | 'failed'>('none');
+
+  /** The picture, once there is one that will post. */
+  const [image, setImage] = useState<Prepared | null>(null);
+  /** Where it came from, so the host can tell the event's from their own. */
+  const [source, setSource] = useState<'event' | 'chosen' | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+
   const [chosen, setChosen] = useState<Record<SocialPlatform, boolean>>({ FACEBOOK: false, INSTAGRAM: false });
   const [posting, setPosting] = useState(false);
   const [results, setResults] = useState<ShareResult[] | null>(null);
@@ -44,29 +67,45 @@ export function ShareEventDialog({
       .then((o) => {
         setOptions(o);
         setBody(o.body);
-        setChosen({ FACEBOOK: Boolean(o.facebook && !o.facebook.post), INSTAGRAM: false });
-        if (o.instagram && !o.instagram.post && o.imageUrl) {
-          setJpegState('working');
-          instagramJpeg(o.imageUrl).then((result) => {
-            setJpeg(result);
-            setJpegState(result ? 'ready' : 'failed');
-            if (result) setChosen((c) => ({ ...c, INSTAGRAM: true }));
+        setChosen({
+          FACEBOOK: Boolean(o.facebook && !o.facebook.post),
+          INSTAGRAM: Boolean(o.instagram && !o.instagram.post),
+        });
+
+        // The event's own picture, offered as the one to use. Not a
+        // requirement any more — just a head start on the common case.
+        if (o.imageUrl) {
+          setPreparing(true);
+          prepareFromUrl(o.imageUrl).then((prepared) => {
+            setPreparing(false);
+            setImage(prepared);
+            setSource('event');
           });
         }
       })
       .catch((err) => setLoadError(err instanceof Error ? err.message : 'Could not load sharing options'));
   }, [orgId, eventId, token]);
 
+  async function choose(file: File | undefined) {
+    if (!file) return;
+    setPreparing(true);
+    setError('');
+    const prepared = await prepareFromBlob(file);
+    setPreparing(false);
+    setImage(prepared);
+    setSource('chosen');
+  }
+
   async function share() {
     const platforms = (Object.keys(chosen) as SocialPlatform[]).filter((p) => chosen[p]);
-    if (platforms.length === 0) return;
+    if (platforms.length === 0 || !image?.ok) return;
     setPosting(true);
     setError('');
     try {
       const { results: done } = await api.social.share(
         orgId,
         eventId,
-        { platforms, body, ...(jpeg && { image: jpeg.base64 }) },
+        { platforms, body, image: image.base64 },
         token,
       );
       setResults(done);
@@ -77,8 +116,9 @@ export function ShareEventDialog({
     }
   }
 
-  const igAvailable = Boolean(options?.instagram && !options.instagram.post && jpegState === 'ready');
-  const fbAvailable = Boolean(options?.facebook && !options.facebook.post);
+  const ready = Boolean(image?.ok);
+  const igAvailable = Boolean(options?.instagram && !options.instagram.post && ready);
+  const fbAvailable = Boolean(options?.facebook && !options.facebook.post && ready);
   const anyChosen = chosen.FACEBOOK || chosen.INSTAGRAM;
 
   return (
@@ -119,7 +159,72 @@ export function ShareEventDialog({
 
         {options && options.canShare && !results && (
           <>
-            <fieldset className="space-y-2">
+            {/* The picture, first and always (SOC-03): it is the one thing
+                Instagram will not post without, and the thing the host most
+                wants to see before it goes out. */}
+            <section className="space-y-2">
+              <p className="font-medium text-gray-900">Picture</p>
+
+              <input
+                ref={fileInput}
+                type="file"
+                accept={ACCEPT}
+                className="sr-only"
+                onChange={(e) => {
+                  void choose(e.target.files?.[0]);
+                  // Cleared, so picking the same file twice still fires.
+                  e.target.value = '';
+                }}
+              />
+
+              {preparing && <p className="text-gray-500">Preparing the picture…</p>}
+
+              {!preparing && image?.ok && (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={image.dataUrl}
+                    alt="The picture as it will be posted"
+                    className="max-h-64 rounded-lg border border-gray-200"
+                  />
+                  <p className="text-xs text-gray-500">
+                    {source === 'event' ? 'The event’s picture' : 'Your picture'} · cropped to{' '}
+                    {image.width}&nbsp;×&nbsp;{image.height} for Instagram
+                  </p>
+                </>
+              )}
+
+              {!preparing && image && !image.ok && (
+                <p className="rounded-lg bg-amber-50 p-3 text-amber-900">{image.reason}</p>
+              )}
+
+              {!preparing && !image && (
+                <p className="text-gray-500">
+                  Choose a picture to post. Instagram will not take a post without one.
+                </p>
+              )}
+
+              {!preparing && (
+                <button
+                  type="button"
+                  onClick={() => fileInput.current?.click()}
+                  disabled={posting}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {image?.ok ? (
+                    <>
+                      <RefreshCw className="h-4 w-4" /> Use a different picture
+                    </>
+                  ) : (
+                    <>
+                      <ImagePlus className="h-4 w-4" /> Choose a picture
+                    </>
+                  )}
+                </button>
+              )}
+            </section>
+
+            <fieldset className="space-y-2 border-t border-gray-100 pt-4">
               <legend className="mb-1 font-medium text-gray-900">Where</legend>
 
               {options.facebook && (
@@ -133,9 +238,7 @@ export function ShareEventDialog({
                   />
                   <span>
                     Facebook: {options.facebook.pageName}
-                    {options.facebook.post && (
-                      <SharedNote permalink={options.facebook.post.permalink} />
-                    )}
+                    {options.facebook.post && <SharedNote permalink={options.facebook.post.permalink} />}
                   </span>
                 </label>
               )}
@@ -151,30 +254,15 @@ export function ShareEventDialog({
                   />
                   <span>
                     Instagram: @{options.instagram.username}
-                    {options.instagram.post ? (
-                      <SharedNote permalink={options.instagram.post.permalink} />
-                    ) : options.instagram.needsImage ? (
-                      <span className="block text-xs text-gray-500">Instagram needs a picture. Add one to the event first.</span>
-                    ) : jpegState === 'working' ? (
-                      <span className="block text-xs text-gray-500">Preparing the picture…</span>
-                    ) : jpegState === 'failed' ? (
-                      <span className="block text-xs text-amber-800">
-                        This picture can&apos;t be prepared for Instagram because it&apos;s hosted on another site. Edit the
-                        event and upload the picture instead.
-                      </span>
-                    ) : null}
+                    {options.instagram.post && <SharedNote permalink={options.instagram.post.permalink} />}
                   </span>
                 </label>
               )}
-            </fieldset>
 
-            {jpeg && chosen.INSTAGRAM && (
-              <div>
-                <p className="mb-1 font-medium text-gray-900">Picture</p>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={jpeg.dataUrl} alt="The picture as it will be posted" className="max-h-64 rounded-lg border border-gray-200" />
-              </div>
-            )}
+              {!ready && !preparing && (
+                <p className="text-xs text-gray-500">Choose a picture above to post.</p>
+              )}
+            </fieldset>
 
             <div>
               <label htmlFor="share-body" className="mb-1 block font-medium text-gray-900">
@@ -209,7 +297,7 @@ export function ShareEventDialog({
             <button
               type="button"
               onClick={share}
-              disabled={posting || !anyChosen || !body.trim()}
+              disabled={posting || preparing || !ready || !anyChosen || !body.trim()}
               className="btn-primary w-full text-sm disabled:opacity-50"
             >
               {posting ? 'Posting…' : 'Post now'}

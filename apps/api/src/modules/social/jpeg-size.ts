@@ -43,3 +43,13 @@ export function jpegSize(buffer: Buffer): { width: number; height: number } | nu
 /** Instagram's feed limits: no taller than 4:5, no wider than 1.91:1. */
 export const IG_MIN_RATIO = 4 / 5;
 export const IG_MAX_RATIO = 1.91;
+
+/** Narrower than this and Instagram refuses the container outright. */
+export const IG_MIN_WIDTH = 320;
+
+/**
+ * Instagram's own ceiling is 8MB. The co-op's storage takes 5, so that is the
+ * binding one — and saying so here, before the upload, turns what was a 503
+ * from the storage layer into a sentence about the picture.
+ */
+export const IG_MAX_BYTES = 5 * 1024 * 1024;
