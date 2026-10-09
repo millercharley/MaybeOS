@@ -50,8 +50,22 @@ export function menuPosition(
   viewport: Viewport,
   menuHeight: number,
 ): { top: number; left: number } {
+  /*
+    Each field is read off `rect` by hand, and that is not a style choice.
+
+    This was `{ ...rect, left: ... }`, and a DOMRect spreads to `{}` — its
+    properties are accessors on the prototype, so none of them are own
+    enumerable keys. Every number downstream became NaN, React could not write
+    `NaNpx`, and the menu lost its `top` and `left` entirely: a `fixed` box with
+    neither falls back to its static position, which is the top-left of the
+    page. Charley saw it open about ten rows above the row he clicked.
+
+    The unit tests did not catch it because they pass object literals, which
+    spread perfectly well. The ones below now pass a rect shaped like the real
+    thing.
+  */
   return popoverPosition(
-    { ...rect, left: rect.right - MENU_WIDTH },
+    { top: rect.top, bottom: rect.bottom, left: rect.right - MENU_WIDTH, right: rect.right },
     viewport,
     { width: MENU_WIDTH, height: menuHeight },
     'right',

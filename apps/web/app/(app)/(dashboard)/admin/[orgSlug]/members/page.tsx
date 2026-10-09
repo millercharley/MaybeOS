@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, FormEvent, MouseEvent } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { PieChart, Search, Plus, MoreHorizontal, Clock, RefreshCw, Mail, Upload } from 'lucide-react';
@@ -354,8 +355,16 @@ export default function MembersPage() {
     }
   }
 
-  /** One item today; the height is pinned so the flip-up maths has a number. */
-  const MENU_HEIGHT = 44;
+  /**
+   * Pinned, because the flip-up maths needs a number before the menu exists
+   * to be measured. Two items at 36px, 4px of padding each side, 1px of
+   * border each side — 84, which is what the browser reports.
+   *
+   * It said 44 and "one item today" until MEM-27 added Edit above Remove, so
+   * a menu near the bottom of the window decided it had room when it did not.
+   * A test below fails if a third item appears without this changing.
+   */
+  const MENU_HEIGHT = 84;
 
   /**
    * Open the row menu against the viewport rather than the cell (UI-02).
@@ -580,7 +589,21 @@ export default function MembersPage() {
         </form>
       </Modal>
 
-      {openMenu && (
+      {/*
+        On the body, not here in the tree.
+
+        This block sits inside a `space-y-6` container, which gives every child
+        after the first a 24px top margin — and margin moves a `fixed` element
+        just as it moves any other, so the menu rendered 24px below where it
+        was told to go and the backdrop missed the top 24px of the screen. A
+        viewport-positioned overlay has no business being in page flow at all,
+        so it goes on the body, clear of margins, `overflow` and any stacking
+        context a parent might introduce later. The cropper does the same.
+
+        No `mounted` guard is needed: `openMenu` starts null, so nothing here
+        exists until an admin clicks, which is long after hydration.
+      */}
+      {openMenu && createPortal(
         <>
           {/* Clicking anywhere else closes it, which is what everybody
               expects of a menu and what nothing else here was doing. */}
@@ -625,7 +648,8 @@ export default function MembersPage() {
               Remove from the community
             </button>
           </div>
-        </>
+        </>,
+        document.body,
       )}
 
       {/* Correcting who somebody is (MEM-27). */}
