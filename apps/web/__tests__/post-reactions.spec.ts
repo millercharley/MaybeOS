@@ -102,3 +102,48 @@ describe('the comment composer in a thread', () => {
     expect(body).not.toMatch(/className="flex gap-2"/);
   });
 });
+
+describe('the emoji picker', () => {
+  const bar = strip(readFileSync(join(__dirname, '..', 'components', 'reactions', 'reaction-bar.tsx'), 'utf8'));
+
+  /**
+   * Charley: "offer an emoji picker so people can get creative with their
+   * emoji responses." The bar offered six and nothing else.
+   */
+  it('offers more than the six, without burying them', () => {
+    // A picker that hides 👍 makes the ordinary case worse to make the rare
+    // one possible.
+    expect(bar).toMatch(/\[\.\.\.new Set\(\[\.\.\.REACTIONS, \.\.\.COMPOSER_EMOJI\]\)\]/);
+    expect(bar).toMatch(/grid-cols-6/);
+  });
+
+  it('takes anything at all, typed', () => {
+    // No emoji keyboard is shipped: every device already has one.
+    expect(bar).toMatch(/Any emoji…/);
+    expect(bar).toMatch(/Or use any emoji/);
+  });
+
+  it('answers a typo on the spot rather than by a silent rollback', () => {
+    expect(bar).toMatch(/looksLikeEmoji\(chosen\)/);
+    expect(bar).toMatch(/disabled=\{!looksLikeEmoji\(typed\)\}/);
+    expect(bar).toMatch(/That needs to be an emoji/);
+  });
+});
+
+describe('the rule the picker applies', () => {
+  it('matches what the API will accept', () => {
+    /*
+      Two copies on purpose — the API's is the one that decides — so they are
+      tested against the same cases to stop them drifting apart.
+    */
+    const { looksLikeEmoji } = require('@/lib/reactions');
+
+    expect(looksLikeEmoji('🔥')).toBe(true);
+    expect(looksLikeEmoji('👨‍👩‍👧‍👦')).toBe(true);
+    expect(looksLikeEmoji('🇬🇧')).toBe(true);
+    expect(looksLikeEmoji('nice')).toBe(false);
+    expect(looksLikeEmoji(':-)')).toBe(false);
+    expect(looksLikeEmoji('')).toBe(false);
+    expect(looksLikeEmoji('🎉'.repeat(30))).toBe(false);
+  });
+});

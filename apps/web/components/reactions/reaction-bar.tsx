@@ -2,7 +2,14 @@
 
 import { useState } from 'react';
 import { SmilePlus } from 'lucide-react';
-import { REACTIONS, reactionLabel, toggled, type ReactionGroup } from '@/lib/reactions';
+import { COMPOSER_EMOJI } from '@/lib/emoji';
+import {
+  REACTIONS,
+  looksLikeEmoji,
+  reactionLabel,
+  toggled,
+  type ReactionGroup,
+} from '@/lib/reactions';
 
 /**
  * The emoji under a message (CMN-17).
@@ -32,12 +39,22 @@ export function ReactionBar({
 }) {
   const [shown, setShown] = useState<ReactionGroup[] | null>(null);
   const [picking, setPicking] = useState(false);
+  /** Anything not on the grid, typed in (CMN-21). */
+  const [typed, setTyped] = useState('');
   const groups = shown ?? reactions;
+
+  /*
+    The six offered first, then the rest of the common ones, with no
+    duplicates (CMN-21). `COMPOSER_EMOJI` already contains most of the six, so
+    concatenating without this would show 👍 twice.
+  */
+  const offered = [...new Set([...REACTIONS, ...COMPOSER_EMOJI])];
 
   async function press(emoji: string) {
     const guess = toggled(groups, emoji);
     setShown(guess);
     setPicking(false);
+    setTyped('');
 
     const settled = await onToggle(emoji);
     setShown(settled ?? reactions);
@@ -90,21 +107,72 @@ export function ReactionBar({
               className="fixed inset-0 z-10 cursor-default"
             />
             <div
-              className={`absolute bottom-full z-20 mb-1 flex gap-0.5 rounded-full border border-gray-200 bg-white p-1 shadow-lg ${
+              className={`absolute bottom-full z-20 mb-1 w-56 rounded-xl border border-gray-200 bg-white p-2 shadow-lg ${
                 align === 'right' ? 'right-0' : 'left-0'
               }`}
             >
-              {REACTIONS.map((emoji) => (
+              {/*
+                A grid rather than a row (CMN-21). Charley: "offer an emoji
+                picker so people can get creative." The six that group best
+                come first and the rest of the common ones follow, because a
+                picker that buries 👍 makes the ordinary case worse to make
+                the rare one possible.
+              */}
+              <div className="grid grid-cols-6 gap-0.5">
+                {offered.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => press(emoji)}
+                    aria-label={`React with ${emoji}`}
+                    className="rounded-lg px-1.5 py-1 text-base leading-none hover:bg-gray-100"
+                  >
+                    <span aria-hidden="true">{emoji}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/*
+                And anything at all (CMN-21). No emoji keyboard is shipped:
+                every device already has one behind its own shortcut, and a
+                complete set is a data file and a dependency. This is the same
+                bargain the channel emoji picker struck — a grid for the
+                common ones, a field for the rest.
+              */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const chosen = typed.trim();
+                  // Answered here rather than by a silent rollback: somebody
+                  // who typed a word meant something by it (CMN-21).
+                  if (looksLikeEmoji(chosen)) press(chosen);
+                }}
+                className="mt-2 flex items-center gap-1 border-t border-gray-100 pt-2"
+              >
+                <label htmlFor="reaction-any" className="sr-only">
+                  Or use any emoji
+                </label>
+                <input
+                  id="reaction-any"
+                  value={typed}
+                  onChange={(e) => setTyped(e.target.value)}
+                  placeholder="Any emoji…"
+                  maxLength={24}
+                  className="min-w-0 flex-1 rounded-lg border border-gray-200 px-2 py-1 text-sm focus:border-brand-400 focus:outline-none"
+                />
                 <button
-                  key={emoji}
-                  type="button"
-                  onClick={() => press(emoji)}
-                  aria-label={`React with ${emoji}`}
-                  className="rounded-full px-1.5 py-0.5 text-base leading-none hover:bg-gray-100"
+                  type="submit"
+                  disabled={!looksLikeEmoji(typed)}
+                  className="rounded-lg bg-gray-900 px-2 py-1 text-xs font-medium text-white disabled:opacity-40"
                 >
-                  <span aria-hidden="true">{emoji}</span>
+                  Add
                 </button>
-              ))}
+              </form>
+              {typed.trim() && !looksLikeEmoji(typed) && (
+                <p className="mt-1 text-[11px] text-gray-500">
+                  That needs to be an emoji — your keyboard&rsquo;s own picker has them all.
+                </p>
+              )}
             </div>
           </>
         )}

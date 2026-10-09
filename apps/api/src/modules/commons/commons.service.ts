@@ -702,7 +702,7 @@ export class CommonsService {
    */
   async togglePostReaction(orgId: string, postId: string, userId: string, emoji: string) {
     if (!isAllowedReaction(emoji)) {
-      throw new BadRequestException('That is not one of the reactions.');
+      throw new BadRequestException('A reaction has to be an emoji.');
     }
 
     // An unchecked write here would attach a reaction to a post in another
@@ -736,7 +736,7 @@ export class CommonsService {
    */
   async toggleCommentReaction(orgId: string, commentId: string, userId: string, emoji: string) {
     if (!isAllowedReaction(emoji)) {
-      throw new BadRequestException('That is not one of the reactions.');
+      throw new BadRequestException('A reaction has to be an emoji.');
     }
 
     // Scoped through the post to the co-op: a comment id from the request is

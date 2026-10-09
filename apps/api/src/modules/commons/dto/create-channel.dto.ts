@@ -4,15 +4,13 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 /**
  * One emoji, and nothing that is really a word (CMN-11).
  *
- * A channel emoji is a visual marker beside the name, so "General" typed into
- * the emoji box is a mistake worth refusing rather than storing. The rule
- * wants at least one pictograph or a flag, allows the joiners and modifiers
- * that make up a single glyph — skin tones, variation selectors, the
- * zero-width joiner in 👨‍👩‍👧‍👦 — and caps the length, because a "single emoji"
- * can legitimately be several code points and illegitimately be a sentence.
+ * The rule itself now lives in `common/emoji.ts`, because reactions need the
+ * same one (CMN-21) and a validator two features depend on does not belong
+ * inside one of them. Re-exported so nothing that imported it from here had
+ * to move.
  */
-export const EMOJI_PATTERN =
-  /^(?=.*(\p{Extended_Pictographic}|\p{Regional_Indicator}))[^\w\s]{1,24}$/u;
+export { EMOJI_PATTERN } from '../../../common/emoji';
+import { EMOJI_PATTERN } from '../../../common/emoji';
 
 export const EMOJI_MESSAGE = 'Pick a single emoji for the channel.';
 

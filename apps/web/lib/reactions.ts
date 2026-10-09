@@ -50,3 +50,22 @@ export function toggled(groups: ReactionGroup[], emoji: string): ReactionGroup[]
 
   return groups.map((g) => (g.emoji === emoji ? { ...g, count: g.count + 1, mine: true } : g));
 }
+
+/**
+ * Is this an emoji, by the same rule the API applies (CMN-21)?
+ *
+ * Duplicated deliberately rather than imported: the API's copy is the one
+ * that decides, and this one exists only so that typing "nice" into the
+ * picker is answered on the spot instead of by a silent rollback. Kept
+ * character-for-character identical so the two cannot disagree about a
+ * borderline glyph.
+ *
+ * `\p{Extended_Pictographic}` with the `u` flag is ES2018 — not the newer
+ * `v`-flag emoji properties, which Safari was late to.
+ */
+const EMOJI_PATTERN =
+  /^(?=.*(\p{Extended_Pictographic}|\p{Regional_Indicator}))[^\w\s]{1,24}$/u;
+
+export function looksLikeEmoji(value: string): boolean {
+  return EMOJI_PATTERN.test(value.trim());
+}
