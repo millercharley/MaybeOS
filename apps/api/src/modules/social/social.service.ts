@@ -15,7 +15,7 @@ import { decodeState, encodeState } from '../../common/oauth-state';
 import { seal, unseal } from '../../common/secret-box';
 import { MetaApiError, MetaGraphService, MetaPage } from './meta-graph.service';
 import { defaultBody, facebookMessage, instagramCaption } from './social-caption';
-import { IG_MAX_RATIO, IG_MIN_RATIO, jpegSize } from './jpeg-size';
+import { IG_MAX_BYTES, IG_MAX_RATIO, IG_MIN_RATIO, IG_MIN_WIDTH, jpegSize } from './jpeg-size';
 
 /** A share still marked PENDING after this long is treated as abandoned. */
 const STALE_PENDING_MS = 5 * 60 * 1000;
@@ -262,7 +262,7 @@ export class SocialService {
       reason,
       facebook: ctx.account?.pageId ? { pageName: ctx.account.pageName, post: postFor('FACEBOOK') } : null,
       instagram: ctx.account?.igUserId
-        ? { username: ctx.account.igUsername, post: postFor('INSTAGRAM'), needsImage: !ctx.event.imageUrl }
+        ? { username: ctx.account.igUsername, post: postFor('INSTAGRAM') }
         : null,
       imageUrl: ctx.event.imageUrl,
       body: defaultBody({
@@ -309,7 +309,25 @@ export class SocialService {
       if (ratio < IG_MIN_RATIO - 0.01 || ratio > IG_MAX_RATIO + 0.01) {
         throw new BadRequestException('Instagram needs a picture between 4:5 (portrait) and 1.91:1 (landscape).');
       }
-      if (size.width < 320) throw new BadRequestException('The picture is too small for Instagram (320 pixels wide at least).');
+      if (size.width < IG_MIN_WIDTH) {
+        throw new BadRequestException(
+          `The picture is too small for Instagram (${IG_MIN_WIDTH} pixels wide at least).`,
+        );
+      }
+      /*
+        Before the upload, not by it (SOC-03).
+
+        The storage layer refuses anything over its own limit with a 503 —
+        which reads to a host as "MaybeOS is broken" rather than "that
+        picture is too big". The browser keeps its JPEG under this by
+        stepping the quality down, so reaching here means something else
+        sent it.
+      */
+      if (buffer.length > IG_MAX_BYTES) {
+        throw new BadRequestException(
+          `That picture is ${Math.round(buffer.length / 1024 / 1024)}MB. Instagram takes up to ${IG_MAX_BYTES / 1024 / 1024}MB.`,
+        );
+      }
       jpegUrl = await this.storage.uploadSocialImage(orgId, buffer);
     }
 
@@ -328,7 +346,7 @@ export class SocialService {
             return { ...post, collaboratorInvited: undefined };
           }
           if (!ctx.account!.igUserId) throw new BadRequestException('No Instagram account is linked to the Page.');
-          if (!jpegUrl) throw new BadRequestException('Instagram needs a picture. Add one to the event first.');
+          if (!jpegUrl) throw new BadRequestException('Instagram needs a picture. Choose one and try again.');
           return this.meta.publishToInstagram(
             { igUserId: ctx.account!.igUserId, token: token! },
             { imageUrl: jpegUrl, caption: instagramCaption(input), collaborator: ctx.hostHandle },
