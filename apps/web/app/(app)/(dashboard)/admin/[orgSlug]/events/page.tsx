@@ -4,13 +4,15 @@ import { useParams } from 'next/navigation';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Users, Clock, Eye, EyeOff, X, Lock, Pencil, Trash2, Ticket, UserCircle } from 'lucide-react';
+import { Plus, Users, Clock, Eye, EyeOff, X, Lock, Pencil, Trash2, Ticket, UserCircle, Share2 } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
 import { useAuthStore } from '@/lib/auth-store';
 import { adminEventWindow, hostLine, ticketLine } from '@/lib/event-list';
 import { api, Event } from '@/lib/api';
 import { toUpdatePayload } from '@/lib/events';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
+import { ShareEventDialog } from '@/components/events/share-event-dialog';
+import { SHARE_LABEL, shareability, shouldOfferAfterPublish } from '@/lib/event-sharing';
 import { PageHeader } from '@/components/layout/page-header';
 import { useReveal } from '@/hooks/use-reveal';
 
@@ -28,6 +30,16 @@ export default function EventsPage() {
   // What is coming, not everything that ever happened (EVT-31). A console
   // for 777 events opened on November 2024, which is nobody's first question.
   const [activeTab, setActiveTab] = useState<FilterTab>('upcoming');
+  /**
+   * Posting an event to the co-op's Instagram and Facebook (SOC-02).
+   *
+   * The API has always let an organiser share any event —
+   * `if (!actor.staff && event.hostId !== actor.userId)` — and the admin
+   * console had no button for it anywhere. The one that existed was on the
+   * member's own events list, so a co-op's organisers could not post an
+   * event they had not personally hosted.
+   */
+  const [sharing, setSharing] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   // The event being edited, or null. Editing did not exist at all: the only
   // route off this page was the door list, so an event created with the wrong
@@ -106,6 +118,16 @@ export default function EventsPage() {
       // Editing a draft and choosing publish should still publish it.
       if (values.publish && !editing.isPublished) {
         await api.events.publish(orgId, editing.id, token);
+        // SOC-02: the moment it goes live is the moment somebody wants it
+        // seen. Public events only; the rule is shared with the buttons.
+        if (
+          shouldOfferAfterPublish(
+            { ...editing, ...toUpdatePayload(values), isPublished: true },
+            Boolean(org?.socialSharingEnabled),
+          )
+        ) {
+          setSharing(editing.id);
+        }
       }
 
       setEditing(null);
@@ -122,7 +144,13 @@ export default function EventsPage() {
     setBusy(true);
     setFormError('');
     try {
-      await api.events.create(orgId, values, token);
+      // The created event, not a discarded promise: SOC-02 needs its id to
+      // offer the share, and `publish: true` on the form means this one is
+      // already live.
+      const made = await api.events.create(orgId, values, token);
+      if (shouldOfferAfterPublish(made, Boolean(org?.socialSharingEnabled))) {
+        setSharing(made.id);
+      }
       setCreating(false);
       refetch();
     } catch (err) {
@@ -193,6 +221,17 @@ export default function EventsPage() {
 
   return (
     <div className="space-y-6">
+      {/* One dialog for the page, not one per row: it is a modal, and 777
+          of them mounted at once is 777 fetches waiting to happen. */}
+      {sharing && orgId && token && (
+        <ShareEventDialog
+          orgId={orgId}
+          orgSlug={orgSlug}
+          token={token}
+          eventId={sharing}
+          onClose={() => setSharing(null)}
+        />
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PageHeader
           title="Events"
@@ -285,6 +324,7 @@ export default function EventsPage() {
           })}`;
           const rsvpCount = event.rsvpCount ?? 0;
           const capacity = event.capacity ?? 0;
+          const share = shareability(event, Boolean(org?.socialSharingEnabled));
 
           return (
             // The card has looked clickable since it was built and led
@@ -333,6 +373,12 @@ export default function EventsPage() {
                 )}
               </div>
 
+              {/* One wrapping row (SOC-02). These were four buttons each
+                  carrying their own `ml-4 mt-4`, which lines up only while
+                  they all fit: naming the share button "Share to Instagram &
+                  Facebook" made it wrap, and left Edit stranded on a line of
+                  its own. A flex row wraps as a row. */}
+              <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
               <button
                 type="button"
                 onClick={(e) => {
@@ -343,10 +389,29 @@ export default function EventsPage() {
                   setCreating(false);
                   setEditing(event);
                 }}
-                className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-brand-600"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-brand-600"
               >
                 <Pencil className="h-3 w-3" /> Edit
               </button>
+
+              {/* Posting it to Instagram and Facebook (SOC-02). Organisers
+                  were always allowed to and never had anywhere to do it.
+                  Inside the card's <Link>, so the handler has to stop the
+                  navigation the way Edit above does. */}
+              {share.state === 'ready' && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSharing(event.id);
+                  }}
+                  disabled={busy}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-brand-600 disabled:opacity-50"
+                >
+                  <Share2 className="h-3 w-3" /> {SHARE_LABEL}
+                </button>
+              )}
 
               {/* Hiding and deleting (EVT-30). Inside the card's <Link>, so
                   both handlers have to stop the navigation the way Edit
@@ -360,7 +425,7 @@ export default function EventsPage() {
                     hideEvent(event.id);
                   }}
                   disabled={busy}
-                  className="ml-4 mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-brand-600 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-brand-600 disabled:opacity-50"
                 >
                   <EyeOff className="h-3 w-3" /> Hide
                 </button>
@@ -375,10 +440,19 @@ export default function EventsPage() {
                   setConfirmDelete(confirmDelete === event.id ? null : event.id);
                 }}
                 disabled={busy}
-                className="ml-4 mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-red-700 disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-red-700 disabled:opacity-50"
               >
                 <Trash2 className="h-3 w-3" /> Delete
               </button>
+
+              </div>
+
+              {/* Why there is no Share on this one (SOC-02). Silence read
+                  as the feature not existing; 753 of the co-op's 777 events
+                  are members-only. */}
+              {share.state === 'blocked' && (
+                <p className="mt-3 text-xs text-gray-500">{share.reason}</p>
+              )}
 
               {confirmDelete === event.id && (
                 <div
