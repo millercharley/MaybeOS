@@ -20,6 +20,8 @@ import { RichComposer, composerValue } from '@/components/composer/rich-composer
 import { EmojiPicker } from '@/components/composer/emoji-picker';
 import { PageHeader } from '@/components/layout/page-header';
 import { MemberName } from '@/components/member/member-name';
+import { ReactionBar } from '@/components/reactions/reaction-bar';
+import type { ReactionGroup } from '@/lib/reactions';
 import { Modal } from '@/components/ui/modal';
 
 /** What a dragged channel carries, so a drop can ignore anything else dragged in. */
@@ -28,8 +30,6 @@ const CHANNEL_DRAG_TYPE = 'application/x-maybeos-channel';
 type View =
   | { type: 'channel'; id: string }
   | { type: 'dm'; userId: string; name?: string };
-
-const QUICK_EMOJIS = ['👍', '❤️', '🎉', '😂'];
 
 function timeAgo(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -265,6 +265,8 @@ export default function CommonsPage() {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
 
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
+  /** The server's latest counts per post, so a re-render keeps them (CMN-20). */
+  const [reactionOverrides, setReactionOverrides] = useState<Record<string, ReactionGroup[]>>({});
   const [newPostBody, setNewPostBody] = useState('');
   const scroller = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
@@ -363,10 +365,25 @@ export default function CommonsPage() {
     refetchPosts();
   }
 
+  /**
+   * React to a post (CMN-20).
+   *
+   * Hands the new counts back to `ReactionBar`, which has already drawn them
+   * optimistically. It used to re-fetch the posts list *and* the open thread,
+   * so pressing an emoji reloaded the conversation you were reading — with no
+   * count and no sign anything had happened until it finished.
+   */
   async function handleReact(postId: string, emoji: string) {
-    await api.commons.addReaction(currentOrgId!, postId, emoji, token!);
-    refetchPosts();
-    if (expandedPostId === postId) refetchExpandedPost();
+    if (!currentOrgId || !token) return null;
+    try {
+      const { reactions } = await api.commons.reactToPost(currentOrgId, postId, emoji, token);
+      // Kept, so a re-render from somewhere else does not undo the count.
+      setReactionOverrides((current) => ({ ...current, [postId]: reactions }));
+      return reactions;
+    } catch {
+      // The bar rolls its guess back. A failed emoji is not worth a banner.
+      return null;
+    }
   }
 
   async function handleEditComment(commentId: string, body: string) {
@@ -1096,10 +1113,6 @@ export default function CommonsPage() {
                     const authorName = post.author.name ?? 'Unknown';
                     const initial = authorName.charAt(0).toUpperCase();
                     const isExpanded = expandedPostId === post.id;
-                    const reactionCounts = (post.reactions ?? []).reduce<Record<string, number>>((acc, r) => {
-                      acc[r.emoji] = (acc[r.emoji] ?? 0) + 1;
-                      return acc;
-                    }, {});
 
                     return (
                       <div key={post.id} className="card">
@@ -1134,17 +1147,20 @@ export default function CommonsPage() {
                               dangerouslySetInnerHTML={{ __html: renderBodyHtml(post.body) }}
                             />
 
+                            {/*
+                              The same bar the rest of the product uses
+                              (CMN-20). These were four hand-rolled chips that
+                              could only ever add, showed their count only
+                              after a round trip, and triggered a re-fetch of
+                              the posts list and the open thread — so reacting
+                              reloaded the conversation under the reader.
+                            */}
+                            <ReactionBar
+                              reactions={reactionOverrides[post.id] ?? post.reactions ?? []}
+                              onToggle={(emoji) => handleReact(post.id, emoji)}
+                            />
+
                             <div className="mt-2 flex items-center gap-3">
-                              {QUICK_EMOJIS.map((emoji) => (
-                                <button
-                                  key={emoji}
-                                  onClick={() => handleReact(post.id, emoji)}
-                                  className="flex items-center gap-1 rounded-full border border-gray-200 px-2 py-0.5 text-xs text-gray-500 hover:border-brand-300 hover:text-brand-700"
-                                >
-                                  <span>{emoji}</span>
-                                  {reactionCounts[emoji] ? <span>{reactionCounts[emoji]}</span> : null}
-                                </button>
-                              ))}
                               <button
                                 onClick={() => setExpandedPostId(isExpanded ? null : post.id)}
                                 className="flex items-center gap-1 text-xs text-gray-400 hover:text-brand-600"
@@ -1278,21 +1294,29 @@ export default function CommonsPage() {
 
 function ReplyBox({ onSubmit }: { onSubmit: (body: string) => void }) {
   const [draft, setDraft] = useState('');
-  return (
-    <div className="flex gap-2">
-      <RichComposer
-        value={draft}
-        onChange={setDraft}
-        onSubmit={() => {
-          if (isBlankBody(draft)) return;
-          onSubmit(composerValue(draft));
-          setDraft('');
-        }}
-        placeholder="Add a comment..."
-        submitLabel="Send"
-        rows={2}
-      />
-    </div>
 
+  /*
+    No flex wrapper (CMN-20).
+
+    This was a `<div className="flex gap-2">` around a single child. The
+    composer's own root carries no width, and a flex item is `flex: 0 1 auto`,
+    so it collapsed to the intrinsic width of its toolbar — a comment box about
+    two hundred pixels wide at the foot of a full-width thread. The composer at
+    the bottom of the channel was never wrapped, which is why only this one
+    looked wrong.
+  */
+  return (
+    <RichComposer
+      value={draft}
+      onChange={setDraft}
+      onSubmit={() => {
+        if (isBlankBody(draft)) return;
+        onSubmit(composerValue(draft));
+        setDraft('');
+      }}
+      placeholder="Add a comment..."
+      submitLabel="Send"
+      rows={2}
+    />
   );
 }

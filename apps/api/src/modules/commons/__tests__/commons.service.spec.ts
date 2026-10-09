@@ -91,8 +91,8 @@ describe('CommonsService — tenant isolation (CMN-07)', () => {
     ['addComment', () => service.addComment(OTHER, 'post-1', 'u1', 'hello')],
     ['flagComment', () => service.flagComment(OTHER, 'comment-1')],
     ['editComment', () => service.editComment(OTHER, 'comment-1', 'u1', 'rewritten')],
-    ['addReaction', () => service.addReaction(OTHER, 'post-1', 'u1', '👍')],
-    ['removeReaction', () => service.removeReaction(OTHER, 'post-1', 'u1', '👍')],
+    // One toggle now, where there were an add and a delete (CMN-20).
+    ['togglePostReaction', () => service.togglePostReaction(OTHER, 'post-1', 'u1', '👍')],
     ['flagPost', () => service.flagPost(OTHER, 'post-1')],
     ['createProposal', () => service.createProposal(OTHER, 'channel-1', 'u1', { title: 't', body: 'b' } as never)],
     ['openProposal', () => service.openProposal(OTHER, 'proposal-1')],

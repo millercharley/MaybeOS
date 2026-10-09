@@ -2460,18 +2460,19 @@ class ApiClient {
         token,
       }),
 
-    addReaction: (orgId: string, postId: string, emoji: string, token: string) =>
-      this.request(`/orgs/${orgId}/posts/${postId}/reactions`, {
-        method: 'POST',
-        body: JSON.stringify({ emoji }),
-        token,
-      }),
-
-    removeReaction: (orgId: string, postId: string, emoji: string, token: string) =>
-      this.request(`/orgs/${orgId}/posts/${postId}/reactions/${encodeURIComponent(emoji)}`, {
-        method: 'DELETE',
-        token,
-      }),
+    /**
+     * React to a post, or take it back (CMN-20).
+     *
+     * A toggle answering with the new counts, like the one on a comment. It
+     * replaces an add-only call and a delete nothing used: between them there
+     * was no way to un-react, and no way to draw the result without re-reading
+     * the post — which is what made reacting reload the thread underneath you.
+     */
+    reactToPost: (orgId: string, postId: string, emoji: string, token: string) =>
+      this.request<{ postId: string; reactions: ReactionGroup[] }>(
+        `/orgs/${orgId}/posts/${postId}/reactions`,
+        { method: 'POST', body: JSON.stringify({ emoji }), token },
+      ),
 
     getProposal: (orgId: string, proposalId: string, token: string) =>
       this.request<Proposal>(`/orgs/${orgId}/proposals/${proposalId}`, { token }),
@@ -4771,12 +4772,6 @@ export interface OnboardingState {
   allDone: boolean;
 }
 
-export interface Reaction {
-  id: string;
-  emoji: string;
-  userId: string;
-}
-
 export interface Post {
   id: string;
   title?: string;
@@ -4785,7 +4780,15 @@ export interface Post {
   createdAt: string;
   isPinned?: boolean;
   comments?: Comment[];
-  reactions?: Reaction[];
+  /**
+   * Grouped, like a comment's (CMN-20).
+   *
+   * The API used to send a post's reactions as raw rows — one per person per
+   * emoji — so every screen counted them itself, and the list endpoint sent
+   * only a total, which is why the feed could show a number and not which
+   * emoji it was. They arrive counted now, saying which are the reader's own.
+   */
+  reactions?: ReactionGroup[];
   _count?: { comments: number; reactions: number };
 }
 

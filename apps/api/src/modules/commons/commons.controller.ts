@@ -229,8 +229,10 @@ export class CommonsController {
     @Param('channelId') channelId: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('perPage', new DefaultValuePipe(20), ParseIntPipe) perPage: number,
+    // Named so a post's reactions can say which are the reader's own (CMN-20).
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.commonsService.listPosts(orgId, channelId, page, perPage);
+    return this.commonsService.listPosts(orgId, channelId, page, perPage, user.userId);
   }
 
   @Get('posts/:postId')
@@ -282,24 +284,23 @@ export class CommonsController {
 
   // ─── Reactions ──────────────────────────────────────────────
 
+  /**
+   * React to a post, or take it back (CMN-20).
+   *
+   * A toggle answering with the new counts, like the one on a comment. It
+   * replaces an add-only route and a `DELETE` nothing ever called — between
+   * them there was no way to un-react, and no way for a caller to draw the
+   * result without re-reading the post.
+   */
   @Post('posts/:postId/reactions')
-  addReaction(
+  @ApiOperation({ summary: 'React to a post, or take the reaction back (CMN-20)' })
+  togglePostReaction(
     @Param('orgId') orgId: string,
     @Param('postId') postId: string,
     @CurrentUser() user: RequestUser,
     @Body('emoji') emoji: string,
   ) {
-    return this.commonsService.addReaction(orgId, postId, user.userId, emoji);
-  }
-
-  @Delete('posts/:postId/reactions/:emoji')
-  removeReaction(
-    @Param('orgId') orgId: string,
-    @Param('postId') postId: string,
-    @Param('emoji') emoji: string,
-    @CurrentUser() user: RequestUser,
-  ) {
-    return this.commonsService.removeReaction(orgId, postId, user.userId, emoji);
+    return this.commonsService.togglePostReaction(orgId, postId, user.userId, emoji);
   }
 
   // ─── Taking things down (CMN-18) ────────────────────────────
