@@ -16,6 +16,7 @@ import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 import { HostEarnings } from '@/components/events/host-earnings';
 import { PageHeader } from '@/components/layout/page-header';
 import { ShareEventDialog } from '@/components/events/share-event-dialog';
+import { SHARE_LABEL, shareability, shouldOfferAfterPublish } from '@/lib/event-sharing';
 import { Panel } from '@/components/layout/panel';
 
 /**
@@ -37,6 +38,15 @@ export default function MyEventsPage() {
   // be worse than not quoting one.
   const [org, setOrg] = useState<Org | null>(null);
   const [loading, setLoading] = useState(true);
+  /**
+   * An event just published, offered to Instagram and Facebook (SOC-02).
+   *
+   * The moment somebody publishes a public event is the moment they want it
+   * seen, and until now the product said nothing about social at exactly
+   * that point. Public events only — raising this on a members-only event
+   * would open a dialog whose only message is that it cannot be shared.
+   */
+  const [justPublished, setJustPublished] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   /**
    * The event being edited (EVT-22).
@@ -126,6 +136,7 @@ export default function MyEventsPage() {
       // because going live is a distinct act from correcting a date.
       if (values.publish && !editing.isPublished) {
         await api.events.publish(orgId, editing.id, token);
+        offerToShare({ ...editing, ...toUpdatePayload(values), isPublished: true });
       }
 
       setEditing(null);
@@ -134,6 +145,13 @@ export default function MyEventsPage() {
       setError(err instanceof Error ? err.message : 'Could not save those changes');
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** Raise the dialog only for an event that could actually go out. */
+  function offerToShare(event: { id: string } & Parameters<typeof shouldOfferAfterPublish>[0]) {
+    if (shouldOfferAfterPublish(event, Boolean(org?.socialSharingEnabled))) {
+      setJustPublished(event.id);
     }
   }
 
@@ -155,6 +173,8 @@ export default function MyEventsPage() {
     setBusy(true);
     try {
       await api.events.publish(orgId, eventId, token);
+      const published = events.find((e) => e.id === eventId);
+      if (published) offerToShare({ ...published, isPublished: true });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not publish that');
@@ -190,6 +210,17 @@ export default function MyEventsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Offered the moment it goes live (SOC-02), not on a page the host
+          has to know to go back to. */}
+      {justPublished && orgId && token && (
+        <ShareEventDialog
+          orgId={orgId}
+          orgSlug={orgSlug}
+          token={token}
+          eventId={justPublished}
+          onClose={() => setJustPublished(null)}
+        />
+      )}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <PageHeader
@@ -370,6 +401,7 @@ function EventRow({
   const start = new Date(event.startTime);
   const canceled = Boolean((event as { canceledAt?: string | null }).canceledAt);
   const ended = Boolean(event.endTime && new Date(event.endTime) <= new Date());
+  const share = shareability(event, sharingOn);
 
   return (
     <div className="card space-y-4">
@@ -450,16 +482,16 @@ function EventRow({
               Edit
             </button>
           )}
-          {/* SOC-01. Public, published and upcoming only; the API checks
-              the rest and the dialog says why if it refuses. */}
-          {sharingOn && event.isPublished && event.visibility === 'PUBLIC' && !ended && (
+          {/* SOC-01, named and explained in SOC-02. The rule is shared with
+              every other place this appears; the API checks it again. */}
+          {share.state === 'ready' && (
             <button
               type="button"
               onClick={() => setSharing(true)}
               className="font-medium text-brand-600 hover:underline"
               disabled={busy}
             >
-              Share
+              {SHARE_LABEL}
             </button>
           )}
           {confirming ? (
@@ -490,6 +522,13 @@ function EventRow({
             </button>
           )}
         </div>
+      )}
+
+      {/* Why there is no Share here (SOC-02). Hiding it taught hosts the
+          feature did not exist; 753 of the co-op's 777 events are
+          members-only, so this is the case they actually meet. */}
+      {share.state === 'blocked' && (
+        <p className="text-xs text-gray-500">{share.reason}</p>
       )}
     </div>
 

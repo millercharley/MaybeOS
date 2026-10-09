@@ -8,7 +8,7 @@ import { useAuthStore } from '@/lib/auth-store';
 import { money } from '@/lib/fees';
 // Aliased: the data shape and the component that renders it would
 // otherwise share a name.
-import { api, DoorList as DoorListData, Event, EventWaitlist, TicketSale } from '@/lib/api';
+import { api, DoorList as DoorListData, Event, EventWaitlist, Org, TicketSale } from '@/lib/api';
 import { MemberName } from '@/components/member/member-name';
 import { EventOverview } from '@/components/events/event-overview';
 
@@ -87,18 +87,30 @@ export function DoorList({
   const [waitlist, setWaitlist] = useState<EventWaitlist | null>(null);
   const [waitlistError, setWaitlistError] = useState('');
   const [promoting, setPromoting] = useState<string | null>(null);
+  const [org, setOrg] = useState<Org | null>(null);
   const [refunding, setRefunding] = useState<string | null>(null);
   const [refundError, setRefundError] = useState('');
 
   const load = useCallback(async () => {
     if (!token || !orgId) return;
     try {
-      const [attendees, detail] = await Promise.all([
+      const [attendees, detail, theOrg] = await Promise.all([
         api.events.attendees(orgId, eventId, token),
         api.events.get(orgId, eventId, token),
+        /*
+          Whether this co-op has connected Instagram and Facebook (SOC-02).
+
+          Alongside the other two rather than after them, so it costs no
+          extra round trip — but caught, because `Promise.all` rejects as a
+          whole. This decides whether one button is drawn; it must not be
+          able to take the door list down with it, which is the same reason
+          the tickets below are fetched apart.
+        */
+        api.orgs.get(orgId, token).catch(() => null),
       ]);
       setList(attendees);
       setEvent(detail);
+      setOrg(theOrg);
 
       /*
         Who bought a ticket, for whoever runs the event (EVT-33).
@@ -296,6 +308,7 @@ export function DoorList({
             (EVT-35).
           */
           onEdit={() => router.push(`${backHref}?edit=${event.id}`)}
+          sharingOn={Boolean(org?.socialSharingEnabled)}
           canRemove={showTickets}
           backHref={backHref}
         />

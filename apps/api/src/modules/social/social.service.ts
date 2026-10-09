@@ -196,7 +196,28 @@ export class SocialService {
 
   /** Forget the Page and its token. Posts already made stay where they are. */
   async disconnect(orgId: string) {
-    await this.prisma.orgSocialAccount.deleteMany({ where: { orgId } });
+    /*
+      Turning sharing off with it (SOC-02).
+
+      Disconnecting removed the account and left `socialSharingEnabled`
+      true — a flag that then meant nothing, because there was no Page to
+      post to. The settings screen hid the contradiction by only offering
+      the toggle once connected, and the one Share button in the product was
+      somewhere most people never looked.
+
+      SOC-02 put that button on every event screen, which would have turned
+      a dormant inconsistency into a button on every public event that opens
+      a dialog saying there is no Page. Reconnecting is a deliberate act and
+      can turn it back on.
+    */
+    await this.prisma.$transaction([
+      this.prisma.orgSocialAccount.deleteMany({ where: { orgId } }),
+      this.prisma.organization.update({
+        where: { id: orgId },
+        data: { socialSharingEnabled: false },
+      }),
+    ]);
+
     return this.status(orgId);
   }
 

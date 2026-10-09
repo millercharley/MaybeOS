@@ -11,6 +11,7 @@ import {
   MapPin,
   MessageCircle,
   Pencil,
+  Share2,
   Ticket,
   Trash2,
   Users,
@@ -23,6 +24,8 @@ import { CloneEvent } from '@/components/events/clone-event';
 import { RepeatEvent } from '@/components/events/repeat-event';
 import { money } from '@/lib/fees';
 import { MemberName } from '@/components/member/member-name';
+import { ShareEventDialog } from '@/components/events/share-event-dialog';
+import { SHARE_LABEL, shareability } from '@/lib/event-sharing';
 
 /**
  * Everything an organiser needs to know about one event (EVT-31).
@@ -46,6 +49,7 @@ export function EventOverview({
   onChanged,
   onEdit,
   canRemove = false,
+  sharingOn = false,
   backHref,
 }: {
   event: Event;
@@ -67,6 +71,13 @@ export function EventOverview({
    * look at it had to go back to act on it.
    */
   canRemove?: boolean;
+  /**
+   * Whether the co-op has connected Instagram and Facebook (SOC-02).
+   *
+   * This screen is both event detail pages — the organisers' and the
+   * host's — so one button here is the two that were missing.
+   */
+  sharingOn?: boolean;
   /** Where to go once the event no longer exists. */
   backHref?: string;
 }) {
@@ -94,6 +105,8 @@ export function EventOverview({
   }
 
   const token = useAuthStore((s) => s.token);
+  const [sharingNow, setSharing] = useState(false);
+  const share = shareability(event, sharingOn);
   const [changingHost, setChangingHost] = useState(false);
   const [addingCoHost, setAddingCoHost] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -406,8 +419,21 @@ export function EventOverview({
         </div>
       )}
 
-      {(onEdit || canRemove) && (
+      {(onEdit || canRemove || share.state !== 'hidden') && (
         <div className="flex flex-wrap items-center gap-4 border-t border-gray-100 pt-4">
+          {/* Posting it to Instagram and Facebook (SOC-02). First, because
+              on an event that qualifies it is the thing most likely to be
+              wanted — and because it was on none of the detail pages. */}
+          {share.state === 'ready' && orgId && token && (
+            <button
+              type="button"
+              onClick={() => setSharing(true)}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-700"
+            >
+              <Share2 className="h-4 w-4" /> {SHARE_LABEL}
+            </button>
+          )}
+
           {onEdit && (
             <button
               type="button"
@@ -447,6 +473,21 @@ export function EventOverview({
             </>
           )}
         </div>
+      )}
+
+      {/* Why it cannot go out (SOC-02), where there is room to say it. */}
+      {share.state === 'blocked' && (
+        <p className="border-t border-gray-100 pt-4 text-sm text-gray-500">{share.reason}</p>
+      )}
+
+      {sharingNow && orgId && token && (
+        <ShareEventDialog
+          orgId={orgId}
+          orgSlug={orgSlug}
+          token={token}
+          eventId={event.id}
+          onClose={() => setSharing(false)}
+        />
       )}
 
       {confirmDelete && orgId && (

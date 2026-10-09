@@ -77,6 +77,7 @@ describe('SocialService', () => {
       event: { findFirst: jest.fn(() => Promise.resolve(event)) },
       organization: { findUnique: jest.fn(() => Promise.resolve(org)), update: jest.fn() },
       orgSocialAccount: { findUnique: jest.fn(() => Promise.resolve(account)), upsert: jest.fn(), deleteMany: jest.fn() },
+      $transaction: jest.fn((ops: unknown[]) => Promise.resolve(ops)),
       userOrg: {
         findFirst: jest.fn(({ where }) => Promise.resolve(memberships[where.userId] ?? null)),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -266,6 +267,66 @@ describe('SocialService', () => {
         { id: '222', name: 'Page 222', igUsername: 'mif' },
       ]);
       expect(JSON.stringify(status)).not.toContain('token-');
+    });
+  });
+});
+
+/**
+ * Disconnecting means disconnected (SOC-02).
+ *
+ * It removed the account and left `socialSharingEnabled` true. Nothing
+ * showed, because the settings screen only offers that toggle while a Page
+ * is connected and the product's single Share button was somewhere most
+ * people never looked. SOC-02 put that button on every event screen, which
+ * would have made a stale flag into a button on every public event that
+ * opens a dialog saying there is no Page.
+ */
+describe('disconnecting a co-op from Meta', () => {
+  const ORG_ID = 'org-9';
+
+  const build = () => {
+    const prisma = {
+      orgSocialAccount: {
+        deleteMany: jest.fn(),
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
+      organization: {
+        update: jest.fn(),
+        findUnique: jest.fn().mockResolvedValue({
+          socialSharingEnabled: false,
+          socialShareMembersByDefault: true,
+        }),
+      },
+      $transaction: jest.fn((ops: unknown[]) => Promise.resolve(ops)),
+    };
+    const service = new SocialService(
+      prisma as never,
+      { isConfigured: false } as never,
+      { } as never,
+      new ConfigService({ JWT_SECRET: JWT }) as never,
+    );
+    return { service, prisma };
+  };
+
+  it('turns sharing off as well as removing the account', async () => {
+    const { service, prisma } = build();
+
+    await service.disconnect(ORG_ID);
+
+    expect(prisma.orgSocialAccount.deleteMany).toHaveBeenCalledWith({ where: { orgId: ORG_ID } });
+    expect(prisma.organization.update).toHaveBeenCalledWith({
+      where: { id: ORG_ID },
+      data: { socialSharingEnabled: false },
+    });
+  });
+
+  it('does both or neither', () => {
+    // Removing the Page and leaving the flag is the state this fixes; doing
+    // it in two statements is how it would come back.
+    const { service, prisma } = build();
+
+    return service.disconnect(ORG_ID).then(() => {
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     });
   });
 });
