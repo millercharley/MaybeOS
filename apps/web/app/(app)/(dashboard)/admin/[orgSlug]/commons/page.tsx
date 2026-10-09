@@ -20,6 +20,7 @@ import { RichComposer, composerValue } from '@/components/composer/rich-composer
 import { EmojiPicker } from '@/components/composer/emoji-picker';
 import { PageHeader } from '@/components/layout/page-header';
 import { MemberName } from '@/components/member/member-name';
+import { Avatar } from '@/components/member/avatar';
 import { ReactionBar } from '@/components/reactions/reaction-bar';
 import type { ReactionGroup } from '@/lib/reactions';
 import { Modal } from '@/components/ui/modal';
@@ -86,9 +87,7 @@ function CommentThread({
   return (
     <div style={{ marginLeft: depth > 0 ? 24 : 0 }} className="mt-3">
       <div className="flex gap-2">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-medium text-gray-600">
-          {(comment.author.name ?? '?').charAt(0).toUpperCase()}
-        </div>
+        <Avatar name={comment.author?.name} avatarUrl={comment.author?.avatarUrl} />
         <div className="min-w-0 flex-1">
           <div className="rounded-lg bg-gray-50 px-3 py-2">
             <div className="flex items-center gap-2">
@@ -1111,15 +1110,12 @@ export default function CommonsPage() {
                 <div ref={scroller} className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
                   {stream.map((post) => {
                     const authorName = post.author.name ?? 'Unknown';
-                    const initial = authorName.charAt(0).toUpperCase();
                     const isExpanded = expandedPostId === post.id;
 
                     return (
                       <div key={post.id} className="card">
                         <div className="flex gap-3">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-100">
-                            <span className="text-sm font-medium text-brand-700">{initial}</span>
-                          </div>
+                          <Avatar name={authorName} avatarUrl={post.author?.avatarUrl} size="lg" />
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-semibold text-gray-900">{authorName}</span>

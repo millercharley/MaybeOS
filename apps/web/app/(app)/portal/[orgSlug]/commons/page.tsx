@@ -23,6 +23,7 @@ import { AttachmentList } from '@/components/composer/attachment-list';
 import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 import { PageHeader } from '@/components/layout/page-header';
 import { MemberName } from '@/components/member/member-name';
+import { Avatar } from '@/components/member/avatar';
 import { ReactionBar } from '@/components/reactions/reaction-bar';
 import { useUnread } from '@/contexts/unread-context';
 
@@ -909,9 +910,7 @@ function PostCard({
   return (
     <div id={`post-${post.id}`} className="card scroll-mt-24 p-4">
       <div className="flex items-center gap-2">
-        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-brand-100 text-xs font-medium text-brand-700">
-          {post.author?.name?.charAt(0) || '?'}
-        </div>
+        <Avatar name={post.author?.name} avatarUrl={post.author?.avatarUrl} />
         <MemberName
           userId={post.author?.id}
           name={post.author?.name || 'Member'}
