@@ -13,6 +13,7 @@ import { CreateCollectionDto, UpdateCollectionDto } from './dto/create-collectio
 import { CreatePageDto, UpdatePageDto } from './dto/page.dto';
 import { VoteChoice } from '@prisma/client';
 import { UnreadCounts } from './dto/unread.dto';
+import { readWindows } from './read-windows';
 import { ThreadsService } from './threads.service';
 import { StorageService } from '../storage/storage.service';
 import { AuditService } from '../platform/audit.service';
@@ -1311,30 +1312,44 @@ export class CommonsService {
     */
     const joined = membership?.memberSince ?? new Date();
 
-    const since = (channelId: string) => readAt.get(channelId) ?? joined;
+    /*
+      Two queries, whatever the number of channels (CMN-25).
+
+      This was a `count` per channel for posts and another per channel for
+      comments — every one of them in flight at once, from every signed-in
+      page, on a sixty-second timer. Four channels made that eight round
+      trips for two numbers, and the connection pool is what gives out first.
+
+      Channels sharing a cutoff collapse into one clause, and almost every
+      member has read nothing, so in practice this is a single `IN (...)`
+      against the day they joined.
+    */
+    const windows = readWindows(
+      channels.map((c) => ({ id: c.id, after: readAt.get(c.id) ?? joined })),
+    );
 
     const [posts, comments] = await Promise.all([
-      Promise.all(
-        channels.map((c) =>
-          this.prisma.post.count({
-            where: { channelId: c.id, authorId: { not: userId }, createdAt: { gt: since(c.id) } },
-          }),
-        ),
-      ),
-      Promise.all(
-        channels.map((c) =>
-          this.prisma.comment.count({
-            where: {
-              post: { channelId: c.id },
-              authorId: { not: userId },
-              createdAt: { gt: since(c.id) },
-            },
-          }),
-        ),
-      ),
+      this.prisma.post.count({
+        where: {
+          authorId: { not: userId },
+          OR: windows.map((w) => ({
+            channelId: { in: w.ids },
+            ...(w.after ? { createdAt: { gt: w.after } } : {}),
+          })),
+        },
+      }),
+      this.prisma.comment.count({
+        where: {
+          authorId: { not: userId },
+          OR: windows.map((w) => ({
+            post: { channelId: { in: w.ids } },
+            ...(w.after ? { createdAt: { gt: w.after } } : {}),
+          })),
+        },
+      }),
     ]);
 
-    return [...posts, ...comments].reduce((sum, n) => sum + n, 0);
+    return posts + comments;
   }
 
   /**
