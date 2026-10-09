@@ -99,13 +99,49 @@ export function CalendarImport({ org }: { org: Org }) {
     }
   }
 
+  /**
+   * Look before writing, in as many requests as it takes (CAL-14).
+   *
+   * This was a single request, on the reasoning that a preview writes
+   * nothing and so has nothing to ration. But reading is the slow half: the
+   * preview pulled every page of all nine calendars at once and returned
+   * 504, which made the safe button the one that failed.
+   *
+   * It pages exactly like the import now, and shows the running count while
+   * it goes rather than nothing until the end.
+   */
   async function look() {
     if (!token || busy) return;
     setBusy(true);
     setError('');
     setResult(null);
+    setPreview(null);
+
+    let total: CalendarImportSummary | null = null;
+    // The same shape `stoppedAt` holds; taken from the response so the two
+    // cannot drift apart.
+    let resumeFrom: NonNullable<CalendarImportSummary['next']> | null = null;
+
     try {
-      setPreview(await api.calendar.runImport(org.id, { dryRun: true, monthsBack }, token));
+      // Bounded, as the import is: a server answering with the same cursor
+      // every time would otherwise have the browser ask forever.
+      for (let request = 0; request < MAX_REQUESTS; request++) {
+        const chunk = await api.calendar.runImport(
+          org.id,
+          { dryRun: true, monthsBack, ...(resumeFrom && { resumeFrom }) },
+          token,
+        );
+
+        total = mergeSummaries(total, chunk);
+        setPreview(total);
+
+        if (!chunk.next) return;
+        resumeFrom = chunk.next;
+      }
+
+      setError(
+        'That is a lot of calendar — the count below is as far as it got. Importing works the same way and carries on where it stopped.',
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'That did not work');
     } finally {

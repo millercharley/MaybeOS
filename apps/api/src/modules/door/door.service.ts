@@ -56,6 +56,16 @@ const BATCH = 100;
  */
 const SYNC_DEADLINE_MS = 7_000;
 
+/**
+ * What to assume the first batch will cost, before one has been timed.
+ *
+ * Apps Script is the slow part and its speed is not ours to control; three
+ * seconds for a hundred rows is the pessimistic end of what has been seen.
+ * Guessing high costs a batch that would have fit, and the admin presses the
+ * button again. Guessing low costs the whole answer.
+ */
+const FIRST_BATCH_ESTIMATE_MS = 3_000;
+
 /** The sheet script caps a name at this length; matching it keeps the comparison stable. */
 const NAME_LIMIT = 200;
 
@@ -163,8 +173,9 @@ export class DoorService {
   async syncSheet(
     org: { id: string; doorScriptUrl: string },
     secret: string,
-    { full = false }: { full?: boolean } = {},
+    options: { full?: boolean; stopBy?: number } = {},
   ): Promise<{ synced: number; remaining: number }> {
+    const full = options.full ?? false;
     const [memberships, entries] = await Promise.all([
       this.prisma.userOrg.findMany({
         where: { orgId: org.id, doorPin: { not: null } },
@@ -270,16 +281,49 @@ export class DoorService {
     });
 
     let sent = 0;
-    const stopBy = Date.now() + SYNC_DEADLINE_MS;
+    /*
+      The clock belongs to the request, not to this loop (DOR-05).
+
+      It used to start here, which left everything above it — issuing codes,
+      reading the roster, reading the sheet — outside the budget. A sync that
+      had already spent four seconds getting this far then gave itself a
+      further seven.
+    */
+    const stopBy = options.stopBy ?? Date.now() + SYNC_DEADLINE_MS;
+
+    /*
+      How long the slowest batch has taken, and why it is tracked.
+
+      The check was `Date.now() > stopBy` *before* each batch, which asks
+      whether there is any time left rather than whether there is enough. A
+      batch starting at 6.9s with one second to spare still has to post a
+      hundred rows to Apps Script and wait — several seconds on a bad day —
+      so the function passed ten and the admin got a 504 for work that had
+      largely succeeded.
+
+      Assume the next batch is as slow as the worst so far. The first one is
+      the only guess, and it is deliberately pessimistic: better to do one
+      batch and report honestly than to start a second and lose the answer.
+    */
+    let slowestBatch = FIRST_BATCH_ESTIMATE_MS;
 
     for (let i = 0; i < changed.length; i += BATCH) {
-      // Between batches. Whatever is left is still `changed` next time: the
+      // Between batches, never inside one: a batch already sent has changed
+      // the sheet, and abandoning it before recording that would send it
+      // again. Whatever is left is still `changed` next time, because the
       // rows this run wrote now match the sheet and drop out of the list.
-      if (Date.now() > stopBy) break;
+      if (Date.now() + slowestBatch > stopBy) break;
 
+      const startedBatch = Date.now();
       const batch = changed.slice(i, i + BATCH);
       const members = batch.map(({ email, code, name, revoked }) => ({ email, code, name, revoked }));
-      const result = await this.script.upsert(org.doorScriptUrl, secret, members);
+      const result = await this.script.upsert(
+        org.doorScriptUrl,
+        secret,
+        members,
+        // Never wait past the moment this request has to be finished.
+        Math.max(0, stopBy - Date.now()),
+      );
       if (result.rejected > 0) {
         this.logger.warn(`Door sheet refused ${result.rejected} row(s) for org ${org.id}`);
       }
@@ -303,6 +347,10 @@ export class DoorService {
       );
       for (const row of batch) outOfSync.delete(row.email);
       sent += batch.length;
+
+      // Measured, not assumed, from here on: the estimate above only has to
+      // carry the first one.
+      slowestBatch = Math.max(slowestBatch, Date.now() - startedBatch);
     }
 
     // Everyone whose row now matches the sheet counts as synced, which is
@@ -376,6 +424,17 @@ export class DoorService {
     orgId: string,
     options: { full?: boolean } = {},
   ): Promise<{ issued: number; synced: number; emailed: number; remaining: number }> {
+    /*
+      The whole request's clock, started before any of its work (DOR-05).
+
+      Issuing codes and reading both the roster and the sheet all happen
+      below and all cost time, and none of it used to count — the budget
+      began at the write loop. Passing a moment rather than a duration is
+      what makes that possible: everything downstream measures against the
+      same finish line.
+    */
+    const stopBy = Date.now() + SYNC_DEADLINE_MS;
+
     const org = await this.loadOrg(orgId);
     const secret = this.secretOf(org);
 
@@ -389,7 +448,7 @@ export class DoorService {
     const sheet = await this.syncSheet(
       { id: org.id, doorScriptUrl: org.doorScriptUrl },
       secret,
-      options,
+      { ...options, stopBy },
     );
 
     /*

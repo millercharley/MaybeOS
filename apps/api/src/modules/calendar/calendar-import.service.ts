@@ -6,7 +6,7 @@ import { CalendarService } from './calendar.service';
 import { hostFields, hostKey, hostLabel, personFor } from './past-host';
 import { guestFrom } from './booking-guest';
 import { slugCandidates } from './event-slug';
-import { deadline, nextCursor, startOf, type ImportCursor } from './import-cursor';
+import { budget, nextCursor, startOf, type ImportCursor } from './import-cursor';
 import { SYNC_MONTHS_BACK, afterChunk, afterFailure, nextToSync } from './sync-schedule';
 import { ImportedEntry, cancelledId, importWindow, toEntry } from './calendar-import';
 
@@ -331,8 +331,21 @@ export class CalendarImportService {
     ];
 
     const from0 = startOf(options.resumeFrom);
-    // A dry run writes nothing and finishes; only a real import is rationed.
-    const outOfTime = dryRun ? () => false : deadline();
+    /*
+      Both are rationed now (CAL-14).
+
+      This read "a dry run writes nothing and finishes; only a real import is
+      rationed" — and the first half is true while the second does not follow.
+      A preview writes nothing, but it *reads* everything: every page of every
+      calendar, in one request, with the page token thrown away. Nine
+      calendars and 1,365 entries in one of them is not a ten-second job, so
+      the button an admin presses first was the one that returned 504.
+
+      Reading is the expensive half either way, so the preview now takes one
+      page per request and reports a cursor exactly as the real run does.
+    */
+    const clock = budget();
+    const outOfTime = clock.spent;
     let next: ImportCursor | null = null;
 
     for (let position = from0.calendar; position < sequence.length; position++) {
@@ -341,9 +354,16 @@ export class CalendarImportService {
       const startAt = resuming ? from0.entry : 0;
       const fromPage = resuming ? from0.page : null;
 
-      // Out of time before this calendar even starts: resume here next time
-      // rather than reading from Google for nothing.
-      if (outOfTime()) {
+      /*
+        No room for another read: resume here next time rather than starting
+        one that cannot finish.
+
+        This asked `outOfTime()` — whether any time was left at all. A
+        calendar taking five seconds against a six-second budget passed at
+        zero and again at five, and the request died at ten having written
+        down nowhere to resume from.
+      */
+      if (!clock.roomForRead()) {
         next = { calendar: position, page: fromPage, entry: startAt };
         break;
       }
@@ -352,9 +372,16 @@ export class CalendarImportService {
       // A preview reads the lot to count it; a real run takes one page
       // (CAL-06), because reading every page on every chunk is what spent
       // forty requests writing 274 rows.
-      const read = dryRun
-        ? { ...(await this.read(source, org.eventsCalendarId, from, to, org.timezone)), nextPageToken: null }
-        : await this.readPage(source, org.eventsCalendarId, from, to, org.timezone, fromPage);
+      const startedRead = Date.now();
+      const read = await this.readPage(
+        source,
+        org.eventsCalendarId,
+        from,
+        to,
+        org.timezone,
+        fromPage,
+      );
+      clock.record(startedRead);
       const { entries, skipped } = read;
 
       const slice = entries.slice(startAt);
@@ -363,15 +390,18 @@ export class CalendarImportService {
       // Deletions are the page's news as much as its entries are (CAL-12).
       const cancelled = dryRun ? 0 : await this.cancelEvents(org.id, read.cancelled);
 
-      next = dryRun
-        ? null
-        : nextCursor(
-            position,
-            sequence.length,
-            { token: fromPage, nextToken: read.nextPageToken, length: entries.length },
-            startAt,
-            written + failures.length,
-          );
+      /*
+        A preview has handled the whole slice the moment it has read it —
+        there is no per-entry work to stop halfway through, so it advances a
+        page at a time and the deadline is checked between pages.
+      */
+      next = nextCursor(
+        position,
+        sequence.length,
+        { token: fromPage, nextToken: read.nextPageToken, length: entries.length },
+        startAt,
+        dryRun ? slice.length : written + failures.length,
+      );
 
       summary.calendars.push({
         id: org.eventsCalendarId,
@@ -392,7 +422,7 @@ export class CalendarImportService {
       });
       summary.failed = (summary.failed ?? 0) + failures.length;
       summary.skipped += skipped;
-      summary.events += dryRun ? entries.length : written;
+      summary.events += dryRun ? slice.length : written;
 
       if (next && next.calendar === position) break;
       continue;
@@ -417,19 +447,16 @@ export class CalendarImportService {
       }
 
       try {
-        const read = dryRun
-          ? {
-              ...(await this.read(source, room.googleCalendarId as string, from, to, org.timezone)),
-              nextPageToken: null,
-            }
-          : await this.readPage(
-              source,
-              room.googleCalendarId as string,
-              from,
-              to,
-              org.timezone,
-              fromPage,
-            );
+        const startedRead = Date.now();
+        const read = await this.readPage(
+          source,
+          room.googleCalendarId as string,
+          from,
+          to,
+          org.timezone,
+          fromPage,
+        );
+        clock.record(startedRead);
         const { entries, skipped } = read;
 
         const slice = entries.slice(startAt);
@@ -445,15 +472,13 @@ export class CalendarImportService {
         */
         const cancelled = dryRun ? 0 : await this.releaseBookings(room.id, read.cancelled);
 
-        next = dryRun
-          ? null
-          : nextCursor(
-              position,
-              sequence.length,
-              { token: fromPage, nextToken: read.nextPageToken, length: entries.length },
-              startAt,
-              written,
-            );
+        next = nextCursor(
+          position,
+          sequence.length,
+          { token: fromPage, nextToken: read.nextPageToken, length: entries.length },
+          startAt,
+          dryRun ? slice.length : written,
+        );
 
         summary.calendars.push({
           id: room.googleCalendarId as string,
@@ -466,7 +491,7 @@ export class CalendarImportService {
             note: `${cancelled} ${cancelled === 1 ? 'booking was' : 'bookings were'} released — deleted in Google.`,
           }),
         });
-        summary.bookings += dryRun ? entries.length : written;
+        summary.bookings += dryRun ? slice.length : written;
         summary.skipped += skipped;
 
         if (next && next.calendar === position) break;
@@ -602,55 +627,6 @@ export class CalendarImportService {
     return { entries, cancelled, skipped, nextPageToken: data.nextPageToken ?? null };
   }
 
-  /** Every entry in the window, following Google's paging. For a preview. */
-  private async read(
-    source: { id: string; googleTokens: unknown },
-    calendarId: string,
-    from: Date,
-    to: Date,
-    timeZone: string,
-  ): Promise<{ entries: ImportedEntry[]; cancelled: string[]; skipped: number }> {
-    const client = await this.calendar.clientFor(source as never);
-    const entries: ImportedEntry[] = [];
-    const cancelled: string[] = [];
-    // Cancelled rows, and ones Google returns with no usable start. Counted
-    // rather than quietly dropped: "nothing was skipped" and "I never
-    // counted" look identical in a summary, and only one of them is true.
-    let skipped = 0;
-    let pageToken: string | undefined;
-
-    do {
-      const { data }: { data: calendar_v3.Schema$Events } = await client.events.list({
-        calendarId,
-        timeMin: from.toISOString(),
-        timeMax: to.toISOString(),
-        // Recurring entries arrive as their individual occurrences, which is
-        // what a co-op means by "every Tuesday" — one row per Tuesday.
-        singleEvents: true,
-        orderBy: 'startTime',
-        maxResults: PAGE,
-        // See `readPage`: deleted rows are omitted unless asked for (CAL-12).
-        showDeleted: true,
-        pageToken,
-      });
-
-      for (const raw of data.items ?? []) {
-        const gone = cancelledId(raw);
-        if (gone) {
-          cancelled.push(gone);
-          continue;
-        }
-
-        const entry = toEntry(raw, timeZone);
-        if (entry && !entry.cancelled) entries.push({ ...entry, hostPerson: personFor(entry, calendarId) });
-        else skipped += 1;
-      }
-
-      pageToken = data.nextPageToken ?? undefined;
-    } while (pageToken);
-
-    return { entries, cancelled, skipped };
-  }
 
   /**
    * Whoever organised each of these, where MaybeOS knows them (CAL-05).

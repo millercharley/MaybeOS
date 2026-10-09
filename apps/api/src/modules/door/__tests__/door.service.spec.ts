@@ -213,6 +213,110 @@ describe('DoorService', () => {
     });
   });
 
+  /**
+   * Finishing inside the ten seconds Netlify allows (DOR-05).
+   *
+   * `/door/sync` returned 504. Three things stacked up: the budget started
+   * at the write loop rather than at the request, the check before each
+   * batch asked whether any time was left rather than enough, and the call
+   * to Apps Script was allowed sixty seconds inside a ten-second function.
+   *
+   * Nothing here sleeps. Time is supplied, so a slow sheet is a number.
+   */
+  describe('finishing in time', () => {
+    /** A sheet whose every write takes `ms`, on a clock we control. */
+    const slowSheet = (ms: number) => {
+      let clock = 1_000_000;
+      jest.spyOn(Date, 'now').mockImplementation(() => clock);
+      script.upsert.mockImplementation(async () => {
+        clock += ms;
+        return { added: 0, updated: 0, unchanged: 0, rejected: 0 };
+      });
+      return {
+        advance: (by: number) => {
+          clock += by;
+        },
+        elapsed: () => clock - 1_000_000,
+      };
+    };
+
+    const roster = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({
+        id: `m${i}`,
+        role: 'MEMBER',
+        subscriptionStatus: 'ACTIVE',
+        doorPin: 'ABCDE',
+        doorPinSyncedAt: null,
+        user: { email: `m${i}@example.com`, name: `Member ${i}` },
+      }));
+
+    afterEach(() => jest.restoreAllMocks());
+
+    it('stops before a batch it has no time to finish', async () => {
+      /*
+        The bug exactly. Four seconds a batch, seven to spend: the old check
+        ran three of them — at 0s, 4s and 8s, each passing because *some*
+        time remained — and the function was killed at twelve.
+      */
+      const clock = slowSheet(4_000);
+      prisma.userOrg.findMany.mockResolvedValue(roster(500));
+
+      const done = await service.syncOrg(ORG, { full: true });
+
+      expect(clock.elapsed()).toBeLessThanOrEqual(10_000);
+      expect(script.upsert).toHaveBeenCalledTimes(1);
+      // And it says so, rather than reporting a finished sheet.
+      expect(done.remaining).toBeGreaterThan(0);
+    });
+
+    it('keeps going while the sheet is quick', async () => {
+      // The budget is not a batch limit. A fast sheet does the lot.
+      slowSheet(50);
+      prisma.userOrg.findMany.mockResolvedValue(roster(500));
+
+      const done = await service.syncOrg(ORG, { full: true });
+
+      expect(script.upsert).toHaveBeenCalledTimes(5);
+      expect(done.remaining).toBe(0);
+    });
+
+    it('counts the time spent before the first batch', async () => {
+      /*
+        The clock used to start at the write loop, so reading the roster and
+        the sheet cost nothing against it. Six seconds gone before the first
+        batch left a budget that still believed it had seven.
+      */
+      const clock = slowSheet(2_000);
+      prisma.userOrg.findMany.mockResolvedValue(roster(500));
+      // Six seconds reading the sheet, before the loop is reached at all.
+      prisma.doorSheetEntry.findMany.mockImplementation(async () => {
+        clock.advance(6_000);
+        return [];
+      });
+
+      await service.syncOrg(ORG, { full: true });
+
+      // Nothing started: 6s gone, 7s allowed, and a batch costs more than
+      // the second that is left. The old clock began here and gave itself
+      // the full seven.
+      expect(script.upsert).not.toHaveBeenCalled();
+      expect(clock.elapsed()).toBeLessThanOrEqual(10_000);
+    });
+
+    it('never lets a single call outlast the request', async () => {
+      // Sixty seconds inside a ten-second function is how one slow sheet
+      // became a 504 on its own.
+      slowSheet(50);
+      prisma.userOrg.findMany.mockResolvedValue(roster(10));
+
+      await service.syncOrg(ORG, { full: true });
+
+      const [, , , timeoutMs] = script.upsert.mock.calls[0];
+      expect(timeoutMs).toBeGreaterThan(0);
+      expect(timeoutMs).toBeLessThanOrEqual(7_000);
+    });
+  });
+
   describe('updating the sheet', () => {
     const sync = (opts?: { full?: boolean }) =>
       service.syncSheet({ id: ORG, doorScriptUrl: URL }, 'the-secret', opts);
@@ -221,9 +325,15 @@ describe('DoorService', () => {
       prisma.userOrg.findMany.mockResolvedValue([member()]);
 
       expect(await sync()).toEqual({ synced: 1, remaining: 0 });
-      expect(script.upsert).toHaveBeenCalledWith(URL, 'the-secret', [
-        { email: 'ada@example.com', code: 'ABCDE', name: 'Ada Lovelace', revoked: false },
-      ]);
+      expect(script.upsert).toHaveBeenCalledWith(
+        URL,
+        'the-secret',
+        [{ email: 'ada@example.com', code: 'ABCDE', name: 'Ada Lovelace', revoked: false }],
+        // How long this call may wait, which is whatever is left of the
+        // request (DOR-05). It used to wait sixty seconds inside a function
+        // that has ten.
+        expect.any(Number),
+      );
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
       expect(prisma.userOrg.updateMany).toHaveBeenCalledWith({
         where: { id: { in: ['m1'] } },
