@@ -15,7 +15,7 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": [
         "run",
-        "dev:api"
+        "dev"
       ],
       "port": 3001
     }
