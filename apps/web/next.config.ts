@@ -6,6 +6,26 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   outputFileTracingRoot: path.join(__dirname, '../../'),
   transpilePackages: ['@maybeos/shared'],
+  /**
+   * Leave the sanitiser's dependencies out of the server bundle (OPS-09).
+   *
+   * `isomorphic-dompurify` loads jsdom when it runs in Node, and jsdom reads
+   * its own `browser/default-stylesheet.css` off disk at startup. Bundling it
+   * brings the JavaScript along and leaves that file behind, so every server
+   * render of a page containing rich text threw
+   * `ENOENT: … /browser/default-stylesheet.css` — 1,988 of them in Sentry over
+   * five weeks, and 93% of all errors the product reported.
+   *
+   * Nobody saw it: the pages that sanitise are all `use client`, so the work
+   * that matters happens in the browser against a real DOM, and the throw only
+   * cost the discarded server pass. It fails closed — `sanitizeWikiHtml` raises
+   * rather than returning unsanitised HTML — so it was never an XSS hole.
+   *
+   * Marking it external makes Next require it from `node_modules` at runtime
+   * and hand it to file tracing, which carries the whole package, assets
+   * included.
+   */
+  serverExternalPackages: ['isomorphic-dompurify'],
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: '**' },

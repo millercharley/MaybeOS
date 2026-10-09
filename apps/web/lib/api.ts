@@ -18,6 +18,14 @@ export function apiUrl(path: string): string {
 interface FetchOptions extends RequestInit {
   token?: string;
   orgId?: string;
+  /**
+   * A request nobody is waiting for, made on a timer (OPS-09).
+   *
+   * Only the unread badge, today. It suppresses the Sentry report when the
+   * *network* fails — see `request` for why that is not the same as giving
+   * up on the signal.
+   */
+  background?: boolean;
 }
 
 /**
@@ -85,7 +93,7 @@ class ApiClient {
   }
 
   private async request<T>(path: string, options: FetchOptions = {}): Promise<T> {
-    const { token, orgId, ...fetchOptions } = options;
+    const { token, orgId, background, ...fetchOptions } = options;
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -117,6 +125,37 @@ class ApiClient {
       // with the route attached so a genuinely unreachable API is reported
       // and grouped, instead of being lost among tab-closed noise.
       const err = new ApiNetworkError(method, route, cause);
+
+      /*
+        A poll that could not reach the API is not news (OPS-09).
+
+        The unread badge asks every sixty seconds from every open tab. A
+        laptop lid closing, a wifi handover, a tab suspended in the
+        background — each aborts whatever was in flight, and each was filed
+        as an error. One account produced 104 of the 122 reports on this
+        route; the member never saw anything, because the badge keeps its
+        last value and the next tick fixes it.
+
+        This does not give up the signal OPS-07 exists for. An API that is
+        genuinely unreachable fails the member's *next* real request too —
+        a page load, a post, a booking — and that one is reported, with
+        somebody actually waiting on it. What is dropped here is the
+        per-minute echo of a fact a foreground request states better.
+
+        Only the network leg. A 5xx below is a defect in our own server and
+        is reported however it was asked for.
+      */
+      if (background) {
+        Sentry.addBreadcrumb({
+          category: 'api',
+          type: 'http',
+          level: 'warning',
+          message: `${method} ${route} → unreachable (background)`,
+          data: { method, route, background: true },
+        });
+        throw err;
+      }
+
       Sentry.captureException(err, (scope) => {
         scope.setLevel('error');
         // ApiNetworkError's message is written for members, so it reads the
@@ -2530,8 +2569,8 @@ class ApiClient {
     // ── What has not been read (CMN-14) ──
 
     /** The two numbers behind the sidebar badges. Counts only, never content. */
-    unread: (orgId: string, token: string) =>
-      this.request<UnreadCounts>(`/orgs/${orgId}/unread`, { token }),
+    unread: (orgId: string, token: string, background = false) =>
+      this.request<UnreadCounts>(`/orgs/${orgId}/unread`, { token, background }),
 
     /** Opening a channel is reading it. Returns the new totals. */
     markChannelRead: (orgId: string, channelId: string, token: string) =>
