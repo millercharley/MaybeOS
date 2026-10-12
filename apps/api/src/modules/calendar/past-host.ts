@@ -112,3 +112,41 @@ export function personFor(
 
   return { email: null, name: null };
 }
+
+/**
+ * A member's name, as a key for matching a calendar entry's title (SPC-34).
+ *
+ * MaybeItsFate's room calendars carry entries typed by hand, where the only
+ * record of whose reservation it is, is the title: "Brooke Sullivan Brown".
+ * No guest line, and the creator is whoever was at the keyboard — so these
+ * imported as that person's, and were marked the co-op's because the creator
+ * was the organiser they would have fallen back to anyway.
+ */
+export function nameKey(name: string | null | undefined): string | null {
+  const value = (name ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+  return value === '' ? null : value;
+}
+
+/**
+ * Names that belong to exactly one member.
+ *
+ * A name two people share identifies neither, and a reservation handed to
+ * the wrong one of them is worse than a reservation handed to nobody — so
+ * duplicates are dropped rather than guessed between.
+ */
+export function unambiguousNames(
+  members: { userId: string; name: string | null }[],
+): Map<string, string> {
+  const seen = new Map<string, string | null>();
+
+  for (const member of members) {
+    const key = nameKey(member.name);
+    if (!key) continue;
+    // null marks a key already claimed by somebody else.
+    seen.set(key, seen.has(key) && seen.get(key) !== member.userId ? null : member.userId);
+  }
+
+  const unique = new Map<string, string>();
+  for (const [key, userId] of seen) if (userId) unique.set(key, userId);
+  return unique;
+}

@@ -83,11 +83,36 @@ describe('EventsService — reservations an event may claim', () => {
   });
 
   it('still refuses the co-op holds and anything cancelled', async () => {
-    // An imported hold is nobody's to publish (SPC-23).
+    /*
+      An imported hold is nobody's to publish (SPC-23) — with the one
+      exception added in SPC-34, where the hold is a hold *because* the
+      migration could not tell whose it was, and the title says. So the
+      filter moved inside the ownership clause rather than sitting above it.
+    */
     const { where } = await queried();
 
-    expect(where.isCoopHold).toBe(false);
     expect(where.status).toEqual({ in: ['PENDING', 'APPROVED'] });
+
+    const owners = where.AND[0].OR.find((c: { userId?: unknown }) => c.userId);
+    expect(owners.isCoopHold).toBe(false);
+
+    /*
+      And not above it. A top-level `isCoopHold: false` is ANDed with
+      everything, so it would silently remove every claimable reservation —
+      which is exactly the state this was found in: the title match had been
+      written, shipped, and did nothing at all.
+    */
+    expect(where.isCoopHold).toBeUndefined();
+  });
+
+  it('refuses co-op holds outright for an organiser, who is offered everything else', async () => {
+    // Nothing is being claimed on their behalf, so the exception does not
+    // apply and the old rule stands whole.
+    await service.attachableRooms(ORG, { userId: 'u-admin', isOrganiser: true }, {});
+    const { where } = prisma.booking.findMany.mock.calls[0][0];
+
+    expect(where.isCoopHold).toBe(false);
+    expect(where.AND).toBeUndefined();
   });
 
   it('still scopes to this co-op and to whose bookings they are', async () => {
