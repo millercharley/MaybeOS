@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/auth-store';
-import { api } from '@/lib/api';
+import { api, REQUIRED_READING_EVENT } from '@/lib/api';
 
 /**
  * The handbook, once somebody's thirty days have run out (BEL-07).
@@ -27,6 +27,13 @@ import { api } from '@/lib/api';
  *
  * **Reading is still never gated**, so the handbook itself is reachable —
  * which it has to be, or this would be a loop.
+ *
+ * It also answers a refusal (BEL-08). The API still refuses a write past the
+ * window, as a backstop behind this — and somebody who got past the gate did
+ * so because their tab predates it, or because the check below failed open on
+ * a network blip. Either way the refusal lands here and goes to the same
+ * screen, rather than being a sentence about an article with no way to reach
+ * it.
  */
 export function RequiredReadingGate({ orgId, orgSlug }: { orgId?: string; orgSlug?: string }) {
   const token = useAuthStore((s) => s.token);
@@ -55,6 +62,19 @@ export function RequiredReadingGate({ orgId, orgSlug }: { orgId?: string; orgSlu
       live = false;
     };
   }, [orgId, orgSlug, token, onHandbook, sent, router]);
+
+  /*
+    The same destination, reached the other way. Deliberately not guarded by
+    `sent`: a refusal is a fresh fact about right now, where the check above
+    is a once-per-arrival question.
+  */
+  useEffect(() => {
+    if (!orgSlug) return;
+
+    const go = () => router.replace(`/portal/${orgSlug}/handbook/start`);
+    window.addEventListener(REQUIRED_READING_EVENT, go);
+    return () => window.removeEventListener(REQUIRED_READING_EVENT, go);
+  }, [orgSlug, router]);
 
   return null;
 }
