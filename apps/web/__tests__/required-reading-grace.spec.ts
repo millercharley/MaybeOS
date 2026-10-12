@@ -63,4 +63,60 @@ describe('the handbook gate', () => {
     expect(banner).toMatch(/usePortal\(\)/);
     expect(gate).not.toMatch(/usePortal/);
   });
+
+  /**
+   * A refusal and the gate end in the same place (BEL-08).
+   *
+   * The API refuses a write past the window again, as a backstop rather than
+   * the experience — BEL-07 had removed it, which left the acknowledgment
+   * enforced only by the app doing the sending, so the record described
+   * everyone whose browser had been through the shell rather than everyone
+   * taking part.
+   *
+   * The risk that creates is the one Charley reported in the first place: a
+   * refusal with no way forward. So the refusal now routes.
+   */
+  describe('a refusal that gets past the gate', () => {
+    const client = readFileSync(join(__dirname, '..', 'lib', 'api.ts'), 'utf8');
+
+    it('carries the API’s reason instead of throwing it away', () => {
+      // `reason` was always in the body and always discarded, so a refusal
+      // that knew exactly which article was owed could only be shown as a
+      // sentence.
+      expect(client).toMatch(/public reason\?: string,/);
+      expect(client).toMatch(/new ApiError\(response\.status, error\.message \|\| 'Request failed', error\.reason\)/);
+    });
+
+    it('announces it rather than redirecting from the API client', () => {
+      // That file knows nothing about routing or which co-op is on screen.
+      expect(client).toMatch(/REQUIRED_READING_EVENT/);
+      expect(client).not.toMatch(/router\.(replace|push)/);
+    });
+
+    it('only for this reason, not for every 403', () => {
+      // A wrong password and a missing permission are not handbook problems.
+      expect(client).toMatch(/response\.status === 403 && error\.reason === 'REQUIRED_READING'/);
+    });
+
+    it('lands on the same screen the gate sends people to', () => {
+      const sends = gate.match(/router\.replace\(`\/portal\/\$\{orgSlug\}\/handbook\/start`\)/g) ?? [];
+      expect(sends).toHaveLength(2);
+    });
+
+    it('answers a refusal even after the arrival check has run', () => {
+      /*
+        Not guarded by `sent`. The arrival check is a once-per-visit
+        question; a refusal is a fresh fact about right now, and somebody who
+        was let through at arrival and refused later must still be taken
+        there.
+      */
+      // Anchored at the top of the effect, not at `addEventListener`: the
+      // handler is defined above that line, so slicing from it let a guard
+      // on the handler itself slip past.
+      const at = gate.indexOf('if (!orgSlug) return;');
+      expect(at).toBeGreaterThan(-1);
+
+      expect(gate.slice(at)).not.toMatch(/sent/);
+    });
+  });
 });

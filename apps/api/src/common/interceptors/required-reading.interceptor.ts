@@ -1,5 +1,6 @@
 import {
   CallHandler,
+  ForbiddenException,
   ExecutionContext,
   Injectable,
   NestInterceptor,
@@ -135,7 +136,7 @@ export class RequiredReadingInterceptor implements NestInterceptor {
       because each person met it once, alone, as a sentence about the
       handbook.
 
-      Both figures still travel on the request, so a response can carry the
+      Both figures travel on the request, so a response can carry the
       countdown and the shell can send somebody to the handbook.
     */
     request.requiredReadingGraceEndsAt = graceEndsAt(outstanding);
@@ -144,5 +145,41 @@ export class RequiredReadingInterceptor implements NestInterceptor {
       title: a.title,
       slug: a.slug,
     }));
+
+    if (outstanding.blocking.length === 0) return;
+
+    /*
+      And past the window, it still refuses — as a backstop, not as the
+      experience (BEL-08).
+
+      BEL-07 took this out so the rule would stop landing on whatever a
+      member happened to be doing. That was right about the moment and wrong
+      about the mechanism: it left the acknowledgment enforced only by the
+      app sending people to the handbook, so the record stopped describing
+      everybody taking part and started describing everybody whose browser
+      had been through the shell recently.
+
+      37 members have formally agreed to this co-op's Code of Conduct. The
+      worth of that record is that it covers the people acting here.
+
+      Almost nobody should ever see this: `RequiredReadingGate` sends them to
+      the handbook when they arrive, long before they fill in a form. If it
+      starts appearing often, the gate is broken rather than this being
+      useful.
+
+      Agreeing is exempt (`@BypassRequiredReading` on the acknowledge route),
+      so anybody refused here is one click from undoing it.
+    */
+    const next = outstanding.blocking[0];
+    throw new ForbiddenException({
+      statusCode: 403,
+      error: 'Forbidden',
+      reason: 'REQUIRED_READING',
+      message:
+        outstanding.blocking.length === 1
+          ? `Before you can take part here, this community asks you to read and agree to “${next.title}”.`
+          : `Before you can take part here, this community asks you to read and agree to ${outstanding.blocking.length} things, starting with “${next.title}”.`,
+      articles: outstanding.blocking.map((a) => ({ id: a.id, title: a.title, slug: a.slug })),
+    });
   }
 }

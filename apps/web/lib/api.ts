@@ -85,6 +85,14 @@ export function safePath(path: string): string {
  */
 export const MUTATION_EVENT = 'maybeos:mutation';
 
+/**
+ * Fired when the API refuses a write until the handbook is read (BEL-08).
+ *
+ * The shell listens and sends the member to the handbook, so a refusal and
+ * the gate on arrival end in the same place.
+ */
+export const REQUIRED_READING_EVENT = 'maybeos:required-reading';
+
 class ApiClient {
   private baseUrl: string;
 
@@ -181,7 +189,23 @@ class ApiClient {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: response.statusText }));
-      const apiError = new ApiError(response.status, error.message || 'Request failed');
+      const apiError = new ApiError(response.status, error.message || 'Request failed', error.reason);
+
+      /*
+        A refusal for required reading goes to the handbook (BEL-08).
+
+        The gate in the app shell sends people there when they arrive, and
+        this is the same rule meeting somebody who got past it — a stale tab,
+        a check that failed open on a network blip. Both now land on the
+        screen that resolves it, rather than one of them being a sentence
+        about an article with no way to reach it.
+
+        Announced rather than redirected from here: this file knows nothing
+        about routing or which co-op is on screen, and the shell knows both.
+      */
+      if (response.status === 403 && error.reason === 'REQUIRED_READING' && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent(REQUIRED_READING_EVENT, { detail: { route } }));
+      }
 
       // Mirrors the API's own policy in GlobalExceptionFilter: 5xx is a
       // defect, 4xx is normal traffic. A wrong password reported as an error
@@ -3288,6 +3312,14 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    /**
+     * The API's own name for why, where it has one (BEL-08).
+     *
+     * `REQUIRED_READING` is the only one today. It was always in the body
+     * and always thrown away here, so a refusal that knows exactly which
+     * article is owed could only be shown as a sentence.
+     */
+    public reason?: string,
   ) {
     super(message);
     this.name = 'ApiError';

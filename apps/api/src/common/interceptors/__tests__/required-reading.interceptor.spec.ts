@@ -1,4 +1,4 @@
-import { CallHandler, ExecutionContext } from '@nestjs/common';
+import { CallHandler, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
@@ -119,77 +119,84 @@ describe('RequiredReadingInterceptor', () => {
   });
 
   /**
-   * It records rather than refuses (BEL-07).
+   * Inside the window it reminds; past it, it refuses (BEL-07, BEL-08).
    *
-   * Charley: "make this really easy for them by just reminding them to review
-   * these documents within 30 days instead of forcing them out of creating
-   * the event or booking their room… After 30 days, force them to the
-   * Handbook after login."
+   * Charley: "just reminding them to review these documents within 30 days
+   * instead of forcing them out of creating the event or booking their
+   * room… After 30 days, force them to the Handbook after login."
    *
-   * So the consequence moved from the action to the door. These used to
-   * assert a 403 on every write; they now assert that the write succeeds and
-   * that the request carries what the shell needs to send somebody to the
-   * handbook instead.
+   * BEL-07 moved the consequence from the action to the door and took the
+   * refusal out altogether. That was right about the moment and wrong about
+   * the mechanism — it left the acknowledgment enforced only by the app
+   * doing the sending, so the record described everyone whose browser had
+   * been through the shell rather than everyone taking part. BEL-08 put the
+   * refusal back behind the gate.
    *
-   * What this gave up is worth stating: the gate is now the app sending
-   * people to the handbook, not the API refusing them. Somebody calling the
-   * API directly is no longer stopped. That is a trade a community handbook
-   * can make and an access control could not.
+   * Which means two different things are true either side of the window, and
+   * both are tested here.
    */
-  describe('what it records instead of stopping', () => {
-    it('lets a write through even when an article is outstanding', async () => {
+  describe('inside their window', () => {
+    // Joined two days ago, grace is 14: nothing is owed yet.
+    const recent = () => prisma.userOrg.findFirst.mockResolvedValue({ id: 'm1', memberSince: daysAgo(2) });
+
+    it('lets the write through', async () => {
+      // The case Charley asked for: somebody who joined this week books a
+      // room without meeting the handbook first.
+      recent();
       await expect(run(context())).resolves.toBe(true);
     });
 
-    it('says what is outstanding, so the shell can act on it', async () => {
-      const request = context();
-      await run(request);
-
-      expect(request.switchToHttp().getRequest().requiredReadingBlocking).toEqual([
-        { id: 'a1', title: 'House rules', slug: 'house-rules' },
-      ]);
-    });
-
     it('lets every write method through, not just POST', async () => {
+      recent();
       for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
         await expect(run(context({ method }))).resolves.toBe(true);
       }
     });
 
-    it('keeps the admin’s order, so the handbook reads in the intended sequence', async () => {
+    it('still says when the window closes, for the countdown', async () => {
+      recent();
+      const request = context();
+      await run(request);
+
+      expect(request.switchToHttp().getRequest().requiredReadingGraceEndsAt).not.toBeNull();
+      expect(request.switchToHttp().getRequest().requiredReadingBlocking).toEqual([]);
+    });
+  });
+
+  describe('past their window', () => {
+    it('refuses the write, as a backstop behind the handbook gate', async () => {
+      await expect(run(context())).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('says what to read and links to it, never a generic error (§6.2)', async () => {
+      /*
+        This body is what the browser acts on. The API client reads `reason`
+        and sends the member to the handbook rather than showing the message
+        as an error, so a refusal and the gate land in the same place.
+      */
+      const error = await run(context()).catch((e) => e);
+      const body = error.getResponse();
+
+      expect(body.reason).toBe('REQUIRED_READING');
+      expect(body.message).toContain('House rules');
+      expect(body.articles).toEqual([{ id: 'a1', title: 'House rules', slug: 'house-rules' }]);
+    });
+
+    it('refuses every write method, not just POST', async () => {
+      for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
+        await expect(run(context({ method }))).rejects.toBeInstanceOf(ForbiddenException);
+      }
+    });
+
+    it('names the first outstanding article by the admin’s order', async () => {
       prisma.knowledgeArticle.findMany.mockResolvedValue([
         { id: 'a1', title: 'First', slug: 'first', version: 1, requiredSince: daysAgo(30) },
         { id: 'a2', title: 'Second', slug: 'second', version: 1, requiredSince: daysAgo(30) },
       ]);
+      const error = await run(context()).catch((e) => e);
 
-      const request = context();
-      await run(request);
-
-      expect(
-        request.switchToHttp().getRequest().requiredReadingBlocking.map((a: { id: string }) => a.id),
-      ).toEqual(['a1', 'a2']);
+      expect(error.getResponse().message).toContain('First');
       expect(prisma.knowledgeArticle.findMany.mock.calls[0][0].orderBy).toEqual({ position: 'asc' });
-    });
-
-    it('carries nothing for a member still inside their own window', async () => {
-      // The case Charley asked for: somebody who joined this week books a
-      // room without meeting the handbook first.
-      prisma.userOrg.findFirst.mockResolvedValue({ id: 'm1', memberSince: daysAgo(2) });
-
-      const request = context();
-      await run(request);
-
-      expect(request.switchToHttp().getRequest().requiredReadingBlocking).toEqual([]);
-      expect(request.switchToHttp().getRequest().requiredReadingGraceEndsAt).not.toBeNull();
-    });
-
-    it('carries nothing to act on when nothing is outstanding', async () => {
-      prisma.articleAcknowledgment.findMany.mockResolvedValue([{ articleId: 'a1', articleVersion: 1 }]);
-
-      const request = context();
-      await run(request);
-
-      expect(request.switchToHttp().getRequest().requiredReadingBlocking).toEqual([]);
     });
   });
 
@@ -199,18 +206,15 @@ describe('RequiredReadingInterceptor', () => {
       await expect(run(context())).resolves.toBe(true);
     });
 
-    it('still counts it outstanding after a material edit bumped the version', async () => {
-      // Agreeing to v1 says nothing about v2 — it no longer refuses the
-      // write, but it must still be something the handbook asks for.
+    it('still blocks after a material edit bumped the version', async () => {
+      // Agreeing to v1 says nothing about v2. This is the whole reason
+      // acknowledgments record a version.
       prisma.knowledgeArticle.findMany.mockResolvedValue([
         { id: 'a1', title: 'House rules', slug: 'r', version: 2, requiredSince: daysAgo(30) },
       ]);
       prisma.articleAcknowledgment.findMany.mockResolvedValue([{ articleId: 'a1', articleVersion: 1 }]);
 
-      const request = context();
-      await run(request);
-
-      expect(request.switchToHttp().getRequest().requiredReadingBlocking).toHaveLength(1);
+      await expect(run(context())).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it('takes the highest version agreed, so an old record cannot mask a new one', async () => {
