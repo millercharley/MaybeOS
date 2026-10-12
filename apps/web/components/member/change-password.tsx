@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { KeyRound } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api } from '@/lib/api';
+import { settlePrompt } from '@/lib/password-prompt';
 
 /**
  * Change your own password (AUTH-03).
@@ -79,6 +80,8 @@ export function ChangePassword() {
       setNext('');
       setConfirm('');
       setHasPassword(true);
+      // Whatever the banner was going to offer, they have now done (AUTH-05).
+      settlePrompt();
       setMessage(
         created
           ? 'Password created. You can sign in with it, or keep using a sign-in link.'

@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { landingPathFor } from '@/lib/landing';
+import { offerPassword } from '@/lib/password-prompt';
 
 function MagicLinkVerifier() {
   const searchParams = useSearchParams();
@@ -35,6 +36,18 @@ function MagicLinkVerifier() {
         let destination = '/member';
         try {
           const user = await api.auth.profile(result.accessToken);
+
+          /*
+            Offer them a password, on the next page rather than this one
+            (AUTH-05).
+
+            This screen exists for a second and then redirects, which is no
+            place to ask a question. The answer is carried over and the
+            offer is made where they land — and only to somebody who has no
+            password, which is almost everybody arriving this way.
+          */
+          if (user.hasPassword === false) offerPassword();
+
           destination = landingPathFor(
             user,
             typeof window !== 'undefined' ? localStorage.getItem('maybeos_org') : null,
