@@ -1,4 +1,4 @@
-import { CallHandler, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import { CallHandler, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
@@ -56,7 +56,14 @@ describe('RequiredReadingInterceptor', () => {
         }),
       },
       userOrg: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'm1', memberSince: daysAgo(2) }),
+        /*
+          Long past their window, so the default case is a member who owes
+          something (BEL-07). It read `daysAgo(2)`, which blocked only
+          because joining after a requirement used to block outright —
+          that member is now inside their own thirty days and owes
+          nothing yet, which is the point of the change.
+        */
+        findFirst: jest.fn().mockResolvedValue({ id: 'm1', memberSince: daysAgo(60) }),
       },
       knowledgeArticle: {
         findMany: jest.fn().mockResolvedValue([
@@ -111,34 +118,78 @@ describe('RequiredReadingInterceptor', () => {
     });
   });
 
-  describe('what it stops', () => {
-    it('blocks a write when an article is outstanding', async () => {
-      await expect(run(context())).rejects.toBeInstanceOf(ForbiddenException);
+  /**
+   * It records rather than refuses (BEL-07).
+   *
+   * Charley: "make this really easy for them by just reminding them to review
+   * these documents within 30 days instead of forcing them out of creating
+   * the event or booking their room… After 30 days, force them to the
+   * Handbook after login."
+   *
+   * So the consequence moved from the action to the door. These used to
+   * assert a 403 on every write; they now assert that the write succeeds and
+   * that the request carries what the shell needs to send somebody to the
+   * handbook instead.
+   *
+   * What this gave up is worth stating: the gate is now the app sending
+   * people to the handbook, not the API refusing them. Somebody calling the
+   * API directly is no longer stopped. That is a trade a community handbook
+   * can make and an access control could not.
+   */
+  describe('what it records instead of stopping', () => {
+    it('lets a write through even when an article is outstanding', async () => {
+      await expect(run(context())).resolves.toBe(true);
     });
 
-    it('says what to read and links to it, never a generic error (§6.2)', async () => {
-      const error = await run(context()).catch((e) => e);
-      const body = error.getResponse();
+    it('says what is outstanding, so the shell can act on it', async () => {
+      const request = context();
+      await run(request);
 
-      expect(body.reason).toBe('REQUIRED_READING');
-      expect(body.message).toContain('House rules');
-      expect(body.articles).toEqual([{ id: 'a1', title: 'House rules', slug: 'house-rules' }]);
+      expect(request.switchToHttp().getRequest().requiredReadingBlocking).toEqual([
+        { id: 'a1', title: 'House rules', slug: 'house-rules' },
+      ]);
     });
 
-    it('blocks every write method, not just POST', async () => {
+    it('lets every write method through, not just POST', async () => {
       for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
-        await expect(run(context({ method }))).rejects.toBeInstanceOf(ForbiddenException);
+        await expect(run(context({ method }))).resolves.toBe(true);
       }
     });
 
-    it('names the first outstanding article by the admin’s order', async () => {
+    it('keeps the admin’s order, so the handbook reads in the intended sequence', async () => {
       prisma.knowledgeArticle.findMany.mockResolvedValue([
         { id: 'a1', title: 'First', slug: 'first', version: 1, requiredSince: daysAgo(30) },
         { id: 'a2', title: 'Second', slug: 'second', version: 1, requiredSince: daysAgo(30) },
       ]);
-      const error = await run(context()).catch((e) => e);
-      expect(error.getResponse().message).toContain('First');
+
+      const request = context();
+      await run(request);
+
+      expect(
+        request.switchToHttp().getRequest().requiredReadingBlocking.map((a: { id: string }) => a.id),
+      ).toEqual(['a1', 'a2']);
       expect(prisma.knowledgeArticle.findMany.mock.calls[0][0].orderBy).toEqual({ position: 'asc' });
+    });
+
+    it('carries nothing for a member still inside their own window', async () => {
+      // The case Charley asked for: somebody who joined this week books a
+      // room without meeting the handbook first.
+      prisma.userOrg.findFirst.mockResolvedValue({ id: 'm1', memberSince: daysAgo(2) });
+
+      const request = context();
+      await run(request);
+
+      expect(request.switchToHttp().getRequest().requiredReadingBlocking).toEqual([]);
+      expect(request.switchToHttp().getRequest().requiredReadingGraceEndsAt).not.toBeNull();
+    });
+
+    it('carries nothing to act on when nothing is outstanding', async () => {
+      prisma.articleAcknowledgment.findMany.mockResolvedValue([{ articleId: 'a1', articleVersion: 1 }]);
+
+      const request = context();
+      await run(request);
+
+      expect(request.switchToHttp().getRequest().requiredReadingBlocking).toEqual([]);
     });
   });
 
@@ -148,12 +199,18 @@ describe('RequiredReadingInterceptor', () => {
       await expect(run(context())).resolves.toBe(true);
     });
 
-    it('still blocks after a material edit bumped the version', async () => {
+    it('still counts it outstanding after a material edit bumped the version', async () => {
+      // Agreeing to v1 says nothing about v2 — it no longer refuses the
+      // write, but it must still be something the handbook asks for.
       prisma.knowledgeArticle.findMany.mockResolvedValue([
         { id: 'a1', title: 'House rules', slug: 'r', version: 2, requiredSince: daysAgo(30) },
       ]);
       prisma.articleAcknowledgment.findMany.mockResolvedValue([{ articleId: 'a1', articleVersion: 1 }]);
-      await expect(run(context())).rejects.toBeInstanceOf(ForbiddenException);
+
+      const request = context();
+      await run(request);
+
+      expect(request.switchToHttp().getRequest().requiredReadingBlocking).toHaveLength(1);
     });
 
     it('takes the highest version agreed, so an old record cannot mask a new one', async () => {

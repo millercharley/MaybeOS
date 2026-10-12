@@ -32,11 +32,32 @@ describe('required reading', () => {
     acknowledgedVersions: new Map(Object.entries(acked)),
   });
 
-  describe('the rule: grace only if the requirement arrived after you did', () => {
-    it('blocks a member who joined after the rules were published', () => {
-      // The rules are part of what they joined. Fourteen days to think about
-      // it would be fourteen days of posting under rules they never read.
+  describe('the rule: grace from whichever came later', () => {
+    it('gives a member who joined after the rules were published their own window', () => {
+      /*
+        This used to block them outright, on the reasoning that the rules are
+        part of what they joined (BEL-07). It reads well and worked badly: a
+        new member's first act is usually the one they joined to do — booking
+        the room — and meeting a refusal there is a poor way to begin.
+
+        Charley: "make this really easy for them by just reminding them to
+        review these documents within 30 days instead of forcing them out of
+        creating the event or booking their room."
+      */
       const state = readingStatus(article(), reader(daysAgo(2)), GRACE, NOW);
+
+      expect(state.status).toBe('in-grace');
+      // Counted from the day they joined, not from the older requirement —
+      // otherwise their window would have closed before they arrived.
+      if (state.status === 'in-grace') {
+        expect(state.until).toEqual(new Date(daysAgo(2).getTime() + GRACE * 24 * 60 * 60 * 1000));
+      }
+    });
+
+    it('blocks them once that window has passed', () => {
+      // The handbook still has to be read. It does not have to be read in the
+      // ninety seconds before somebody can do the thing they came for.
+      const state = readingStatus(article(), reader(daysAgo(GRACE + 1)), GRACE, NOW);
       expect(state.status).toBe('blocking');
     });
 
@@ -84,11 +105,26 @@ describe('required reading', () => {
     });
 
     it('does not clear it when a material edit bumped the version', () => {
-      // Agreeing to v1 says nothing about v2. This is the whole reason
-      // acknowledgments record a version.
-      expect(
-        readingStatus(article({ version: 2 }), reader(daysAgo(2), { a1: 1 }), GRACE, NOW).status,
-      ).toBe('blocking');
+      /*
+        Agreeing to v1 says nothing about v2. This is the whole reason
+        acknowledgments record a version.
+
+        Asserted as "not done" rather than "blocking" since BEL-07: a member
+        who joined two days ago is inside their own window, so v2 is owed and
+        not yet blocking. What matters here is that agreeing to v1 did not
+        settle it.
+      */
+      const state = readingStatus(article({ version: 2 }), reader(daysAgo(2), { a1: 1 }), GRACE, NOW);
+      expect(state.status).not.toBe('done');
+
+      // And it does block, once their window has run out.
+      const later = readingStatus(
+        article({ version: 2 }),
+        reader(daysAgo(GRACE + 1), { a1: 1 }),
+        GRACE,
+        NOW,
+      );
+      expect(later.status).toBe('blocking');
     });
 
     it('gives a long-standing member fresh grace on a new version', () => {
@@ -130,7 +166,11 @@ describe('required reading', () => {
     it('keeps the admin’s order, so onboarding reads in the intended sequence', () => {
       const first = article({ id: 'first', requiredSince: daysAgo(400) });
       const second = article({ id: 'second', requiredSince: daysAgo(400) });
-      const result = outstandingReading([first, second], reader(daysAgo(2)), GRACE, NOW);
+      // A member long past their window, so both are blocking and the order
+      // is the thing under test. It used to read `daysAgo(2)`, which blocked
+      // only because joining after the requirement did; since BEL-07 that
+      // member is inside their own window and nothing blocks at all.
+      const result = outstandingReading([first, second], reader(daysAgo(400)), GRACE, NOW);
       expect(result.blocking.map((a) => a.id)).toEqual(['first', 'second']);
     });
 
