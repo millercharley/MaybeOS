@@ -246,7 +246,23 @@ export class AuthService {
    * later is not published here by default.
    */
   async getProfile(userId: string) {
-    const user = await this.prisma.user.findUnique({
+    /*
+      Whether there is a password, asked as a count (AUTH-04).
+
+      The browser needs to know which question to put — "create a password"
+      or "change the one you have" — and had no way to tell, so it always
+      asked for a current password and 433 of MaybeItsFate's 439 members
+      could not answer.
+
+      A count rather than selecting the column and reducing it to a boolean,
+      because the rule above is that a credential is never *fetched*: a hash
+      held in memory is one careless spread away from a response, and the
+      test that pins this reads the `select`, not the output. One indexed
+      count against a primary key, alongside a query that already joins
+      memberships and co-ops.
+    */
+    const [user, withPassword] = await Promise.all([
+      this.prisma.user.findUnique({
       where: { id: userId },
       select: {
         id: true,
@@ -311,7 +327,9 @@ export class AuthService {
           },
         },
       },
-    });
+      }),
+      this.prisma.user.count({ where: { id: userId, NOT: { passwordHash: null } } }),
+    ]);
 
     if (!user) return user;
 
@@ -320,6 +338,7 @@ export class AuthService {
     // browser has no use for a Stripe id and every reason not to hold one.
     return {
       ...user,
+      hasPassword: withPassword > 0,
       orgs: user.orgs.map(({ stripeSubscriptionId, ...membership }) => ({
         ...membership,
         stripeBilled: stripeSubscriptionId !== null,
@@ -337,32 +356,45 @@ export class AuthService {
    * SEC-08 exposed every stored hash to anyone holding a public key, and
    * there was no way to rotate the one credential that had been disclosed.
    *
-   * Requires the current password rather than just a session. A stolen or
-   * borrowed browser session should not be enough to take an account
-   * permanently, which is exactly what silently changing the password does.
+   * **Changing one requires the current one.** A stolen or borrowed browser
+   * session should not be enough to take an account permanently, which is
+   * exactly what silently changing the password does.
    *
-   * Deliberately not a password *reset*: that needs a verified delivery
-   * channel, and magic-link email is not wired up (AuthModule does not import
-   * EmailModule), so a reset link would be generated and never sent. See
-   * AUTH-02.
+   * **Creating a first one cannot**, and that is the whole of AUTH-04.
+   * Everybody who arrived through a sign-in link has no password, which at
+   * MaybeItsFate is 433 of 439 members — and this refused every one of them
+   * with "this account has no password set, so there is nothing to change".
+   * There is no current password to ask for, so the session is the
+   * authorisation: it was itself established by a link sent to that address.
+   *
+   * The threat the current-password rule guards against does not disappear,
+   * though — a borrowed session setting a *first* password takes the account
+   * just as permanently. So the compensating control is that we say so, by
+   * email, to the address that owns the account. Somebody who did not do it
+   * finds out while they can still act.
+   *
+   * Deliberately still not a password *reset*: that is for somebody who
+   * cannot get in at all, and the answer for them today is the sign-in link.
    */
-  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+  async changePassword(userId: string, currentPassword: string | undefined, newPassword: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    if (!user.passwordHash) {
-      throw new BadRequestException(
-        'This account has no password set, so there is nothing to change',
-      );
-    }
 
-    const matches = await bcrypt.compare(currentPassword, user.passwordHash);
-    if (!matches) {
-      throw new UnauthorizedException('Your current password is not correct');
-    }
-    if (currentPassword === newPassword) {
-      throw new BadRequestException('That is the password you already have');
+    const creating = !user.passwordHash;
+
+    if (!creating) {
+      if (!currentPassword) {
+        throw new BadRequestException('Enter your current password to change it');
+      }
+      const matches = await bcrypt.compare(currentPassword, user.passwordHash!);
+      if (!matches) {
+        throw new UnauthorizedException('Your current password is not correct');
+      }
+      if (currentPassword === newPassword) {
+        throw new BadRequestException('That is the password you already have');
+      }
     }
 
     await this.prisma.user.update({
@@ -377,7 +409,20 @@ export class AuthService {
       },
     });
 
-    return { changed: true };
+    /*
+      Told, not asked. Best-effort on purpose: the password is already set,
+      and failing the request now would leave the member believing it was
+      not. A bounced notice is worth less than a wrong answer.
+    */
+    if (user.email) {
+      await this.email
+        .sendPasswordSet(user.email, { name: user.name ?? null, created: creating })
+        .catch((error) =>
+          this.logger.warn(`Could not send the password notice: ${(error as Error).message}`),
+        );
+    }
+
+    return { changed: true, created: creating };
   }
 
   /**

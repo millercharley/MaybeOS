@@ -494,9 +494,15 @@ class ApiClient {
   };
 
   auth_password = {
-    /** Change your own password (AUTH-03). Requires the current one. */
-    change: (data: { currentPassword: string; newPassword: string }, token: string) =>
-      this.request<{ changed: boolean }>('/auth/password', {
+    /**
+     * Set your own password (AUTH-03, AUTH-04).
+     *
+     * `currentPassword` is required only if there is one. An account that
+     * arrived through a sign-in link has none — which at MaybeItsFate is
+     * almost everybody — and `created` says which of the two happened.
+     */
+    change: (data: { currentPassword?: string; newPassword: string }, token: string) =>
+      this.request<{ changed: boolean; created: boolean }>('/auth/password', {
         method: 'PATCH',
         body: JSON.stringify(data),
         token,
@@ -3328,6 +3334,14 @@ export interface UserProfile {
   avatarUrl?: string | null;
   globalRole: string;
   emailVerified?: boolean;
+  /**
+   * Whether this account has a password at all (AUTH-04).
+   *
+   * Which question the password form asks. Somebody who arrived through a
+   * sign-in link has none, so asking them for their current one — as it did
+   * for all 433 of MaybeItsFate's link-only members — is unanswerable.
+   */
+  hasPassword?: boolean;
   createdAt?: string;
   /**
    * Membership rows, each with its organization nested — which is what
