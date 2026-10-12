@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
+import { participantKey } from '../commons/threads';
 
 /** Roles that count as a member of the community. GUEST is not one. */
 const MEMBER_ROLES = ['ADMIN', 'STAFF', 'MEMBER'] as const;
@@ -50,6 +51,18 @@ export class DashboardService {
    * Excludes the viewer, because being welcomed to your own arrival is a
    * small indignity and the "say hi" button would open a conversation with
    * yourself.
+   *
+   * **And excludes anybody they have already written to** (DSH-04). Charley:
+   * "I've sent messages to Jalynn, Harold, and Diego. I would like the system
+   * to know that and then hide these Say Hi prompts." A card asking you to do
+   * something you have done is a card you learn to ignore, and the one after
+   * it goes unread with it.
+   *
+   * Read from the messages rather than from a dismissal, because that is the
+   * fact the card is actually about. Nothing to store, nothing to get out of
+   * step, and it was already true before anybody asked for it — the three
+   * people above drop off the moment this ships, without Charley pressing
+   * anything.
    */
   async recentJoins(orgId: string, viewerUserId: string, now: Date = new Date()) {
     const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -62,10 +75,13 @@ export class DashboardService {
         userId: { not: viewerUserId },
       },
       orderBy: { memberSince: 'desc' },
-      // Three at most. A co-op that imported four hundred members should not
-      // get four hundred welcome cards, and even a real week of arrivals is
-      // better as "and four others" than as a wall.
-      take: 4,
+      /*
+        More than the three shown, because some are about to be filtered out
+        (DSH-04). Still bounded: a co-op that imported four hundred members
+        should not get four hundred welcome cards, and a real week of
+        arrivals reads better as "and four others" than as a wall.
+      */
+      take: 25,
       select: {
         id: true,
         memberSince: true,
@@ -74,8 +90,15 @@ export class DashboardService {
       },
     });
 
+    const greeted = await this.alreadyGreeted(
+      orgId,
+      viewerUserId,
+      joins.map((m) => m.user.id),
+    );
+    const waiting = joins.filter((m) => !greeted.has(m.user.id));
+
     return {
-      members: joins.slice(0, 3).map((m) => ({
+      members: waiting.slice(0, 3).map((m) => ({
         membershipId: m.id,
         userId: m.user.id,
         name: m.user.name,
@@ -83,8 +106,45 @@ export class DashboardService {
         headline: m.headline,
         joinedAt: m.memberSince,
       })),
-      more: Math.max(joins.length - 3, 0),
+      more: Math.max(waiting.length - 3, 0),
     };
+  }
+
+  /**
+   * Which of these people the viewer has already written to (DSH-04).
+   *
+   * **Sent, not opened.** Following "say hi" and typing nothing is not
+   * saying hi, and the prompt should still be there when they come back.
+   *
+   * **One to one, not a group.** Being in a group thread with somebody is not
+   * a greeting — `participantKey` is every participant's id sorted and
+   * joined, so asking for exactly the pair's key finds the direct
+   * conversation and nothing else.
+   */
+  private async alreadyGreeted(
+    orgId: string,
+    viewerUserId: string,
+    userIds: string[],
+  ): Promise<Set<string>> {
+    if (userIds.length === 0) return new Set();
+
+    const byKey = new Map(userIds.map((id) => [participantKey([viewerUserId, id]), id]));
+
+    const threads = await this.prisma.messageThread.findMany({
+      where: {
+        orgId,
+        participantKey: { in: [...byKey.keys()] },
+        messages: { some: { senderId: viewerUserId } },
+      },
+      select: { participantKey: true },
+    });
+
+    const greeted = new Set<string>();
+    for (const thread of threads) {
+      const userId = byKey.get(thread.participantKey);
+      if (userId) greeted.add(userId);
+    }
+    return greeted;
   }
 
   /**
