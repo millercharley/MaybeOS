@@ -105,6 +105,7 @@ export interface ProviderBounce {
 export interface EmailJobData {
   type:
     | 'magic-link'
+    | 'password-set'
     | 'event-reminder'
     | 'renewal-reminder'
     | 'dunning'
@@ -233,6 +234,19 @@ export class EmailService {
 
   async sendMagicLink(to: string, link: string) {
     await this.send({ type: 'magic-link', to, data: { link } });
+  }
+
+  /**
+   * Somebody set or changed the password on this account (AUTH-04).
+   *
+   * Sent because creating a *first* password needs no current password —
+   * there is none to give — so the session alone is the authorisation. That
+   * is the same borrowed-browser risk the current-password rule exists to
+   * stop, and this is what replaces it: the address that owns the account is
+   * told while there is still time to act.
+   */
+  async sendPasswordSet(to: string, data: { name: string | null; created: boolean }) {
+    await this.send({ type: 'password-set', to, data });
   }
 
   async sendEventReminder(
@@ -709,6 +723,23 @@ export class EmailService {
               You get this because you are a member of ${escapeHtml(d.orgName)}.
               <a href="${escapeHtml(d.unsubscribeUrl)}">Stop these monthly emails</a>
             </p>
+          `,
+        };
+      }
+
+      case 'password-set': {
+        const what = data.created ? 'A password was created' : 'Your password was changed';
+        return {
+          subject: data.created ? 'A password was created for your account' : 'Your password was changed',
+          htmlBody: `
+            <h1>${what}</h1>
+            <p>${data.name ? `Hello ${data.name}, ` : ''}${
+              data.created
+                ? 'a password was just created for your MaybeOS account, so you can sign in with it as well as with a sign-in link.'
+                : 'the password on your MaybeOS account was just changed.'
+            }</p>
+            <p>If this was you, there is nothing to do.</p>
+            <p><strong>If it was not you</strong>, somebody else may be using your account. Reply to this email and we will help you lock it down.</p>
           `,
         };
       }

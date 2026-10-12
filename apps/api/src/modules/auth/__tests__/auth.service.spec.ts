@@ -40,6 +40,8 @@ describe('AuthService', () => {
               findFirst: jest.fn(),
               create: jest.fn(),
               update: jest.fn(),
+              // Whether a password exists, asked without fetching it (AUTH-04).
+              count: jest.fn().mockResolvedValue(0),
             },
             userOrg: {
               findMany: jest.fn(),

@@ -20,6 +20,7 @@ import { StorageService } from '../../storage/storage.service';
 describe('AuthService — changePassword', () => {
   let service: AuthService;
   let prisma: { user: { findUnique: jest.Mock; update: jest.Mock } };
+  let email: { sendMagicLink: jest.Mock; sendPasswordSet: jest.Mock };
 
   const CURRENT = 'the-old-one';
   let hash: string;
@@ -29,9 +30,12 @@ describe('AuthService — changePassword', () => {
   });
 
   beforeEach(async () => {
+    email = { sendMagicLink: jest.fn(), sendPasswordSet: jest.fn().mockResolvedValue(undefined) };
     prisma = {
       user: {
-        findUnique: jest.fn().mockResolvedValue({ id: 'user-1', passwordHash: hash }),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 'user-1', email: 'ada@example.com', name: 'Ada', passwordHash: hash }),
         update: jest.fn().mockResolvedValue({}),
       },
     };
@@ -42,7 +46,7 @@ describe('AuthService — changePassword', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: JwtService, useValue: { sign: jest.fn() } },
         { provide: ConfigService, useValue: { get: () => 'x' } },
-        { provide: EmailService, useValue: { sendMagicLink: jest.fn() } },
+        { provide: EmailService, useValue: email },
         { provide: StorageService, useValue: { uploadAvatar: jest.fn(), deleteAvatar: jest.fn() } },
       ],
     }).compile();
@@ -84,11 +88,101 @@ describe('AuthService — changePassword', () => {
     expect(data.magicLinkExpiry).toBeNull();
   });
 
-  it('says so when the account has no password to change', async () => {
-    prisma.user.findUnique.mockResolvedValue({ id: 'user-1', passwordHash: null });
+  /**
+   * Creating a first one (AUTH-04).
+   *
+   * Charley: "make sure that for users who entered their organization via the
+   * Magic Link, that they have the option to create a password on their
+   * account once they are inside their organization."
+   *
+   * This used to refuse them: "this account has no password set, so there is
+   * nothing to change". At MaybeItsFate that is 433 of 439 members — everyone
+   * who came in through a sign-in link — so the one screen for setting a
+   * password worked for almost nobody.
+   */
+  describe('an account that has never had one', () => {
+    beforeEach(() => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        email: 'ada@example.com',
+        name: 'Ada',
+        passwordHash: null,
+      });
+    });
 
-    await expect(
-      service.changePassword('user-1', 'anything', 'a-much-better-one'),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    it('sets one without asking for a password that does not exist', async () => {
+      const out = await service.changePassword('user-1', undefined, 'a-much-better-one');
+
+      expect(out).toMatchObject({ changed: true, created: true });
+      const { data } = prisma.user.update.mock.calls[0][0];
+      await expect(bcrypt.compare('a-much-better-one', data.passwordHash)).resolves.toBe(true);
+    });
+
+    it('ignores a current password offered anyway', async () => {
+      // The browser hides the field, but nothing stops an old tab sending one.
+      await expect(
+        service.changePassword('user-1', 'made-up', 'a-much-better-one'),
+      ).resolves.toMatchObject({ created: true });
+    });
+
+    it('invalidates the sign-in link that got them here', async () => {
+      // Same reasoning as changing one: another way in defeats the point.
+      await service.changePassword('user-1', undefined, 'a-much-better-one');
+
+      const { data } = prisma.user.update.mock.calls[0][0];
+      expect(data.magicLinkToken).toBeNull();
+      expect(data.magicLinkExpiry).toBeNull();
+    });
+
+    it('tells the address that owns the account', async () => {
+      /*
+        The compensating control. Requiring the current password exists to
+        stop a borrowed browser taking an account permanently — and setting a
+        *first* password on a borrowed session does exactly that, with no
+        password to ask for. So the owner is told while they can still act.
+      */
+      await service.changePassword('user-1', undefined, 'a-much-better-one');
+
+      expect(email.sendPasswordSet).toHaveBeenCalledWith('ada@example.com', {
+        name: 'Ada',
+        created: true,
+      });
+    });
+
+    it('does not fail the change because the notice would not send', async () => {
+      // The password is already set. Failing now would tell the member it is
+      // not, which is the one answer that is wrong.
+      email.sendPasswordSet.mockRejectedValue(new Error('postmark is down'));
+
+      await expect(
+        service.changePassword('user-1', undefined, 'a-much-better-one'),
+      ).resolves.toMatchObject({ changed: true });
+    });
+  });
+
+  describe('an account that already has one', () => {
+    it('still refuses without the current password', async () => {
+      // The rule that protects a borrowed browser has not moved.
+      await expect(
+        service.changePassword('user-1', undefined, 'a-much-better-one'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('still refuses a wrong one', async () => {
+      await expect(
+        service.changePassword('user-1', 'not-it', 'a-much-better-one'),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('says it was a change rather than a creation', async () => {
+      const out = await service.changePassword('user-1', CURRENT, 'a-much-better-one');
+
+      expect(out).toMatchObject({ created: false });
+      expect(email.sendPasswordSet).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ created: false }),
+      );
+    });
   });
 });
