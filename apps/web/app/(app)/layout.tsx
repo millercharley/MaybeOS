@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
 import { Menu } from 'lucide-react';
 import { Sidebar } from '@/components/layout/sidebar';
+import { PasswordOffer } from '@/components/member/password-offer';
 import { CommandPalette, OPEN_SEARCH_EVENT } from '@/components/layout/command-palette';
 import { OrgMark } from '@/components/layout/org-mark';
 import { PortalProvider, usePortal } from '@/contexts/portal-context';
@@ -190,7 +191,25 @@ function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         <main className="flex-1 overflow-auto">
-          <div className="page-shell">{children}</div>
+          <div className="page-shell">
+            {/*
+              Offered after a sign-in link (AUTH-05). Here because the link
+              can land somebody on any of several pages, and this is the one
+              place all of them pass through.
+
+              Not on the profile screen, which carries the same offer in
+              full: a banner pointing at the form directly beneath it is
+              just noise.
+            */}
+            {signedIn && !pathname?.endsWith('/profile') && (
+              <PasswordOffer
+                profileHref={
+                  membership?.org?.slug ? `/member/${membership.org.slug}/profile` : null
+                }
+              />
+            )}
+            {children}
+          </div>
         </main>
       </div>
 
