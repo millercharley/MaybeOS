@@ -30,6 +30,52 @@ export default function PortalEventsPage() {
   // to its own members and the page looked empty rather than restricted.
   const isMember = Boolean(org && user?.orgs?.some((o) => o.orgId === org.id));
 
+  /**
+   * Seats this member already holds (EVT-45).
+   *
+   * Charley: "If you RSVP for an event it says 'Going' and then if you open
+   * the Events page later, it doesn't say 'Going' anymore but has the RSVP
+   * again."
+   *
+   * `rsvpStatus` only ever recorded what happened while the page was open,
+   * so coming back offered the button again for a seat already held — and
+   * pressing it answers 409, "You have already RSVPed to this event". The
+   * member's own record said they were going; this page simply never asked.
+   *
+   * The detail page learned this already, for the digest links that RSVP on
+   * arrival. One request, once, for the whole list.
+   */
+  useEffect(() => {
+    if (!org || !token || !isMember) return;
+
+    let cancelled = false;
+    api.events
+      .myRsvps(org.id, token)
+      .then((mine) => {
+        if (cancelled) return;
+        const held: Record<string, 'CONFIRMED' | 'WAITLISTED'> = {};
+        for (const rsvp of mine) {
+          // CANCELED is not a seat. Somebody who dropped out should be
+          // offered the button again, which is the one case where the old
+          // behaviour was right by accident.
+          if (rsvp.status === 'CONFIRMED' || rsvp.status === 'WAITLISTED') {
+            held[rsvp.event.id] = rsvp.status;
+          }
+        }
+        // Merged under anything decided since, so a press that landed while
+        // this was in flight is not overwritten by the older answer.
+        setRsvpStatus((current) => ({ ...held, ...current }));
+      })
+      // Quiet: the button still works and the API still refuses a duplicate,
+      // so a failed read costs this page nothing it did not already live
+      // without.
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [org, token, isMember]);
+
   const { data: events, loading, refetch } = usePublicApi(
     () =>
       !org
