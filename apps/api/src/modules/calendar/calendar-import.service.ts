@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { calendar_v3 } from 'googleapis';
 import { PrismaService } from '../../config/prisma.service';
 import { CalendarService } from './calendar.service';
-import { hostFields, hostKey, hostLabel, personFor } from './past-host';
+import { hostFields, hostKey, hostLabel, nameKey, personFor, unambiguousNames } from './past-host';
 import { guestFrom } from './booking-guest';
 import { slugCandidates } from './event-slug';
 import { budget, nextCursor, startOf, type ImportCursor } from './import-cursor';
@@ -836,6 +836,29 @@ export class CalendarImportService {
 
     const hosts = await this.hostsFor(orgId, withGuests);
 
+    /*
+      The title, when nothing else names anybody (SPC-34).
+
+      A room calendar kept by hand records whose reservation it is in the
+      title and nowhere else: "Brooke Sullivan Brown". There is no guest line,
+      and the creator is whoever was at the keyboard — so these came in as
+      that person's, and were then marked the co-op's precisely *because* the
+      creator was the organiser they would have fallen back to anyway. 47 of
+      MaybeItsFate's reservations arrived that way, 26 of them still to come,
+      and their owners were told they had no bookings at all.
+
+      Weaker evidence than a guest line, so it is consulted only when there is
+      none, and only for a name belonging to exactly one member.
+    */
+    const byName = unambiguousNames(
+      (
+        await this.prisma.userOrg.findMany({
+          where: { orgId },
+          select: { userId: true, user: { select: { name: true } } },
+        })
+      ).map((r) => ({ userId: r.userId, name: r.user.name })),
+    );
+
     // Which of these the room already holds — one query for the batch, not
     // one per reservation (CAL-06).
     const already = new Map(
@@ -855,7 +878,13 @@ export class CalendarImportService {
       if (index > 0 && outOfTime()) break;
 
       const person = entry.hostPerson ?? { email: null, name: null };
-      const matched = person.email ? (hosts.get(person.email) ?? null) : null;
+      const byEmail = person.email ? (hosts.get(person.email) ?? null) : null;
+
+      // Guest line first, then the title, then whoever's address is on it.
+      const guest = guests.get(entry.googleEventId);
+      const titleKey = guest ? null : nameKey(entry.title);
+      const byTitle = titleKey ? (byName.get(titleKey) ?? null) : null;
+      const matched = byTitle ?? byEmail;
       // `userId` is required, so an unmatched reservation still has to be
       // filed under somebody — but it no longer *claims* to be theirs.
       const userId = matched ?? fallback.userId;
@@ -886,7 +915,13 @@ export class CalendarImportService {
         "matched the automation's account", which is how one person was
         handed three thousand bookings.
       */
-      const named = Boolean(guests.get(entry.googleEventId));
+      /*
+        A title naming a member is naming somebody, the same as a guest line
+        (SPC-34). Without this they stay co-op holds — which the room picker
+        filters out, so correcting only who they belong to would have left
+        them exactly as invisible.
+      */
+      const named = Boolean(guest) || byTitle !== null;
       const isCoopHold = matched === null || (!named && matched === fallback.userId);
       const bookedFor = matched
         ? { bookedForEmail: null, bookedForName: null }
@@ -906,6 +941,15 @@ export class CalendarImportService {
             endTime: entry.end,
             isCoopHold,
             ...bookedFor,
+            /*
+              Whose it is, corrected on a later pass (SPC-34).
+
+              This deliberately left `userId` alone, so a reservation somebody
+              had been handed stayed theirs. But a row the importer got wrong
+              before it could read titles would then stay wrong for ever — so
+              a title that now names a member moves it, and nothing else does.
+            */
+            ...(byTitle && byTitle !== fallback.userId ? { userId: byTitle } : {}),
           },
         });
       } else {

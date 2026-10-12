@@ -1916,7 +1916,16 @@ export class EventsService {
     return this.prisma.booking.findMany({
       where: {
         room: { orgId },
-        isCoopHold: false,
+        /*
+          A co-op hold is not offered — unless it names this member (SPC-34).
+
+          The reservations the migration got wrong are co-op holds *because*
+          it got them wrong: unable to tell whose they were, it filed them as
+          the co-op's. Filtering those out here is what made the title match
+          below do nothing at all for the member it was written for, which I
+          only found by checking the rows rather than the code.
+        */
+        ...(who.anyone ? { isCoopHold: false } : {}),
         status: { in: ['PENDING', 'APPROVED'] },
         // Free and still to come, or already this event's — so an event's own
         // rooms stay in the list it is choosing from.
@@ -1932,7 +1941,16 @@ export class EventsService {
         */
         ...(who.anyone
           ? {}
-          : { AND: [{ OR: [{ userId: { in: who.userIds } }, ...claimable] }] }),
+          : {
+              AND: [
+                {
+                  OR: [
+                    { isCoopHold: false, userId: { in: who.userIds } },
+                    ...claimable,
+                  ],
+                },
+              ],
+            }),
         startTime: { gte: from, lte: to },
       },
       select: {
