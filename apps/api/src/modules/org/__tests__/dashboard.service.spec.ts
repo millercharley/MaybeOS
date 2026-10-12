@@ -19,6 +19,8 @@ describe('DashboardService', () => {
       userOrg: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
       event: { findMany: jest.fn().mockResolvedValue([]) },
       booking: { findMany: jest.fn().mockResolvedValue([]) },
+      // Who the viewer has already written to (DSH-04). Nobody, by default.
+      messageThread: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const module = await Test.createTestingModule({
       providers: [DashboardService, { provide: PrismaService, useValue: prisma }],
@@ -81,6 +83,106 @@ describe('DashboardService', () => {
       const result = await service.recentJoins('org1', 'me', NOW);
       expect(result.members).toHaveLength(3);
       expect(result.more).toBe(1);
+    });
+
+    /**
+     * Hiding the prompt once it has been acted on (DSH-04).
+     *
+     * Charley: "I've sent messages to Jalynn, Harold, and Diego. I would
+     * like the system to know that and then hide these Say Hi prompts." A
+     * card asking you to do something you have already done is a card you
+     * learn to ignore, and the next one goes unread with it.
+     */
+    describe('somebody already written to', () => {
+      /** The thread between the viewer and user `n`, as the key sorts it. */
+      const keyFor = (n: number) => ['me', `u${n}`].sort().join(',');
+
+      it('drops off the card', async () => {
+        prisma.userOrg.findMany.mockResolvedValue([1, 2, 3, 4].map(joiner));
+        prisma.messageThread.findMany.mockResolvedValue([
+          { participantKey: keyFor(1) },
+          { participantKey: keyFor(2) },
+        ]);
+
+        const result = await service.recentJoins('org1', 'me', NOW);
+
+        expect(result.members.map((m) => m.userId)).toEqual(['u3', 'u4']);
+        expect(result.more).toBe(0);
+      });
+
+      it('is read from a message sent, not a conversation opened', async () => {
+        // Following "say hi" and typing nothing is not saying hi.
+        await service.recentJoins('org1', 'me', NOW);
+        prisma.userOrg.findMany.mockResolvedValue([joiner(1)]);
+        await service.recentJoins('org1', 'me', NOW);
+
+        const { where } = prisma.messageThread.findMany.mock.calls[0][0];
+        expect(where.messages).toEqual({ some: { senderId: 'me' } });
+      });
+
+      it('does not count being in a group with them', async () => {
+        /*
+          `participantKey` is every participant's id sorted and joined, so
+          asking for exactly the pair's key finds the one-to-one thread and
+          never a group that happens to contain them both.
+        */
+        prisma.userOrg.findMany.mockResolvedValue([joiner(1)]);
+        await service.recentJoins('org1', 'me', NOW);
+
+        const { where } = prisma.messageThread.findMany.mock.calls[0][0];
+        expect(where.participantKey).toEqual({ in: [keyFor(1)] });
+      });
+
+      it('stays inside this co-op', async () => {
+        // Two people who share two co-ops hold two conversations (CMN-08).
+        prisma.userOrg.findMany.mockResolvedValue([joiner(1)]);
+        await service.recentJoins('org1', 'me', NOW);
+
+        expect(prisma.messageThread.findMany.mock.calls[0][0].where.orgId).toBe('org1');
+      });
+
+      it('asks nothing when nobody has joined', async () => {
+        await service.recentJoins('org1', 'me', NOW);
+        expect(prisma.messageThread.findMany).not.toHaveBeenCalled();
+      });
+
+      it('reads more than it shows, because some will be filtered out', async () => {
+        /*
+          The mocks return whatever they are told regardless of `take`, so
+          the filling test below cannot see this — and a `take` of four, the
+          number before DSH-04, would quietly show two people when five were
+          waiting. Asserted against the query itself.
+        */
+        await service.recentJoins('org1', 'me', NOW);
+
+        const { take } = prisma.userOrg.findMany.mock.calls[0][0];
+        expect(take).toBeGreaterThan(4);
+      });
+
+      it('still fills the card from further down the week', async () => {
+        // Filtering after taking only four would have shown two people when
+        // five were waiting. It takes more and then filters.
+        prisma.userOrg.findMany.mockResolvedValue([1, 2, 3, 4, 5, 6].map(joiner));
+        prisma.messageThread.findMany.mockResolvedValue([
+          { participantKey: keyFor(1) },
+          { participantKey: keyFor(2) },
+        ]);
+
+        const result = await service.recentJoins('org1', 'me', NOW);
+
+        expect(result.members.map((m) => m.userId)).toEqual(['u3', 'u4', 'u5']);
+        expect(result.more).toBe(1);
+      });
+
+      it('shows the card to nobody once everyone has been greeted', async () => {
+        prisma.userOrg.findMany.mockResolvedValue([joiner(1)]);
+        prisma.messageThread.findMany.mockResolvedValue([{ participantKey: keyFor(1) }]);
+
+        const result = await service.recentJoins('org1', 'me', NOW);
+
+        expect(result.members).toEqual([]);
+        expect(result.more).toBe(0);
+      });
     });
 
     it('says nothing when nobody has joined', async () => {
