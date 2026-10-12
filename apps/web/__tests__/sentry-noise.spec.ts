@@ -125,16 +125,18 @@ describe('a poll nobody is waiting for', () => {
   });
 });
 
-describe('the sanitiser is not bundled into the server', () => {
-  const config = readFileSync(join(__dirname, '..', 'next.config.ts'), 'utf8');
+/*
+  The sanitiser's own tests moved to `sanitizer-loads.spec.ts` (OPS-35).
 
-  it('leaves isomorphic-dompurify external', () => {
-    /*
-      It loads jsdom in Node, and jsdom reads its own stylesheet off disk.
-      Bundling took the JavaScript and left the file, so every server render
-      of a page with rich text threw ENOENT — 1,988 of them, 93% of every
-      error the product reported.
-    */
-    expect(config).toMatch(/serverExternalPackages: \['isomorphic-dompurify'\]/);
-  });
-});
+  This asserted `serverExternalPackages: ['isomorphic-dompurify']`, which was
+  the OPS-09 attempt at the ENOENT: stop Next bundling jsdom so the stylesheet
+  it reads would be traced in beside it. It worked, in the sense that the file
+  arrived — and the sanitiser still threw, now on an ESM-only dependency being
+  required from CommonJS.
+
+  The library is gone and the setting with it, so there is nothing here left
+  to assert. What that test was really for — that the sanitiser can load
+  inside the function — is now checked by requiring it in a real Node process
+  and by walking its dependencies for ESM, which is what would have caught
+  the second failure before it shipped.
+*/

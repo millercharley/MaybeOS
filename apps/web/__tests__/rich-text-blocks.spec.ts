@@ -61,9 +61,23 @@ describe('a body written in a contentEditable', () => {
   });
 
   it('still keeps the co-op’s own words exactly', () => {
-    // Including the curly apostrophes, which are theirs.
-    expect(html).toContain('Let’s respect each other.');
-    expect(html).toContain("Let's be tolerant");
+    /*
+      Compared as a reader sees them, not as the string happens to be spelled
+      (OPS-35).
+
+      The stored body carries `Let&#39;s`, and the old sanitiser decoded it on
+      the way through because it built a DOM and serialised it back. `xss`
+      filters the markup and leaves the entity alone, so the same apostrophe
+      arrives written differently and renders identically.
+
+      Asserting on the raw string would have failed over a difference nobody
+      can see, so the entities are resolved first — and the curly apostrophe,
+      which is genuinely theirs and never encoded, is still checked as-is.
+    */
+    const asRead = html.replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+
+    expect(asRead).toContain('Let’s respect each other.');
+    expect(asRead).toContain("Let's be tolerant");
   });
 });
 

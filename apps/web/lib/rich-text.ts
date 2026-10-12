@@ -58,7 +58,37 @@ export function renderBodyHtml(body: string): string {
  * because an HTML parser closes an open `<p>` when another one starts.
  */
 function divsToParagraphs(html: string): string {
-  return html.replace(/<div\b[^>]*>/gi, '<p>').replace(/<\/div>/gi, '</p>');
+  /*
+    Flattened here rather than left to the parser (OPS-35).
+
+    This used to produce nested `<p>` from the nested `<div>` a
+    contentEditable emits, and rely on the sanitiser's HTML parser to close
+    an open paragraph when the next one opened. That was true of DOMPurify,
+    which builds a DOM and serialises it back; it is not true of `xss`, which
+    filters a stream and leaves structure alone — so swapping the sanitiser
+    turned the Code of Conduct back into one nested block.
+
+    Depending on a parser to repair our own malformed output was the weak
+    part, so it does not any more: each `<div>` closes whatever paragraph is
+    open before opening its own, and the unmatched closers are dropped.
+  */
+  let depth = 0;
+  const flattened = html
+    .replace(/<div\b[^>]*>/gi, () => {
+      const open = depth > 0 ? '</p>' : '';
+      depth += 1;
+      return `${open}<p>`;
+    })
+    .replace(/<\/div>/gi, () => {
+      if (depth === 0) return '';
+      depth -= 1;
+      // Only the innermost close ends a paragraph; the outer ones were
+      // wrappers and their paragraph was already closed by the div inside.
+      return depth === 0 ? '</p>' : '';
+    });
+
+  // A `<div>` left open by the browser leaves a paragraph open here.
+  return depth > 0 ? `${flattened}</p>` : flattened;
 }
 
 /**
