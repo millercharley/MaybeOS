@@ -241,6 +241,24 @@ export function EventForm({
       })}`,
     })),
   );
+  /**
+   * The room an event names when it holds no reservation (SPC-33).
+   *
+   * Loaded lazily — only a member with nothing to attach ever sees the
+   * field, so the co-op's room list is not worth a request on every event
+   * form.
+   */
+  const [roomId, setRoomId] = useState(initial?.roomId ?? '');
+  const [roomOptions, setRoomOptions] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    if (!orgId || !token || rooms.length > 0 || roomOptions.length > 0) return;
+    api.rooms
+      .list(orgId, token)
+      .then((list) => setRoomOptions(list.map((r) => ({ id: r.id, name: r.name }))))
+      // No list means no field; the reservation picker above is unaffected.
+      .catch(() => setRoomOptions([]));
+  }, [orgId, token, rooms.length, roomOptions.length]);
+
   const [localError, setLocalError] = useState('');
 
   function submit(e: FormEvent, publish: boolean) {
@@ -308,6 +326,9 @@ export function EventForm({
       ...(hosts ? { coHostIds: coHosts.map((c) => c.id) } : {}),
       // Likewise the rooms (SPC-27).
       ...(orgId ? { bookingIds: rooms.map((r) => r.id) } : {}),
+      // Cleared when a reservation is attached: that already says which
+      // room, and two answers that could disagree is one too many.
+      ...(orgId ? { roomId: rooms.length === 0 && roomId ? roomId : null } : {}),
       publish,
     });
   }
@@ -569,6 +590,50 @@ export function EventForm({
             }
             onDrop={(id) => setRooms((current) => current.filter((r) => r.id !== id))}
           />
+
+          {/*
+            Naming the room when no reservation can be attached (SPC-33).
+
+            Charley: "make sure that a member can post their event even when
+            there's a missing room reservation."
+
+            Only when none is attached, because a reservation says the same
+            thing and more. This is for the case MaybeOS is simply wrong
+            about — the calendar migration filed 26 upcoming reservations
+            under whoever typed them into Google, so a member who held the
+            Attic was told she had no bookings and then refused permission to
+            publish.
+
+            It does not pretend to hold the room. The event says where it is;
+            the co-op's rule is satisfied; an organiser can see it has no
+            reservation and sort that out.
+          */}
+          {rooms.length === 0 && (
+            <div className="mt-3">
+              <label
+                htmlFor="event-room"
+                className="mb-1 block text-xs font-medium text-gray-700"
+              >
+                Or name the room, if it is arranged outside MaybeOS
+              </label>
+              <select
+                id="event-room"
+                value={roomId}
+                onChange={(e) => setRoomId(e.target.value)}
+                className="input w-full text-sm"
+              >
+                <option value="">Not saying yet</option>
+                {roomOptions.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                This says where the event is. It does not reserve the room.
+              </p>
+            </div>
+          )}
         </div>
       )}
 

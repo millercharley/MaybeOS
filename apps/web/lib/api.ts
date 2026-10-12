@@ -4416,7 +4416,15 @@ export interface CreateEventData {
   /** Who it is suitable for (SPC-22). */
   maturityLevel?: MaturityLevel;
   locationId?: string;
-  roomId?: string;
+  /**
+   * The room this event is in (SPC-33).
+   *
+   * Declared since the beginning and never sent — the form only ever offered
+   * reservations. It is what a member says when MaybeOS has their booking
+   * filed under somebody else, and it satisfies a co-op that asks every event
+   * to say where it is. Null clears it.
+   */
+  roomId?: string | null;
   /**
    * Everybody else running it (EVT-36), and the room reservations it occupies
    * (SPC-27). Both are the whole list: sending one is what adds and removes.

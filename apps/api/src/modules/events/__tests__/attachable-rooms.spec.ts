@@ -26,6 +26,9 @@ describe('EventsService — reservations an event may claim', () => {
     prisma = {
       organization: { findUnique: jest.fn().mockResolvedValue({ requireEventRoom: false }) },
       event: { findFirst: jest.fn().mockResolvedValue(null) },
+      // Whose name this is, for the reservations the migration filed under
+      // somebody else (SPC-33).
+      user: { findUnique: jest.fn().mockResolvedValue({ name: 'Brooke Sullivan Brown' }) },
       booking: { findMany: jest.fn().mockResolvedValue([]) },
     };
 
@@ -91,6 +94,65 @@ describe('EventsService — reservations an event may claim', () => {
     const { where } = await queried();
 
     expect(where.room).toEqual({ orgId: ORG });
-    expect(where.userId).toEqual({ in: expect.arrayContaining(['u-me']) });
+    // Ownership moved under `AND` in SPC-33 so it could sit beside the
+    // "free and still to come" clause without replacing it. Still scoped.
+    const owners = where.AND[0].OR.find((c: { userId?: unknown }) => c.userId);
+    expect(owners.userId).toEqual({ in: expect.arrayContaining(['u-me']) });
+  });
+
+  /**
+   * Reservations the calendar migration filed under somebody else (SPC-33).
+   *
+   * Charley booked the Attic and the Library for a member by typing entries
+   * on the shared room calendars with her name as the title. Google calls
+   * the calendar the organiser of anything created on one, so the importer
+   * fell through to the creator — him. 26 upcoming reservations arrived that
+   * way, and their owners were told "you have no room bookings near this
+   * date. Book the room first", about rooms they already had.
+   */
+  describe('a reservation that names this member in its title', () => {
+    const claimClause = async () => {
+      const { where } = await queried();
+      return where.AND[0].OR.find((c: { title?: unknown }) => c.title);
+    };
+
+    it('is offered to them', async () => {
+      expect(await claimClause()).toMatchObject({
+        title: { equals: 'Brooke Sullivan Brown', mode: 'insensitive' },
+      });
+    });
+
+    it('only when the migration put it there', async () => {
+      // Narrow on purpose: this offers somebody else's row. An imported
+      // entry, still attached to nothing, titled exactly this member's name.
+      expect(await claimClause()).toMatchObject({
+        googleEventId: { not: null },
+        eventId: null,
+      });
+    });
+
+    it('matches the whole title, not a part of it', async () => {
+      // "Natalie Fenton • 3rd Floor Attic" must not match Natalie Fenton —
+      // that one already has its owner, and a prefix match would start
+      // handing out reservations that merely mention somebody.
+      const clause = await claimClause();
+      expect(clause.title.contains).toBeUndefined();
+      expect(clause.title.startsWith).toBeUndefined();
+      expect(clause.title.equals).toBe('Brooke Sullivan Brown');
+    });
+
+    it('is not offered when the member has no name to match', async () => {
+      prisma.user.findUnique.mockResolvedValue({ name: '  ' });
+
+      const { where } = await queried();
+      expect(where.AND[0].OR).toHaveLength(1);
+      expect(where.AND[0].OR[0].userId).toBeDefined();
+    });
+
+    it('is not asked for at all when an organiser is looking', async () => {
+      // They are shown the whole co-op's already.
+      await service.attachableRooms(ORG, { userId: 'u-admin', isOrganiser: true }, {});
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    });
   });
 });

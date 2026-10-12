@@ -7,6 +7,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { EmailService } from '../email/email.service';
 import { RadarService } from '../radar/radar.service';
@@ -1882,6 +1883,36 @@ export class EventsService {
     */
     const now = new Date();
 
+    /*
+      Reservations the migration filed under somebody else (SPC-33).
+
+      Charley booked the Attic and the Library for a member by typing entries
+      on the room calendars with her name as the title. Google names the
+      *calendar* as the organiser of anything created on a shared one, so
+      `personFor` fell through to the creator — him — and the only trace of
+      whose reservation it was ended up in the title. 26 upcoming
+      reservations arrived that way, and their owners were told "you have no
+      room bookings near this date. Book the room first", about rooms they
+      already had.
+
+      So a reservation whose title is exactly this member's name is offered
+      to them. Narrow on purpose, because this is offering somebody else's
+      row: only an imported one, only one still attached to nothing, and only
+      an exact match on the whole title. "Natalie Fenton • 3rd Floor Attic"
+      does not match, and does not need to — that one already has its owner.
+    */
+    const me = who.anyone
+      ? null
+      : await this.prisma.user.findUnique({
+          where: { id: actor.userId },
+          select: { name: true },
+        });
+    const myName = (me?.name ?? '').trim();
+    const claimable: Prisma.BookingWhereInput[] =
+      myName === ''
+        ? []
+        : [{ googleEventId: { not: null }, eventId: null, title: { equals: myName, mode: 'insensitive' } }];
+
     return this.prisma.booking.findMany({
       where: {
         room: { orgId },
@@ -1893,7 +1924,15 @@ export class EventsService {
           { eventId: null, endTime: { gte: now } },
           ...(options.eventId ? [{ eventId: options.eventId }] : []),
         ],
-        ...(who.anyone ? {} : { userId: { in: who.userIds } }),
+        /*
+          Under `AND`, not a second `OR` beside the one above — two `OR` keys
+          in the same object is the later one silently replacing the first,
+          which would have dropped "free and still to come" altogether. The
+          existing tests caught it.
+        */
+        ...(who.anyone
+          ? {}
+          : { AND: [{ OR: [{ userId: { in: who.userIds } }, ...claimable] }] }),
         startTime: { gte: from, lte: to },
       },
       select: {
@@ -1999,13 +2038,33 @@ export class EventsService {
     });
     if (!org?.requireEventRoom) return;
 
-    const held = await this.prisma.booking.count({ where: { eventId } });
-    if (held === 0) {
-      throw new BadRequestException(
-        'This co-op asks every event to say which room it is in. Add a room reservation before publishing it — ' +
-          'book the room first if there is not one yet.',
-      );
-    }
+    /*
+      Either a reservation or a named room (SPC-33).
+
+      Charley: "make sure that a member can post their event even when
+      there's a missing room reservation."
+
+      This counted reservations alone, which made the setting mean "every
+      event must hold a booking in MaybeOS" rather than what it is for —
+      that a published event should say where it is. Those came apart as
+      soon as the calendar migration filed somebody's reservation under
+      whoever typed it in: the member had the room, the co-op knew the room
+      was hers, and the product refused to let her tell anyone about it.
+
+      So naming the room satisfies it. An event that says "the Attic" and
+      holds no booking is honest about both, and an organiser can see the
+      difference and sort the reservation out.
+    */
+    const [held, event] = await Promise.all([
+      this.prisma.booking.count({ where: { eventId } }),
+      this.prisma.event.findFirst({ where: { id: eventId, orgId }, select: { roomId: true } }),
+    ]);
+    if (held > 0 || event?.roomId) return;
+
+    throw new BadRequestException(
+      'This co-op asks every event to say which room it is in. Pick the room it is in, or attach the ' +
+        'reservation that holds it, before publishing.',
+    );
   }
 
   /**

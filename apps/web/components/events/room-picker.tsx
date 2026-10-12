@@ -111,8 +111,19 @@ export function RoomPicker({
         <p className="text-sm text-gray-500">
           {picked.length > 0
             ? 'No other reservations of yours near this date.'
-            : // The useful next step, not a dead end: they have to book it.
-              'You have no room bookings near this date. Book the room first and it will appear here.'}
+            : /*
+                Not "book the room first" any more (SPC-33).
+
+                That was a dead end for the member it was most likely to
+                reach. The calendar migration filed 26 upcoming reservations
+                under whoever typed them into Google rather than whoever they
+                were for — so somebody who genuinely held the Attic was told
+                to go and book the Attic.
+
+                The room field below is the way out, so this says what is
+                true and stops instructing.
+              */
+              'No reservations of yours near this date. If the room is already arranged, say which one below.'}
         </p>
       )}
 
