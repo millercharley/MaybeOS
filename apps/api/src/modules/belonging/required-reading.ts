@@ -6,12 +6,21 @@
  * who has done nothing wrong cannot post; gate too late and a co-op believes
  * everyone has agreed to something they have not read.
  *
- * The rule in one sentence: **you get a grace period only if the requirement
- * arrived after you did.** Somebody joining today, into a co-op that
- * published its house rules two years ago, is not owed fourteen days to think
- * about it — the rules are part of what they joined. Somebody who has been a
- * member for two years and is told on a Tuesday that there is now something
- * to agree to, is.
+ * The rule in one sentence: **everybody gets the grace period, counted from
+ * whichever came later — the day they joined, or the day the requirement
+ * appeared.**
+ *
+ * It used to be grace only for those who predated the requirement, on the
+ * reasoning that somebody joining into an established co-op is joining its
+ * rules as they stand. That reads well and worked badly. Charley: "make this
+ * really easy for them by just reminding them to review these documents
+ * within 30 days instead of forcing them out of creating the event or booking
+ * their room."
+ *
+ * A new member's first act is usually the one that matters most — booking the
+ * room they joined to use — and meeting a refusal there is a poor way to
+ * begin. The handbook still has to be read; it does not have to be read in
+ * the ninety seconds before somebody can do the thing they came for.
  */
 
 export interface RequiredArticle {
@@ -60,12 +69,17 @@ export function readingStatus(
   }
   if (article.requiredSince === null) return { status: 'done' };
 
-  // Joined after the requirement existed: it is part of what they joined, and
-  // onboarding walks them through it before they can act.
-  const joinedBefore = reader.memberSince.getTime() < article.requiredSince.getTime();
-  if (!joinedBefore) return { status: 'blocking' };
+  /*
+    From whichever came later (BEL-07).
 
-  const until = new Date(article.requiredSince.getTime() + graceDays * DAY_MS);
+    Somebody who joined before the requirement counts from the day it
+    appeared; somebody who joined after counts from the day they joined.
+    Taking the later of the two is both of those rules at once, and it is the
+    only reading that never gives anybody a window that closed before they
+    arrived.
+  */
+  const startsAt = Math.max(reader.memberSince.getTime(), article.requiredSince.getTime());
+  const until = new Date(startsAt + graceDays * DAY_MS);
   if (now.getTime() < until.getTime()) return { status: 'in-grace', until };
 
   return { status: 'blocking' };

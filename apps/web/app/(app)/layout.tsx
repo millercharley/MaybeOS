@@ -6,6 +6,7 @@ import { usePathname, useParams } from 'next/navigation';
 import { Menu } from 'lucide-react';
 import { Sidebar } from '@/components/layout/sidebar';
 import { PasswordOffer } from '@/components/member/password-offer';
+import { RequiredReadingGate } from '@/components/belonging/required-reading-gate';
 import { CommandPalette, OPEN_SEARCH_EVENT } from '@/components/layout/command-palette';
 import { OrgMark } from '@/components/layout/org-mark';
 import { PortalProvider, usePortal } from '@/contexts/portal-context';
@@ -201,6 +202,16 @@ function AppShell({ children }: { children: React.ReactNode }) {
               full: a banner pointing at the form directly beneath it is
               just noise.
             */}
+            {/*
+              Past thirty days, the handbook comes first (BEL-07). Here
+              rather than in the portal shell, because the writes this
+              replaced were being refused on `/member` — posting an event,
+              booking a room — which the portal shell never covered.
+            */}
+            {signedIn && (
+              <RequiredReadingGate orgId={currentOrgId ?? undefined} orgSlug={membership?.org?.slug} />
+            )}
+
             {signedIn && !pathname?.endsWith('/profile') && (
               <PasswordOffer
                 profileHref={

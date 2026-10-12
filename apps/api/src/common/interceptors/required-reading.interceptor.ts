@@ -1,7 +1,6 @@
 import {
   CallHandler,
   ExecutionContext,
-  ForbiddenException,
   Injectable,
   NestInterceptor,
 } from '@nestjs/common';
@@ -115,26 +114,35 @@ export class RequiredReadingInterceptor implements NestInterceptor {
       new Date(),
     );
 
-    if (outstanding.blocking.length === 0) {
-      // Attached so a response can carry the countdown banner without every
-      // controller having to ask for it.
-      request.requiredReadingGraceEndsAt = graceEndsAt(outstanding);
-      return;
-    }
+    /*
+      Recorded, not refused (BEL-07).
 
-    const next = outstanding.blocking[0];
-    // A clear message and a link to the article, never a generic error
-    // (§6.2). Somebody who cannot post should learn what to do about it in
-    // the same breath.
-    throw new ForbiddenException({
-      statusCode: 403,
-      error: 'Forbidden',
-      reason: 'REQUIRED_READING',
-      message:
-        outstanding.blocking.length === 1
-          ? `Before you can take part here, this community asks you to read and agree to “${next.title}”.`
-          : `Before you can take part here, this community asks you to read and agree to ${outstanding.blocking.length} things, starting with “${next.title}”.`,
-      articles: outstanding.blocking.map((a) => ({ id: a.id, title: a.title, slug: a.slug })),
-    });
+      This threw a 403 on every write while anything was outstanding, which
+      made the gate land on whatever the member happened to be doing — and
+      what they were usually doing was the thing they joined to do. Charley:
+      "make this really easy for them by just reminding them… Allow them to
+      proceed with their booking or reservation. After 30 days, force them to
+      the Handbook after login."
+
+      So the consequence moved from the action to the door. A member past
+      their window meets the handbook when they arrive, rather than a refusal
+      three clicks later with a booking half-filled in.
+
+      It was also catching far more people than anyone realised: MaybeItsFate
+      made two articles required on 4 September, every migrated member's
+      window closed on 4 October, and 402 of its 439 members were refused
+      every write from that morning on. Nobody reported it as an outage
+      because each person met it once, alone, as a sentence about the
+      handbook.
+
+      Both figures still travel on the request, so a response can carry the
+      countdown and the shell can send somebody to the handbook.
+    */
+    request.requiredReadingGraceEndsAt = graceEndsAt(outstanding);
+    request.requiredReadingBlocking = outstanding.blocking.map((a) => ({
+      id: a.id,
+      title: a.title,
+      slug: a.slug,
+    }));
   }
 }
