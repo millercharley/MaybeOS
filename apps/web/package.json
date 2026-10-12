@@ -15,12 +15,12 @@
     "@sentry/nextjs": "^8.55.2",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
-    "isomorphic-dompurify": "^3.22.0",
     "lucide-react": "^0.468.0",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^2.15.0",
+    "xss": "^1.0.15",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
