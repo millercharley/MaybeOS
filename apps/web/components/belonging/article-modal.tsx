@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Check, Heart, Loader2, MessageCircle, Shield, X } from 'lucide-react';
+import { Check, Heart, Link as LinkIcon, Loader2, MessageCircle, Shield, X } from 'lucide-react';
 import { Article, ArticleComment } from '@/lib/api';
 import { renderBodyHtml } from '@/lib/rich-text';
 import { HANDBOOK_COVER_ASPECT } from '@/lib/image-crop';
@@ -42,6 +42,25 @@ export function ArticleModal({
   const [busy, setBusy] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [agreeing, setAgreeing] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  /**
+   * The address this article is already at (BEL-14).
+   *
+   * Read off the window rather than rebuilt from parts, because the page
+   * puts the open article in the query as it opens — so what is on screen
+   * and what gets copied cannot disagree.
+   */
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard access can be refused, and a handbook is not worth an
+      // error banner over it. The address bar still holds the link.
+    }
+  }
 
   // Escape closes, because a modal that traps you is a modal you resent.
   useEffect(() => {
@@ -68,13 +87,37 @@ export function ArticleModal({
       >
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
           <h2 className="truncate text-xl font-bold text-gray-900">{article.title}</h2>
-          <button
-            onClick={onClose}
-            aria-label="Close"
-            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            {/*
+              A link to this article, to paste somewhere (BEL-14).
+
+              The handbook is a modal over a list, so until now every article
+              shared one address and the only way to point somebody at one was
+              to describe where to scroll.
+            */}
+            <button
+              onClick={copyLink}
+              className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+              title="Copy a link to this article"
+            >
+              {copied ? (
+                <span className="inline-flex items-center gap-1 text-green-700">
+                  <Check className="h-3.5 w-3.5" /> Copied
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1">
+                  <LinkIcon className="h-3.5 w-3.5" /> Copy link
+                </span>
+              )}
+            </button>
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {article.coverImageUrl && (

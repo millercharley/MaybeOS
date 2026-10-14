@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { BookOpen, Loader2 } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
@@ -51,10 +52,67 @@ export default function HandbookPage() {
     load();
   }, [load]);
 
+  /**
+   * Which article is open lives in the address (BEL-14).
+   *
+   * Charley: "It would be nice to reference a Handbook article in the Commons
+   * and readers can simply click on a link to jump directly into the Handbook
+   * with this article open to read."
+   *
+   * The handbook opened everything in a modal over the list, so there was
+   * nothing to copy — every article had the same URL and a link could only
+   * ever say "the handbook, somewhere in there". Putting the open article in
+   * the query makes the link the thing that was already on screen, and gets
+   * Back out of a modal for free, which people try first anyway.
+   *
+   * `?article=` rather than a path segment: `/handbook/start` is already a
+   * route, and a dynamic sibling would shadow or be shadowed by it depending
+   * on what somebody titles an article.
+   */
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const wanted = params?.get('article') ?? null;
+
   const openArticle = async (id: string) => {
     if (!org || !token) return;
-    setOpen(await api.belonging.article(org.id, id, token));
+    const article = await api.belonging.article(org.id, id, token);
+    setOpen(article);
+    // The slug, because that is what somebody pastes into the Commons. The
+    // API takes either, so an older link holding an id still works.
+    router.replace(`${pathname}?article=${encodeURIComponent(article.slug)}`, { scroll: false });
   };
+
+  const closeArticle = () => {
+    setOpen(null);
+    router.replace(pathname ?? '', { scroll: false });
+  };
+
+  /*
+    Opening what the link asked for, once.
+
+    Keyed on the slug rather than on `open`, or closing the modal would
+    immediately reopen it — the address is cleared by the close, so this would
+    see no article and do nothing, but a reader who arrived by link and then
+    pressed Back would otherwise bounce between the two.
+  */
+  useEffect(() => {
+    if (!org || !token || !wanted || open?.slug === wanted) return;
+
+    let cancelled = false;
+    api.belonging
+      .article(org.id, wanted, token)
+      .then((article) => {
+        if (!cancelled) setOpen(article);
+      })
+      // A link to an article that has been deleted, or that this member
+      // cannot see, leaves them on the handbook rather than on an error.
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [org, token, wanted, open?.slug]);
 
   const refreshOpen = async () => {
     if (!org || !token || !open) return;
@@ -126,7 +184,7 @@ export default function HandbookPage() {
         <ArticleModal
           article={open}
           canAcknowledge={owedIds.has(open.id) || open.requiresAcknowledgment}
-          onClose={() => setOpen(null)}
+          onClose={closeArticle}
           onLike={async () => {
             await api.belonging.likeArticle(org.id, open.id, token);
             await refreshOpen();
