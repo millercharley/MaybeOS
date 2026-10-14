@@ -11,6 +11,7 @@ import { StorageService } from '../storage/storage.service';
 import { BelongingSettingsService } from './belonging-settings.service';
 import { DEFAULT_TEMPLATES, renderTemplate } from './belonging-emails';
 import { outstandingReading, graceEndsAt } from './required-reading';
+import { bodyImagePaths, signBodyImages } from './body-images';
 
 /** Roles that count as a member of the community for required reading. */
 const ACTIVE_ROLES = ['ADMIN', 'STAFF', 'MEMBER'] as const;
@@ -151,12 +152,31 @@ export class KnowledgeService {
     });
     if (!article) throw new NotFoundException('Article not found');
 
-    const coverUrls = article.coverImagePath
-      ? await this.storage.signedAttachmentUrls([article.coverImagePath])
-      : null;
+    /*
+      The cover and every picture inside the words, signed together (BEL-13).
+
+      One call rather than two: they live in the same private bucket and are
+      needed by the same render, and the body's pictures are the reason the
+      article is worth reading at all on a page explaining where the door
+      reader is.
+    */
+    const inBody = bodyImagePaths(article.body);
+    const signed = await this.storage.signedAttachmentUrls([
+      ...(article.coverImagePath ? [article.coverImagePath] : []),
+      ...inBody,
+    ]);
+    const coverUrls = signed;
 
     return {
       ...article,
+      /*
+        `data-path` is what the database holds; `src` is minted per read.
+
+        A signed URL saved into the body would give an article that looked
+        right for an hour and was broken by morning — so the body keeps the
+        path, and the reader is handed a link that works now.
+      */
+      body: signBodyImages(article.body, signed),
       // Signed per read, never a permanent link: the cover is usually a
       // photograph of this co-op's members, and the article is members-only.
       coverImageUrl: article.coverImagePath
@@ -386,6 +406,38 @@ export class KnowledgeService {
     }
 
     return this.get(orgId, updated.id, '', true);
+  }
+
+  /**
+   * A picture to drop into an article's text (BEL-13).
+   *
+   * Charley: "I need to add an image in-line in this Handbook post."
+   *
+   * Returns both halves, because the editor needs each for a different
+   * reason: `path` is what it writes into the body and what survives, `url`
+   * is signed now so the picture appears the moment it is chosen rather than
+   * after a save and a reload.
+   *
+   * Nothing is recorded against the article here. The body *is* the record —
+   * a row saying this picture belongs to that article would be a second
+   * truth, and the first one to go stale the moment somebody deletes the
+   * paragraph around it.
+   */
+  async addBodyImage(orgId: string, articleId: string, data: string, mimeType: string) {
+    // Scoped rather than taken on trust from the URL (SEC-04).
+    const article = await this.prisma.knowledgeArticle.findFirst({
+      where: { id: articleId, orgId },
+      select: { id: true },
+    });
+    if (!article) throw new NotFoundException('Article not found');
+
+    // Browsers hand back a full data: URL from FileReader; accept either.
+    const base64 = data.includes(',') ? data.slice(data.indexOf(',') + 1) : data;
+    const bytes = Buffer.from(base64.replace(/\s/g, ''), 'base64');
+
+    const path = await this.storage.uploadArticleBodyImage(orgId, bytes, mimeType);
+
+    return { path, url: await this.storage.signedAttachmentUrl(path) };
   }
 
   async removeCover(orgId: string, articleId: string) {

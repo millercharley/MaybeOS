@@ -3211,6 +3211,24 @@ class ApiClient {
         token,
       }),
 
+    /**
+     * A picture to place inside an article's text (BEL-13).
+     *
+     * Answers with both halves: `url` is signed now so the editor can show
+     * it immediately, `path` is what the body keeps and the server re-signs
+     * on every read.
+     */
+    addArticleBodyImage: (
+      orgId: string,
+      articleId: string,
+      data: { data: string; mimeType: string },
+      token: string,
+    ) =>
+      this.request<{ path: string; url: string | null }>(
+        `/orgs/${orgId}/welcome/articles/${articleId}/images`,
+        { method: 'POST', body: JSON.stringify(data), token },
+      ),
+
     removeArticleCover: (orgId: string, articleId: string, token: string) =>
       this.request<unknown>(`/orgs/${orgId}/welcome/articles/${articleId}/cover`, {
         method: 'DELETE',

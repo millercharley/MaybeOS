@@ -504,6 +504,17 @@ export class StorageService {
   }
 
   /**
+   * A picture inside an article's own words (BEL-13).
+   *
+   * Its own folder rather than the cover's, so that an article's banner and
+   * the diagram in its third paragraph can be told apart by path alone —
+   * which matters the day somebody wants to tidy up orphans.
+   */
+  async uploadArticleBodyImage(orgId: string, body: Buffer, mimeType: string): Promise<string> {
+    return this.uploadImage(orgId, 'article-body', body, mimeType, 'Pictures');
+  }
+
+  /**
    * A screenshot in MaybeOS's own documentation (PLT-05).
    *
    * Filed under `platform` rather than a co-op, because these articles belong

@@ -18,7 +18,28 @@ const ALLOWED_TAGS = [
  * quietly is as much a change as widening it — so the previous set is kept
  * whole rather than tightened on the way past.
  */
-const ALLOWED_ATTR = ['href', 'title', 'alt', 'src', 'target', 'rel'];
+const ALLOWED_ATTR = [
+  'href',
+  'title',
+  'alt',
+  'src',
+  'target',
+  'rel',
+  /*
+    Which stored picture an `<img>` is (BEL-13).
+    
+    The handbook's own pictures live in a private bucket, so `src` is a
+    signed URL minted per read and worth nothing tomorrow. `data-path` is the
+    durable half — strip it and the picture is orphaned the first time an
+    admin saves the article, because the body would come back carrying only
+    an expiring link.
+    
+    Safe to allow: it is inert to a browser, and it is only ever read by our
+    own signing step, which looks the value up in a map rather than fetching
+    it.
+  */
+  'data-path',
+];
 
 /** http(s), mailto, and the relative links a wiki page uses for another page. */
 const SAFE_URI = /^(?:https?:|mailto:|[^a-z]|[a-z+.-]+(?:[^a-z+.\-:]|$))/i;
