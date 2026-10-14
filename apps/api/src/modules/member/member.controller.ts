@@ -220,6 +220,32 @@ export class MemberController {
     return this.memberService.auditSignInLinks(orgId);
   }
 
+  /**
+   * A sign-in link to hand over by hand (MEM-29).
+   *
+   * For the members email cannot reach — Microsoft accepts MaybeOS mail and
+   * then suppresses it, so magic links do not arrive and cannot be made to.
+   * The organiser reads this one out, texts it, or hands it over in person.
+   *
+   * `@Roles('ADMIN')` and audited, because the link signs its holder in as
+   * that member. The audit entry lands in the co-op's own log, where the rest
+   * of the organisers can see it — which is the point of writing it down.
+   */
+  @Post('members/:userId/sign-in-link')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Mint a sign-in link to give a member out of band (MEM-29)',
+  })
+  createSignInLink(
+    @Param('orgId') orgId: string,
+    @Param('userId') userId: string,
+    @CurrentUser() actor: RequestUser,
+  ) {
+    return this.memberService.createSignInLink(orgId, userId, actor.userId);
+  }
+
   @Post('members/:userId/sign-in-bounce/clear')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')

@@ -671,7 +671,7 @@ export class KnowledgeService {
     });
 
     for (const to of recipients) {
-      await this.email.sendRaw(to, subject, html);
+      await this.email.sendRaw(to, subject, html, undefined, org.name);
     }
 
     this.logger.log(`Required reading "${article.title}" announced to ${recipients.length} member(s)`);

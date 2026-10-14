@@ -3,6 +3,7 @@ import { assertMemberRoom, countsAsMember, memberRoom } from './member-capacity'
 import { tierIdFor } from './import-tier';
 import { manualStatusRefusal, type ManualStatus } from './manual-status';
 import { pageWindow } from './page-window';
+import { handoffExpiry, handoffUrl, SIGN_IN_HANDOFF_ACTION } from './sign-in-handoff';
 import {
   isNarrowed,
   orderFor,
@@ -1199,7 +1200,7 @@ export class MemberService {
       expiry_days: String(org.inviteExpiryDays),
     });
 
-    await this.emailService.sendRaw(normalizedEmail, subject, html);
+    await this.emailService.sendRaw(normalizedEmail, subject, html, undefined, org.name);
 
     return { id: invitation.id, email: normalizedEmail, status: 'sent' };
   }
@@ -1415,6 +1416,8 @@ export class MemberService {
         { primary: user.email, also: membership?.altEmail },
         subject,
         html,
+        undefined,
+        org.name,
       );
     })().catch((err) => {
       this.logger.error(`Could not welcome ${userId} to ${orgId}: ${(err as Error).message}`);
@@ -1463,7 +1466,7 @@ export class MemberService {
       expiry_days: String(org.inviteExpiryDays),
     });
 
-    await this.emailService.sendRaw(invitation.email, subject, html);
+    await this.emailService.sendRaw(invitation.email, subject, html, undefined, org.name);
 
     return { id: updated.id, email: updated.email, status: 'resent' };
   }
@@ -1692,6 +1695,10 @@ export class MemberService {
             subject,
             html,
             SIGN_IN_TAG,
+            // The co-op's own name on the envelope (EML-01). This is the send
+            // that was being swallowed, and "MaybeItsFate" is the only name
+            // on it a member has ever seen.
+            org.name,
           );
 
           /*
@@ -2466,6 +2473,72 @@ export class MemberService {
    * broken addresses, they are people who asked not to be written to, and an
    * admin pressing a button is not them changing their mind.
    */
+  /**
+   * Mint a sign-in link for one member and hand it back (MEM-29).
+   *
+   * For the members email cannot reach. See `sign-in-handoff.ts` for why that
+   * is a category of person rather than a broken address, and for what this
+   * costs.
+   *
+   * Three things are deliberate:
+   *
+   * **It does not touch `signInSentAt`.** That column records that MaybeOS
+   * *wrote* to somebody, and the audit reconciles it against Postmark. Marking
+   * a link nobody emailed would have the next audit look for a message that
+   * was never sent, find nothing, and file this member under "the provider
+   * swallowed it" — which is how MEM-25 started.
+   *
+   * **It replaces any live token.** A user holds one magic-link token, so
+   * minting here invalidates a link already in flight. That is the right way
+   * round — two live ways into one account is worse than one — but it means an
+   * organiser who mints a link for somebody whose emailed link was merely slow
+   * has just broken the slow one.
+   *
+   * **It is written down before it is returned.** The audit entry is the whole
+   * accountability story for a capability that signs somebody in as a member,
+   * so the link is not handed over unless the record of it exists.
+   */
+  async createSignInLink(orgId: string, userId: string, actorId: string) {
+    const membership = await this.prisma.userOrg.findFirst({
+      // Scoped by orgId, never by bare id (SEC-04): an admin of one co-op must
+      // not be able to mint a way into a member of another.
+      where: { orgId, userId },
+      include: { user: { select: { id: true, name: true } } },
+    });
+    if (!membership?.user) throw new NotFoundException('No such member');
+
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { inviteExpiryDays: true },
+    });
+    if (!org) throw new NotFoundException('No such organisation');
+
+    const token = randomUUID();
+    const expiresAt = handoffExpiry(new Date(), org.inviteExpiryDays);
+
+    await this.prisma.user.update({
+      where: { id: membership.userId },
+      data: { magicLinkToken: token, magicLinkExpiry: expiresAt },
+    });
+
+    await this.audit.record({
+      orgId,
+      actorId,
+      action: SIGN_IN_HANDOFF_ACTION,
+      entityType: 'user',
+      entityId: membership.userId,
+      // The member's name, not their address: the co-op's audit log is read by
+      // organisers, and it is not the place to copy addresses around.
+      metadata: { memberName: membership.user.name, expiresAt: expiresAt.toISOString() },
+    });
+
+    return {
+      url: handoffUrl(this.webUrl(), token),
+      expiresAt,
+      memberName: membership.user.name,
+    };
+  }
+
   async clearSignInBounce(orgId: string, userId: string) {
     // findFirst with the orgId, never findUnique on the id alone: a membership
     // is tenant-owned and one co-op must not reach into another's (SEC-04).

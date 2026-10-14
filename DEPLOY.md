@@ -119,6 +119,8 @@ in the repo. The ones production needs:
 | `STRIPE_CONNECT_CLIENT_ID` | `ca_…` from Stripe → Connect → Settings. Lets a co-op link a Stripe account it already has (PAY-05); unset just hides that option |
 | `POSTMARK_API_TOKEN` | email delivery — **see below, this one fails silently** |
 | `EMAIL_FROM` | must be a Postmark-verified sender; defaults to `noreply@maybeos.org` |
+| `EMAIL_REPLY_TO` | optional; an address a member's reply actually reaches. Unset, no `Reply-To` is sent, which is what every message did before (EML-03). A `Reply-To` pointing somewhere nobody reads is worse than none |
+| `POSTMARK_BROADCAST_STREAM` | optional; the Postmark stream id for bulk mail — the weekly radar digest and the monthly recap (EML-04). Unset, bulk mail stays on the transactional stream, which is what it did before. **Create the stream in Postmark first**: naming one Postmark does not have fails every bulk send |
 | `SENTRY_DSN` | error tracking |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | optional; calendar sync refuses with 503 naming whichever are unset. All three count — Google rejects an empty or unregistered `redirect_uri` on its own page, so two out of three fails in exactly the way the refusal exists to prevent |
 | `META_APP_ID`, `META_APP_SECRET`, `META_REDIRECT_URI`, `META_CONFIG_ID` | optional; lets hosts share public events to a co-op's Facebook Page and Instagram (SOC-01). Unset, Settings → Integrations says so and the Connect button is disabled. See **Facebook & Instagram** below |
@@ -315,6 +317,53 @@ That is necessary and **not sufficient** — only an email actually arriving
 proves the sender is verified. Request a magic link and watch for it; if it
 does not arrive while `configured` is true, the reason is in Postmark's
 Activity log.
+
+#### When Postmark says `Delivered` and the member has nothing
+
+Found on 2026-10-14. Postmark reported `Delivered`; the receiving server
+answered `250 2.6.0 … Queued mail for delivery`; the member had nothing in
+their inbox **and nothing in junk**. Both a managed Microsoft 365 tenant and
+consumer `outlook.com` behaved this way, while Gmail members were unaffected:
+
+| Provider | Members | Ever signed in |
+| --- | --- | --- |
+| Gmail | 309 | 24.9% |
+| Work domains | 95 | 34.7% |
+| Yahoo / Apple | 29 | 17.2% |
+| Outlook / Hotmail / Live | 9 | **0%** |
+
+`Delivered` in Postmark means the receiving server accepted the message, and
+nothing more. Microsoft accepts and *then* decides: a managed tenant
+quarantines, where the member cannot see it without their IT; consumer
+Outlook.com discards silently. Neither produces a bounce or a complaint, so
+from inside MaybeOS the send looks perfect.
+
+Authentication was not the problem — DKIM and the custom Return-Path were
+both verified, and the domain was not on Spamhaus DBL. What the messages
+looked like was:
+
+- a bare `noreply@maybeos.org` with **no display name**, while the subject and
+  body said "MaybeItsFate" — a brand the filter cannot tie to the domain;
+- **HTML only**, with no plain-text alternative;
+- a cold domain with **no SPF and no DMARC** record at all;
+- the weekly digest sharing a stream with sign-in links, so a junked digest
+  damaged the reputation the sign-in links depend on.
+
+The code half of that is fixed (EML-01 … EML-04). The rest is DNS and is not
+in this repository:
+
+```
+maybeos.org.         TXT   "v=spf1 include:spf.mtasv.net ~all"
+_dmarc.maybeos.org.  TXT   "v=DMARC1; p=none; rua=mailto:<you>"
+```
+
+Start DMARC at `p=none` and read the reports before tightening it.
+
+Reputation recovers over weeks, not days, so **a member who cannot receive
+email needs a way in that is not email**: Members → the member's menu → *Give
+them a sign-in link* (MEM-29) mints one to hand over by text or in person. It
+is `ADMIN`-only and written to the co-op's audit log, because the link signs
+its holder in as that member.
 
 ## What is not the deployment target
 

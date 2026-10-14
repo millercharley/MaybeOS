@@ -73,6 +73,13 @@ import { HealthModule } from './modules/health/health.module';
         // ever be a verified Postmark sender, and Postmark logs that refusal
         // rather than raising it (OPS-19).
         EMAIL_FROM: Joi.string().default('noreply@maybeos.org'),
+        // Optional, and deliberately not defaulted (EML-03): a Reply-To
+        // pointing at an address nobody reads is worse than none at all.
+        EMAIL_REPLY_TO: Joi.string().allow('').optional(),
+        // Optional (EML-04). Naming a stream Postmark does not have would
+        // fail every bulk send, so bulk mail keeps the default stream until
+        // the broadcast stream exists.
+        POSTMARK_BROADCAST_STREAM: Joi.string().allow('').optional(),
       }),
       validationOptions: {
         abortEarly: true,

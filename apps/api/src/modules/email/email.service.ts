@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { escapeHtml } from '../../common/escape-html';
 import { ConfigService } from '@nestjs/config';
 import * as postmark from 'postmark';
+import { fromHeader } from './from-header';
+import { htmlToText } from './html-to-text';
 
 export interface BookingEmailData {
   memberName: string;
@@ -22,6 +24,18 @@ export interface BookingEmailData {
   manageUrl: string;
   /** The member's own bookings, where reschedule and cancel live. */
   bookingsUrl: string;
+}
+
+/**
+ * The co-op this message belongs to, if the payload names one (EML-01).
+ *
+ * Most of these emails already carry the co-op's name because they print it,
+ * so the sender name comes free for them. The ones that do not fall back to
+ * the platform name rather than growing a parameter each.
+ */
+export function orgNameIn(data: Record<string, unknown>): string | undefined {
+  const name = data?.orgName;
+  return typeof name === 'string' && name.trim() ? name.trim() : undefined;
 }
 
 /**
@@ -206,12 +220,55 @@ export class EmailService {
   private client: postmark.ServerClient | null = null;
   private readonly emailFrom: string;
 
+  /**
+   * Where a reply goes, when there is anywhere for it to go (EML-03).
+   *
+   * A `noreply@` address that silently discards replies is both rude and a
+   * small negative signal to the filters that decide whether this domain
+   * corresponds to anybody. Optional: unset, no `Reply-To` is sent, which is
+   * what every message did before.
+   */
+  private readonly replyTo: string | null;
+
+  /**
+   * The name mail goes out under when nothing more specific is known.
+   *
+   * A co-op's own name is always better and is passed in per message; this
+   * is the fallback for platform mail that belongs to no co-op.
+   */
+  private static readonly PLATFORM_NAME = 'MaybeOS';
+
+  /**
+   * The Postmark stream bulk mail goes out on (EML-04), when one is set up.
+   *
+   * Everything shared one transactional stream, the weekly digest and the
+   * monthly recap included. Those are bulk mail by any definition — they are
+   * sent on a schedule to everybody, and they carry an unsubscribe link —
+   * and a member who files one as junk damages the reputation of the stream
+   * the *sign-in links* go out on. The one message a member must receive was
+   * paying for the one they did not ask for.
+   *
+   * Unset until the stream exists in Postmark, in which case nothing changes
+   * and bulk mail keeps the default stream. Naming a stream Postmark does not
+   * have would fail every send.
+   */
+  private readonly broadcastStream: string | null;
+
+  /** Mail sent on a schedule to everybody, rather than because they acted. */
+  private static readonly BULK_TYPES: ReadonlySet<EmailJobData['type']> = new Set([
+    'radar-digest',
+    'recap',
+  ]);
+
   constructor(private readonly configService: ConfigService) {
     const token = this.configService.get<string>('POSTMARK_API_TOKEN');
     // No fallback: EMAIL_FROM has a validated default in app.module, and a
     // second one here meant two different addresses could be authoritative
     // depending on which file you read.
     this.emailFrom = this.configService.get<string>('EMAIL_FROM') as string;
+    this.replyTo = this.configService.get<string>('EMAIL_REPLY_TO')?.trim() || null;
+    this.broadcastStream =
+      this.configService.get<string>('POSTMARK_BROADCAST_STREAM')?.trim() || null;
 
     if (token) {
       this.client = new postmark.ServerClient(token);
@@ -381,6 +438,12 @@ export class EmailService {
      * lines. With one it is a lookup.
      */
     tag?: string,
+    /**
+     * Whose name this goes out under (EML-01) — the co-op's, where the caller
+     * knows it. Mail from "MaybeItsFate" is mail a member recognises; mail
+     * from a bare `noreply@maybeos.org` is mail a filter does not.
+     */
+    fromName?: string | null,
   ): Promise<boolean> {
     const { primary, also } = addresses(to);
     if (!this.client) {
@@ -391,14 +454,18 @@ export class EmailService {
 
     try {
       await this.client.sendEmail({
-        From: this.emailFrom,
+        From: fromHeader(this.emailFrom, fromName ?? EmailService.PLATFORM_NAME),
         To: primary,
         // Copied rather than sent twice: one message, arriving at both
         // addresses the same person reads, so a reply is one conversation
         // and a sign-in link is one link (MEM-19).
         ...(also && { Cc: also }),
+        ...(this.replyTo && { ReplyTo: this.replyTo }),
         Subject: subject,
         HtmlBody: htmlBody,
+        // Generated, never written twice (EML-02). A message with no text
+        // alternative is a spam signal, and Microsoft acts on it.
+        TextBody: htmlToText(htmlBody),
         ...(tag && { Tag: tag }),
       });
       this.logger.log(`Email sent successfully to ${primary} (raw)`);
@@ -503,6 +570,29 @@ export class EmailService {
   private async send({ type, to, data }: EmailJobData): Promise<void> {
     const { subject, htmlBody } = this.buildEmail(type, data);
 
+    /*
+      Bulk mail is told apart from transactional mail here (EML-04).
+
+      Both the stream and the header hang off the same question, so they are
+      answered once: a message either is something the member signed up to
+      receive on a schedule, or it is a reply to something they just did.
+    */
+    const bulk = EmailService.BULK_TYPES.has(type);
+    const stream = bulk ? this.broadcastStream : null;
+
+    /*
+      `List-Unsubscribe`, on mail that has something to unsubscribe from.
+
+      The HTTPS form only. RFC 8058 one-click additionally requires a
+      `List-Unsubscribe-Post` header *and* an endpoint that answers POST, and
+      this link goes to a page in the web app that answers GET — advertising
+      one-click would have every provider POST to a route that refuses it,
+      which is worse than not advertising it at all.
+    */
+    const unsubscribe = typeof data.unsubscribeUrl === 'string' ? data.unsubscribeUrl.trim() : '';
+    const headers =
+      bulk && unsubscribe ? [{ Name: 'List-Unsubscribe', Value: `<${unsubscribe}>` }] : [];
+
     if (!this.client) {
       this.logger.log(
         `[DEV] Would send email to=${to} subject="${subject}"\n${htmlBody}`,
@@ -512,10 +602,14 @@ export class EmailService {
 
     try {
       await this.client.sendEmail({
-        From: this.emailFrom,
+        From: fromHeader(this.emailFrom, orgNameIn(data) ?? EmailService.PLATFORM_NAME),
         To: to,
+        ...(this.replyTo && { ReplyTo: this.replyTo }),
         Subject: subject,
         HtmlBody: htmlBody,
+        TextBody: htmlToText(htmlBody),
+        ...(stream && { MessageStream: stream }),
+        ...(headers.length > 0 && { Headers: headers }),
       });
 
       this.logger.log(`Email sent successfully to ${to} (type=${type})`);

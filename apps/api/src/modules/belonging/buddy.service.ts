@@ -402,7 +402,9 @@ export class BuddyService {
   ) {
     const template = await this.templateFor(orgId, kind);
     const { subject, html } = renderTemplate(template, values);
-    await this.email.sendRaw(to, subject, html);
+    // The co-op's name on the envelope (EML-01) — it is already among the
+    // values, because every one of these templates prints it.
+    await this.email.sendRaw(to, subject, html, undefined, values.community_name);
   }
 
   private async sendInvitation(

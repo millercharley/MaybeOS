@@ -926,6 +926,21 @@ class ApiClient {
         { method: 'POST', body: JSON.stringify({ email }), token },
       ),
 
+    /**
+     * A sign-in link to hand over by hand (MEM-29).
+     *
+     * For members email cannot reach: Microsoft accepts MaybeOS mail and then
+     * suppresses it, so a magic link never arrives and cannot be made to. The
+     * organiser passes this one on by text or in person.
+     *
+     * Never put anywhere it persists. It signs its holder in as that member.
+     */
+    createSignInLink: (orgId: string, userId: string, token: string) =>
+      this.request<{ url: string; expiresAt: string; memberName: string | null }>(
+        `/orgs/${orgId}/members/${userId}/sign-in-link`,
+        { method: 'POST', token },
+      ),
+
     /** The address is fixed — let this member be written to again (MEM-25). */
     clearSignInBounce: (orgId: string, userId: string, token: string) =>
       this.request<{ cleared: boolean; reason?: 'not-bounced' | 'refused' }>(
