@@ -268,7 +268,32 @@ export default function AdminHandbookPage() {
           placeholder="What does somebody new need to know?"
           submitLabel="Save"
           rows={12}
+          /*
+            Pictures inside the words (BEL-13). Only once the article exists:
+            the upload is filed against it, and a draft that has never been
+            saved has no id to file against. A new article is created as soon
+            as it is first saved, so this is a moment rather than a state.
+          */
+          onInsertImage={
+            editing.id && token && orgId
+              ? async (file) => {
+                  const data = await readAsDataUrl(file);
+                  const stored = await api.belonging.addArticleBodyImage(
+                    orgId,
+                    editing.id as string,
+                    { data, mimeType: file.type },
+                    token,
+                  );
+                  return stored.url ? { url: stored.url, path: stored.path } : null;
+                }
+              : undefined
+          }
         />
+        {!editing.id && (
+          <p className="-mt-2 text-xs text-gray-500">
+            Save once and you can add pictures to the text.
+          </p>
+        )}
 
         <label className="flex items-start gap-2.5 text-sm text-gray-800">
           <input
@@ -463,4 +488,14 @@ export default function AdminHandbookPage() {
       </ul>
     </div>
   );
+}
+
+/** A file as the `data:` URL the upload endpoints accept (BEL-13). */
+function readAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('That file could not be read'));
+    reader.readAsDataURL(file);
+  });
 }

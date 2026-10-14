@@ -373,6 +373,22 @@ export class BelongingController {
     return this.knowledge.replaceCover(orgId, articleId, dto.data, dto.mimeType);
   }
 
+  @Post('welcome/articles/:articleId/images')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Upload a picture to place inside an article’s text' })
+  addBodyImage(
+    @Param('orgId') orgId: string,
+    @Param('articleId', ParseUUIDPipe) articleId: string,
+    @Body() dto: UploadCoverDto,
+  ) {
+    /*
+      The same body as a cover — a base64 image and its type — so it reuses
+      that DTO rather than adding a second one with identical fields and a
+      different name (BEL-13).
+    */
+    return this.knowledge.addBodyImage(orgId, articleId, dto.data, dto.mimeType);
+  }
+
   @Delete('welcome/articles/:articleId/cover')
   @Roles('ADMIN')
   removeCover(

@@ -58,6 +58,7 @@ export function RichComposer({
   files,
   onFilesChange,
   mentions,
+  onInsertImage,
 }: {
   value: string;
   onChange: (html: string) => void;
@@ -83,6 +84,19 @@ export function RichComposer({
    * around it — the picker would have nothing true to show.
    */
   mentions?: MentionSources;
+  /**
+   * Put a picture *into* the words (BEL-13).
+   *
+   * Different from `files`, which hangs an attachment off the thing being
+   * written and shows it underneath. This drops an `<img>` where the caret
+   * is, which is what a page explaining where the door reader is needs.
+   *
+   * The caller uploads and answers with both halves: `url` to show now,
+   * `path` to keep. Omitting it turns the button off, which is right for a
+   * composer with nowhere to put a file — a message has no id to hang one on
+   * until it exists.
+   */
+  onInsertImage?: (file: File) => Promise<{ url: string; path: string } | null>;
 }) {
   const editor = useRef<HTMLDivElement>(null);
   const [toolbar, setToolbar] = useState<{ top: number; left: number } | null>(null);
@@ -90,6 +104,9 @@ export function RichComposer({
   const [fileError, setFileError] = useState('');
   const filePicker = useRef<HTMLInputElement>(null);
   const canAttach = Boolean(onFilesChange);
+  const canInsertImage = Boolean(onInsertImage);
+  const [inserting, setInserting] = useState(false);
+  const imagePicker = useRef<HTMLInputElement>(null);
 
   // ─── Mentions (CMN-11) ──────────────────────────────────────
   //
@@ -263,6 +280,39 @@ export function RichComposer({
     document.addEventListener('selectionchange', syncToolbar);
     return () => document.removeEventListener('selectionchange', syncToolbar);
   }, [syncToolbar]);
+
+  /**
+   * Upload a picture and drop it where the caret is (BEL-13).
+   *
+   * `src` is the signed link, good for about an hour, so the picture appears
+   * at once; `data-path` is the durable half the server re-signs on every
+   * read. Both are written, because the editor has to show something now and
+   * the database has to still be right next week.
+   */
+  async function insertImage(file: File | undefined) {
+    if (!file || !onInsertImage) return;
+    setFileError('');
+    setInserting(true);
+    try {
+      const stored = await onInsertImage(file);
+      if (!stored) return;
+
+      // Focused first: `insertHTML` writes at the selection, and the click on
+      // the toolbar took it out of the editor.
+      editor.current?.focus();
+      const alt = file.name.replace(/\.[^.]+$/, '').replace(/["<>]/g, '');
+      document.execCommand(
+        'insertHTML',
+        false,
+        `<img src="${stored.url}" data-path="${stored.path}" alt="${alt}" /><br />`,
+      );
+      publish();
+    } catch (err) {
+      setFileError(err instanceof Error ? err.message : 'That picture could not be added');
+    } finally {
+      setInserting(false);
+    }
+  }
 
   function format(command: string, argument?: string) {
     editor.current?.focus();
@@ -517,6 +567,32 @@ export function RichComposer({
                 title="Mention someone"
               >
                 <AtSign className="h-4 w-4" />
+              </button>
+            </>
+          )}
+
+          {canInsertImage && (
+            <>
+              <input
+                ref={imagePicker}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="hidden"
+                onChange={(e) => {
+                  void insertImage(e.target.files?.[0]);
+                  // Cleared so choosing the same file twice still fires.
+                  e.target.value = '';
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => imagePicker.current?.click()}
+                disabled={inserting}
+                className="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+                aria-label="Add a picture"
+                title={inserting ? 'Adding…' : 'Add a picture'}
+              >
+                <ImagePlus className="h-4 w-4" />
               </button>
             </>
           )}
