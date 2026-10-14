@@ -253,5 +253,44 @@ describe('the message handed to the provider', () => {
 
       expect(sent(sendEmail)).not.toHaveProperty('MessageStream');
     });
+
+    describe('bulk mail’s own From address (EML-05)', () => {
+      it('sends the digest as the broadcast address when one is set', async () => {
+        const { service, sendEmail } = build({ EMAIL_FROM_BROADCAST: 'news@maybeos.org' });
+        await service.sendRadarDigest('ruth@outlook.com', digest);
+
+        expect(sent(sendEmail).From).toBe('MaybeItsFate <news@maybeos.org>');
+      });
+
+      /**
+       * The address changes; the name does not. A member who reads
+       * "MaybeItsFate" has the same reason to trust a digest as a booking
+       * confirmation — the separation is for the receiving end.
+       */
+      it('still names the co-op in front of it', async () => {
+        const { service, sendEmail } = build({ EMAIL_FROM_BROADCAST: 'news@maybeos.org' });
+        await service.sendRecap('ruth@outlook.com', recap);
+
+        expect(String(sent(sendEmail).From)).toMatch(/^MaybeItsFate </);
+      });
+
+      it.each(transactionalSends)('never sends %s as the broadcast address', async (_what, send) => {
+        const { service, sendEmail } = build({ EMAIL_FROM_BROADCAST: 'news@maybeos.org' });
+        await send(service);
+
+        expect(String(sent(sendEmail).From)).toContain('<noreply@maybeos.org>');
+        expect(String(sent(sendEmail).From)).not.toContain('news@maybeos.org');
+      });
+
+      it('keeps bulk mail on the ordinary address until one is set', async () => {
+        // An unverified sender is refused by Postmark and the refusal is
+        // swallowed into the log, so the unset default must be the old
+        // behaviour rather than a guess at an address.
+        const { service, sendEmail } = build();
+        await service.sendRadarDigest('ruth@outlook.com', digest);
+
+        expect(sent(sendEmail).From).toBe('MaybeItsFate <noreply@maybeos.org>');
+      });
+    });
   });
 });

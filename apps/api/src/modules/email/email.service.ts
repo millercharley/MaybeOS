@@ -254,6 +254,22 @@ export class EmailService {
    */
   private readonly broadcastStream: string | null;
 
+  /**
+   * The address bulk mail goes out as (EML-05), when one is set up.
+   *
+   * The stream separation (EML-04) is only half of it. Gmail and Microsoft
+   * both judge a sender by its **From address and domain**, not only by the
+   * IP it arrived on, so a digest and a sign-in link sharing one address
+   * share a reputation however they were routed — which is Postmark's own
+   * advice, and Google's behind it.
+   *
+   * Must be on a domain Postmark has verified, exactly like `EMAIL_FROM`:
+   * an unverified sender is refused, and `EmailService` swallows the refusal
+   * into the log. Unset, bulk mail keeps the ordinary address, which is what
+   * it did before.
+   */
+  private readonly broadcastFrom: string | null;
+
   /** Mail sent on a schedule to everybody, rather than because they acted. */
   private static readonly BULK_TYPES: ReadonlySet<EmailJobData['type']> = new Set([
     'radar-digest',
@@ -269,6 +285,7 @@ export class EmailService {
     this.replyTo = this.configService.get<string>('EMAIL_REPLY_TO')?.trim() || null;
     this.broadcastStream =
       this.configService.get<string>('POSTMARK_BROADCAST_STREAM')?.trim() || null;
+    this.broadcastFrom = this.configService.get<string>('EMAIL_FROM_BROADCAST')?.trim() || null;
 
     if (token) {
       this.client = new postmark.ServerClient(token);
@@ -581,6 +598,16 @@ export class EmailService {
     const stream = bulk ? this.broadcastStream : null;
 
     /*
+      Bulk mail goes out as its own address where one is set (EML-05).
+
+      The **name** in front of it stays the co-op's either way: a member who
+      reads "MaybeItsFate" has the same reason to trust a digest as a booking
+      confirmation, and the point of the separate address is to keep the two
+      reputations apart at the receiving end, not to disown the digest.
+    */
+    const from = bulk ? (this.broadcastFrom ?? this.emailFrom) : this.emailFrom;
+
+    /*
       `List-Unsubscribe`, on mail that has something to unsubscribe from.
 
       The HTTPS form only. RFC 8058 one-click additionally requires a
@@ -602,7 +629,7 @@ export class EmailService {
 
     try {
       await this.client.sendEmail({
-        From: fromHeader(this.emailFrom, orgNameIn(data) ?? EmailService.PLATFORM_NAME),
+        From: fromHeader(from, orgNameIn(data) ?? EmailService.PLATFORM_NAME),
         To: to,
         ...(this.replyTo && { ReplyTo: this.replyTo }),
         Subject: subject,

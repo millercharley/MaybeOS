@@ -76,6 +76,10 @@ import { HealthModule } from './modules/health/health.module';
         // Optional, and deliberately not defaulted (EML-03): a Reply-To
         // pointing at an address nobody reads is worse than none at all.
         EMAIL_REPLY_TO: Joi.string().allow('').optional(),
+        // Optional (EML-05). Bulk mail's own From address, so a digest and a
+        // sign-in link do not share a sender reputation. Must be on a
+        // Postmark-verified domain, exactly like EMAIL_FROM.
+        EMAIL_FROM_BROADCAST: Joi.string().allow('').optional(),
         // Optional (EML-04). Naming a stream Postmark does not have would
         // fail every bulk send, so bulk mail keeps the default stream until
         // the broadcast stream exists.
