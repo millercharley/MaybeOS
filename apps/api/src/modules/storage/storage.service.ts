@@ -145,9 +145,22 @@ export class StorageService {
     }
 
     const path = `${orgId}/${randomUUID()}.${extension}`;
+    /*
+      No `Content-Type` header, because there is no body (STO-05).
+
+      This sent `application/json` and nothing to parse, and Supabase's
+      storage API is Fastify, which answers that with 400: "Body cannot be
+      empty when content-type is set to 'application/json'". So every
+      attachment upload failed at the first step, and had since the feature
+      shipped — zero have ever been stored.
+
+      The three other signing calls in this file all send a body, which is
+      why they were fine and this was the only one. `supabase-js` sends no
+      header here either.
+    */
     const response = await fetch(
       `${this.url}/storage/v1/object/upload/sign/${ATTACHMENT_BUCKET}/${path}`,
-      { method: 'POST', headers: { ...this.headers, 'Content-Type': 'application/json' } },
+      { method: 'POST', headers: this.headers },
     );
 
     if (!response.ok) {
@@ -155,7 +168,23 @@ export class StorageService {
       this.logger.error(
         `Could not sign an attachment upload for org ${orgId}: ${response.status} ${detail.slice(0, 200)}`,
       );
-      throw new ServiceUnavailableException('Could not start that upload. Try again.');
+
+      /*
+        And say why where somebody will see it (STO-05).
+
+        The line above goes to the function's log, which is not shipped to
+        Sentry — so the report of this read "Could not start that upload.
+        Try again." and nothing else, while the one fact that explained it
+        sat in a log nobody was going to open. Attached as `cause`, which
+        Sentry follows, so the next one is diagnosable from the report.
+
+        The member still reads the sentence; this rides underneath it.
+      */
+      const failure = new ServiceUnavailableException('Could not start that upload. Try again.');
+      failure.cause = new Error(
+        `Supabase refused to sign an attachment upload: ${response.status} ${detail.slice(0, 200)}`,
+      );
+      throw failure;
     }
 
     const { url } = (await response.json()) as { url: string };
