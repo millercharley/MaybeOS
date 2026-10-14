@@ -172,12 +172,14 @@ describe('the menu is wired to something', () => {
       decided it had room below when it did not, and opened off the bottom.
 
       Each item is 36px, the container adds 4px of padding and 1px of border
-      each side. If a third item lands here, this fails rather than drifting.
+      each side. It caught the third — "Give them a sign-in link" (MEM-29) —
+      landing here with MENU_HEIGHT still set for two. If a fourth lands, this
+      fails rather than drifting.
     */
     const items = page.match(/role="menuitem"/g) ?? [];
     const declared = Number(page.match(/const MENU_HEIGHT = (\d+)/)?.[1]);
 
-    expect(items).toHaveLength(2);
+    expect(items).toHaveLength(3);
     expect(declared).toBe(items.length * 36 + 8 + 2 + 2);
   });
 

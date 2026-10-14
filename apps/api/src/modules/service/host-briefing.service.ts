@@ -296,7 +296,13 @@ export class HostBriefingService {
           skipDuplicates: true,
         });
 
-        const delivered = await this.email.sendRaw(booking.user.email, subject, html);
+        const delivered = await this.email.sendRaw(
+          booking.user.email,
+          subject,
+          html,
+          undefined,
+          org.name,
+        );
 
         if (!delivered) {
           // Written first, so take it back: otherwise a Postmark outage is a

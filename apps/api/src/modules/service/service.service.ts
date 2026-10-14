@@ -721,7 +721,13 @@ export class ServiceService {
           data: { remindedAt: new Date() },
         });
 
-        const delivered = await this.email.sendRaw(claim.user.email, subject, html);
+        const delivered = await this.email.sendRaw(
+          claim.user.email,
+          subject,
+          html,
+          undefined,
+          org.name,
+        );
         if (!delivered) {
           await this.prisma.dutyClaim.update({
             where: { id: claim.id },

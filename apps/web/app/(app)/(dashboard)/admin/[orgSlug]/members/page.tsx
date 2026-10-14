@@ -18,6 +18,7 @@ import {
 import { useAuthStore } from '@/lib/auth-store';
 import { api, type Member } from '@/lib/api';
 import { Modal } from '@/components/ui/modal';
+import { SignInLinkDialog } from '@/components/member/sign-in-link-dialog';
 import { PageHeader } from '@/components/layout/page-header';
 import { MemberName } from '@/components/member/member-name';
 import { lastSeenLabel, neverSignedIn } from '@/lib/last-seen';
@@ -89,6 +90,8 @@ export default function MembersPage() {
     left: number;
   } | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<Member | null>(null);
+  /** The member being handed a sign-in link by hand (MEM-29). */
+  const [linkFor, setLinkFor] = useState<Member | null>(null);
   /** The member whose name or address is open for correction (MEM-27). */
   const [editing, setEditing] = useState<{
     member: Member;
@@ -364,7 +367,7 @@ export default function MembersPage() {
    * a menu near the bottom of the window decided it had room when it did not.
    * A test below fails if a third item appears without this changing.
    */
-  const MENU_HEIGHT = 84;
+  const MENU_HEIGHT = 120;
 
   /**
    * Open the row menu against the viewport rather than the cell (UI-02).
@@ -635,6 +638,26 @@ export default function MembersPage() {
             >
               Edit name or email
             </button>
+            {/*
+              A way in for members email cannot reach (MEM-29).
+
+              Beside "Edit name or email" because it is the other thing an
+              organiser does when somebody cannot get in, and because the
+              alternative an admin would otherwise reach for — changing the
+              member's address to one they control and sending a link there —
+              is the same capability with no record of it.
+            */}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setLinkFor(openMenu.member);
+                setOpenMenu(null);
+              }}
+              className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Give them a sign-in link
+            </button>
             <button
               type="button"
               role="menuitem"
@@ -650,6 +673,23 @@ export default function MembersPage() {
           </div>
         </>,
         document.body,
+      )}
+
+      {/*
+        A sign-in link to hand over (MEM-29).
+
+        Mounted only while a member is chosen, because the dialog mints on
+        open and every mint cancels that member's previous link.
+      */}
+      {linkFor && token && currentOrgId && (
+        <SignInLinkDialog
+          open
+          orgId={currentOrgId}
+          userId={linkFor.user.id}
+          memberName={linkFor.user.name ?? 'this member'}
+          token={token}
+          onClose={() => setLinkFor(null)}
+        />
       )}
 
       {/* Correcting who somebody is (MEM-27). */}
