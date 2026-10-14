@@ -313,6 +313,13 @@ Check the first from outside:
 curl -s https://maybeos.org/api/health | python3 -m json.tool
 ```
 
+`email.broadcastStream` and `email.broadcastFrom` report what bulk mail does
+differently (EML-04, EML-05); `null` means that half is not set up and bulk
+mail goes out exactly as transactional mail does. Both fail silently when
+wrong — a stream Postmark does not have, or a sender it has not verified, is
+refused and the refusal is swallowed into a log that is shipped nowhere — so
+this endpoint is the only way to tell from outside that they took effect.
+
 `email.configured: true` and `transport: "postmark"` prove the token landed.
 That is necessary and **not sufficient** — only an email actually arriving
 proves the sender is verified. Request a magic link and watch for it; if it

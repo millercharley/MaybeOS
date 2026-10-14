@@ -40,6 +40,56 @@ describe('EmailHealthIndicator', () => {
     expect(result.email.from).toBe('noreply@maybeos.org');
   });
 
+  /**
+   * What bulk mail does differently (EML-04, EML-05).
+   *
+   * Both settings fail silently when wrong — a stream Postmark does not have,
+   * or a sender it has not verified, is refused and the refusal is swallowed
+   * into a log that is shipped nowhere. Reporting them is the only way to
+   * tell from outside that they took effect.
+   */
+  describe('the bulk mail settings', () => {
+    it('reports the stream and the sender when both are set', () => {
+      const result = indicator({
+        POSTMARK_API_TOKEN: 'token',
+        EMAIL_FROM: 'noreply@maybeos.org',
+        POSTMARK_BROADCAST_STREAM: 'broadcast',
+        EMAIL_FROM_BROADCAST: 'news@maybeos.org',
+      }).isHealthy('email');
+
+      expect(result.email.broadcastStream).toBe('broadcast');
+      expect(result.email.broadcastFrom).toBe('news@maybeos.org');
+    });
+
+    it('reports null rather than omitting them when unset', () => {
+      // Null is "not set up", which is a safe state. Omitting the keys would
+      // be indistinguishable from an older deploy that cannot report them.
+      const result = indicator({ POSTMARK_API_TOKEN: 'token' }).isHealthy('email');
+
+      expect(result.email).toHaveProperty('broadcastStream', null);
+      expect(result.email).toHaveProperty('broadcastFrom', null);
+    });
+
+    it.each(['', '   '])('treats %p as unset', (value) => {
+      const result = indicator({
+        POSTMARK_API_TOKEN: 'token',
+        POSTMARK_BROADCAST_STREAM: value,
+        EMAIL_FROM_BROADCAST: value,
+      }).isHealthy('email');
+
+      expect(result.email.broadcastStream).toBeNull();
+      expect(result.email.broadcastFrom).toBeNull();
+    });
+
+    it('still reports them when email is otherwise unconfigured', () => {
+      // A misconfigured deploy is exactly when somebody is reading this.
+      const result = indicator({ POSTMARK_BROADCAST_STREAM: 'broadcast' }).isHealthy('email');
+
+      expect(result.email.configured).toBe(false);
+      expect(result.email.broadcastStream).toBe('broadcast');
+    });
+  });
+
   it('never leaks the token itself', () => {
     // This is served unauthenticated to anyone who asks.
     const result = indicator({ POSTMARK_API_TOKEN: 'super-secret-value' }).isHealthy('email');
