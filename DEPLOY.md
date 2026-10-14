@@ -313,6 +313,14 @@ Check the first from outside:
 curl -s https://maybeos.org/api/health | python3 -m json.tool
 ```
 
+When you add one of these variables in Netlify, give it the **`all`**
+scope. Setting `POSTMARK_BROADCAST_STREAM` with the narrower
+`builds, functions, runtime` scopes left it unreadable from the API function —
+`/api/health` reported `broadcastStream: null` through a full deploy — and
+re-setting it with `all` fixed it. Nothing warns you: an unreadable variable
+is indistinguishable from an unset one, and both mean "bulk mail goes out as
+transactional mail" rather than any kind of error.
+
 `email.broadcastStream` and `email.broadcastFrom` report what bulk mail does
 differently (EML-04, EML-05); `null` means that half is not set up and bulk
 mail goes out exactly as transactional mail does. Both fail silently when
