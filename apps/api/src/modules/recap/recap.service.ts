@@ -549,7 +549,8 @@ export class RecapService {
         OR: [{ emailOptIn: null }, { emailOptIn: true }],
         role: { in: [...COUNTED_ROLES] },
       },
-      select: { id: true, user: { select: { name: true, email: true } } },
+      // Both addresses a member reads (MEM-19).
+      select: { id: true, altEmail: true, user: { select: { name: true, email: true } } },
       take: BATCH * 10,
     });
 
@@ -566,7 +567,9 @@ export class RecapService {
     });
 
     for (const member of recipients) {
-      await this.email.sendRecap(member.user!.email, {
+      await this.email.sendRecap(
+        { primary: member.user!.email, also: member.altEmail },
+        {
         memberName: member.user!.name ?? 'there',
         orgName: org.name,
         monthLabel: figures.monthLabel,

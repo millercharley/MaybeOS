@@ -393,6 +393,7 @@ export class DoorService {
       select: {
         id: true,
         doorPin: true,
+        altEmail: true,
         user: { select: { email: true, name: true } },
       },
       take: BATCH,
@@ -402,7 +403,9 @@ export class DoorService {
 
     let sent = 0;
     for (const membership of waiting) {
-      await this.email.sendDoorCode(membership.user.email, {
+      await this.email.sendDoorCode(
+        { primary: membership.user.email, also: membership.altEmail },
+        {
         memberName: membership.user.name ?? 'there',
         orgName: org.name,
         pin: membership.doorPin as string,

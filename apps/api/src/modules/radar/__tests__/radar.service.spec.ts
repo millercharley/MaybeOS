@@ -98,7 +98,8 @@ describe('who gets a digest', () => {
     expect(email.sendRadarDigest).toHaveBeenCalledTimes(1);
 
     const [to, payload] = email.sendRadarDigest.mock.calls[0];
-    expect(to).toBe('ada@example.com');
+    // Both addresses a member reads, on one message (MEM-19).
+    expect(to).toEqual({ primary: 'ada@example.com', also: undefined });
     expect(payload.orgName).toBe('MaybeItsFate');
     expect(payload.events[0].title).toBe('Board Game Night');
     // The reason is printed in the email, so it has to be the real reason.
