@@ -128,3 +128,35 @@ Against a database that matches the schema this prints `-- This is an empty
 migration.` Anything else is drift, and the output is the SQL that would fix
 it. Run it against production too, not only dev — the whole failure above was
 that the two had diverged and nothing was comparing them.
+
+## It happened again (OPS-11, 2026-10-15)
+
+Production's ledger stopped being written on **2026-08-21**. Twenty-one rows
+were recorded; the schema then moved another **63 migrations** and not one of
+them was written down. The columns are all there — they were applied by hand,
+or by `db push` — so nothing was broken. What was missing was the only thing
+that can *tell* you nothing is broken.
+
+Two consequences, both quiet:
+
+- `prisma migrate deploy` against production would fail on the first
+  unrecorded migration, because its objects already exist. So nobody could
+  have been running it, which is why the gap grew for two months.
+- `prisma migrate status` could not answer "is production behind?", which is
+  the question this directory exists to answer.
+
+Before repairing it, every one of the 63 was **verified present in
+production**: 238 assertions across tables, columns, enum types, enum values,
+indexes and two column renames, checked against the live catalogue, with
+deliberately-absent canaries included so that an empty result proved the check
+worked rather than that the query was broken. Marking a migration applied when
+it is not would guarantee its DDL never runs — strictly worse than the drift.
+
+`resolve-production-ledger.sh` beside this file does the repair. It only
+writes ledger rows; `migrate resolve --applied` applies no DDL, and Prisma
+computes each checksum from the migration file rather than taking one on
+trust.
+
+**The rule that would have caught this**: after applying a migration to
+production, record it in the same sitting. `migrate resolve --applied <name>`
+takes a second and is the whole difference between a ledger and a guess.
