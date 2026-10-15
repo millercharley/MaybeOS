@@ -345,7 +345,10 @@ export class RecapService {
   async draftFor(orgId: string, now: Date = new Date()) {
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
-      select: { id: true, name: true, slug: true, timezone: true, duesBackfilledAt: true },
+      select: {
+        id: true, name: true, slug: true, timezone: true, duesBackfilledAt: true,
+        replyToEmail: true,
+      },
     });
     if (!org) throw new NotFoundException('Community not found');
 
@@ -426,7 +429,7 @@ export class RecapService {
 
   /** The nudge: a draft nobody knows about is a draft nobody sends. */
   private async tellOrganisers(
-    org: { id: string; name: string; slug: string },
+    org: { id: string; name: string; slug: string; replyToEmail?: string | null },
     label: string,
   ): Promise<void> {
     const organisers = await this.prisma.userOrg.findMany({
@@ -443,6 +446,8 @@ export class RecapService {
         orgName: org.name,
         monthLabel: label,
         reviewUrl: url,
+        // An organiser replying to this is replying to their own co-op.
+        replyTo: org.replyToEmail,
       });
     }
   }
@@ -511,7 +516,10 @@ export class RecapService {
   async send(orgId: string, recapId: string, userId: string): Promise<{ sent: number }> {
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
-      select: { id: true, name: true, slug: true, plan: true, recapShowMoney: true },
+      select: {
+        id: true, name: true, slug: true, plan: true, recapShowMoney: true,
+        replyToEmail: true,
+      },
     });
     if (!org) throw new NotFoundException('Community not found');
     assertPlanIncludes(org.plan, 'recap');
@@ -567,6 +575,7 @@ export class RecapService {
         showMoney: org.recapShowMoney,
         figures,
         unsubscribeUrl: this.unsubscribeUrl(member.id),
+        replyTo: org.replyToEmail,
       });
     }
 

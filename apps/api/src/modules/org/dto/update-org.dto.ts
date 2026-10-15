@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsBoolean, IsIn, IsInt, IsUrl, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { IsEmail, IsOptional, IsString, IsBoolean, IsIn, IsInt, IsUrl, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import { PartialType } from '@nestjs/swagger';
 import { CreateOrgDto } from './create-org.dto';
 
@@ -62,6 +62,25 @@ export class UpdateOrgDto extends PartialType(CreateOrgDto) {
   @IsOptional()
   @IsBoolean()
   doorCodeEmailsEnabled?: boolean;
+
+  /**
+   * Where a member's reply goes (EML-03).
+   *
+   * Null or blank clears it, and that is the default: no `Reply-To` header at
+   * all, so the co-op's mail is no-reply mail and a member who answers it is
+   * told so by their own client rather than by silence.
+   *
+   * Validated as a single address here and sanitised again where it is put
+   * into the header. Twice on purpose — this is a free-text field an
+   * organiser types that ends up in a mail header, and one newline in it
+   * would let them append headers to every message the co-op sends.
+   */
+  @ApiPropertyOptional({ example: 'hello@maybeitsfate.com', nullable: true })
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== '')
+  @IsEmail({}, { message: 'That needs to be an email address, or blank for no replies' })
+  @MaxLength(254)
+  replyToEmail?: string | null;
 
   /** Whether MaybeOS welcomes a new member itself (MEM-17). */
   @ApiPropertyOptional({ example: false, default: false })

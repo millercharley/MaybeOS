@@ -2710,7 +2710,7 @@ export class EventsService {
               slug: true,
               startTime: true,
               timezone: true,
-              org: { select: { name: true, slug: true } },
+              org: { select: { name: true, slug: true, replyToEmail: true } },
             },
           },
         },
@@ -2724,6 +2724,7 @@ export class EventsService {
       await this.emailService.sendWaitlistPromoted(rsvp.user.email, {
         memberName: rsvp.user.name ?? 'there',
         orgName: rsvp.event.org.name,
+        replyTo: rsvp.event.org.replyToEmail,
         eventTitle: rsvp.event.title,
         // In the event's timezone, not the server's — SPC-08 was this same
         // bug in booking emails, where a 10am booking arrived as 3pm.

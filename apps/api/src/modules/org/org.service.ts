@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
+import { safeReplyTo } from '../email/reply-to';
 import { PUBLIC_TIER_SELECT } from '../member/tier-view';
 import { PUBLIC_ORG_SELECT } from './org-view';
 import { CreateLocationDto, UpdateLocationDto } from './dto/location.dto';
@@ -505,8 +506,42 @@ export class OrgService {
         ...(dto.legacyBillingUrl !== undefined && {
           legacyBillingUrl: dto.legacyBillingUrl?.trim() || null,
         }),
+        /*
+          Where a member's reply goes (EML-03).
+
+          Normalised through the same function the mailer uses, so what is
+          stored is what will actually be sent. `@IsEmail` on the DTO is the
+          looser of the two — it accepts `hello@localhost`, among others — and
+          an address that validates on the way in but is refused on the way
+          out is the worst shape this could take: the organiser sets it, the
+          form says saved, and no reply address is ever sent with no
+          indication anywhere that it was dropped.
+        */
+        ...(dto.replyToEmail !== undefined && {
+          replyToEmail: this.replyAddressOrRefuse(dto.replyToEmail),
+        }),
       },
     });
+  }
+
+  /**
+   * A reply address this mailer will actually use, or null for none.
+   *
+   * Throws rather than quietly storing something unusable: an organiser who
+   * typed an address and was told it saved must not find out months later
+   * that every reply went nowhere.
+   */
+  private replyAddressOrRefuse(value: string | null | undefined): string | null {
+    const typed = (value ?? '').trim();
+    if (!typed) return null;
+
+    const safe = safeReplyTo(typed);
+    if (!safe) {
+      throw new BadRequestException(
+        'That is not an address replies can be sent to. Use a single plain address, or leave it blank for no replies.',
+      );
+    }
+    return safe;
   }
 
   /**

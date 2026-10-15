@@ -21,6 +21,7 @@ import { ShareTracking } from '@/components/settings/share-tracking';
 import { MemberChannels } from '@/components/settings/member-channels';
 import { DoorAccess } from '@/components/settings/door-access';
 import { WelcomeEmail } from '@/components/settings/welcome-email';
+import { ReplyAddress } from '@/components/settings/reply-address';
 import { BookingLimits } from '@/components/settings/booking-limits';
 import { EventRooms } from '@/components/settings/event-rooms';
 import { LegacyBilling } from '@/components/settings/legacy-billing';
@@ -444,6 +445,8 @@ export default function SettingsPage() {
         <MemberChannels orgId={org.id} orgSlug={org.slug} />
       )}
       {activeTab === 'general' && org && <WelcomeEmail org={org} onSaved={refetch} />}
+      {/* Where a member's reply goes (EML-03). */}
+      {activeTab === 'general' && org && <ReplyAddress org={org} onSaved={refetch} />}
       {activeTab === 'general' && org && <DoorAccess org={org} onSaved={refetch} />}
       {activeTab === 'general' && org && <Locations orgId={org.id} />}
       {activeTab === 'general' && org && <Support orgName={org.name} />}

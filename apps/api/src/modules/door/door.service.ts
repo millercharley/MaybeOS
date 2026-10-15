@@ -87,6 +87,8 @@ const DOOR_ORG_SELECT = {
   doorCodeEmailsEnabled: true,
   doorScriptUrl: true,
   doorScriptSecret: true,
+  // Where a member's reply goes (EML-03).
+  replyToEmail: true,
 } as const;
 
 @Injectable()
@@ -377,7 +379,9 @@ export class DoorService {
    * is already in the sheet: an email saying the door works, sent before it
    * does, is worse than a late one.
    */
-  async emailPending(org: { id: string; name: string; slug: string }): Promise<number> {
+  async emailPending(
+    org: { id: string; name: string; slug: string; replyToEmail?: string | null },
+  ): Promise<number> {
     const waiting = await this.prisma.userOrg.findMany({
       where: {
         orgId: org.id,
@@ -403,6 +407,7 @@ export class DoorService {
         orgName: org.name,
         pin: membership.doorPin as string,
         profileUrl: `${base}/member/${org.slug}/profile`,
+        replyTo: org.replyToEmail,
       });
       // `EmailService.send` swallows delivery failures by design, so this
       // records that we tried. The code is on their profile either way.

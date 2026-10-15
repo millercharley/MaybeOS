@@ -247,7 +247,7 @@ export class HostBriefingService {
     const [orgs, duties] = await Promise.all([
       this.prisma.organization.findMany({
         where: { id: { in: orgIds } },
-        select: { id: true, name: true, timezone: true },
+        select: { id: true, name: true, timezone: true, replyToEmail: true },
       }),
       this.prisma.hostDuty.findMany({ where: { orgId: { in: orgIds }, isActive: true } }),
     ]);
@@ -302,6 +302,7 @@ export class HostBriefingService {
           html,
           undefined,
           org.name,
+          org.replyToEmail,
         );
 
         if (!delivered) {
@@ -355,7 +356,7 @@ export class HostBriefingService {
     const [org, briefing, duties] = await Promise.all([
       this.prisma.organization.findUnique({
         where: { id: orgId },
-        select: { name: true, timezone: true },
+        select: { name: true, timezone: true, replyToEmail: true },
       }),
       this.prisma.hostBriefing.findFirst({ where: { orgId, phase: phase as never } }),
       this.prisma.hostDuty.findMany({ where: { orgId, phase: phase as never, isActive: true } }),

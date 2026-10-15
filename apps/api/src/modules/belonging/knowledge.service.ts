@@ -646,7 +646,10 @@ export class KnowledgeService {
         where: { id: articleId },
         select: { title: true, slug: true },
       }),
-      this.prisma.organization.findUnique({ where: { id: orgId }, select: { name: true, slug: true } }),
+      this.prisma.organization.findUnique({
+        where: { id: orgId },
+        select: { name: true, slug: true, replyToEmail: true },
+      }),
       this.settings.forOrg(orgId),
       this.prisma.belongingEmailTemplate.findUnique({
         where: { orgId_kind: { orgId, kind: 'REQUIRED_READING' } },
@@ -671,7 +674,7 @@ export class KnowledgeService {
     });
 
     for (const to of recipients) {
-      await this.email.sendRaw(to, subject, html, undefined, org.name);
+      await this.email.sendRaw(to, subject, html, undefined, org.name, org.replyToEmail);
     }
 
     this.logger.log(`Required reading "${article.title}" announced to ${recipients.length} member(s)`);

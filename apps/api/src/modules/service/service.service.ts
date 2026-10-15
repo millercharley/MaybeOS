@@ -681,7 +681,7 @@ export class ServiceService {
 
     const orgs = await this.prisma.organization.findMany({
       where: { id: { in: [...new Set(claims.map((c) => c.duty.orgId))] } },
-      select: { id: true, name: true, slug: true, timezone: true },
+      select: { id: true, name: true, slug: true, timezone: true, replyToEmail: true },
     });
     const orgById = new Map(orgs.map((o) => [o.id, o]));
 
@@ -727,6 +727,7 @@ export class ServiceService {
           html,
           undefined,
           org.name,
+          org.replyToEmail,
         );
         if (!delivered) {
           await this.prisma.dutyClaim.update({
@@ -932,7 +933,7 @@ export class ServiceService {
   async contribution(orgId: string, from?: Date, to?: Date) {
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
-      select: { timezone: true, volunteerHourValueCents: true },
+      select: { timezone: true, volunteerHourValueCents: true, replyToEmail: true },
     });
     if (!org) throw new NotFoundException('Co-op not found');
 

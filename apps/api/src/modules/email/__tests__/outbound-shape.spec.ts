@@ -139,16 +139,53 @@ describe('the message handed to the provider', () => {
   });
 
   describe('Reply-To (EML-03)', () => {
-    it('is set when one is configured', async () => {
-      const { service, sendEmail } = build({ EMAIL_REPLY_TO: 'hello@maybeitsfate.com' });
-      await service.sendRaw('ruth@outlook.com', 'Subject', '<p>Hi</p>');
+    it('is set when the co-op has given one', async () => {
+      const { service, sendEmail } = build();
+      await service.sendRaw(
+        'ruth@outlook.com', 'Subject', '<p>Hi</p>', undefined, 'MaybeItsFate',
+        'hello@maybeitsfate.com',
+      );
 
       expect(sent(sendEmail).ReplyTo).toBe('hello@maybeitsfate.com');
     });
 
-    it('is absent rather than empty when none is configured', async () => {
+    it('is absent rather than empty when the co-op has not', async () => {
       const { service, sendEmail } = build();
       await service.sendRaw('ruth@outlook.com', 'Subject', '<p>Hi</p>');
+
+      expect(sent(sendEmail)).not.toHaveProperty('ReplyTo');
+    });
+
+    it('is set on a templated send that carries one', async () => {
+      const { service, sendEmail } = build();
+      await service.sendDoorCode('ruth@outlook.com', {
+        memberName: 'Ruth',
+        orgName: 'MaybeItsFate',
+        pin: '1234',
+        profileUrl: 'https://maybeos.org/p',
+        replyTo: 'hello@maybeitsfate.com',
+      } as never);
+
+      expect(sent(sendEmail).ReplyTo).toBe('hello@maybeitsfate.com');
+    });
+
+    /**
+     * Sanitised at the point of use, not only at the point of entry.
+     *
+     * The address is a settings field an organiser typed, and the callers
+     * that put it on a payload are spread across six services. One of them
+     * passing something unchecked must not be able to end the header early
+     * and append headers of its own.
+     */
+    it.each([
+      ['a newline', 'a@b.com\nBcc: attacker@example.com'],
+      ['a list', 'a@b.com, attacker@example.com'],
+      ['a non-address', 'not-an-address'],
+    ])('sends no Reply-To rather than a header containing %s', async (_why, value) => {
+      const { service, sendEmail } = build();
+      await service.sendRaw(
+        'ruth@outlook.com', 'Subject', '<p>Hi</p>', undefined, 'MaybeItsFate', value,
+      );
 
       expect(sent(sendEmail)).not.toHaveProperty('ReplyTo');
     });

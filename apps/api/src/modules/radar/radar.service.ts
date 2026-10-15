@@ -478,6 +478,7 @@ export class RadarService {
         timezone: true,
         radarDigestDay: true,
         radarDigestHour: true,
+        replyToEmail: true,
       },
     });
 
@@ -500,7 +501,7 @@ export class RadarService {
   }
 
   private async sendForOrg(
-    org: { id: string; name: string; slug: string; timezone: string },
+    org: { id: string; name: string; slug: string; timezone: string; replyToEmail: string | null },
     now: Date,
   ): Promise<number> {
     const horizon = new Date(now.getTime() + HORIZON_DAYS * 24 * 60 * 60 * 1000);
@@ -641,6 +642,8 @@ export class RadarService {
           rsvpUrl: this.rsvpUrl(org.slug, match.event.slug, match.event.priceCents !== null),
         })),
         unsubscribeUrl: this.unsubscribeUrl(member.id),
+        // Where a member's reply goes (EML-03).
+        replyTo: org.replyToEmail,
         interestsUrl: `${this.appUrl()}/member/${org.slug}/profile#interests`,
       });
 

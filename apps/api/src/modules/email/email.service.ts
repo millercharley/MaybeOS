@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import * as postmark from 'postmark';
 import { fromHeader } from './from-header';
 import { htmlToText } from './html-to-text';
+import { safeReplyTo } from './reply-to';
 
 export interface BookingEmailData {
   memberName: string;
@@ -24,6 +25,14 @@ export interface BookingEmailData {
   manageUrl: string;
   /** The member's own bookings, where reschedule and cancel live. */
   bookingsUrl: string;
+  /**
+   * Where a member's reply goes (EML-03).
+   *
+   * The co-op's own address, or absent for no `Reply-To` at all. Optional on
+   * every payload rather than required, so a co-op that has not set one — the
+   * default — keeps sending no-reply mail without every caller saying so.
+   */
+  replyTo?: string | null;
 }
 
 /**
@@ -33,6 +42,11 @@ export interface BookingEmailData {
  * so the sender name comes free for them. The ones that do not fall back to
  * the platform name rather than growing a parameter each.
  */
+export function replyToIn(data: Record<string, unknown>): string | null {
+  const value = data?.replyTo;
+  return typeof value === 'string' ? value : null;
+}
+
 export function orgNameIn(data: Record<string, unknown>): string | undefined {
   const name = data?.orgName;
   return typeof name === 'string' && name.trim() ? name.trim() : undefined;
@@ -98,6 +112,14 @@ export interface BookingApprovalData {
   reviewUrl: string;
   /** How many are waiting in total, so the email says whether this is a pile. */
   waiting: number;
+  /**
+   * Where a member's reply goes (EML-03).
+   *
+   * The co-op's own address, or absent for no `Reply-To` at all. Optional on
+   * every payload rather than required, so a co-op that has not set one — the
+   * default — keeps sending no-reply mail without every caller saying so.
+   */
+  replyTo?: string | null;
 }
 
 /** One outbound message as Postmark reports it, reduced to what MaybeOS reads. */
@@ -180,6 +202,14 @@ export interface RecapEmailData {
     impact: { category: string; average: number; respondents: number }[];
   };
   unsubscribeUrl: string;
+  /**
+   * Where a member's reply goes (EML-03).
+   *
+   * The co-op's own address, or absent for no `Reply-To` at all. Optional on
+   * every payload rather than required, so a co-op that has not set one — the
+   * default — keeps sending no-reply mail without every caller saying so.
+   */
+  replyTo?: string | null;
 }
 
 export interface RecapReadyData {
@@ -187,6 +217,14 @@ export interface RecapReadyData {
   orgName: string;
   monthLabel: string;
   reviewUrl: string;
+  /**
+   * Where a member's reply goes (EML-03).
+   *
+   * The co-op's own address, or absent for no `Reply-To` at all. Optional on
+   * every payload rather than required, so a co-op that has not set one — the
+   * default — keeps sending no-reply mail without every caller saying so.
+   */
+  replyTo?: string | null;
 }
 
 export interface RadarDigestData {
@@ -196,6 +234,14 @@ export interface RadarDigestData {
   events: RadarDigestEvent[];
   unsubscribeUrl: string;
   interestsUrl: string;
+  /**
+   * Where a member's reply goes (EML-03).
+   *
+   * The co-op's own address, or absent for no `Reply-To` at all. Optional on
+   * every payload rather than required, so a co-op that has not set one — the
+   * default — keeps sending no-reply mail without every caller saying so.
+   */
+  replyTo?: string | null;
 }
 
 /**
@@ -220,15 +266,20 @@ export class EmailService {
   private client: postmark.ServerClient | null = null;
   private readonly emailFrom: string;
 
-  /**
-   * Where a reply goes, when there is anywhere for it to go (EML-03).
-   *
-   * A `noreply@` address that silently discards replies is both rude and a
-   * small negative signal to the filters that decide whether this domain
-   * corresponds to anybody. Optional: unset, no `Reply-To` is sent, which is
-   * what every message did before.
-   */
-  private readonly replyTo: string | null;
+  /*
+    There is deliberately no platform-wide reply address (EML-03).
+
+    This began as an `EMAIL_REPLY_TO` environment variable and should not
+    have: a member replying to MaybeItsFate wants MaybeItsFate, and no
+    address MaybeOS could pick would be the right one. It is a per-co-op
+    setting, passed in with each message, and absent means absent — no
+    `Reply-To` header at all, which is what "no reply" should mean.
+
+    Also one source of truth rather than two. This codebase has already paid
+    for three different default senders living in three files (D-0xx); a
+    co-op setting shadowed by an environment variable is the same mistake
+    with an extra step, and the shadowed case is the one nobody tests.
+  */
 
   /**
    * The name mail goes out under when nothing more specific is known.
@@ -282,7 +333,6 @@ export class EmailService {
     // second one here meant two different addresses could be authoritative
     // depending on which file you read.
     this.emailFrom = this.configService.get<string>('EMAIL_FROM') as string;
-    this.replyTo = this.configService.get<string>('EMAIL_REPLY_TO')?.trim() || null;
     this.broadcastStream =
       this.configService.get<string>('POSTMARK_BROADCAST_STREAM')?.trim() || null;
     this.broadcastFrom = this.configService.get<string>('EMAIL_FROM_BROADCAST')?.trim() || null;
@@ -301,7 +351,13 @@ export class EmailService {
 
   async sendDoorCode(
     to: string,
-    data: { memberName: string; orgName: string; pin: string; profileUrl: string },
+    data: {
+      memberName: string;
+      orgName: string;
+      pin: string;
+      profileUrl: string;
+      replyTo?: string | null;
+    },
   ) {
     await this.send({ type: 'door-code', to, data });
   }
@@ -381,7 +437,14 @@ export class EmailService {
    */
   async sendWaitlistPromoted(
     to: string,
-    d: { memberName: string; orgName: string; eventTitle: string; when: string; eventUrl: string },
+    d: {
+      memberName: string;
+      orgName: string;
+      eventTitle: string;
+      when: string;
+      eventUrl: string;
+      replyTo?: string | null;
+    },
   ) {
     await this.send({ type: 'waitlist-promoted', to, data: d });
   }
@@ -461,8 +524,11 @@ export class EmailService {
      * from a bare `noreply@maybeos.org` is mail a filter does not.
      */
     fromName?: string | null,
+    /** The co-op's reply address (EML-03). Absent means no `Reply-To`. */
+    replyTo?: string | null,
   ): Promise<boolean> {
     const { primary, also } = addresses(to);
+    const reply = safeReplyTo(replyTo);
     if (!this.client) {
       this.logger.log(`[DEV] Would send email to=${primary} subject="${subject}"\n${htmlBody}`);
       // True in development: nothing failed, there is simply no provider.
@@ -477,7 +543,7 @@ export class EmailService {
         // addresses the same person reads, so a reply is one conversation
         // and a sign-in link is one link (MEM-19).
         ...(also && { Cc: also }),
-        ...(this.replyTo && { ReplyTo: this.replyTo }),
+        ...(reply && { ReplyTo: reply }),
         Subject: subject,
         HtmlBody: htmlBody,
         // Generated, never written twice (EML-02). A message with no text
@@ -608,6 +674,16 @@ export class EmailService {
     const from = bulk ? (this.broadcastFrom ?? this.emailFrom) : this.emailFrom;
 
     /*
+      The co-op's reply address, carried on the payload (EML-03).
+
+      Sanitised here rather than trusted from the caller: this is a settings
+      field an organiser typed, it goes straight into a mail header, and the
+      callers that put it on the payload are spread across six services. One
+      of them forgetting must not be able to produce a malformed header.
+    */
+    const replyTo = safeReplyTo(replyToIn(data));
+
+    /*
       `List-Unsubscribe`, on mail that has something to unsubscribe from.
 
       The HTTPS form only. RFC 8058 one-click additionally requires a
@@ -631,7 +707,7 @@ export class EmailService {
       await this.client.sendEmail({
         From: fromHeader(from, orgNameIn(data) ?? EmailService.PLATFORM_NAME),
         To: to,
-        ...(this.replyTo && { ReplyTo: this.replyTo }),
+        ...(replyTo && { ReplyTo: replyTo }),
         Subject: subject,
         HtmlBody: htmlBody,
         TextBody: htmlToText(htmlBody),

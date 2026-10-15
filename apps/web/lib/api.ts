@@ -643,6 +643,8 @@ class ApiClient {
         doorCodeEmailsEnabled?: boolean;
         /** Whether MaybeOS welcomes a new member itself (MEM-17). */
         welcomeEmailEnabled?: boolean;
+        /** Where a member's reply goes (EML-03); null for no replies. */
+        replyToEmail?: string | null;
         /** How long an invitation or a sign-in link stays good (MEM-18). */
         inviteExpiryDays?: number;
         /** A full Google Sheets address is accepted; the API keeps the id. */
@@ -3554,6 +3556,11 @@ export interface Org {
   doorCodeEmailsEnabled?: boolean;
   /** Whether MaybeOS welcomes a new member itself (MEM-17). */
   welcomeEmailEnabled?: boolean;
+  /**
+   * Where a member's reply goes (EML-03). Null or absent means no `Reply-To`
+   * header at all — the co-op's mail is no-reply mail.
+   */
+  replyToEmail?: string | null;
   /** How long an invitation or a sign-in link stays good (MEM-18). */
   inviteExpiryDays?: number;
   /**
