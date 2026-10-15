@@ -1200,7 +1200,9 @@ export class MemberService {
       expiry_days: String(org.inviteExpiryDays),
     });
 
-    await this.emailService.sendRaw(normalizedEmail, subject, html, undefined, org.name);
+    await this.emailService.sendRaw(
+      normalizedEmail, subject, html, undefined, org.name, org.replyToEmail,
+    );
 
     return { id: invitation.id, email: normalizedEmail, status: 'sent' };
   }
@@ -1389,7 +1391,7 @@ export class MemberService {
       const [org, user, membership] = await Promise.all([
         this.prisma.organization.findUnique({
           where: { id: orgId },
-          select: { name: true, slug: true, welcomeEmailEnabled: true },
+          select: { name: true, slug: true, welcomeEmailEnabled: true, replyToEmail: true },
         }),
         this.prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } }),
         this.prisma.userOrg.findFirst({
@@ -1418,6 +1420,7 @@ export class MemberService {
         html,
         undefined,
         org.name,
+        org.replyToEmail,
       );
     })().catch((err) => {
       this.logger.error(`Could not welcome ${userId} to ${orgId}: ${(err as Error).message}`);
@@ -1466,7 +1469,9 @@ export class MemberService {
       expiry_days: String(org.inviteExpiryDays),
     });
 
-    await this.emailService.sendRaw(invitation.email, subject, html, undefined, org.name);
+    await this.emailService.sendRaw(
+      invitation.email, subject, html, undefined, org.name, org.replyToEmail,
+    );
 
     return { id: updated.id, email: updated.email, status: 'resent' };
   }
@@ -1560,7 +1565,7 @@ export class MemberService {
   }> {
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
-      select: { id: true, name: true, inviteExpiryDays: true },
+      select: { id: true, name: true, inviteExpiryDays: true, replyToEmail: true },
     });
     if (!org) throw new NotFoundException('Organization not found');
 
@@ -1699,6 +1704,7 @@ export class MemberService {
             // that was being swallowed, and "MaybeItsFate" is the only name
             // on it a member has ever seen.
             org.name,
+            org.replyToEmail,
           );
 
           /*

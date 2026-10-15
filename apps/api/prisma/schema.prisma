@@ -175,6 +175,18 @@ model Organization {
   /// new one — and two welcomes is worse than none. This goes on when that
   /// goes off.
   welcomeEmailEnabled         Boolean           @default(false)
+  /// Where a member's reply goes (EML-03). Null is the default and means
+  /// exactly what it says: no `Reply-To` header, so the co-op's mail is
+  /// no-reply mail and a member who answers it learns so immediately from
+  /// their own client rather than by being ignored.
+  ///
+  /// Set by an organiser in Settings, per co-op rather than per platform: a
+  /// member replying to MaybeItsFate wants MaybeItsFate, and no address
+  /// MaybeOS could pick for them is the right one.
+  ///
+  /// Goes straight into a mail header, so it is validated as an address on
+  /// the way in and sanitised again on the way out.
+  replyToEmail                String?
   /// How long an invitation or a sign-in link stays good, in days.
   ///
   /// Seven is right for inviting one person and wrong for inviting a whole

@@ -606,7 +606,9 @@ export class SpaceService {
         include: {
           user: { select: { email: true, name: true } },
           room: {
-            include: { org: { select: { name: true, slug: true, timezone: true } } },
+            include: {
+              org: { select: { name: true, slug: true, timezone: true, replyToEmail: true } },
+            },
           },
         },
       });
@@ -617,6 +619,8 @@ export class SpaceService {
         memberName: b.user.name || 'there',
         roomName: b.room.name,
         orgName: b.room.org.name,
+        // Where a member's reply goes (EML-03).
+        replyTo: b.room.org.replyToEmail,
         title: b.title,
         when: this.formatWhen(b.startTime, b.endTime, b.room.org.timezone),
         // Two destinations, because these emails ask for two different things.
@@ -836,7 +840,7 @@ export class SpaceService {
           room: {
             select: {
               name: true,
-              org: { select: { name: true, slug: true, timezone: true } },
+              org: { select: { name: true, slug: true, timezone: true, replyToEmail: true } },
             },
           },
         },
@@ -860,6 +864,7 @@ export class SpaceService {
         await this.emailService.sendBookingAwaitingApproval(organiser.user.email, {
           organiserName: organiser.user.name ?? 'there',
           orgName: booking.room.org.name,
+          replyTo: booking.room.org.replyToEmail,
           memberName: booking.user?.name ?? 'A member',
           roomName: booking.room.name,
           title: booking.title,

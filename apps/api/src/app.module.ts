@@ -73,9 +73,10 @@ import { HealthModule } from './modules/health/health.module';
         // ever be a verified Postmark sender, and Postmark logs that refusal
         // rather than raising it (OPS-19).
         EMAIL_FROM: Joi.string().default('noreply@maybeos.org'),
-        // Optional, and deliberately not defaulted (EML-03): a Reply-To
-        // pointing at an address nobody reads is worse than none at all.
-        EMAIL_REPLY_TO: Joi.string().allow('').optional(),
+        // No EMAIL_REPLY_TO (EML-03). The reply address is the co-op's and
+        // lives in Settings — see the note in EmailService. A platform-wide
+        // one shadowing a co-op's own setting is two sources of truth for
+        // one answer, and the shadowed case is the one nobody tests.
         // Optional (EML-05). Bulk mail's own From address, so a digest and a
         // sign-in link do not share a sender reputation. Must be on a
         // Postmark-verified domain, exactly like EMAIL_FROM.

@@ -400,11 +400,29 @@ export class BuddyService {
     to: string,
     values: Record<string, string | null>,
   ) {
-    const template = await this.templateFor(orgId, kind);
+    /*
+      The template and the co-op's reply address together (EML-03).
+
+      Fetched beside the template rather than threaded in from each caller:
+      these are sent one at a time in response to something a member did, so
+      the extra read costs a round trip nobody is waiting on, and a caller
+      that forgets cannot quietly send no-reply mail from a co-op that has
+      given an address.
+    */
+    const [template, org] = await Promise.all([
+      this.templateFor(orgId, kind),
+      this.prisma.organization.findUnique({
+        where: { id: orgId },
+        select: { replyToEmail: true },
+      }),
+    ]);
+
     const { subject, html } = renderTemplate(template, values);
     // The co-op's name on the envelope (EML-01) — it is already among the
     // values, because every one of these templates prints it.
-    await this.email.sendRaw(to, subject, html, undefined, values.community_name);
+    await this.email.sendRaw(
+      to, subject, html, undefined, values.community_name, org?.replyToEmail,
+    );
   }
 
   private async sendInvitation(

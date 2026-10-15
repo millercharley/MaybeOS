@@ -72,6 +72,8 @@ describe('BuddyService', () => {
       },
       memberBuddyStats: { upsert: jest.fn().mockResolvedValue({}) },
       belongingEmailTemplate: { findUnique: jest.fn().mockResolvedValue(null) },
+      // The co-op's reply address, read beside the template (EML-03).
+      organization: { findUnique: jest.fn().mockResolvedValue({ replyToEmail: null }) },
       userOrg: {
         findMany: jest.fn().mockResolvedValue([poolMember('m1'), poolMember('m2')]),
         findUnique: jest.fn().mockResolvedValue({ user: { email: 'm1@example.org' } }),
