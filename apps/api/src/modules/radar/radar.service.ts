@@ -54,6 +54,26 @@ export interface RadarRunResult {
  */
 @Injectable()
 export class RadarService {
+
+  /**
+   * How many digests are in flight at once (RDR-04).
+   *
+   * Eight, which is inside Postmark's documented limit of ten concurrent
+   * connections for a broadcast stream and deliberately modest against the
+   * database: each one of these is a query and a transaction as well as a
+   * send, and the pool sits behind a connection pooler (D-018).
+   */
+  private static readonly DIGEST_CONCURRENCY = 8;
+
+  /**
+   * How long one run may spend sending before it stops cleanly.
+   *
+   * Well inside the wall clock this runs under, because the check happens
+   * between groups and a group that has started always finishes. Whatever is
+   * left is picked up by the next scheduled run — `radarLastSentAt` is the
+   * cursor, so the queue shortens each time rather than restarting.
+   */
+  private static readonly DIGEST_DEADLINE_MS = 8_000;
   private readonly logger = new Logger(RadarService.name);
 
   constructor(
@@ -574,10 +594,34 @@ export class RadarService {
       take: BATCH,
     });
 
+    /*
+      In small groups, with a clock (RDR-04).
+
+      This sent one member at a time, each costing a query, a transaction and
+      a call to Postmark in sequence — about a quarter of a second of pure
+      latency per person. A full `BATCH` of 200 is then well past the wall
+      clock this runs under, so the function was killed partway through at
+      any real size.
+
+      Being killed is not catastrophic here, and this is where the first
+      reading of it was wrong: `radarLastSentAt` is already a resume cursor
+      and `take: BATCH` already bounds the run, so the members not reached
+      are simply picked up by the next fifteen-minute run inside the same
+      hour. What is lost is narrower and still worth closing — the member who
+      was *mid-flight* when the kill landed, already marked and not yet sent,
+      who then waits `MIN_DAYS_BETWEEN_DIGESTS` for another chance.
+
+      So: groups of eight, inside Postmark's limit of ten concurrent
+      connections, and the deadline checked **between** groups so a group
+      that has started always finishes. That turns an abrupt kill into a
+      clean stop, which is the same shape `sendSignInLinks` settled on after
+      MEM-25.
+    */
+    const stopBy = Date.now() + RadarService.DIGEST_DEADLINE_MS;
     let sent = 0;
 
-    for (const member of members) {
-      if (!member.user?.email) continue;
+    const sendTo = async (member: (typeof members)[number]): Promise<boolean> => {
+      if (!member.user?.email) return false;
 
       const alreadySent = new Set(member.radarSends.map((row) => row.eventId));
 
@@ -607,7 +651,7 @@ export class RadarService {
       );
 
       const matches = rankMatches(candidates, standings, MAX_PER_DIGEST);
-      if (matches.length === 0) continue;
+      if (matches.length === 0) return false;
 
       // Recorded before the send, like `doorPinEmailedAt`: EmailService
       // swallows failures, so the only honest thing a marker can mean is that
@@ -647,7 +691,15 @@ export class RadarService {
         interestsUrl: `${this.appUrl()}/member/${org.slug}/profile#interests`,
       });
 
-      sent += 1;
+      return true;
+    };
+
+    for (let i = 0; i < members.length; i += RadarService.DIGEST_CONCURRENCY) {
+      if (Date.now() > stopBy) break;
+
+      const group = members.slice(i, i + RadarService.DIGEST_CONCURRENCY);
+      const results = await Promise.all(group.map(sendTo));
+      sent += results.filter(Boolean).length;
     }
 
     return sent;

@@ -360,3 +360,102 @@ describe('learning from an RSVP', () => {
     await expect(service.recordRsvp('org-1', 'event-1', 'user-1')).resolves.toBeUndefined();
   });
 });
+
+/**
+ * Sending a week's digests inside a wall clock (RDR-04).
+ *
+ * The first reading of this was wrong and the correction is worth keeping:
+ * being killed mid-run was never "the rest of the roster waits a week".
+ * `radarLastSentAt` is already a resume cursor and `take: BATCH` already
+ * bounds the run, so whatever is unreached is picked up by the next
+ * fifteen-minute run inside the same hour.
+ *
+ * What is real is narrower. One member at a time is about a quarter of a
+ * second each, so a full batch is well past the clock; and the member who is
+ * mid-flight when the kill lands is marked, unsent, and waits
+ * `MIN_DAYS_BETWEEN_DIGESTS` for another turn.
+ */
+describe('getting through the roster', () => {
+  const manyMembers = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      ...MEMBER,
+      id: `membership-${i}`,
+      userId: `user-${i}`,
+      user: { name: `Member ${i}`, email: `m${i}@example.com` },
+    }));
+
+  it('sends to everybody it was given', async () => {
+    const { service, email } = build({ members: manyMembers(40) });
+
+    await service.sendDue(NOW);
+
+    expect(email.sendRadarDigest).toHaveBeenCalledTimes(40);
+  });
+
+  it('sends in parallel rather than one at a time', async () => {
+    let inFlight = 0;
+    let peak = 0;
+
+    const { service, email } = build({ members: manyMembers(40) });
+    email.sendRadarDigest.mockImplementation(async () => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      inFlight -= 1;
+    });
+
+    await service.sendDue(NOW);
+
+    // Sequential would peak at one. The ceiling matters as much as the
+    // floor: Postmark allows ten concurrent connections, and the database
+    // sits behind a pooler.
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThanOrEqual(10);
+  });
+
+  it('stops cleanly when it runs out of time instead of being killed', async () => {
+    const { service, email } = build({ members: manyMembers(200) });
+    // Each send burns a tenth of the budget, so the deadline bites long
+    // before the roster ends.
+    email.sendRadarDigest.mockImplementation(
+      () => new Promise((resolve) => setTimeout(resolve, 900)),
+    );
+
+    const started = Date.now();
+    await service.sendDue(NOW);
+    const spent = Date.now() - started;
+
+    expect(email.sendRadarDigest.mock.calls.length).toBeLessThan(200);
+    expect(email.sendRadarDigest.mock.calls.length).toBeGreaterThan(0);
+    // Generous: the point is that it returns on its own rather than running
+    // the whole roster.
+    expect(spent).toBeLessThan(20_000);
+  }, 30_000);
+
+  it('finishes a group it has started rather than abandoning it mid-flight', async () => {
+    /*
+      The reason the clock is checked between groups and never inside one: a
+      member abandoned after the mark and before the send is marked, unsent,
+      and waits `MIN_DAYS_BETWEEN_DIGESTS` for another turn.
+
+      The timings matter. A slow mark and a fast send puts the deadline
+      *inside* a group rather than tidily between two, which is the only
+      arrangement where this can go wrong — with an instant mark, every group
+      begins and ends on the same side of the clock and the assertion holds
+      no matter what the code does.
+    */
+    const { service, prisma, email } = build({ members: manyMembers(200) });
+    prisma.$transaction.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve([]), 2_000)),
+    );
+    email.sendRadarDigest.mockImplementation(
+      () => new Promise((resolve) => setTimeout(resolve, 100)),
+    );
+
+    await service.sendDue(NOW);
+
+    // Everybody marked was also sent to — nobody left in between.
+    expect(prisma.$transaction.mock.calls.length).toBeGreaterThan(0);
+    expect(email.sendRadarDigest.mock.calls.length).toBe(prisma.$transaction.mock.calls.length);
+  }, 30_000);
+});
