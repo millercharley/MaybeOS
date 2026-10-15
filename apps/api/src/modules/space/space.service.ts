@@ -614,6 +614,22 @@ export class SpaceService {
       });
       if (!b?.user?.email) return;
 
+      /*
+        The member's second address, if they have one (MEM-19).
+
+        A separate read because a booking relates to a `User` while the
+        alternate address is on the *membership* — one person may be in more
+        than one co-op and read a different inbox for each. One extra round
+        trip on a path that is already sending an email, and the thing it
+        buys is a booking confirmation reaching the inbox the member actually
+        opens rather than whichever address their import happened to put
+        first.
+      */
+      const membership = await this.prisma.userOrg.findFirst({
+        where: { orgId: b.room.orgId, userId: b.userId },
+        select: { altEmail: true },
+      });
+
       const webUrl = this.configService.get<string>('WEB_URL') || 'https://maybeos.org';
       const data = {
         memberName: b.user.name || 'there',
@@ -630,7 +646,7 @@ export class SpaceService {
         bookingsUrl: `${webUrl}/member/${b.room.org.slug}/bookings`,
       };
 
-      const to = b.user.email;
+      const to = { primary: b.user.email, also: membership?.altEmail };
       if (kind === 'received') await this.emailService.sendBookingReceived(to, data);
       else if (kind === 'confirmed') await this.emailService.sendBookingConfirmed(to, data);
       else if (kind === 'rejected') await this.emailService.sendBookingRejected(to, data);

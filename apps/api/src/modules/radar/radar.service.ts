@@ -585,6 +585,8 @@ export class RadarService {
       select: {
         id: true,
         userId: true,
+        // Both addresses a member reads (MEM-19).
+        altEmail: true,
         user: { select: { name: true, email: true } },
         interests: {
           select: { declared: true, rsvpCount: true, tag: { select: { name: true, isActive: true } } },
@@ -668,7 +670,9 @@ export class RadarService {
         }),
       ]);
 
-      await this.email.sendRadarDigest(member.user.email, {
+      await this.email.sendRadarDigest(
+        { primary: member.user.email, also: member.altEmail },
+        {
         memberName: member.user.name ?? 'there',
         orgName: org.name,
         events: matches.map((match) => ({

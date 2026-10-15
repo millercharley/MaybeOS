@@ -157,7 +157,14 @@ export interface EmailJobData {
     | 'recap'
     | 'recap-ready'
     | 'booking-awaiting-approval';
-  to: string;
+  /**
+   * Both of a member's addresses, where they have two (MEM-19).
+   *
+   * A plain string is still accepted and is what most callers pass. The
+   * alternate is carried as a `Cc` on one message rather than a second send,
+   * so a reply is one conversation and a link is one link.
+   */
+  to: string | Addresses;
   data: Record<string, any>;
 }
 
@@ -350,7 +357,7 @@ export class EmailService {
   // ─── Public API (signatures unchanged from the queued version) ───
 
   async sendDoorCode(
-    to: string,
+    to: string | Addresses,
     data: {
       memberName: string;
       orgName: string;
@@ -362,7 +369,7 @@ export class EmailService {
     await this.send({ type: 'door-code', to, data });
   }
 
-  async sendMagicLink(to: string, link: string) {
+  async sendMagicLink(to: string | Addresses, link: string) {
     await this.send({ type: 'magic-link', to, data: { link } });
   }
 
@@ -375,12 +382,12 @@ export class EmailService {
    * stop, and this is what replaces it: the address that owns the account is
    * told while there is still time to act.
    */
-  async sendPasswordSet(to: string, data: { name: string | null; created: boolean }) {
+  async sendPasswordSet(to: string | Addresses, data: { name: string | null; created: boolean }) {
     await this.send({ type: 'password-set', to, data });
   }
 
   async sendEventReminder(
-    to: string,
+    to: string | Addresses,
     eventTitle: string,
     eventDate: string,
     eventUrl: string,
@@ -392,11 +399,11 @@ export class EmailService {
     });
   }
 
-  async sendRenewalReminder(to: string, memberName: string, dueDate: string) {
+  async sendRenewalReminder(to: string | Addresses, memberName: string, dueDate: string) {
     await this.send({ type: 'renewal-reminder', to, data: { memberName, dueDate } });
   }
 
-  async sendDunning(to: string, memberName: string, orgName: string) {
+  async sendDunning(to: string | Addresses, memberName: string, orgName: string) {
     await this.send({ type: 'dunning', to, data: { memberName, orgName } });
   }
 
@@ -406,23 +413,23 @@ export class EmailService {
   // received, approved, rejected or cancelled. SpaceOS never called this
   // service at all.
 
-  async sendBookingReceived(to: string, d: BookingEmailData) {
+  async sendBookingReceived(to: string | Addresses, d: BookingEmailData) {
     await this.send({ type: 'booking-received', to, data: d });
   }
 
-  async sendBookingConfirmed(to: string, d: BookingEmailData) {
+  async sendBookingConfirmed(to: string | Addresses, d: BookingEmailData) {
     await this.send({ type: 'booking-confirmed', to, data: d });
   }
 
-  async sendBookingRejected(to: string, d: BookingEmailData) {
+  async sendBookingRejected(to: string | Addresses, d: BookingEmailData) {
     await this.send({ type: 'booking-rejected', to, data: d });
   }
 
-  async sendBookingCanceled(to: string, d: BookingEmailData) {
+  async sendBookingCanceled(to: string | Addresses, d: BookingEmailData) {
     await this.send({ type: 'booking-canceled', to, data: d });
   }
 
-  async sendBookingRescheduled(to: string, d: BookingEmailData & { needsApproval: boolean }) {
+  async sendBookingRescheduled(to: string | Addresses, d: BookingEmailData & { needsApproval: boolean }) {
     await this.send({ type: 'booking-rescheduled', to, data: d });
   }
 
@@ -436,7 +443,7 @@ export class EmailService {
    * organiser, a waitlist that never moved to the member.
    */
   async sendWaitlistPromoted(
-    to: string,
+    to: string | Addresses,
     d: {
       memberName: string;
       orgName: string;
@@ -457,22 +464,22 @@ export class EmailService {
    * carrying the strongest match, with the rest counted after it. An email
    * naming a real thing gets opened; "your weekly roundup" does not.
    */
-  async sendRadarDigest(to: string, d: RadarDigestData) {
+  async sendRadarDigest(to: string | Addresses, d: RadarDigestData) {
     if (d.events.length === 0) return;
     await this.send({ type: 'radar-digest', to, data: d });
   }
 
   /** The monthly recap, to a member (RCP-01). */
-  async sendRecap(to: string, d: RecapEmailData) {
+  async sendRecap(to: string | Addresses, d: RecapEmailData) {
     await this.send({ type: 'recap', to, data: d });
   }
 
   /** The nudge to an organiser that a draft is waiting (RCP-01). */
-  async sendRecapReady(to: string, d: RecapReadyData) {
+  async sendRecapReady(to: string | Addresses, d: RecapReadyData) {
     await this.send({ type: 'recap-ready', to, data: d });
   }
 
-  async sendInvite(to: string, orgName: string, inviteUrl: string, inviterName?: string) {
+  async sendInvite(to: string | Addresses, orgName: string, inviteUrl: string, inviterName?: string) {
     await this.send({
       type: 'invite',
       to,
@@ -646,12 +653,13 @@ export class EmailService {
   }
 
   /** Tell an organiser a room request is waiting on them (SPC-32). */
-  async sendBookingAwaitingApproval(to: string, d: BookingApprovalData) {
+  async sendBookingAwaitingApproval(to: string | Addresses, d: BookingApprovalData) {
     await this.send({ type: 'booking-awaiting-approval', to, data: d });
   }
 
   private async send({ type, to, data }: EmailJobData): Promise<void> {
     const { subject, htmlBody } = this.buildEmail(type, data);
+    const { primary, also } = addresses(to);
 
     /*
       Bulk mail is told apart from transactional mail here (EML-04).
@@ -698,7 +706,7 @@ export class EmailService {
 
     if (!this.client) {
       this.logger.log(
-        `[DEV] Would send email to=${to} subject="${subject}"\n${htmlBody}`,
+        `[DEV] Would send email to=${primary} subject="${subject}"\n${htmlBody}`,
       );
       return;
     }
@@ -706,7 +714,19 @@ export class EmailService {
     try {
       await this.client.sendEmail({
         From: fromHeader(from, orgNameIn(data) ?? EmailService.PLATFORM_NAME),
-        To: to,
+        To: primary,
+        /*
+          Both addresses on one message (MEM-19).
+
+          Copied rather than sent twice, for the same reason sign-in links
+          are: a member billed at one address and reading another should get
+          one email, not two, and a reply should be one conversation. This
+          was already true of `sendRaw` and never of the templated sends, so
+          a booking confirmation reached whichever address happened to be
+          recorded as primary — for an imported member, usually the billing
+          one they do not read.
+        */
+        ...(also && { Cc: also }),
         ...(replyTo && { ReplyTo: replyTo }),
         Subject: subject,
         HtmlBody: htmlBody,
@@ -715,14 +735,14 @@ export class EmailService {
         ...(headers.length > 0 && { Headers: headers }),
       });
 
-      this.logger.log(`Email sent successfully to ${to} (type=${type})`);
+      this.logger.log(`Email sent successfully to ${primary} (type=${type})`);
     } catch (err) {
       // Swallowed deliberately — see the class doc comment. The caller's
       // operation (registration, invite, etc.) must still succeed.
       const message = err instanceof Error ? err.message : String(err);
       const stack = err instanceof Error ? err.stack : undefined;
       this.logger.error(
-        `Failed to send email to ${to} (type=${type}): ${message}`,
+        `Failed to send email to ${primary} (type=${type}): ${message}`,
         stack,
       );
     }

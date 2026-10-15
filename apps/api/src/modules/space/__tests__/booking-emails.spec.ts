@@ -43,6 +43,8 @@ describe('SpaceService — booking email times', () => {
           provide: PrismaService,
           useValue: {
             booking: { findUnique: jest.fn(), update: jest.fn(), findFirst: jest.fn() },
+            // The member's second address (MEM-19), read beside the booking.
+            userOrg: { findFirst: jest.fn().mockResolvedValue({ altEmail: null }) },
             orgClosure: { findMany: jest.fn().mockResolvedValue([]) },
             room: { findFirst: jest.fn() },
           },

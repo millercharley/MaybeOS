@@ -108,3 +108,42 @@ describe('the co-op’s reply address reaches every send', () => {
     expect(missing).toEqual([]);
   });
 });
+
+/**
+ * Both of a member's addresses, wherever the membership is already to hand
+ * (MEM-19).
+ *
+ * Not a blanket rule, which is why this names services rather than scanning
+ * for every send: an invitation goes to somebody who is not a member yet, and
+ * a magic link goes to whatever address was typed on the sign-in page. These
+ * are the sends that tell an existing member about something they did, where
+ * reaching the inbox they actually open is the whole point.
+ */
+describe('mail that should reach both of a member’s addresses', () => {
+  const EXPECTED: Record<string, string> = {
+    'modules/space/space.service.ts': 'booking confirmations and the rest',
+    'modules/door/door.service.ts': 'door codes',
+    'modules/radar/radar.service.ts': 'the weekly digest',
+    'modules/recap/recap.service.ts': 'the monthly recap',
+    'modules/events/events.service.ts': 'a seat opening up',
+  };
+
+  const byPath = new Map(sources().map((f) => [f.path, f.code]));
+
+  it.each(Object.entries(EXPECTED))('passes both addresses for %s — %s', (path) => {
+    const code = byPath.get(path);
+    // A scan that cannot find the file passes every assertion about it.
+    expect(code).toBeDefined();
+    expect(code).toMatch(/primary:[^\n]*\n?\s*also:|also: [A-Za-z_?.]*altEmail/);
+  });
+
+  it('reads the alternate from the membership, never from the user', () => {
+    // One person may be in several co-ops and read a different inbox for
+    // each, so `altEmail` lives on the membership. Reading it off the user
+    // would compile and be wrong.
+    for (const path of Object.keys(EXPECTED)) {
+      const code = byPath.get(path) ?? '';
+      expect(code).not.toMatch(/user\.altEmail/);
+    }
+  });
+});

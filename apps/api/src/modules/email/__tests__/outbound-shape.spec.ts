@@ -138,6 +138,71 @@ describe('the message handed to the provider', () => {
     });
   });
 
+  /**
+   * Both of a member's addresses, on one message (MEM-19).
+   *
+   * This was true of `sendRaw` from the start and never of the templated
+   * sends, so a booking confirmation reached whichever address happened to
+   * be recorded as primary — for an imported member, usually the billing one
+   * they do not read. The reasoning that put sign-in links on both addresses
+   * applies to every message that tells somebody something they acted on.
+   */
+  describe('a member with two addresses', () => {
+    it('copies the second rather than sending twice', async () => {
+      const { service, sendEmail } = build();
+      await service.sendBookingConfirmed(
+        { primary: 'ruth@outlook.com', also: 'ruth@forum.example' },
+        booking,
+      );
+
+      expect(sendEmail).toHaveBeenCalledTimes(1);
+      expect(sent(sendEmail).To).toBe('ruth@outlook.com');
+      expect(sent(sendEmail).Cc).toBe('ruth@forum.example');
+    });
+
+    it('sends no Cc when there is only one address', async () => {
+      const { service, sendEmail } = build();
+      await service.sendBookingConfirmed({ primary: 'ruth@outlook.com' }, booking);
+
+      expect(sent(sendEmail)).not.toHaveProperty('Cc');
+    });
+
+    it('never copies somebody on their own mail', async () => {
+      const { service, sendEmail } = build();
+      await service.sendBookingConfirmed(
+        { primary: 'ruth@outlook.com', also: 'RUTH@outlook.com' },
+        booking,
+      );
+
+      expect(sent(sendEmail)).not.toHaveProperty('Cc');
+    });
+
+    it('still accepts a plain address, which most callers pass', async () => {
+      const { service, sendEmail } = build();
+      await service.sendBookingConfirmed('ruth@outlook.com', booking);
+
+      expect(sent(sendEmail).To).toBe('ruth@outlook.com');
+      expect(sent(sendEmail)).not.toHaveProperty('Cc');
+    });
+
+    it.each([
+      ['a door code', (s: EmailService) =>
+        s.sendDoorCode({ primary: 'a@b.com', also: 'c@d.com' }, {
+          memberName: 'Ruth', orgName: 'MaybeItsFate', pin: '1234',
+          profileUrl: 'https://maybeos.org/p',
+        })],
+      ['the radar digest', (s: EmailService) =>
+        s.sendRadarDigest({ primary: 'a@b.com', also: 'c@d.com' }, digest)],
+      ['the monthly recap', (s: EmailService) =>
+        s.sendRecap({ primary: 'a@b.com', also: 'c@d.com' }, recap)],
+    ])('reaches both addresses for %s', async (_what, send) => {
+      const { service, sendEmail } = build();
+      await send(service);
+
+      expect(sent(sendEmail).Cc).toBe('c@d.com');
+    });
+  });
+
   describe('Reply-To (EML-03)', () => {
     it('is set when the co-op has given one', async () => {
       const { service, sendEmail } = build();

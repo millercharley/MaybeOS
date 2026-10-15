@@ -2703,9 +2703,11 @@ export class EventsService {
       const rsvp = await this.prisma.rsvp.findFirst({
         where: { id: rsvpId, event: { orgId } },
         select: {
+          userId: true,
           user: { select: { email: true, name: true } },
           event: {
             select: {
+              orgId: true,
               title: true,
               slug: true,
               startTime: true,
@@ -2721,7 +2723,24 @@ export class EventsService {
 
       const appUrl = this.configService.get<string>('APP_URL') ?? 'https://maybeos.org';
 
-      await this.emailService.sendWaitlistPromoted(rsvp.user.email, {
+      /*
+        The member's second address, if they have one (MEM-19).
+
+        On the membership rather than the user, because one person may be in
+        several co-ops and read a different inbox for each. A seat opening up
+        is the most time-sensitive email MaybeOS sends — it goes to the
+        inbox the member actually opens.
+      */
+      const membership = rsvp.userId
+        ? await this.prisma.userOrg.findFirst({
+            where: { orgId: rsvp.event.orgId, userId: rsvp.userId },
+            select: { altEmail: true },
+          })
+        : null;
+
+      await this.emailService.sendWaitlistPromoted(
+        { primary: rsvp.user.email, also: membership?.altEmail },
+        {
         memberName: rsvp.user.name ?? 'there',
         orgName: rsvp.event.org.name,
         replyTo: rsvp.event.org.replyToEmail,
