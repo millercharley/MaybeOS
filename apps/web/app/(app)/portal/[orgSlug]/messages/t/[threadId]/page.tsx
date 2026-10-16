@@ -12,6 +12,7 @@ import { RichComposer, composerValue } from '@/components/composer/rich-composer
 import { timeAgo } from '@/lib/relative-time';
 import { useUnread } from '@/contexts/unread-context';
 import { ReactionBar } from '@/components/reactions/reaction-bar';
+import { scrollToBottom } from '@/lib/scroll-container';
 
 /**
  * One conversation — two people or twenty (CMN-08, CMN-16, PRD §5.4).
@@ -43,7 +44,8 @@ export default function ThreadPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const bottom = useRef<HTMLDivElement>(null);
+  /** The conversation itself. Scrolling happens on whatever ancestor scrolls. */
+  const list = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     if (!org || !token) {
@@ -84,9 +86,34 @@ export default function ThreadPage() {
     load();
   }, [load]);
 
+  /*
+    Land on the newest message, the way every chat opens (CMN-18).
+
+    This was `scrollIntoView({ block: 'end' })` on an empty sentinel at the
+    foot of the list, and on a phone it did nothing at all: the conversation
+    opened at the top with four thousand pixels of history below it, exactly
+    as the Commons did. Both now go through the same helper, which finds the
+    element that is really scrolling — here the app shell's `<main>`, since
+    this page has no scroll container of its own — rather than assuming one.
+  */
   useEffect(() => {
-    bottom.current?.scrollIntoView({ block: 'end' });
-  }, [thread?.messages.length]);
+    scrollToBottom(list.current);
+    /*
+      `loading` is a dependency, and that is the whole repair.
+
+      `load()` sets the thread, then awaits suggestions and the read receipt,
+      and only clears `loading` in its `finally`. Those awaits break the
+      batch, so the messages arrive in one commit and the list mounts in a
+      later one — and while `loading` is true this component returns a
+      spinner, so `list.current` is null for the first. Keyed on the message
+      count alone the effect ran exactly once, against nothing, and never
+      again: the count had not changed by the time the list existed.
+
+      That is why the sentinel this replaced never worked either, on any
+      screen. It reads as a mobile bug because a conversation has to be
+      taller than the window before anyone notices.
+    */
+  }, [thread?.messages.length, loading]);
 
   if (loading) {
     return (
@@ -122,7 +149,7 @@ export default function ThreadPage() {
 
       {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
-      <div className="space-y-3">
+      <div ref={list} className="space-y-3">
         {messages.length === 0 && (
           <p className="rounded-xl border border-dashed border-gray-300 px-4 py-10 text-center text-sm text-gray-500">
             Nothing here yet. Whatever you write first is fine.
@@ -174,7 +201,6 @@ export default function ThreadPage() {
             </div>
           );
         })}
-        <div ref={bottom} />
       </div>
 
       {suggestions.length > 0 && (
