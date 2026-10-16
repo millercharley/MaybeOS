@@ -26,6 +26,7 @@ import { MemberName } from '@/components/member/member-name';
 import { Avatar } from '@/components/member/avatar';
 import { ReactionBar } from '@/components/reactions/reaction-bar';
 import { useUnread } from '@/contexts/unread-context';
+import { scrollParent, scrollToBottom } from '@/lib/scroll-container';
 
 type Tab = 'channels' | 'proposals';
 
@@ -184,13 +185,23 @@ function ChannelsSection() {
     stickToBottom.current = true;
   }
 
-  // Land on the newest message, the way every chat opens. `joins` is in the
-  // dependencies because a welcome note arriving after the posts adds height
-  // above the composer, and without it the view sits short of the bottom.
+  /*
+    Land on the newest message, the way every chat opens (CMN-18).
+
+    Through whichever element is actually scrolling, not through the one
+    holding the conversation. Below `lg` the pane has no maximum height, so it
+    grows to fit every post and the app shell's `<main>` scrolls instead —
+    and `scrollTop` written to an element that cannot scroll is accepted,
+    clamped to zero, and reported as success. On a phone the Commons opened
+    on the *oldest* message with four thousand pixels of history below it.
+
+    `joins` is in the dependencies because a welcome note arriving after the
+    posts adds height above the composer, and without it the view sits short
+    of the bottom.
+  */
   useEffect(() => {
     if (!stickToBottom.current) return;
-    const el = scroller.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    scrollToBottom(scroller.current);
   }, [posts, joins]);
 
   // Then scroll to the post a card or a link pointed at, once it exists.
@@ -239,7 +250,8 @@ function ChannelsSection() {
     setLoadingOlder(true);
     setError('');
 
-    const el = scroller.current;
+    // The element that is actually scrolling (CMN-18) — see the effect above.
+    const el = scrollParent(scroller.current);
     const before = el?.scrollHeight ?? 0;
     try {
       const olderPage = await api.commons.listPosts(org.id, selectedChannel, token, oldestPage + 1);
