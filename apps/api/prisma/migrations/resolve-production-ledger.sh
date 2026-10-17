@@ -3,16 +3,21 @@
 # Record the migrations production already has (OPS-11).
 #
 # Production's `_prisma_migrations` stopped being written on 2026-08-21. The
-# schema kept moving — 63 migrations' worth — and none of them were recorded,
+# schema kept moving — 65 migrations' worth — and none of them were recorded,
 # so `prisma migrate status` could not tell anybody whether production was
 # behind. That is the condition this directory's README was written about
 # after `organizations.allowPublicJoin` reached the code and not the database
 # and took the public pages down.
 #
-# **Every one of these 63 was verified present in production before this
-# script was written**: 238 assertions over tables, columns, enum types, enum
-# values, indexes and two column renames, each checked against the live
-# catalogue, with deliberately-absent canaries proving the check could fail.
+# **Every one of these 65 was verified present in production**, by two
+# different routes and worth distinguishing:
+#
+#   * The first 63 by a sweep — 238 assertions over tables, columns, enum
+#     types, enum values, indexes and two column renames, each checked
+#     against the live catalogue, with deliberately-absent canaries proving
+#     the check could fail rather than that the query was broken.
+#   * The last two (cmn19, cmn20) were applied to production deliberately and
+#     their columns confirmed in `information_schema` immediately after.
 # Nothing here applies DDL. `migrate resolve --applied` only writes the ledger
 # row, and Prisma computes the checksum from the migration file itself.
 #
@@ -34,7 +39,7 @@ fi
 # credentials in it. A ledger repair run against dev is a silent no-op that
 # looks exactly like success.
 host=$(printf '%s' "$DATABASE_URL" | sed -E 's#.*@([^/:]+).*#\1#')
-echo "About to record 63 migrations as applied on: $host"
+echo "About to record 65 migrations as applied on: $host"
 read -r -p "Is that production? [y/N] " reply
 case "$reply" in
   [yY]) ;;
@@ -105,6 +110,8 @@ MIGRATIONS=(
   20261007200000_cal13_scheduled_calendar_sync
   20261008040000_evt43_event_image_focus
   20261015090000_eml03_org_reply_to
+  20261017090000_cmn19_message_emails
+  20261017140000_cmn20_commons_digest
 )
 
 failed=0
