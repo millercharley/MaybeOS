@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { DemographicProfile } from '@/components/member/demographic-profile';
 import { MyInterests } from '@/components/member/my-interests';
 import { RecapEmails } from '@/components/member/recap-emails';
+import { MessageEmails } from '@/components/member/message-emails';
 import { ChangePassword } from '@/components/member/change-password';
 import { useParams } from 'next/navigation';
 import { BuddySettings } from '@/components/belonging/buddy-settings';
@@ -518,6 +519,8 @@ export default function MyProfilePage() {
       {/* The other email MaybeOS sends a member, and its own switch (RCP-01).
           Beside Radar's because they are the same kind of decision, separate
           from it because they are different emails. */}
+      {/* The one email sent because a person addressed them by name (CMN-19). */}
+      <MessageEmails />
       <RecapEmails />
 
       <DemographicProfile />

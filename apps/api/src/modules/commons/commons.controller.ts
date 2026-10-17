@@ -27,6 +27,7 @@ import { CreatePostDto } from './dto/create-post.dto';
 import { CreateProposalDto } from './dto/create-proposal.dto';
 import { AddCommentDto } from './dto/add-comment.dto';
 import { EditCommentDto } from './dto/edit-comment.dto';
+import { MessageEmailsDto } from './dto/message-emails.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { StartThreadDto, ThreadMessageDto } from './dto/thread.dto';
 import { ReactionDto } from './dto/reaction.dto';
@@ -442,6 +443,22 @@ export class CommonsController {
    * One route for DMs and groups alike: a one-to-one is a thread with two
    * participants, and the list does not distinguish them.
    */
+  @Get('messages/emails')
+  @ApiOperation({ summary: 'Whether I am emailed when somebody writes to me (CMN-19)' })
+  myMessageEmails(@Param('orgId') orgId: string, @CurrentUser() user: RequestUser) {
+    return this.threads.myMessageEmails(orgId, user.userId);
+  }
+
+  @Patch('messages/emails')
+  @ApiOperation({ summary: 'Turn those emails on or off for myself (CMN-19)' })
+  setMessageEmails(
+    @Param('orgId') orgId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: MessageEmailsDto,
+  ) {
+    return this.threads.setMessageEmails(orgId, user.userId, dto.messageEmails);
+  }
+
   @Get('threads')
   @ApiOperation({ summary: "The signed-in member's conversations" })
   listThreads(@Param('orgId') orgId: string, @CurrentUser() user: RequestUser) {

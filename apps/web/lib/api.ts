@@ -2653,6 +2653,23 @@ class ApiClient {
     getThread: (orgId: string, threadId: string, token: string) =>
       this.request<ThreadDetail>(`/orgs/${orgId}/threads/${threadId}`, { token }),
 
+    /**
+     * Whether I am emailed when somebody writes to me (CMN-19).
+     *
+     * Read before the switch is drawn rather than assumed from the default:
+     * a member who turned these off from an email footer and then opened
+     * their profile would otherwise find it on.
+     */
+    messageEmails: (orgId: string, token: string) =>
+      this.request<{ messageEmails: boolean }>(`/orgs/${orgId}/messages/emails`, { token }),
+
+    setMessageEmails: (orgId: string, messageEmails: boolean, token: string) =>
+      this.request<{ messageEmails: boolean }>(`/orgs/${orgId}/messages/emails`, {
+        method: 'PATCH',
+        body: JSON.stringify({ messageEmails }),
+        token,
+      }),
+
     sendToThread: (orgId: string, threadId: string, body: string, token: string) =>
       this.request<ThreadMessage>(`/orgs/${orgId}/threads/${threadId}/messages`, {
         method: 'POST',
