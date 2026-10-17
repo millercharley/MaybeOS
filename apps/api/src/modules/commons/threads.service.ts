@@ -1,4 +1,4 @@
-import { Injectable, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { groupReactions, isAllowedReaction } from './reactions';
 import {
@@ -9,6 +9,9 @@ import {
   threadName,
 } from './threads';
 import { readWindows } from './read-windows';
+import { ConfigService } from '@nestjs/config';
+import { EmailService } from '../email/email.service';
+import { preview, recipientsFor, type Participant } from './message-notifications';
 
 /** What a conversation looks like in a list. */
 export interface ThreadSummary {
@@ -43,7 +46,13 @@ const PERSON = { id: true, name: true, avatarUrl: true };
  */
 @Injectable()
 export class ThreadsService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(ThreadsService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly email: EmailService,
+    private readonly config: ConfigService,
+  ) {}
 
   // ─── Reading ──────────────────────────────────────────────────
 
@@ -258,7 +267,148 @@ export class ThreadsService {
     });
     await this.touchRead(threadId, userId);
 
+    /*
+      Tell the people it was written to (CMN-19).
+
+      Awaited rather than fired and forgotten. This runs in a Netlify
+      function whose container may be frozen the moment the response is
+      written, and a notification nobody sent is indistinguishable from one
+      nobody received — which is the failure this whole feature exists to
+      end. The cost is the provider's round trip on the sender's request;
+      `notifyParticipants` never throws, so it cannot cost them the message.
+    */
+    await this.notifyParticipants(orgId, threadId, userId, text);
+
     return message;
+  }
+
+  /**
+   * Email everyone in a thread who is waiting to hear about it (CMN-19).
+   *
+   * Never throws. A member's message must land whatever the mail provider is
+   * doing — the same bargain every other send in MaybeOS makes.
+   */
+  private async notifyParticipants(
+    orgId: string,
+    threadId: string,
+    senderId: string,
+    body: string,
+  ): Promise<void> {
+    try {
+      const [sender, org, participants] = await Promise.all([
+        this.prisma.user.findUnique({ where: { id: senderId }, select: { name: true } }),
+        this.prisma.organization.findUnique({
+          where: { id: orgId },
+          select: { name: true, slug: true, replyToEmail: true },
+        }),
+        this.prisma.threadParticipant.findMany({
+          where: { threadId },
+          select: {
+            userId: true,
+            lastReadAt: true,
+            notifiedAt: true,
+            user: { select: { name: true, email: true } },
+          },
+        }),
+      ]);
+      if (!org) return;
+
+      /*
+        The two switches live on the membership, not the user: one person may
+        belong to several co-ops and want this from one of them.
+      */
+      const memberships = await this.prisma.userOrg.findMany({
+        where: { orgId, userId: { in: participants.map((p) => p.userId) } },
+        select: { userId: true, altEmail: true, emailOptIn: true, messageEmails: true },
+      });
+      const byUser = new Map(memberships.map((m) => [m.userId, m]));
+
+      const rows: Participant[] = participants.map((p) => {
+        const membership = byUser.get(p.userId);
+        return {
+          userId: p.userId,
+          lastReadAt: p.lastReadAt,
+          notifiedAt: p.notifiedAt,
+          // Absent membership means they are not in this co-op any more.
+          emailOptIn: membership?.emailOptIn ?? null,
+          messageEmails: membership?.messageEmails ?? false,
+          email: p.user?.email ?? null,
+          altEmail: membership?.altEmail ?? null,
+        };
+      });
+
+      const recipients = recipientsFor(rows, senderId);
+      if (recipients.length === 0) return;
+
+      const web = this.config.get<string>('WEB_URL') ?? 'https://maybeos.org';
+      const { text, truncated } = preview(body);
+      const names = new Map(participants.map((p) => [p.userId, p.user?.name ?? null]));
+
+      await Promise.all(
+        recipients.map(async (r) => {
+          await this.email.sendDirectMessage(
+            // Both addresses a member reads (MEM-19).
+            { primary: r.email as string, also: r.altEmail },
+            {
+              recipientName: names.get(r.userId) ?? null,
+              senderName: sender?.name ?? 'A member',
+              orgName: org.name,
+              message: text,
+              truncated,
+              threadUrl: `${web}/portal/${org.slug}/messages/t/${threadId}`,
+              settingsUrl: `${web}/member/${org.slug}/profile`,
+              replyTo: org.replyToEmail,
+            },
+          );
+
+          /*
+            Written after the send, not before.
+
+            The mark means "this person has been told", and the suppression
+            rule reads it to stay quiet. Setting it before sending would let
+            a provider failure silence every later message in the thread —
+            the member would never hear about any of them.
+          */
+          await this.prisma.threadParticipant.updateMany({
+            where: { threadId, userId: r.userId },
+            data: { notifiedAt: new Date() },
+          });
+        }),
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Could not notify thread ${threadId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * Whether this member is emailed when somebody writes to them (CMN-19).
+   *
+   * Read rather than assumed from the schema default: a member who turned
+   * these off from the footer of an email and then opened their profile
+   * would otherwise find the switch on — the product contradicting a choice
+   * they had already made.
+   */
+  async myMessageEmails(orgId: string, userId: string) {
+    const membership = await this.prisma.userOrg.findFirst({
+      where: { orgId, userId },
+      select: { messageEmails: true },
+    });
+    if (!membership) throw new NotFoundException('You are not a member of this community');
+
+    return { messageEmails: membership.messageEmails };
+  }
+
+  async setMessageEmails(orgId: string, userId: string, on: boolean) {
+    const membership = await this.prisma.userOrg.findFirst({
+      where: { orgId, userId },
+      select: { id: true },
+    });
+    if (!membership) throw new NotFoundException('You are not a member of this community');
+
+    await this.prisma.userOrg.update({ where: { id: membership.id }, data: { messageEmails: on } });
+    return { messageEmails: on };
   }
 
   /** Opening a conversation is reading it. */

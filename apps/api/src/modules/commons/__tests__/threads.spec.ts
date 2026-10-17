@@ -1,4 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
+import { EmailService } from '../../email/email.service';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ThreadsService } from '../threads.service';
 import { PrismaService } from '../../../config/prisma.service';
@@ -160,7 +162,13 @@ describe('ThreadsService', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [ThreadsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        ThreadsService,
+        { provide: PrismaService, useValue: prisma },
+        // Telling the other person there is something here (CMN-19).
+        { provide: EmailService, useValue: { sendDirectMessage: jest.fn() } },
+        { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },
+      ],
     }).compile();
 
     return { service: module.get(ThreadsService), prisma };

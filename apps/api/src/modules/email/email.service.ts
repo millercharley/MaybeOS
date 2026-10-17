@@ -153,6 +153,7 @@ export interface EmailJobData {
     | 'booking-canceled'
     | 'booking-rescheduled'
     | 'door-code'
+    | 'direct-message'
     | 'radar-digest'
     | 'recap'
     | 'recap-ready'
@@ -216,6 +217,21 @@ export interface RecapEmailData {
    * every payload rather than required, so a co-op that has not set one — the
    * default — keeps sending no-reply mail without every caller saying so.
    */
+  replyTo?: string | null;
+}
+
+/** Somebody wrote to a member inside MaybeOS (CMN-19). */
+export interface DirectMessageData {
+  recipientName: string | null;
+  senderName: string;
+  orgName: string;
+  /** The message itself, already trimmed and whitespace-collapsed. */
+  message: string;
+  /** Whether `message` is the start of something longer. */
+  truncated: boolean;
+  threadUrl: string;
+  /** Where the member turns these off. */
+  settingsUrl: string;
   replyTo?: string | null;
 }
 
@@ -367,6 +383,17 @@ export class EmailService {
     },
   ) {
     await this.send({ type: 'door-code', to, data });
+  }
+
+  /**
+   * Somebody wrote to this member inside MaybeOS (CMN-19).
+   *
+   * Transactional, not bulk: it is sent because a person addressed them by
+   * name, which is the definition. It therefore stays on the stream the
+   * sign-in links use rather than the broadcast one (EML-04).
+   */
+  async sendDirectMessage(to: string | Addresses, d: DirectMessageData) {
+    await this.send({ type: 'direct-message', to, data: d });
   }
 
   async sendMagicLink(to: string | Addresses, link: string) {
@@ -971,6 +998,26 @@ export class EmailService {
             <p>If you didn't request this, you can safely ignore this email.</p>
           `,
         };
+
+      case 'direct-message': {
+        const m = data as DirectMessageData;
+        return {
+          subject: `${m.senderName} sent you a message`,
+          htmlBody: `
+            <h1>${escapeHtml(m.senderName)} wrote to you</h1>
+            <p style="margin:0 0 4px;color:#6b665e;font-size:13px;">In ${escapeHtml(m.orgName)}</p>
+            <blockquote style="margin:16px 0;padding:12px 16px;border-left:3px solid #e5e1d8;background:#faf9f6;color:#2d2a26;">
+              ${escapeHtml(m.message)}${m.truncated ? '…' : ''}
+            </blockquote>
+            ${m.truncated ? '<p style="color:#6b665e;font-size:13px;">That is the start of it — the rest is in the conversation.</p>' : ''}
+            <p><a href="${escapeHtml(m.threadUrl)}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:#fff;border-radius:6px;text-decoration:none;">Read and reply</a></p>
+            <p style="color:#6b665e;font-size:13px;">
+              Answering this email will not reach ${escapeHtml(m.senderName)} — the conversation lives in ${escapeHtml(m.orgName)}.
+              You can turn these off in <a href="${escapeHtml(m.settingsUrl)}">your profile</a>.
+            </p>
+          `,
+        };
+      }
 
       case 'event-reminder':
         return {

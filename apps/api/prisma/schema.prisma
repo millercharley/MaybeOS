@@ -603,6 +603,11 @@ model UserOrg {
   /// another (D-020).
   altEmail            String?
   recapEmails         Boolean   @default(true)
+  /// Whether this member is emailed when somebody writes to them (CMN-19).
+  /// On by default: a direct message is somebody addressing *them*, which is
+  /// the one thing in here that cannot wait for the next time they look.
+  /// `emailOptIn: false` silences it regardless.
+  messageEmails       Boolean   @default(true)
   /// When this member was sent a link to sign in for the first time (MEM-18).
   ///
   /// A marker rather than a preference, like `doorPinEmailedAt`: it is what
@@ -1499,6 +1504,13 @@ model ThreadParticipant {
   userId     String
   /// Null until they open it, which means everything in it is unread.
   lastReadAt DateTime?
+  /// When this person was last emailed that there was something here (CMN-19).
+  ///
+  /// The whole of the suppression rule: a member is told once that a
+  /// conversation is waiting, and not again until they have opened it. Two
+  /// people talking inside MaybeOS would otherwise email each other on every
+  /// line. Null means never told.
+  notifiedAt DateTime?
   createdAt  DateTime  @default(now())
 
   thread MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
