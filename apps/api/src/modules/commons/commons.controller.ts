@@ -27,6 +27,8 @@ import { CreatePostDto } from './dto/create-post.dto';
 import { CreateProposalDto } from './dto/create-proposal.dto';
 import { AddCommentDto } from './dto/add-comment.dto';
 import { EditCommentDto } from './dto/edit-comment.dto';
+import { CommonsDigestService } from './commons-digest.service';
+import { CommonsDigestEmailsDto } from './dto/commons-digest-emails.dto';
 import { MessageEmailsDto } from './dto/message-emails.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { StartThreadDto, ThreadMessageDto } from './dto/thread.dto';
@@ -42,6 +44,7 @@ import { VoteChoice } from '@prisma/client';
 export class CommonsController {
   constructor(private readonly commonsService: CommonsService,
     private readonly threads: ThreadsService,
+    private readonly commonsDigest: CommonsDigestService,
   ) {}
 
   // ─── Channels ───────────────────────────────────────────────
@@ -443,6 +446,22 @@ export class CommonsController {
    * One route for DMs and groups alike: a one-to-one is a thread with two
    * participants, and the list does not distinguish them.
    */
+  @Get('commons/digest/emails')
+  @ApiOperation({ summary: 'Whether I get the weekly Commons digest (CMN-20)' })
+  myDigestEmails(@Param('orgId') orgId: string, @CurrentUser() user: RequestUser) {
+    return this.commonsDigest.myEmails(orgId, user.userId);
+  }
+
+  @Patch('commons/digest/emails')
+  @ApiOperation({ summary: 'Turn the weekly Commons digest on or off for myself (CMN-20)' })
+  setDigestEmails(
+    @Param('orgId') orgId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: CommonsDigestEmailsDto,
+  ) {
+    return this.commonsDigest.setEmails(orgId, user.userId, dto.commonsDigestEmails);
+  }
+
   @Get('messages/emails')
   @ApiOperation({ summary: 'Whether I am emailed when somebody writes to me (CMN-19)' })
   myMessageEmails(@Param('orgId') orgId: string, @CurrentUser() user: RequestUser) {

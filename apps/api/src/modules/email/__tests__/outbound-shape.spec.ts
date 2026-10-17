@@ -63,6 +63,30 @@ describe('the message handed to the provider', () => {
     reviewUrl: 'https://maybeos.org/recap/review',
   };
 
+  const commonsDigest = {
+    memberName: 'Ruth',
+    orgName: 'MaybeItsFate',
+    channels: [
+      {
+        name: 'Announcements',
+        emoji: null,
+        total: 5,
+        posts: [
+          {
+            title: 'The Attic is free on Thursdays',
+            body: 'From next week.',
+            authorName: 'Charley',
+            commentCount: 2,
+            url: 'https://maybeos.org/portal/maybeitsfate/commons?channel=c1#post-p1',
+          },
+        ],
+      },
+    ],
+    totalPosts: 5,
+    commonsUrl: 'https://maybeos.org/portal/maybeitsfate/commons',
+    unsubscribeUrl: 'https://maybeos.org/commons/unsubscribe?token=abc',
+  };
+
   const digest = {
     memberName: 'Ruth',
     orgName: 'MaybeItsFate',
@@ -321,10 +345,20 @@ describe('the message handed to the provider', () => {
     const bulkSends: [string, (s: EmailService) => Promise<unknown>][] = [
       ['the radar digest', (s) => s.sendRadarDigest('ruth@outlook.com', digest)],
       ['the monthly recap', (s) => s.sendRecap('ruth@outlook.com', recap)],
+      ['the weekly Commons digest', (s) => s.sendCommonsDigest('ruth@outlook.com', commonsDigest)],
     ];
 
     const transactionalSends: [string, (s: EmailService) => Promise<unknown>][] = [
       ['a sign-in link', (s) => s.sendMagicLink('ruth@outlook.com', 'https://maybeos.org/m?t=x')],
+      [
+        'a message someone sent',
+        (s) =>
+          s.sendDirectMessage('ruth@outlook.com', {
+            recipientName: 'Ruth', senderName: 'Charley', orgName: 'MaybeItsFate',
+            message: 'Are you around Thursday?', truncated: false,
+            threadUrl: 'https://maybeos.org/t/1', settingsUrl: 'https://maybeos.org/p',
+          }),
+      ],
       ['a booking confirmation', (s) => s.sendBookingConfirmed('ruth@outlook.com', booking)],
       [
         'a door code',

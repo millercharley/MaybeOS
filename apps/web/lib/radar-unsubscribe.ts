@@ -19,7 +19,7 @@ import { api } from '@/lib/api';
  */
 
 /** Which email the token was for. The API decodes it; the page never guesses. */
-export type UnsubscribePurpose = 'radar' | 'recap';
+export type UnsubscribePurpose = 'radar' | 'recap' | 'commons';
 
 export type UnsubscribeState =
   /** A token in hand, waiting for the member to actually ask. */
@@ -103,6 +103,7 @@ export interface UnsubscribeCopy {
 const EMAIL_NAMES: Record<UnsubscribePurpose, string> = {
   radar: 'the weekly Radar digest',
   recap: 'the monthly recap',
+  commons: 'the weekly summary of what you missed in the Commons',
 };
 
 /**
@@ -134,8 +135,8 @@ export function unsubscribeCopy(state: UnsubscribeState): UnsubscribeCopy {
         body:
           'It may have been cut short by your mail app, or it may have been used already. ' +
           'Nothing has changed either way, so those emails are still coming. You can switch ' +
-          'them off yourself from your profile — the weekly Radar digest and the monthly ' +
-          'recap each have their own setting there.',
+          'them off yourself from your profile — the weekly Radar digest, the monthly ' +
+          'recap and the Commons summary each have their own setting there.',
       };
 
     case 'failed':
@@ -150,9 +151,8 @@ export function unsubscribeCopy(state: UnsubscribeState): UnsubscribeCopy {
       return {
         title: 'Stop these emails?',
         body:
-          'This stops the one email you followed the link from — the weekly Radar digest, ' +
-          'or the monthly recap — and nothing else. Everything else your co-op sends you ' +
-          'stays exactly as it is.',
+          'This stops the one email you followed the link from, and nothing else. ' +
+          'Everything else your co-op sends you stays exactly as it is.',
       };
   }
 }

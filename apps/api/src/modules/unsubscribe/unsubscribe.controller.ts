@@ -4,6 +4,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { decodeUnsubscribe } from '../../common/unsubscribe-token';
 import { RadarService } from '../radar/radar.service';
+import { CommonsDigestService } from '../commons/commons-digest.service';
 import { RecapService } from '../recap/recap.service';
 
 /**
@@ -36,6 +37,7 @@ export class UnsubscribeController {
   constructor(
     private readonly radar: RadarService,
     private readonly recap: RecapService,
+    private readonly commonsDigest: CommonsDigestService,
     private readonly config: ConfigService,
   ) {}
 
@@ -53,10 +55,22 @@ export class UnsubscribeController {
     // guessed a real one.
     if (!decoded) return { ok: false };
 
-    const result =
-      decoded.purpose === 'recap'
-        ? await this.recap.unsubscribeByToken(decoded.userOrgId)
-        : await this.radar.unsubscribeByToken(decoded.userOrgId);
+    /*
+      Switched on explicitly, with no fall-through (CMN-20).
+
+      This was a ternary ending in `: radar`, which was correct while there
+      were two purposes and silently wrong the moment there were three: a
+      member stopping the Commons digest would have had their Radar digest
+      stopped instead, and been told so. Somebody who asks to stop one email
+      and loses another is owed better than a default branch.
+    */
+    const stop: Record<typeof decoded.purpose, () => Promise<{ orgName: string } | null>> = {
+      radar: () => this.radar.unsubscribeByToken(decoded.userOrgId),
+      recap: () => this.recap.unsubscribeByToken(decoded.userOrgId),
+      commons: () => this.commonsDigest.unsubscribeByToken(decoded.userOrgId),
+    };
+
+    const result = await stop[decoded.purpose]();
 
     return result ? { ok: true, orgName: result.orgName, purpose: decoded.purpose } : { ok: false };
   }

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { RadarModule } from '../radar/radar.module';
+import { CommonsModule } from '../commons/commons.module';
 import { RecapModule } from '../recap/recap.module';
 import { UnsubscribeController } from './unsubscribe.controller';
 
@@ -11,7 +12,7 @@ import { UnsubscribeController } from './unsubscribe.controller';
  * second feature is where a per-feature unsubscribe starts to rot.
  */
 @Module({
-  imports: [RadarModule, RecapModule],
+  imports: [RadarModule, RecapModule, CommonsModule],
   controllers: [UnsubscribeController],
 })
 export class UnsubscribeModule {}

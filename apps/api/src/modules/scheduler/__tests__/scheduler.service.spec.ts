@@ -7,6 +7,7 @@ import { BuddyService } from '../../belonging/buddy.service';
 import { DoorService } from '../../door/door.service';
 import { StripeService } from '../../stripe/stripe.service';
 import { RadarService } from '../../radar/radar.service';
+import { CommonsDigestService } from '../../commons/commons-digest.service';
 import { RecapService } from '../../recap/recap.service';
 import { HostBriefingService } from '../../service/host-briefing.service';
 import { ServiceService } from '../../service/service.service';
@@ -91,6 +92,11 @@ describe('SchedulerService', () => {
         // RDR-01. The weekly Radar digest; due for no co-op in these suites.
         {
           provide: RadarService,
+          useValue: { sendDue: jest.fn().mockResolvedValue({ processed: 0, failed: 0, errors: [] }) },
+        },
+        // CMN-20. The weekly Commons digest; due for no co-op in these suites.
+        {
+          provide: CommonsDigestService,
           useValue: { sendDue: jest.fn().mockResolvedValue({ processed: 0, failed: 0, errors: [] }) },
         },
         // RCP-01. The monthly recap drafts on the 1st; no co-op is due here.
@@ -264,6 +270,11 @@ describe('SchedulerService — compose-pending-reports', () => {
         // RDR-01. The weekly Radar digest; due for no co-op in these suites.
         {
           provide: RadarService,
+          useValue: { sendDue: jest.fn().mockResolvedValue({ processed: 0, failed: 0, errors: [] }) },
+        },
+        // CMN-20. The weekly Commons digest; due for no co-op in these suites.
+        {
+          provide: CommonsDigestService,
           useValue: { sendDue: jest.fn().mockResolvedValue({ processed: 0, failed: 0, errors: [] }) },
         },
         // RCP-01. The monthly recap drafts on the 1st; no co-op is due here.

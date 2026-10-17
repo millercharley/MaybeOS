@@ -10,6 +10,7 @@ import { RecapService } from '../recap/recap.service';
 import { HostBriefingService } from '../service/host-briefing.service';
 import { ServiceService } from '../service/service.service';
 import { CalendarImportService } from '../calendar/calendar-import.service';
+import { CommonsDigestService } from '../commons/commons-digest.service';
 
 export interface TaskResult {
   task: string;
@@ -55,6 +56,7 @@ export class SchedulerService {
     private readonly door: DoorService,
     private readonly stripe: StripeService,
     private readonly radar: RadarService,
+    private readonly commonsDigest: CommonsDigestService,
     private readonly recap: RecapService,
     private readonly rota: ServiceService,
     private readonly calendars: CalendarImportService,
@@ -80,6 +82,7 @@ export class SchedulerService {
       { name: 'sync-calendars', run: () => this.syncCalendars(now) },
       { name: 'remove-dues-fees-after-upgrade', run: () => this.removeDuesFees() },
     { name: 'send-radar-digests',             run: () => this.sendRadarDigests(now) },
+    { name: 'send-commons-digests',           run: () => this.sendCommonsDigests(now) },
     { name: 'draft-monthly-recaps',           run: () => this.draftMonthlyRecaps(now) },
     ]) {
       try {
@@ -157,6 +160,28 @@ export class SchedulerService {
     }
   }
 
+  /**
+   * What members missed while they were away (CMN-20).
+   *
+   * Only reaches somebody who was *not* here during the week, so a co-op
+   * that reads its own Commons sends almost none of these. Each run is
+   * capped and resumes from `commonsDigestSentAt`, so a co-op larger than
+   * one run finishes on the next pass inside the same hour.
+   */
+  private async sendCommonsDigests(now: Date): Promise<TaskResult> {
+    try {
+      const { processed, failed, errors } = await this.commonsDigest.sendDue(now);
+      if (processed > 0) this.logger.log(`Sent ${processed} Commons digest(s)`);
+      return { task: 'send-commons-digests', processed, failed, errors };
+    } catch (error) {
+      return {
+        task: 'send-commons-digests',
+        processed: 0,
+        failed: 1,
+        errors: [(error as Error).message],
+      };
+    }
+  }
   /**
    * Draft the monthly recap on the 1st (RCP-01).
    *

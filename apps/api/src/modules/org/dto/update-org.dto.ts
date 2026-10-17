@@ -82,6 +82,34 @@ export class UpdateOrgDto extends PartialType(CreateOrgDto) {
   @MaxLength(254)
   replyToEmail?: string | null;
 
+  /**
+   * The weekly Commons digest (CMN-20): what a member missed while they were
+   * away. Off until a co-op turns it on.
+   *
+   * Declared here for the reason the switches above are: the whitelist
+   * refuses the whole save on an undeclared field, so a missing line here is
+   * not an ignored setting but a broken Settings page (EVT-21).
+   */
+  @ApiPropertyOptional({ example: false, default: false })
+  @IsOptional()
+  @IsBoolean()
+  commonsDigestEnabled?: boolean;
+
+  /** 0 is Sunday, matching `Date.getDay`. Monday by default. */
+  @ApiPropertyOptional({ example: 1, minimum: 0, maximum: 6 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  commonsDigestDay?: number;
+
+  @ApiPropertyOptional({ example: 9, minimum: 0, maximum: 23 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(23)
+  commonsDigestHour?: number;
+
   /** Whether MaybeOS welcomes a new member itself (MEM-17). */
   @ApiPropertyOptional({ example: false, default: false })
   @IsOptional()

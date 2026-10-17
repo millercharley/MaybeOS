@@ -154,6 +154,7 @@ export interface EmailJobData {
     | 'booking-rescheduled'
     | 'door-code'
     | 'direct-message'
+    | 'commons-digest'
     | 'radar-digest'
     | 'recap'
     | 'recap-ready'
@@ -217,6 +218,34 @@ export interface RecapEmailData {
    * every payload rather than required, so a co-op that has not set one — the
    * default — keeps sending no-reply mail without every caller saying so.
    */
+  replyTo?: string | null;
+}
+
+/** One post as the weekly Commons digest prints it (CMN-20). */
+export interface CommonsDigestPost {
+  title: string | null;
+  body: string;
+  authorName: string | null;
+  commentCount: number;
+  url: string;
+}
+
+export interface CommonsDigestChannel {
+  name: string;
+  emoji: string | null;
+  /** Everything the channel had that week, including what the digest cut. */
+  total: number;
+  posts: CommonsDigestPost[];
+}
+
+/** What a member missed while they were away (CMN-20). */
+export interface CommonsDigestData {
+  memberName: string;
+  orgName: string;
+  channels: CommonsDigestChannel[];
+  totalPosts: number;
+  commonsUrl: string;
+  unsubscribeUrl: string;
   replyTo?: string | null;
 }
 
@@ -348,6 +377,9 @@ export class EmailService {
   private static readonly BULK_TYPES: ReadonlySet<EmailJobData['type']> = new Set([
     'radar-digest',
     'recap',
+    // Scheduled, to everybody who qualifies, with an unsubscribe link —
+    // bulk by every definition (CMN-20).
+    'commons-digest',
   ]);
 
   constructor(private readonly configService: ConfigService) {
@@ -491,6 +523,17 @@ export class EmailService {
    * carrying the strongest match, with the rest counted after it. An email
    * naming a real thing gets opened; "your weekly roundup" does not.
    */
+  /**
+   * What a member missed while they were away (CMN-20).
+   *
+   * Bulk: scheduled, to everybody who qualifies, with an unsubscribe link.
+   * It rides the broadcast stream so that somebody filing it as junk does
+   * not spend the reputation the sign-in links depend on (EML-04).
+   */
+  async sendCommonsDigest(to: string | Addresses, d: CommonsDigestData) {
+    await this.send({ type: 'commons-digest', to, data: d });
+  }
+
   async sendRadarDigest(to: string | Addresses, d: RadarDigestData) {
     if (d.events.length === 0) return;
     await this.send({ type: 'radar-digest', to, data: d });
@@ -998,6 +1041,61 @@ export class EmailService {
             <p>If you didn't request this, you can safely ignore this email.</p>
           `,
         };
+
+      case 'commons-digest': {
+        const g = data as CommonsDigestData;
+        const posts = (channel: CommonsDigestChannel) =>
+          channel.posts
+            .map(
+              (post) => `
+              <div style="margin:0 0 14px;padding:0 0 14px;border-bottom:1px solid #f0ece4;">
+                <a href="${escapeHtml(post.url)}" style="color:#2d2a26;font-weight:600;text-decoration:none;">
+                  ${escapeHtml(post.title || clamp(post.body, 90))}
+                </a>
+                <p style="margin:4px 0 0;color:#6b665e;font-size:13px;">
+                  ${escapeHtml(post.authorName ?? 'A member')}${
+                    post.commentCount > 0
+                      ? ` · ${post.commentCount} ${post.commentCount === 1 ? 'reply' : 'replies'}`
+                      : ''
+                  }
+                </p>
+              </div>`,
+            )
+            .join('');
+
+        return {
+          subject: `What you missed in ${g.orgName}`,
+          htmlBody: `
+            <h1>While you were away</h1>
+            <p>Hello ${escapeHtml(g.memberName)} — ${g.totalPosts} ${
+              g.totalPosts === 1 ? 'thing was' : 'things were'
+            } posted in ${escapeHtml(g.orgName)} this week.</p>
+            ${g.channels
+              .map(
+                (channel) => `
+              <h2 style="margin:24px 0 10px;font-size:15px;color:#2d2a26;">
+                ${channel.emoji ? `${escapeHtml(channel.emoji)} ` : '# '}${escapeHtml(channel.name)}
+              </h2>
+              ${posts(channel)}
+              ${
+                channel.total > channel.posts.length
+                  ? `<p style="margin:0;color:#6b665e;font-size:13px;">and ${
+                      channel.total - channel.posts.length
+                    } more in this channel</p>`
+                  : ''
+              }`,
+              )
+              .join('')}
+            <p style="margin-top:24px;">
+              <a href="${escapeHtml(g.commonsUrl)}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:#fff;border-radius:6px;text-decoration:none;">Open the Commons</a>
+            </p>
+            <p style="color:#6b665e;font-size:13px;">
+              You are getting this because you have not been in this week. Read the Commons and it stops on its own.
+              <a href="${escapeHtml(g.unsubscribeUrl)}">Stop these weekly emails</a>
+            </p>
+          `,
+        };
+      }
 
       case 'direct-message': {
         const m = data as DirectMessageData;

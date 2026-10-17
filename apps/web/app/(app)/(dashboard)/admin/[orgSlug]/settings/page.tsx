@@ -22,6 +22,7 @@ import { MemberChannels } from '@/components/settings/member-channels';
 import { DoorAccess } from '@/components/settings/door-access';
 import { WelcomeEmail } from '@/components/settings/welcome-email';
 import { ReplyAddress } from '@/components/settings/reply-address';
+import { CommonsDigest } from '@/components/settings/commons-digest';
 import { BookingLimits } from '@/components/settings/booking-limits';
 import { EventRooms } from '@/components/settings/event-rooms';
 import { LegacyBilling } from '@/components/settings/legacy-billing';
@@ -447,6 +448,8 @@ export default function SettingsPage() {
       {activeTab === 'general' && org && <WelcomeEmail org={org} onSaved={refetch} />}
       {/* Where a member's reply goes (EML-03). */}
       {activeTab === 'general' && org && <ReplyAddress org={org} onSaved={refetch} />}
+      {/* A letter to the people who stopped coming, not a newsletter (CMN-20). */}
+      {activeTab === 'general' && org && <CommonsDigest org={org} onSaved={refetch} />}
       {activeTab === 'general' && org && <DoorAccess org={org} onSaved={refetch} />}
       {activeTab === 'general' && org && <Locations orgId={org.id} />}
       {activeTab === 'general' && org && <Support orgName={org.name} />}
