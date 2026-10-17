@@ -160,3 +160,43 @@ trust.
 **The rule that would have caught this**: after applying a migration to
 production, record it in the same sitting. `migrate resolve --applied <name>`
 takes a second and is the whole difference between a ledger and a guess.
+
+## Never point `--shadow-database-url` at a database you want (OPS-12)
+
+On 2026-10-17 the dev database was emptied by this, run as a *check* that a
+hand-written migration matched the schema:
+
+```bash
+# Destroys the database given to --shadow-database-url. Do not do this.
+npx prisma migrate diff --from-migrations prisma/migrations \
+  --to-schema-datamodel prisma/schema.prisma \
+  --shadow-database-url "$DATABASE_URL"
+```
+
+A shadow database is scratch space: Prisma **drops its schema and replays
+every migration into it**. Passing the real `DATABASE_URL` hands it the dev
+database as scratch. Every row went, and `_prisma_migrations` with them —
+which then showed up as `P3005` on the next `migrate deploy`, several steps
+removed from the cause.
+
+The command reads like an inspection. It is not. Nothing in its name or its
+output says it writes, and the flag that does the damage is the one that
+sounds like configuration.
+
+**To compare a migration against the schema**, give it a throwaway database:
+
+```bash
+npx prisma migrate diff --from-migrations prisma/migrations \
+  --to-schema-datamodel prisma/schema.prisma \
+  --shadow-database-url "postgresql://postgres:postgres@localhost:5432/scratch"
+```
+
+Or skip the shadow database entirely — `migrate dev` writes the migration for
+you, and comparing what it writes against what you wrote needs no database at
+all.
+
+Recovery, if it happens again: the schema survives (every migration is
+replayed into it), so it is `prisma migrate resolve --applied <name>` for each
+migration to rebuild the ledger, then `SEED_FORCE=true npm run db:seed`. The
+seed's own refusal to touch a non-local database is the guard that should have
+been on the diff.

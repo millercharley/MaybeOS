@@ -611,6 +611,11 @@ model UserOrg {
   /// another (D-020).
   altEmail            String?
   recapEmails         Boolean   @default(true)
+  /// Whether this member gets announcements an organiser chooses to email
+  /// (CMN-21). Its own switch, because an announcement is not a digest: a
+  /// member who does not want a weekly summary may well want to be told the
+  /// potluck moved. `emailOptIn: false` silences it regardless.
+  announcementEmails  Boolean   @default(true)
   /// Whether this member gets the weekly Commons digest (CMN-20). On by
   /// default and only ever sent to somebody who was *away* — a member who
   /// reads the Commons never sees one.
@@ -673,6 +678,7 @@ model UserOrg {
 
   interests    MemberInterest[]
   radarSends   RadarSend[]
+  postEmails   PostEmailSend[]
   duesPayments DuesPayment[]
 
   // Belonging Support. A membership, not a person: someone in two co-ops has
@@ -1611,6 +1617,10 @@ model Post {
   body      String
   isPinned  Boolean  @default(false)
   isFlagged Boolean  @default(false)
+  /// When an organiser asked for this post to be emailed to the whole
+  /// roster (CMN-21). Null for the overwhelming majority of posts, which
+  /// are a conversation rather than an announcement.
+  emailRequestedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1620,6 +1630,7 @@ model Post {
   reactions   Reaction[]
   attachments Attachment[]
   eventThread Event?       @relation("EventThread")
+  emailSends  PostEmailSend[]
 
   @@index([channelId, createdAt])
   @@map("posts")
@@ -2381,6 +2392,28 @@ model AuditLog {
   @@index([orgId, createdAt])
   @@index([orgId, action])
   @@map("audit_logs")
+}
+
+/// One member, emailed one announcement (CMN-21).
+///
+/// A roster-sized send cannot finish inside one function invocation, so this
+/// is the cursor: the members still owed a copy are the ones with no row
+/// here. Modelled on `RadarSend`, which solved the same problem — a mark
+/// that survives the process being killed halfway through.
+model PostEmailSend {
+  id        String   @id @default(uuid())
+  postId    String
+  userOrgId String
+  sentAt    DateTime @default(now())
+
+  post Post    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user UserOrg @relation(fields: [userOrgId], references: [id], onDelete: Cascade)
+
+  /// One copy per member per announcement, enforced rather than intended:
+  /// two overlapping runs must not both decide somebody is owed one.
+  @@unique([postId, userOrgId])
+  @@index([postId])
+  @@map("post_email_sends")
 }
 
 model EmailTemplate {
