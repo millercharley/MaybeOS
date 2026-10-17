@@ -53,6 +53,9 @@ describe('a message that nobody was told about', () => {
       },
       threadMessage: {
         create: jest.fn().mockResolvedValue({ id: 'm1', createdAt: new Date() }),
+        // `startThread` hands back the thread it just made.
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
       },
       user: { findUnique: jest.fn().mockResolvedValue({ name: 'Me' }) },
       organization: {
@@ -191,6 +194,33 @@ describe('a message that nobody was told about', () => {
       );
       expect(marks).toEqual([]);
     });
+  });
+
+  /**
+   * Starting a conversation is the case that matters most, and the easiest
+   * to miss: there are two ways to write to somebody, and the other person
+   * has no reason at all to be looking at a thread that did not exist a
+   * moment ago.
+   */
+  it('writes to them when the message is the one that starts the thread', async () => {
+    const parts = build();
+    parts.prisma.messageThread.upsert = jest.fn().mockResolvedValue({ id: 't1' });
+    parts.prisma.userOrg.findMany = jest
+      .fn()
+      // First call resolves who is allowed in the thread, second the settings.
+      .mockResolvedValueOnce([{ userId: 'me' }, { userId: 'ruth' }])
+      .mockResolvedValue([
+        { userId: 'me', altEmail: null, emailOptIn: null, messageEmails: true },
+        { userId: 'ruth', altEmail: null, emailOptIn: null, messageEmails: true },
+      ]);
+
+    await (await service(parts)).startThread(ORG, 'me', {
+      userIds: ['ruth'],
+      body: 'Are you around on Thursday?',
+    } as never);
+
+    expect(parts.sendDirectMessage).toHaveBeenCalledTimes(1);
+    expect(parts.sendDirectMessage.mock.calls[0][1].message).toBe('Are you around on Thursday?');
   });
 
   it('marks them as told once the send has gone', async () => {
