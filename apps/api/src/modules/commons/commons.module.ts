@@ -8,13 +8,14 @@ import { PlatformModule } from '../platform/platform.module';
 
 import { EmailModule } from '../email/email.module';
 import { CommonsDigestService } from './commons-digest.service';
+import { AnnouncementService } from './announcement.service';
 
 @Module({
   // Storage to take the files down with the post, Platform for the audit log:
   // removing somebody else's words is a power a co-op should see used (CMN-18).
   imports: [StorageModule, PlatformModule, EmailModule],
   controllers: [CommonsController],
-  providers: [PrismaService, CommonsService, ThreadsService, CommonsDigestService],
-  exports: [CommonsService, ThreadsService, CommonsDigestService],
+  providers: [PrismaService, CommonsService, ThreadsService, CommonsDigestService, AnnouncementService],
+  exports: [CommonsService, ThreadsService, CommonsDigestService, AnnouncementService],
 })
 export class CommonsModule {}

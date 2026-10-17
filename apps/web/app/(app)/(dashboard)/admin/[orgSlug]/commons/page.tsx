@@ -17,6 +17,7 @@ import { api, Comment as CommentT, Post, PaginatedResponse, ThreadDetail } from 
 import { groupChannels } from '@/lib/channel-groups';
 import { renderBodyHtml, isBlankBody, asRichBody } from '@/lib/rich-text';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
+import { EmailToMembers } from '@/components/commons/email-to-members';
 import { EmojiPicker } from '@/components/composer/emoji-picker';
 import { PageHeader } from '@/components/layout/page-header';
 import { MemberName } from '@/components/member/member-name';
@@ -267,6 +268,10 @@ export default function CommonsPage() {
   /** The server's latest counts per post, so a re-render keeps them (CMN-20). */
   const [reactionOverrides, setReactionOverrides] = useState<Record<string, ReactionGroup[]>>({});
   const [newPostBody, setNewPostBody] = useState('');
+  /** Also send this post to every member by email (CMN-21). */
+  const [emailThisPost, setEmailThisPost] = useState(false);
+  /** The post just written, waiting for the organiser to confirm the send. */
+  const [emailingPostId, setEmailingPostId] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const [dmDraft, setDmDraft] = useState('');
@@ -359,9 +364,28 @@ export default function CommonsPage() {
 
   async function handleCreatePost() {
     if (!newPostBody.trim() || !activeChannelId) return;
-    await api.commons.createPost(currentOrgId!, activeChannelId, { body: newPostBody.trim() }, token!);
+
+    const post = await api.commons.createPost(
+      currentOrgId!,
+      activeChannelId,
+      { body: newPostBody.trim() },
+      token!,
+    );
     setNewPostBody('');
     refetchPosts();
+
+    /*
+      The post exists before anybody is emailed (CMN-21).
+
+      Deliberately two steps: it is written to the Commons, and *then* the
+      organiser confirms the send against a real count. Composing straight
+      into four hundred inboxes means the first reading of a typo is
+      somebody else's.
+    */
+    if (emailThisPost && post?.id) {
+      setEmailingPostId(post.id);
+      setEmailThisPost(false);
+    }
   }
 
   /**
@@ -1216,11 +1240,40 @@ export default function CommonsPage() {
                   placeholder={selectedChannel ? `Post in #${selectedChannel.name}...` : 'Write something...'}
                   submitLabel="Post"
                 />
+                {/* The option, not the act. Pressing Post writes it to the
+                    Commons; the dialog that follows names the number of
+                    people before anything leaves (CMN-21). */}
+                <label className="mt-2 flex items-start gap-2 text-sm text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={emailThisPost}
+                    onChange={(e) => setEmailThisPost(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    Also email this to every member
+                    <span className="block text-xs text-gray-500">
+                      You&rsquo;ll see how many people that is before it sends.
+                    </span>
+                  </span>
+                </label>
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Sending the post just written to the whole roster (CMN-21). */}
+      {emailingPostId && currentOrgId && token && (
+        <EmailToMembers
+          open
+          orgId={currentOrgId}
+          postId={emailingPostId}
+          token={token}
+          onClose={() => setEmailingPostId(null)}
+          onSent={refetchPosts}
+        />
+      )}
 
       {/*
         Confirmed, never inline (CMN-18).

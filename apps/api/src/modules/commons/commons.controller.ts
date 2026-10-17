@@ -28,6 +28,8 @@ import { CreateProposalDto } from './dto/create-proposal.dto';
 import { AddCommentDto } from './dto/add-comment.dto';
 import { EditCommentDto } from './dto/edit-comment.dto';
 import { CommonsDigestService } from './commons-digest.service';
+import { AnnouncementService } from './announcement.service';
+import { AnnouncementEmailsDto } from './dto/announcement-emails.dto';
 import { CommonsDigestEmailsDto } from './dto/commons-digest-emails.dto';
 import { MessageEmailsDto } from './dto/message-emails.dto';
 import { SendMessageDto } from './dto/send-message.dto';
@@ -45,6 +47,7 @@ export class CommonsController {
   constructor(private readonly commonsService: CommonsService,
     private readonly threads: ThreadsService,
     private readonly commonsDigest: CommonsDigestService,
+    private readonly announcements: AnnouncementService,
   ) {}
 
   // ─── Channels ───────────────────────────────────────────────
@@ -446,6 +449,56 @@ export class CommonsController {
    * One route for DMs and groups alike: a one-to-one is a thread with two
    * participants, and the list does not distinguish them.
    */
+  /**
+   * How many members an announcement would reach (CMN-21).
+   *
+   * Read-only, and asked before the button: an organiser about to write to
+   * four hundred people should see the number while the decision is still
+   * reversible.
+   */
+  @Get('commons/posts/:postId/email')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'How many members this post would be emailed to (CMN-21)' })
+  previewAnnouncement(@Param('orgId') orgId: string, @Param('postId') postId: string) {
+    return this.announcements.preview(orgId, postId);
+  }
+
+  /**
+   * Send one pass of an announcement (CMN-21).
+   *
+   * Four hundred members do not fit in one invocation, so this does what it
+   * can inside a deadline and reports what is left. The caller asks again
+   * until `remaining` is zero; `post_email_sends` makes the repeat safe.
+   */
+  @Post('commons/posts/:postId/email')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Email this post to every member, one pass (CMN-21)' })
+  sendAnnouncement(
+    @Param('orgId') orgId: string,
+    @Param('postId') postId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.announcements.sendPass(orgId, postId, user.userId);
+  }
+
+  @Get('commons/announcement/emails')
+  @ApiOperation({ summary: 'Whether I get announcements an organiser emails (CMN-21)' })
+  myAnnouncementEmails(@Param('orgId') orgId: string, @CurrentUser() user: RequestUser) {
+    return this.announcements.myEmails(orgId, user.userId);
+  }
+
+  @Patch('commons/announcement/emails')
+  @ApiOperation({ summary: 'Turn emailed announcements on or off for myself (CMN-21)' })
+  setAnnouncementEmails(
+    @Param('orgId') orgId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: AnnouncementEmailsDto,
+  ) {
+    return this.announcements.setEmails(orgId, user.userId, dto.announcementEmails);
+  }
+
   @Get('commons/digest/emails')
   @ApiOperation({ summary: 'Whether I get the weekly Commons digest (CMN-20)' })
   myDigestEmails(@Param('orgId') orgId: string, @CurrentUser() user: RequestUser) {

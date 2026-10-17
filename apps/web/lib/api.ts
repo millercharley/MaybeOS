@@ -2653,6 +2653,45 @@ class ApiClient {
     getThread: (orgId: string, threadId: string, token: string) =>
       this.request<ThreadDetail>(`/orgs/${orgId}/threads/${threadId}`, { token }),
 
+    /** Whether I get announcements an organiser emails (CMN-21). */
+    announcementEmails: (orgId: string, token: string) =>
+      this.request<{ announcementEmails: boolean }>(
+        `/orgs/${orgId}/commons/announcement/emails`,
+        { token },
+      ),
+
+    setAnnouncementEmails: (orgId: string, announcementEmails: boolean, token: string) =>
+      this.request<{ announcementEmails: boolean }>(
+        `/orgs/${orgId}/commons/announcement/emails`,
+        { method: 'PATCH', body: JSON.stringify({ announcementEmails }), token },
+      ),
+
+    /**
+     * How many members this post would be emailed to (CMN-21).
+     *
+     * Read-only, and asked before the button: an organiser about to write
+     * to the whole roster should see the number while the decision is still
+     * reversible.
+     */
+    previewAnnouncement: (orgId: string, postId: string, token: string) =>
+      this.request<{ sent: number; total: number; remaining: number; subject: string }>(
+        `/orgs/${orgId}/commons/posts/${postId}/email`,
+        { token },
+      ),
+
+    /**
+     * Send one pass of an announcement (CMN-21).
+     *
+     * A roster does not fit in one request: this does what it can inside a
+     * deadline and reports what is left. Call it until `remaining` is zero —
+     * the API records who already has a copy, so repeating is safe.
+     */
+    sendAnnouncement: (orgId: string, postId: string, token: string) =>
+      this.request<{ sent: number; total: number; remaining: number }>(
+        `/orgs/${orgId}/commons/posts/${postId}/email`,
+        { method: 'POST', token },
+      ),
+
     /**
      * Whether I get the weekly summary of what I missed (CMN-20).
      *
