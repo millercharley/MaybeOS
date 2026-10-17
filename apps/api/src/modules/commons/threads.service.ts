@@ -210,6 +210,15 @@ export class ThreadsService {
     // The sender has read what they just wrote.
     await this.touchRead(thread.id, userId);
 
+    /*
+      The first message of all is still a message (CMN-19).
+
+      Easy to miss, and the worst one to: starting a conversation is exactly
+      the case where the other person has no reason to be looking. Both ways
+      of writing to somebody go through the same notice.
+    */
+    await this.notifyParticipants(orgId, thread.id, userId, body);
+
     return this.getThread(orgId, userId, thread.id);
   }
 
