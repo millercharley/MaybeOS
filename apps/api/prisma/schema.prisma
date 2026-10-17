@@ -225,6 +225,14 @@ model Organization {
   /// member about gatherings open to members that match what they are
   /// interested in. Off until an admin turns it on, and the switch is only
   /// offered on Plus and Unlimited — see `radar-availability.ts`.
+  /// The weekly Commons digest (CMN-20): what a member missed while they
+  /// were away. Off until a co-op turns it on, like every other switch that
+  /// decides whether email leaves the building.
+  commonsDigestEnabled        Boolean           @default(false)
+  /// Monday by default — a letter about last week reads best at the start of
+  /// the next one. 0 is Sunday, matching `Date.getDay`.
+  commonsDigestDay            Int               @default(1)
+  commonsDigestHour           Int               @default(9)
   radarEnabled                Boolean           @default(false)
   /// Which day the digest goes out and at what hour, 0 = Sunday, read in the
   /// co-op's own timezone. A co-op knows when its people read email; Thursday
@@ -603,6 +611,12 @@ model UserOrg {
   /// another (D-020).
   altEmail            String?
   recapEmails         Boolean   @default(true)
+  /// Whether this member gets the weekly Commons digest (CMN-20). On by
+  /// default and only ever sent to somebody who was *away* — a member who
+  /// reads the Commons never sees one.
+  commonsDigestEmails Boolean   @default(true)
+  /// When they were last sent one. The resume cursor for the weekly run.
+  commonsDigestSentAt DateTime?
   /// Whether this member is emailed when somebody writes to them (CMN-19).
   /// On by default: a direct message is somebody addressing *them*, which is
   /// the one thing in here that cannot wait for the next time they look.

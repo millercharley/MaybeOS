@@ -2654,6 +2654,24 @@ class ApiClient {
       this.request<ThreadDetail>(`/orgs/${orgId}/threads/${threadId}`, { token }),
 
     /**
+     * Whether I get the weekly summary of what I missed (CMN-20).
+     *
+     * Only ever sent to somebody who was away, so a member who reads the
+     * Commons never sees one however this is set.
+     */
+    digestEmails: (orgId: string, token: string) =>
+      this.request<{ commonsDigestEmails: boolean }>(`/orgs/${orgId}/commons/digest/emails`, {
+        token,
+      }),
+
+    setDigestEmails: (orgId: string, commonsDigestEmails: boolean, token: string) =>
+      this.request<{ commonsDigestEmails: boolean }>(`/orgs/${orgId}/commons/digest/emails`, {
+        method: 'PATCH',
+        body: JSON.stringify({ commonsDigestEmails }),
+        token,
+      }),
+
+    /**
      * Whether I am emailed when somebody writes to me (CMN-19).
      *
      * Read before the switch is drawn rather than assumed from the default:
@@ -3573,6 +3591,10 @@ export interface Org {
   doorCodeEmailsEnabled?: boolean;
   /** Whether MaybeOS welcomes a new member itself (MEM-17). */
   welcomeEmailEnabled?: boolean;
+  /** The weekly Commons digest for members who were away (CMN-20). */
+  commonsDigestEnabled?: boolean;
+  commonsDigestDay?: number;
+  commonsDigestHour?: number;
   /**
    * Where a member's reply goes (EML-03). Null or absent means no `Reply-To`
    * header at all — the co-op's mail is no-reply mail.

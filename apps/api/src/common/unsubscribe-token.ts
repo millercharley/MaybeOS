@@ -22,9 +22,9 @@ import { createHmac, timingSafeEqual } from 'crypto';
  */
 
 /** The emails a member can switch off from a link. */
-export type UnsubscribePurpose = 'radar' | 'recap';
+export type UnsubscribePurpose = 'radar' | 'recap' | 'commons';
 
-const PURPOSES: readonly UnsubscribePurpose[] = ['radar', 'recap'] as const;
+const PURPOSES: readonly UnsubscribePurpose[] = ['radar', 'recap', 'commons'] as const;
 
 export interface UnsubscribeToken {
   /** The membership, not the user: one co-op's email is not another's. */
