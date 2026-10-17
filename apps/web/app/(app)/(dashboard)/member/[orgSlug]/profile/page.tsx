@@ -10,6 +10,7 @@ import { MyInterests } from '@/components/member/my-interests';
 import { RecapEmails } from '@/components/member/recap-emails';
 import { MessageEmails } from '@/components/member/message-emails';
 import { CommonsDigestEmails } from '@/components/member/commons-digest-emails';
+import { AnnouncementEmails } from '@/components/member/announcement-emails';
 import { ChangePassword } from '@/components/member/change-password';
 import { useParams } from 'next/navigation';
 import { BuddySettings } from '@/components/belonging/buddy-settings';
@@ -524,6 +525,8 @@ export default function MyProfilePage() {
       <MessageEmails />
       {/* Only ever sent to somebody who was away (CMN-20). */}
       <CommonsDigestEmails />
+      {/* The way back in after using an unsubscribe link (CMN-21). */}
+      <AnnouncementEmails />
       <RecapEmails />
 
       <DemographicProfile />

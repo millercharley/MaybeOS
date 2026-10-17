@@ -155,6 +155,7 @@ export interface EmailJobData {
     | 'door-code'
     | 'direct-message'
     | 'commons-digest'
+    | 'announcement'
     | 'radar-digest'
     | 'recap'
     | 'recap-ready'
@@ -218,6 +219,18 @@ export interface RecapEmailData {
    * every payload rather than required, so a co-op that has not set one — the
    * default — keeps sending no-reply mail without every caller saying so.
    */
+  replyTo?: string | null;
+}
+
+/** A Commons post an organiser chose to email to everybody (CMN-21). */
+export interface AnnouncementData {
+  subject: string;
+  orgName: string;
+  authorName: string | null;
+  /** Already sanitised by the caller — see `sanitizeEmailHtml`. */
+  bodyHtml: string;
+  postUrl: string;
+  unsubscribeUrl: string;
   replyTo?: string | null;
 }
 
@@ -380,6 +393,10 @@ export class EmailService {
     // Scheduled, to everybody who qualifies, with an unsubscribe link —
     // bulk by every definition (CMN-20).
     'commons-digest',
+    // Sent to the whole roster at once, with an unsubscribe link (CMN-21).
+    // An organiser pressed the button rather than a clock, which changes
+    // nothing about what a mail provider sees.
+    'announcement',
   ]);
 
   constructor(private readonly configService: ConfigService) {
@@ -530,6 +547,24 @@ export class EmailService {
    * It rides the broadcast stream so that somebody filing it as junk does
    * not spend the reputation the sign-in links depend on (EML-04).
    */
+  /**
+   * A Commons post, sent to the whole roster (CMN-21).
+   *
+   * Bulk: scheduled by nobody, but sent to everybody who qualifies and
+   * carrying an unsubscribe link, which is what the word means to a mail
+   * provider. It rides the broadcast stream so that somebody filing an
+   * announcement as junk does not spend the reputation the sign-in links
+   * depend on (EML-04).
+   *
+   * `bodyHtml` arrives sanitised. This does not clean it again, and the
+   * reason is worth stating: a second pass here would let a caller believe
+   * cleaning is somebody else's job, and the one that forgot would be the
+   * one nobody noticed.
+   */
+  async sendAnnouncement(to: string | Addresses, d: AnnouncementData) {
+    await this.send({ type: 'announcement', to, data: d });
+  }
+
   async sendCommonsDigest(to: string | Addresses, d: CommonsDigestData) {
     await this.send({ type: 'commons-digest', to, data: d });
   }
@@ -1041,6 +1076,26 @@ export class EmailService {
             <p>If you didn't request this, you can safely ignore this email.</p>
           `,
         };
+
+      case 'announcement': {
+        const a = data as AnnouncementData;
+        return {
+          subject: a.subject,
+          htmlBody: `
+            <p style="margin:0 0 4px;color:#6b665e;font-size:13px;">From ${escapeHtml(
+              a.orgName,
+            )}${a.authorName ? ` · ${escapeHtml(a.authorName)}` : ''}</p>
+            <div style="margin:16px 0;color:#2d2a26;">${a.bodyHtml}</div>
+            <p style="margin-top:24px;">
+              <a href="${escapeHtml(a.postUrl)}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:#fff;border-radius:6px;text-decoration:none;">Read it in the Commons</a>
+            </p>
+            <p style="color:#6b665e;font-size:13px;">
+              Sent to everyone in ${escapeHtml(a.orgName)}.
+              <a href="${escapeHtml(a.unsubscribeUrl)}">Stop these announcements</a> — your other emails are unaffected.
+            </p>
+          `,
+        };
+      }
 
       case 'commons-digest': {
         const g = data as CommonsDigestData;

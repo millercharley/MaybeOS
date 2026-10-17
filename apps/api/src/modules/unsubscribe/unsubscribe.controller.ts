@@ -5,6 +5,7 @@ import { SkipThrottle } from '@nestjs/throttler';
 import { decodeUnsubscribe } from '../../common/unsubscribe-token';
 import { RadarService } from '../radar/radar.service';
 import { CommonsDigestService } from '../commons/commons-digest.service';
+import { AnnouncementService } from '../commons/announcement.service';
 import { RecapService } from '../recap/recap.service';
 
 /**
@@ -38,6 +39,7 @@ export class UnsubscribeController {
     private readonly radar: RadarService,
     private readonly recap: RecapService,
     private readonly commonsDigest: CommonsDigestService,
+    private readonly announcements: AnnouncementService,
     private readonly config: ConfigService,
   ) {}
 
@@ -68,6 +70,7 @@ export class UnsubscribeController {
       radar: () => this.radar.unsubscribeByToken(decoded.userOrgId),
       recap: () => this.recap.unsubscribeByToken(decoded.userOrgId),
       commons: () => this.commonsDigest.unsubscribeByToken(decoded.userOrgId),
+      announcement: () => this.announcements.unsubscribeByToken(decoded.userOrgId),
     };
 
     const result = await stop[decoded.purpose]();
