@@ -340,7 +340,7 @@ export class BuddyService {
           {
             new_member_name: invitation.pairing.newMember.user.name ?? 'a new member',
             community_name: invitation.pairing.org.name,
-            opt_out_url: `${this.webUrl()}/portal/${invitation.pairing.org.slug}/profile#buddy`,
+            opt_out_url: `${this.webUrl()}/member/${invitation.pairing.org.slug}/settings#buddy`,
           },
         );
         // Stamped after the send returns. Sends are fire-and-forget, so a

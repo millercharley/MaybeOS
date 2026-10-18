@@ -18,6 +18,7 @@ import {
   Newspaper,
   Receipt,
   Settings,
+  SlidersHorizontal,
   UserCircle,
   Users,
   Vote,
@@ -127,12 +128,15 @@ const memberNav = (slug: string): NavItem[] => [
   { href: `/member/${slug}/bookings`, label: 'My Bookings', icon: DoorOpen },
   // What I have taken on and what it adds up to (SRV-01).
   { href: `/member/${slug}/service`, label: 'My Service', icon: ClipboardCheck },
-  { href: `/member/${slug}/billing`, label: 'Billing', icon: CreditCard },
+  { href: `/member/${slug}/billing`, label: 'My Dues & Billing', icon: CreditCard },
   // What they told the co-op and what it added up to (IMP-20). A member who
   // answers a question a month and is told nothing stops answering, and
   // response rate is the constraint the whole of ImpactOS rests on.
-  { href: `/member/${slug}/impact`, label: 'What we’re learning', icon: Activity },
-  { href: `/member/${slug}/profile`, label: 'Profile', icon: UserCircle },
+  { href: `/member/${slug}/impact`, label: 'What We’re Learning', icon: Activity },
+  // Identity first, then the switches. My Profile is what other members see;
+  // My Settings is what only this member does (UI-03).
+  { href: `/member/${slug}/profile`, label: 'My Profile', icon: UserCircle },
+  { href: `/member/${slug}/settings`, label: 'My Settings', icon: SlidersHorizontal },
 ];
 
 /** The co-op itself, under its own portal. */

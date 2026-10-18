@@ -692,7 +692,7 @@ export class RadarService {
         unsubscribeUrl: this.unsubscribeUrl(member.id),
         // Where a member's reply goes (EML-03).
         replyTo: org.replyToEmail,
-        interestsUrl: `${this.appUrl()}/member/${org.slug}/profile#interests`,
+        interestsUrl: `${this.appUrl()}/member/${org.slug}/settings#interests`,
       });
 
       return true;

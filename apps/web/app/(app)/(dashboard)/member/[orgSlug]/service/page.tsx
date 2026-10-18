@@ -104,7 +104,7 @@ export default function MyServicePage() {
     <div>
       <header>
         <PageHeader
-          title="My service"
+          title="My Service"
         />
       </header>
 

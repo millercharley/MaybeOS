@@ -175,7 +175,7 @@ export default function MemberBillingPage() {
     return (
       <div className="card">
         <PageHeader
-          title="No membership found"
+          title="No Membership Found"
           description="You&apos;re not currently a member of an organization, so there are no dues to manage."
         />
       </div>
@@ -232,7 +232,7 @@ export default function MemberBillingPage() {
   return (
     <div>
       <PageHeader
-        title="Dues &amp; billing"
+        title="My Dues &amp; Billing"
         description={membership.org?.name}
       />
       {justReturned === 'success' && (

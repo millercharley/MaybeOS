@@ -299,7 +299,7 @@ describe('the links in the email', () => {
     // first version of this pointed at `/portal/...`, a route that has no
     // profile page on it, and the link would have 404'd in sent email.
     expect(payload.interestsUrl).toBe(
-      'https://maybeos.org/member/maybeitsfate/profile#interests',
+      'https://maybeos.org/member/maybeitsfate/settings#interests',
     );
   });
 });

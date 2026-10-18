@@ -259,7 +259,7 @@ export default function MemberBookingsPage() {
   return (
     <div>
       <PageHeader
-        title="My bookings"
+        title="My Bookings"
         description="Rooms you&apos;ve booked, and anything still waiting on an organizer."
       />
 

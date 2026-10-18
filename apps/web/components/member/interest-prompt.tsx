@@ -147,7 +147,7 @@ export function InterestPrompt({ orgSlug }: { orgSlug: string }) {
       </div>
 
       <p className="mt-3 text-xs text-[var(--text-tertiary)]">
-        <Link href={`/member/${orgSlug}/profile#interests`} className="hover:underline">
+        <Link href={`/member/${orgSlug}/settings#interests`} className="hover:underline">
           See everything you&rsquo;re interested in
         </Link>
       </p>
