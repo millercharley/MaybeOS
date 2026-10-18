@@ -56,7 +56,7 @@ export default function MyImpactPage() {
     <div className="space-y-8">
       <div>
         <PageHeader
-          title="What we&apos;re learning"
+          title="What We&apos;re Learning"
           description="Your co-op asks one short question at a time, at most once a month. Here is what you said, and what everyone&apos;s answers add up to."
         />
       </div>

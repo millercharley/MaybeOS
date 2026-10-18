@@ -191,20 +191,28 @@ describe('the recap is wired to something', () => {
     expect(readFileSync(join(WEB_ROOT, 'lib', 'nav.ts'), 'utf8')).toContain('/recap');
   });
 
-  it('the member’s switch is rendered by a page', () => {
-    const definition = join('components', 'member', 'recap-emails.tsx');
+  /**
+   * The switch is a row in the one email card now (UI-03), not a card of its
+   * own — but the risk it guarded is unchanged. The card renders nothing when
+   * it has nothing to show, so one that no page mounts is invisible rather
+   * than broken, and nobody would notice for months.
+   */
+  it('the member’s switch is reachable from a page', () => {
+    const definition = join('components', 'member', 'email-preferences.tsx');
     const renderers = files.filter(
       (file) =>
         relative(WEB_ROOT, file) !== definition &&
-        /<RecapEmails\b/.test(readFileSync(file, 'utf8')),
+        /<EmailPreferences\b/.test(readFileSync(file, 'utf8')),
     );
 
     if (renderers.length === 0) {
       throw new Error(
-        'Nothing renders <RecapEmails />. It renders nothing when the co-op has no ' +
-          'recap, so an unmounted one is invisible rather than broken.',
+        'Nothing renders <EmailPreferences />. It renders nothing when it has nothing ' +
+          'to show, so an unmounted one is invisible rather than broken.',
       );
     }
-    expect(renderers.length).toBeGreaterThan(0);
+
+    // And the card actually offers the recap among its rows.
+    expect(readFileSync(join(WEB_ROOT, definition), 'utf8')).toContain('api.recap.emails');
   });
 });

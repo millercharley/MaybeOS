@@ -11,8 +11,6 @@ import { join } from 'path';
 const files = {
   dialog: 'components/commons/email-to-members.tsx',
   admin: 'app/(app)/(dashboard)/admin/[orgSlug]/commons/page.tsx',
-  memberSwitch: 'components/member/announcement-emails.tsx',
-  profile: 'app/(app)/(dashboard)/member/[orgSlug]/profile/page.tsx',
 };
 
 function code(path: string): string {
@@ -67,20 +65,5 @@ describe('the composer', () => {
 
   it('clears the choice after one use, so the next post does not inherit it', () => {
     expect(flat(files.admin)).toContain('setEmailThisPost(false)');
-  });
-});
-
-describe('the member’s way back in', () => {
-  it('is on their profile', () => {
-    expect(code(files.profile)).toContain('<AnnouncementEmails />');
-  });
-
-  it('reads the real setting rather than the default', () => {
-    expect(flat(files.memberSwitch)).toContain('useState<boolean|null>(null)');
-    expect(flat(files.memberSwitch)).toContain('api.commons.announcementEmails(orgId,token)');
-  });
-
-  it('takes the saved value back from the server', () => {
-    expect(code(files.memberSwitch)).toMatch(/setOn\(saved\.announcementEmails\)/);
   });
 });

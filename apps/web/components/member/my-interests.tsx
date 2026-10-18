@@ -60,19 +60,6 @@ export function MyInterests() {
     }
   }
 
-  async function setEmails(on: boolean) {
-    if (!token || !orgId || busy) return;
-    setBusy(true);
-    setError('');
-    try {
-      const next = await api.radar.setEmails(orgId, on, token);
-      setData((current) => (current ? { ...current, radarEmails: next.radarEmails } : current));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'That did not save');
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <section className="card" id="interests">
@@ -132,22 +119,12 @@ export function MyInterests() {
         ))}
       </ul>
 
-      <label className="mt-5 flex items-start gap-3 border-t border-[var(--border)] pt-4">
-        <input
-          type="checkbox"
-          checked={data.radarEmails}
-          disabled={busy}
-          onChange={(e) => setEmails(e.target.checked)}
-          className="mt-1"
-        />
-        <span className="text-sm text-[var(--text-primary)]">
-          Email me when something matching comes up
-          <span className="block text-[var(--text-secondary)]">
-            At most once a week, and never about anything you&rsquo;ve marked &ldquo;not for
-            me&rdquo;. Turning this off leaves the rest of your community&rsquo;s email alone.
-          </span>
-        </span>
-      </label>
+      {/*
+        The switch that used to sit here now lives in the one email card
+        (UI-03). It is the same decision as the other four MaybeOS can send,
+        and a member comparing them had to read a different box on a
+        different part of the page to find it.
+      */}
     </section>
   );
 }

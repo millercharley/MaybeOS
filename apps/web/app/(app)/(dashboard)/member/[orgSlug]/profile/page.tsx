@@ -5,17 +5,10 @@ import { Save, Mail, ShieldCheck, Camera, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
-import { DemographicProfile } from '@/components/member/demographic-profile';
-import { MyInterests } from '@/components/member/my-interests';
-import { RecapEmails } from '@/components/member/recap-emails';
-import { MessageEmails } from '@/components/member/message-emails';
-import { CommonsDigestEmails } from '@/components/member/commons-digest-emails';
-import { AnnouncementEmails } from '@/components/member/announcement-emails';
-import { ChangePassword } from '@/components/member/change-password';
-import { useParams } from 'next/navigation';
-import { BuddySettings } from '@/components/belonging/buddy-settings';
-import { ForumMembership } from '@/components/member/forum-membership';
+import { useParams, useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/layout/page-header';
+import { DoorCode } from '@/components/member/door-code';
+import { movedTo } from '@/lib/moved-sections';
 
 /**
  * "My Profile" (MEM-01).
@@ -56,6 +49,7 @@ export default function MyProfilePage() {
   const [linkError, setLinkError] = useState('');
   const orgId = useAuthStore((s) => s.currentOrgId);
   const orgSlug = useParams<{ orgSlug: string }>().orgSlug;
+  const router = useRouter();
 
   /**
    * The code that opens the co-op's door (DOR-01).
@@ -65,17 +59,19 @@ export default function MyProfilePage() {
    * to one of them. Null when this co-op has no door, and then nothing is
    * shown — a label with no code under it is a question, not an answer.
    */
-  const [doorPin, setDoorPin] = useState<string | null>(null);
+  /*
+    Old links still land somewhere useful (UI-03).
 
+    Every Radar digest ever sent links to `#interests` on this page, and the
+    Off the Hook notice to `#buddy`. Both cards are on My Settings now and
+    those emails cannot be edited, so the hash is forwarded rather than
+    opening a page where the thing somebody was sent to look at is absent.
+  */
   useEffect(() => {
-    if (!token || !orgId) return;
-    api.door
-      .myPin(orgId, token)
-      .then(({ doorPin: pin }) => setDoorPin(pin))
-      // A co-op with door access switched off answers with null, and a
-      // failure here must not cost a member their profile page.
-      .catch(() => setDoorPin(null));
-  }, [token, orgId]);
+    const to = movedTo(window.location.hash, orgSlug);
+    if (to) router.replace(to);
+  }, [orgSlug, router]);
+
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -232,6 +228,7 @@ export default function MyProfilePage() {
         <PageHeader
           title="My Profile"
           description="How you appear to the rest of your co-op."
+          actions={<DoorCode />}
         />
       </div>
 
@@ -313,14 +310,6 @@ export default function MyProfilePage() {
             belongs to. `self-start` is what lines it up with the name rather
             than the middle of the avatar.
           */}
-          {doorPin && (
-            <p className="ml-auto self-start text-right text-sm font-medium text-[var(--text-primary)]">
-              Door Access Pin Code:{' '}
-              {/* Capitals in the display serif, letter-spaced: the shape that lets a code
-                  carry I and L without being misread (DOR-01). */}
-              <span className="font-display uppercase tracking-[0.2em]">{doorPin}</span>
-            </p>
-          )}
         </div>
 
         {avatarError && (
@@ -511,33 +500,6 @@ export default function MyProfilePage() {
           </button>
         </div>
       </form>
-
-      <ChangePassword />
-
-      {/* What Radar matches on, including what it inferred (RDR-01). The
-          digest's "change your interests" link lands on `#interests`. */}
-      <MyInterests />
-
-      {/* The other email MaybeOS sends a member, and its own switch (RCP-01).
-          Beside Radar's because they are the same kind of decision, separate
-          from it because they are different emails. */}
-      {/* The one email sent because a person addressed them by name (CMN-19). */}
-      <MessageEmails />
-      {/* Only ever sent to somebody who was away (CMN-20). */}
-      <CommonsDigestEmails />
-      {/* The way back in after using an unsubscribe link (CMN-21). */}
-      <AnnouncementEmails />
-      <RecapEmails />
-
-      <DemographicProfile />
-
-      {/* Renders nothing unless this co-op runs the Buddy System and this
-          member has some history with it (BEL). The Off the Hook email links
-          straight to `#buddy`. */}
-      {orgId && orgSlug && <BuddySettings orgId={orgId} orgSlug={orgSlug} />}
-
-      {/* Renders nothing on a deployment with no forum (FRM-01). */}
-      <ForumMembership />
 
       {profile.orgs && profile.orgs.length > 0 && (
         <section className="card">
