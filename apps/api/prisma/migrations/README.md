@@ -152,10 +152,24 @@ deliberately-absent canaries included so that an empty result proved the check
 worked rather than that the query was broken. Marking a migration applied when
 it is not would guarantee its DDL never runs — strictly worse than the drift.
 
-`resolve-production-ledger.sh` beside this file does the repair. It only
-writes ledger rows; `migrate resolve --applied` applies no DDL, and Prisma
-computes each checksum from the migration file rather than taking one on
-trust.
+**Repaired on 2026-10-20.** Production and dev now hold the same 88 rows,
+and the script that did it has been deleted — a repair script left lying
+around after its one use is a loaded gun with a stale list in it.
+
+Verified by digest rather than by eye: both databases were asked for
+
+```sql
+SELECT md5(string_agg(migration_name || ':' || checksum, ',' ORDER BY migration_name))
+FROM _prisma_migrations;
+```
+
+and the answer compared with the same computation over the files on disk.
+All three agreed — production, dev, and the repository. That is a better
+check than reading 88 rows, because it fails on a single wrong byte and
+cannot be skimmed past.
+
+Worth repeating whenever the ledger is in doubt: if the three digests agree,
+`migrate deploy` and `migrate status` are telling the truth.
 
 **The rule that would have caught this**: after applying a migration to
 production, record it in the same sitting. `migrate resolve --applied <name>`
