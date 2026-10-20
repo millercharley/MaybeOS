@@ -288,17 +288,20 @@ export class AdoptionScanService {
       return;
     }
 
-    const email = row.email as string;
+    // One spelling (AUTH-07). This comes from Stripe, which stores whatever
+    // was typed at checkout — so a member who capitalised their address there
+    // would otherwise be given a second account here.
+    const address = normalizeEmail(row.email as string);
 
     // A User can exist without being a member here — someone who belongs to
     // another co-op, or who signed up and never joined. Reused, never
     // duplicated: email is unique on User and a second insert would throw.
     const user =
-      (await this.prisma.user.findUnique({ where: { email }, select: { id: true } })) ??
+      (await this.prisma.user.findUnique({ where: { email: address }, select: { id: true } })) ??
       (await this.prisma.user.create({
         // No password and unverified, exactly as the .csv import does: this
         // account was made *for* somebody rather than *by* them.
-        data: { email, name: sub.name ?? null },
+        data: { email: address, name: sub.name ?? null },
         select: { id: true },
       }));
 

@@ -1,3 +1,4 @@
+import { normalizeEmail } from '../../common/email-address';
 /**
  * The co-op's equity ledger, computed (MEM-17).
  *
@@ -93,9 +94,8 @@ export interface Ledger {
   reconciled: boolean;
 }
 
-export function normalizeEmail(email: string | null | undefined): string {
-  return (email ?? '').trim().toLowerCase();
-}
+/** Re-exported so this module's callers keep one import (AUTH-07). */
+export { normalizeEmail };
 
 type Holding = { shares: number; breakdown: Partial<Record<GrantKind, number>> };
 

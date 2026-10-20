@@ -1,3 +1,4 @@
+import { normalizeEmail } from '../../common/email-address';
 /**
  * Reading a co-op's existing Stripe subscriptions and working out what they
  * would mean in MaybeOS — without changing either (MIG-01).
@@ -158,9 +159,8 @@ export function subscriptionMonthlyCents(sub: ScanSubscription): number | null {
  * wrong merge here joins two people's memberships together — which is worse in
  * kind than leaving a row for an admin to look at.
  */
-export function normalizeEmail(email: string | null | undefined): string {
-  return (email ?? '').trim().toLowerCase();
-}
+/** Re-exported so this module's callers keep one import (AUTH-07). */
+export { normalizeEmail };
 
 /** Statuses that mean money is currently being collected. */
 const EARNING_STATUSES = ['active', 'trialing'];

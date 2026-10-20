@@ -3,6 +3,7 @@ import { assertMemberRoom, countsAsMember, memberRoom } from './member-capacity'
 import { tierIdFor } from './import-tier';
 import { manualStatusRefusal, type ManualStatus } from './manual-status';
 import { pageWindow } from './page-window';
+import { normalizeEmail } from '../../common/email-address';
 import { handoffExpiry, handoffUrl, SIGN_IN_HANDOFF_ACTION } from './sign-in-handoff';
 import {
   isNarrowed,
@@ -528,7 +529,7 @@ export class MemberService {
    * outcome than an event that stays unattached until the next time.
    */
   async claimPastHosting(orgId: string, userId: string, email: string) {
-    const address = email.trim().toLowerCase();
+    const address = normalizeEmail(email);
     if (!address) return { events: 0, bookings: 0 };
 
     try {
@@ -2266,9 +2267,9 @@ export class MemberService {
     });
     if (!survivor) throw new NotFoundException('Member not found');
 
-    const email = rawEmail.trim().toLowerCase();
+    const address = normalizeEmail(rawEmail);
     const holder = await this.prisma.user.findFirst({
-      where: { email },
+      where: { email: address },
       select: {
         id: true,
         name: true,
@@ -2332,9 +2333,9 @@ export class MemberService {
       throw new BadRequestException(preview.message);
     }
 
-    const email = rawEmail.trim().toLowerCase();
+    const address = normalizeEmail(rawEmail);
     const holder = await this.prisma.user.findFirst({
-      where: { email },
+      where: { email: address },
       select: { id: true, name: true },
     });
     // Checked a moment ago; gone now means somebody else got there first.
@@ -2356,7 +2357,7 @@ export class MemberService {
       */
       await tx.shareGrant.updateMany({
         where: { userId: holder.id },
-        data: { userId, holderEmail: email },
+        data: { userId, holderEmail: address },
       });
 
       // Anything still pointing at it that is not allowed to be orphaned will
@@ -2366,7 +2367,7 @@ export class MemberService {
       await tx.user.update({
         where: { id: userId },
         data: {
-          email,
+          email: address,
           // Unproven until somebody opens a link sent to it.
           emailVerified: false,
           magicLinkToken: null,
@@ -2399,7 +2400,7 @@ export class MemberService {
       entityType: 'user',
       entityId: userId,
       metadata: {
-        email,
+        address,
         removedAccountId: holder.id,
         removedAccountName: holder.name,
         bookingsMoved: preview.contents.bookings,
@@ -2408,7 +2409,7 @@ export class MemberService {
       },
     });
 
-    return { taken: true as const, email, moved: preview.contents };
+    return { taken: true as const, address, moved: preview.contents };
   }
 
   /** What a takeover would carry across. */
@@ -2621,7 +2622,7 @@ export class MemberService {
       `Not imported: the Free plan allows up to ${FREE_PLAN_MEMBER_LIMIT} members. Upgrade in Settings to add more.`;
 
     for (const row of rows) {
-      const email = row.email.toLowerCase().trim();
+      const email = normalizeEmail(row.email);
 
       try {
         // Before any write: an unknown tier name should stop this row, not
