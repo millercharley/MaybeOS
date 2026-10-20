@@ -10,6 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
+import { normalizeEmail } from '../../common/email-address';
 import { PrismaService } from '../../config/prisma.service';
 import { EmailService } from '../email/email.service';
 import { StorageService } from '../storage/storage.service';
@@ -31,7 +32,10 @@ export class AuthService {
    * Returns the user (without passwordHash) or null if invalid.
    */
   async validateUser(email: string, password: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    // One spelling (AUTH-07). Signing in with a capital used to find nobody.
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalizeEmail(email) },
+    });
     if (!user || !user.passwordHash) {
       return null;
     }
@@ -108,7 +112,17 @@ export class AuthService {
    * Register a new user with a bcrypt-hashed password.
    */
   async register(email: string, password: string, name?: string) {
-    const existing = await this.prisma.user.findUnique({ where: { email } });
+    /*
+      One spelling, and this is the lookup that mattered most (AUTH-07).
+
+      It compared the address exactly, so a member typing their own email
+      with a capital passed the "already exists" check and was given a
+      second account — then, finding no co-op on it, was offered the chance
+      to start one. That is how MaybeItsFate acquired a duplicate of itself.
+    */
+    const address = normalizeEmail(email);
+
+    const existing = await this.prisma.user.findUnique({ where: { email: address } });
     if (existing) {
       throw new ConflictException('A user with this email already exists');
     }
@@ -118,7 +132,9 @@ export class AuthService {
 
     const user = await this.prisma.user.create({
       data: {
-        email,
+        // Stored as it will be looked up. Storing what was typed is what
+        // let two spellings of one address become two people.
+        email: address,
         passwordHash,
         name,
       },
@@ -155,7 +171,18 @@ export class AuthService {
    * so the endpoint cannot be used to enumerate who has an account.
    */
   async sendMagicLink(email: string): Promise<string> {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    /*
+      One spelling (AUTH-07).
+
+      The worst of the three to get wrong, because it fails in silence: a
+      member asking for a sign-in link with a capital matched nobody, and
+      this returns a throwaway token either way so that nobody can learn
+      from the response whether an account exists. Correct, and it meant a
+      member could ask again and again and never be told why no email came.
+    */
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalizeEmail(email) },
+    });
     if (!user) {
       return uuidv4();
     }

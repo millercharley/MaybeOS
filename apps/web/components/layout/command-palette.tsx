@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Search, Hash, User, Calendar, BookOpen, X } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
+import { paletteHref, resolveOrgSlug } from '@/lib/palette-nav';
 import { api, SearchResults } from '@/lib/api';
 
 type FlatResult =
@@ -16,10 +17,21 @@ type FlatResult =
 export const OPEN_SEARCH_EVENT = 'maybeos:open-search';
 
 export function CommandPalette() {
-  const orgSlug = useParams()?.orgSlug as string;
+  /*
+    The address first, the store behind it (UI-04).
+
+    This was `useParams()?.orgSlug as string`, and the cast was the bug: the
+    palette renders on every signed-in page and several have no co-op in the
+    address — `/platform` among them. Searching from there sent people to
+    `/admin/undefined/members`.
+  */
+  const params = useParams();
+  const urlSlug = typeof params?.orgSlug === 'string' ? params.orgSlug : undefined;
   const router = useRouter();
   const token = useAuthStore((s) => s.token);
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
+  const user = useAuthStore((s) => s.user);
+  const orgSlug = resolveOrgSlug(urlSlug, user?.orgs, currentOrgId);
 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -96,22 +108,14 @@ export function CommandPalette() {
   const handleSelect = useCallback(
     (result: FlatResult) => {
       setOpen(false);
-      switch (result.kind) {
-        case 'channel':
-          router.push(`/admin/${orgSlug}/commons?channel=${result.id}`);
-          break;
-        case 'page':
-          router.push(`/admin/${orgSlug}/commons?page=${result.id}`);
-          break;
-        case 'event':
-          router.push(`/admin/${orgSlug}/events`);
-          break;
-        case 'member':
-          router.push(`/admin/${orgSlug}/members`);
-          break;
-      }
+      // Null when there is genuinely no co-op to act on. Going nowhere beats
+      // going to a path with the word "undefined" in it.
+      const href = paletteHref(result.kind, result.id, orgSlug);
+      if (href) router.push(href);
     },
-    [router],
+    // `orgSlug` was missing here as well, so the callback held whichever
+    // co-op was open when it was first created.
+    [router, orgSlug],
   );
 
   if (!open) return null;

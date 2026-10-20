@@ -1,3 +1,4 @@
+import { normalizeEmail } from '../../common/email-address';
 /**
  * Reconciling the migration send against what the provider actually did
  * (MEM-25).
@@ -73,9 +74,8 @@ export interface SignInVerdict {
   kind: string | null;
 }
 
-export function normalizeEmail(email: string | null | undefined): string {
-  return (email ?? '').trim().toLowerCase();
-}
+/** Re-exported so this module's callers keep one import (AUTH-07). */
+export { normalizeEmail };
 
 /**
  * Every address one member reads, lowercased.
