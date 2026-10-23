@@ -12,7 +12,7 @@ import { RichComposer, composerValue } from '@/components/composer/rich-composer
 import { AttachmentList } from '@/components/composer/attachment-list';
 import { RsvpFaces } from '@/components/events/rsvp-faces';
 import { uploadAttachments } from '@/lib/attachments';
-import { ticketCost, describeFees, money } from '@/lib/fees';
+import { ticketCost, describeFees, money, MAX_SEATS_PER_PURCHASE } from '@/lib/fees';
 import { eventArt } from '@/lib/event-art';
 import { focusStyle } from '@/lib/image-focus';
 import { PageHeader } from '@/components/layout/page-header';
@@ -242,6 +242,16 @@ export default function PortalEventPage(props: {
     }
   }
 
+  /*
+    How many seats the buyer wants (EVT-47).
+
+    Held as a string, not a number, because it is a text input: a number
+    state forces the field to show something while somebody is mid-edit, so
+    clearing it to type "2" snaps it back to 1 under the cursor. The quote
+    below clamps whatever this holds, including "".
+  */
+  const [seats, setSeats] = useState('1');
+
   async function buy() {
     if (!org || !event) return;
     setBusy(true);
@@ -250,7 +260,13 @@ export default function PortalEventPage(props: {
       const { url } = await api.events.buyTicket(
         org.id,
         event.id,
-        { successUrl: `${here}?purchased=1`, cancelUrl: `${here}?purchase=canceled` },
+        {
+          successUrl: `${here}?purchased=1`,
+          cancelUrl: `${here}?purchase=canceled`,
+          // From the quote rather than from the input, so the number sent is
+          // the one the button just priced (EVT-47).
+          quantity: cost?.quantity ?? 1,
+        },
         token ?? undefined,
       );
       window.location.assign(url);
@@ -286,6 +302,7 @@ export default function PortalEventPage(props: {
   const end = event.endTime ? new Date(event.endTime) : null;
   const cost = event.priceCents
     ? ticketCost({
+        quantity: Number(seats),
         ticketCents: event.priceCents,
         plan: org?.plan,
         orgFeeCents: org?.ticketFeeCents ?? 0,
@@ -521,13 +538,51 @@ export default function PortalEventPage(props: {
 
             {cost ? (
               <div className="mt-4 border-t border-gray-100 pt-4">
+                {/*
+                  How many seats (EVT-47).
+
+                  Here rather than on Stripe's page, where `adjustable_quantity`
+                  would have put it: the fee and the capacity check are both
+                  settled when the session is created, and neither follows a
+                  change made afterwards. Asking first is also what lets the
+                  button below say the real total.
+
+                  A plain number input, not a stepper or a select: somebody
+                  buying for a party of six should type 6 once, and a select
+                  has to decide its own maximum before it knows how many seats
+                  are left.
+                */}
+                <label className="flex flex-wrap items-center justify-between gap-3 pb-3 text-sm">
+                  <span className="text-gray-700">How many?</span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={MAX_SEATS_PER_PURCHASE}
+                    value={seats}
+                    onChange={(e) => setSeats(e.target.value)}
+                    /*
+                      Restored on the way out, so a field left empty mid-edit
+                      does not stay empty beside a button quoting one seat.
+                      The quote already clamps; this makes the input agree
+                      with it.
+                    */
+                    onBlur={() => setSeats(String(cost.quantity))}
+                    className="input w-20 text-center"
+                    aria-label="Number of seats"
+                  />
+                </label>
                 <button
                   onClick={buy}
                   disabled={busy || !org?.stripeChargesEnabled}
                   className="btn-primary w-full text-sm"
                 >
                   <Ticket className="mr-1.5 inline h-4 w-4" />
-                  {busy ? 'Opening checkout...' : `Buy ticket · ${money(cost.totalCents)}`}
+                  {busy
+                    ? 'Opening checkout...'
+                    : cost.quantity === 1
+                      ? `Buy ticket · ${money(cost.totalCents)}`
+                      : `Buy ${cost.quantity} tickets · ${money(cost.totalCents)}`}
                 </button>
                 {/* Named before anyone leaves the page, not discovered on
                     Stripe's. */}

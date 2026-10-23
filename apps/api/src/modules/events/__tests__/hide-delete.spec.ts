@@ -27,7 +27,14 @@ describe('hiding and deleting', () => {
   const found = (counts: { rsvps?: number; tickets?: number } = {}) => ({
     id: 'e-1',
     isPublished: true,
-    _count: { rsvps: counts.rsvps ?? 0, tickets: counts.tickets ?? 0 },
+    _count: { rsvps: counts.rsvps ?? 0 },
+    /*
+      Tickets are rows carrying a seat count now (EVT-47), not a `_count`.
+      `tickets` here is still read as seats, which is what the refusal says —
+      so these cases mean exactly what they meant before, with each row a
+      single seat the way every real row was until the selector shipped.
+    */
+    tickets: Array.from({ length: counts.tickets ?? 0 }, () => ({ quantity: 1 })),
   });
 
   beforeEach(async () => {

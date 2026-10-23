@@ -47,7 +47,6 @@ describe('ConnectService — what a failed checkout says', () => {
           isPublished: true,
           canceledAt: null,
           capacity: null,
-          _count: { tickets: 0 },
           org: {
             id: 'org-1',
             name: 'MaybeItsFate',
@@ -58,6 +57,9 @@ describe('ConnectService — what a failed checkout says', () => {
           },
         }),
       },
+      // Seats sold, summed (EVT-47). This event has no capacity, so the
+      // number only has to exist.
+      ticket: { aggregate: jest.fn().mockResolvedValue({ _sum: { quantity: 0 } }) },
     };
 
     const module = await Test.createTestingModule({

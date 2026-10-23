@@ -60,10 +60,27 @@ export const WRITTEN_REPORT_PRICE_CENTS = 5000;
 
 export const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
+/**
+ * The most seats one person may buy at once (EVT-47).
+ *
+ * Mirrors `MAX_SEATS_PER_PURCHASE` in the API's `ticket-pricing.ts`, which is
+ * the authority — the API refuses anything above it whatever this says. A
+ * test asserts the two agree, the same arrangement the fee table already has.
+ */
+export const MAX_SEATS_PER_PURCHASE = 10;
+
 export interface TicketCost {
+  /** Seats this quote is for. */
+  quantity: number;
+  /** Per seat. */
   ticketCents: number;
+  /** Per seat. */
   platformFeeCents: number;
+  /** Per seat. */
   orgFeeCents: number;
+  /** One seat, all in. */
+  unitTotalCents: number;
+  /** The whole purchase. */
   totalCents: number;
 }
 
@@ -71,17 +88,33 @@ export function ticketCost({
   ticketCents,
   plan = 'FREE',
   orgFeeCents = 0,
+  quantity = 1,
 }: {
   ticketCents: number;
   plan?: string;
   orgFeeCents?: number;
+  /** Seats (EVT-47). One, for every caller written before it. */
+  quantity?: number;
 }): TicketCost {
   const platformFeeCents = PLATFORM_FEE_CENTS[plan] ?? PLATFORM_FEE_CENTS.FREE;
+  const unitTotalCents = ticketCents + platformFeeCents + orgFeeCents;
+  /*
+    Clamped rather than trusted. This number comes from a control on a public
+    page and is shown to the buyer as the price they are about to pay; a NaN
+    from a cleared input would render "$NaN" on a checkout button, which is
+    the moment somebody decides the site is broken and leaves.
+  */
+  const seats = Number.isInteger(quantity)
+    ? Math.min(Math.max(quantity, 1), MAX_SEATS_PER_PURCHASE)
+    : 1;
+
   return {
+    quantity: seats,
     ticketCents,
     platformFeeCents,
     orgFeeCents,
-    totalCents: ticketCents + platformFeeCents + orgFeeCents,
+    unitTotalCents,
+    totalCents: unitTotalCents * seats,
   };
 }
 
@@ -92,5 +125,9 @@ export function describeFees(cost: TicketCost): string | null {
 
   const parts = [`${money(cost.platformFeeCents)} MaybeOS`];
   if (cost.orgFeeCents > 0) parts.push(`${money(cost.orgFeeCents)} venue`);
-  return `includes ${money(extra)} in fees (${parts.join(', ')})`;
+  // "each" where it is each, so the figures beside it still add up. The
+  // breakdown stays per seat — multiplying the total while leaving the parts
+  // alone reads as an arithmetic mistake to the person checking it.
+  const each = cost.quantity > 1 ? ' each' : '';
+  return `includes ${money(extra)} in fees${each} (${parts.join(', ')})`;
 }

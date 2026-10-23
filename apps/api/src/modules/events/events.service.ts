@@ -2283,14 +2283,18 @@ export class EventsService {
         _count: {
           select: {
             rsvps: { where: { status: { in: ['CONFIRMED', 'WAITLISTED'] } } },
-            tickets: true,
           },
         },
+        // Seats rather than purchases (EVT-47): the refusal names a number
+        // the organiser can check against the door list, and the door list
+        // counts people.
+        tickets: { select: { quantity: true } },
       },
     });
     if (!event) throw new NotFoundException('Event not found');
 
-    const { rsvps, tickets } = event._count;
+    const { rsvps } = event._count;
+    const tickets = event.tickets.reduce((n, t) => n + t.quantity, 0);
 
     if (tickets > 0) {
       throw new BadRequestException(
@@ -2478,16 +2482,29 @@ export class EventsService {
       this.prisma.ticket.findMany({
         where: { eventId, refundedAt: null },
         orderBy: { createdAt: 'asc' },
-        select: { buyerEmail: true },
+        select: { buyerEmail: true, quantity: true },
       }),
     ]);
 
-    // Lowercased, because Stripe returns whatever the buyer typed and the
-    // same person's two checkouts can disagree about a capital.
-    const seatsHeld = new Map<string, number>();
-    for (const { buyerEmail } of paid) {
+    /*
+      How many *purchases* each address made — not how many seats.
+
+      This label exists for one thing: explaining why a name is on the list
+      twice. Since EVT-47 a party of two is one purchase with `plusOnes: 1`,
+      which the row already shows as "+1 guest", so there is nothing to
+      explain. Two rows only happen the old way, by checking out twice.
+
+      Multi-seat purchases are therefore excluded below rather than counted
+      here: a buyer with one 2-seat purchase and one 1-seat purchase has two
+      rows and three seats, and "Seat 1 of 2" would be wrong about both.
+    */
+    const purchases = new Map<string, number>();
+    const boughtInBulk = new Set<string>();
+    for (const { buyerEmail, quantity } of paid) {
       const key = normalizeEmail(buyerEmail);
-      if (key) seatsHeld.set(key, (seatsHeld.get(key) ?? 0) + 1);
+      if (!key) continue;
+      purchases.set(key, (purchases.get(key) ?? 0) + 1);
+      if (quantity > 1) boughtInBulk.add(key);
     }
 
     // Which of their seats each row is. Counted in RSVP order so the numbering
@@ -2509,7 +2526,7 @@ export class EventsService {
           list without adding a fact to it.
         */
         const key = normalizeEmail(rsvp.guestEmail);
-        const of = key ? (seatsHeld.get(key) ?? 0) : 0;
+        const of = key && !boughtInBulk.has(key) ? (purchases.get(key) ?? 0) : 0;
         let seat: { n: number; of: number } | null = null;
         if (of > 1) {
           const n = (seatSoFar.get(key) ?? 0) + 1;

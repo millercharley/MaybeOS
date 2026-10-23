@@ -78,13 +78,24 @@ export class TicketPassService {
    * one could have carried a capital.
    */
   private async seatsFor(eventId: string, email: string): Promise<number> {
-    return this.prisma.ticket.count({
+    /*
+      Summed, never counted (EVT-47). One row is no longer one seat — it is
+      `quantity` of them — and a `count()` here would show somebody who bought
+      three in one go a pass reading "1 seat".
+
+      The trap is that the two agree on every ticket sold before the selector
+      existed, so a counter looks right against all the data there is.
+    */
+    const sum = await this.prisma.ticket.aggregate({
       where: {
         eventId,
         buyerEmail: { equals: email, mode: 'insensitive' },
         refundedAt: null,
       },
+      _sum: { quantity: true },
     });
+
+    return sum._sum.quantity ?? 0;
   }
 
   /**

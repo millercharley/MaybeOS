@@ -83,9 +83,10 @@ export class SchedulerService {
       { name: 'sync-door-codes', run: () => this.syncDoorCodes() },
       { name: 'sync-calendars', run: () => this.syncCalendars(now) },
       { name: 'remove-dues-fees-after-upgrade', run: () => this.removeDuesFees() },
-    { name: 'send-radar-digests',             run: () => this.sendRadarDigests(now) },
-    { name: 'send-commons-digests',           run: () => this.sendCommonsDigests(now) },
-    { name: 'draft-monthly-recaps',           run: () => this.draftMonthlyRecaps(now) },
+      { name: 'send-radar-digests',             run: () => this.sendRadarDigests(now) },
+      { name: 'send-commons-digests',           run: () => this.sendCommonsDigests(now) },
+      { name: 'draft-monthly-recaps',           run: () => this.draftMonthlyRecaps(now) },
+      { name: 'send-ticket-confirmations',      run: () => this.sendTicketConfirmations() },
     ]) {
       try {
         tasks.push(await task.run());
