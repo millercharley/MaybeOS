@@ -460,3 +460,98 @@ describe('getting through the roster', () => {
     expect(email.sendRadarDigest.mock.calls.length).toBe(prisma.$transaction.mock.calls.length);
   }, 30_000);
 });
+
+/**
+ * A performance on several nights reaches the member once (RDR-05).
+ *
+ * Charley's digest carried *Dog Sees God* three times — three cards, three
+ * buttons, three of the five places — because the three nights are three
+ * unconnected rows and nothing recognised them as one thing.
+ */
+describe('a performance with several dates', () => {
+  const night = (id: string, slug: string, start: string) => ({
+    ...EVENT,
+    id,
+    slug,
+    title: 'Dog Sees God',
+    // Ticketed, like the real one: the button has to change for a run, and
+    // "Get a ticket" is what it would otherwise say.
+    priceCents: 1000,
+    startTime: new Date(start),
+  });
+
+  const RUN = [
+    night('oct-30', '2026-10-30-dog-sees-god', '2026-10-30T23:00:00Z'),
+    night('oct-29', '2026-10-29-dog-sees-god', '2026-10-29T23:00:00Z'),
+    night('oct-31', '2026-10-31-dog-sees-god', '2026-10-31T18:00:00Z'),
+  ];
+
+  it('is one card, leading with the soonest night', async () => {
+    const { service, email } = build({ events: RUN });
+
+    await service.sendDue(NOW);
+
+    const [, payload] = email.sendRadarDigest.mock.calls[0];
+    expect(payload.events).toHaveLength(1);
+    expect(payload.events[0].title).toBe('Dog Sees God');
+    expect(payload.events[0].when).toContain('October 29');
+  });
+
+  it('lists every night on the card', async () => {
+    const { service, email } = build({ events: RUN });
+
+    await service.sendDue(NOW);
+
+    const { dates } = email.sendRadarDigest.mock.calls[0][1].events[0];
+    expect(dates).toHaveLength(3);
+    expect(dates[0]).toContain('October 29');
+    expect(dates[2]).toContain('October 31');
+  });
+
+  /**
+   * Charley: "the 'Get a Ticket' button simply takes the user the Events page
+   * to pick a show." Sending them to Thursday when they wanted Saturday is a
+   * worse answer than asking.
+   */
+  it('sends the button to the events list rather than one night', async () => {
+    const { service, email } = build({ events: RUN });
+
+    await service.sendDue(NOW);
+
+    expect(email.sendRadarDigest.mock.calls[0][1].events[0].rsvpUrl).toBe(
+      'https://maybeos.org/portal/maybeitsfate/events',
+    );
+  });
+
+  /**
+   * The failure that would arrive a week late. `radarSend` is what stops a
+   * repeat, and it is keyed on the event — so marking only the night that led
+   * the card leaves the other two eligible, and next week's digest offers the
+   * same play again as "the dates you haven't been told about".
+   */
+  it('marks every night as sent, not just the one on the card', async () => {
+    const { service, prisma } = build({ events: RUN });
+
+    await service.sendDue(NOW);
+
+    const [[{ data }]] = (prisma.radarSend.createMany as jest.Mock).mock.calls;
+    expect((data as { eventId: string }[]).map((row) => row.eventId).sort()).toEqual([
+      'oct-29',
+      'oct-30',
+      'oct-31',
+    ]);
+  });
+
+  /** An ordinary gathering is unchanged: one date, its own page, its own word. */
+  it('leaves a single gathering exactly as it was', async () => {
+    const { service, email } = build({});
+
+    await service.sendDue(NOW);
+
+    const card = email.sendRadarDigest.mock.calls[0][1].events[0];
+    expect(card.dates).toEqual([card.when]);
+    expect(card.rsvpUrl).toBe(
+      'https://maybeos.org/portal/maybeitsfate/events/board-game-night?rsvp=radar',
+    );
+  });
+});
