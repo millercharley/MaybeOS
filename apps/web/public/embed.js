@@ -108,18 +108,62 @@
     ':host { all: initial; }',
     '* { box-sizing: border-box; }',
     '.wrap { font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1a1a1a; }',
-    '.event { display: flex; gap: 16px; padding: 16px 0; border-bottom: 1px solid #e2e2e2; align-items: baseline; }',
+    /*
+      An event row, shaped like the one members see (EVT-48).
+
+      Charley: "the embed does not include buttons to learn more about an
+      event or to get tickets. I would like for the event list to look the
+      same as the one members see." So: the poster on the left, what it is in
+      the middle, and the thing to press on the right — which is the member
+      list's layout, and the layout anybody recognises as a list of events
+      rather than a timetable.
+
+      `align-items: center` rather than `baseline`: there is a picture and a
+      button in the row now, and baseline alignment hangs them off the first
+      line of the title.
+    */
+    '.event { display: flex; gap: 16px; padding: 16px 0; border-bottom: 1px solid #e2e2e2; align-items: center; }',
     '.event:last-child { border-bottom: 0; }',
+    /*
+      The poster. Fixed box with `object-fit: cover`, so a portrait photo and
+      a wide one make the same shape and the rows stay a list.
+
+      `object-position` comes from the event's own focus slider (EVT-43): a
+      portrait photograph of a person is cropped top and bottom, and centre is
+      exactly wrong for the most common subject there is.
+    */
+    '.thumb { flex: 0 0 5.5rem; height: 4rem; border-radius: 8px; background: #ececec ' +
+      'center/cover no-repeat; }',
     // The accent carries the date as well as the price. It used to colour the
     // price alone, so a co-op whose events are free saw no change at all from
     // setting their brand colour (EVT-21).
-    '.when { flex: 0 0 7.5rem; font-size: 13px; color: ' + accentText + '; font-variant-numeric: tabular-nums; font-weight: 600; }',
+    '.when { font-size: 13px; color: ' + accentText + '; font-variant-numeric: tabular-nums; font-weight: 600; }',
     '.body { min-width: 0; flex: 1; }',
     '.title { font-weight: 600; }',
-    '.meta { margin-top: 2px; font-size: 13px; color: #666; }',
-    '.price { display: inline-block; margin-left: 8px; font-size: 12px; font-weight: 600; color: ' + accentText + '; }',
+    '.meta { margin-top: 2px; font-size: 13px; color: #666; display: flex; flex-wrap: wrap; gap: 4px 10px; }',
+    // Who it is suitable for (SPC-22) — the thing a parent reads first.
+    '.age { font-weight: 600; color: #333; }',
+    /*
+      The button, in the same two weights the member list uses: filled for
+      buying, outlined for looking. A co-op that sells a ticket and a co-op
+      that runs a free night should not get the same emphasis on the same row.
+    */
+    '.go { flex: 0 0 auto; text-decoration: none; white-space: nowrap; border-radius: 9px; ' +
+      'padding: 10px 16px; font-size: 14px; font-weight: 700; border: 1px solid ' + accentText + '; ' +
+      'transition: transform 0.06s ease, box-shadow 0.12s ease, filter 0.12s ease; }',
+    '.go.buy { background: ' + accentText + '; color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.18); }',
+    '.go.look { background: #fff; color: ' + accentText + '; }',
+    '.go:hover { filter: brightness(1.08); }',
+    '.go:active { transform: translateY(1px); }',
     '.empty, .failed { padding: 24px 0; color: #666; font-size: 14px; }',
-    '@media (max-width: 30rem) { .event { display: block; } .when { margin-bottom: 4px; } }',
+    /*
+      On a phone the row stacks, and the button goes full width so it is a
+      target rather than a word. The picture is dropped rather than shrunk:
+      at this width it is a thumbnail of nothing, and the title is what
+      somebody is reading.
+    */
+    '@media (max-width: 30rem) { .event { display: block; } .thumb { display: none; } ' +
+      '.go { display: block; width: 100%; text-align: center; margin-top: 12px; } }',
     /*
       The header above the prices (PUB-03).
 
@@ -256,14 +300,56 @@
   // textContent throughout rather than innerHTML: this renders a co-op's own
   // text onto their website, and building markup from strings is how an event
   // title becomes script on somebody else's domain.
+  /**
+   * The age badge, or nothing when it is for everybody.
+   *
+   * Mirrors `maturityBadge` in `lib/maturity.ts`, which is the authority —
+   * same four values, same labels, same rule that all-ages shows nothing. A
+   * badge on every row saying "All ages" trains people to stop reading
+   * badges, and the restricting answers are the ones somebody has to notice.
+   *
+   * A test asserts the two agree; this file cannot import it, because it
+   * runs as plain script on somebody else's website.
+   */
+  var AGE_LABELS = {
+    AGES_13_PLUS: '13+',
+    AGES_18_PLUS: '18+',
+    AGES_21_PLUS: '21+',
+  };
+
+  var ageBadge = function (level) {
+    return AGE_LABELS[level] || null;
+  };
+
+  /**
+   * One event, shaped like the row a member sees (EVT-48).
+   *
+   * Charley: "I would like for the event list to look the same as the one
+   * members see -- just make sure only public events are listed."
+   *
+   * **What is deliberately missing is the guest list.** The member list's
+   * hero shows faces and "2 people going"; this does not, and the API does
+   * not send it. An event link may be public so strangers can RSVP — who is
+   * attending is not, and a row of a co-op's members' faces on their own
+   * marketing site tells anybody with the URL who belongs to it. Same rule
+   * `RSVP_FACES` states on the API side; this is the other end of it.
+   */
   var line = function (event) {
     var row = document.createElement('div');
     row.className = 'event';
 
-    var w = document.createElement('div');
-    w.className = 'when';
-    w.textContent = when(event.startTime);
-    row.appendChild(w);
+    // A background image rather than an <img>: it crops with `cover` without
+    // a wrapper, and an event with no picture is then simply a grey tile
+    // rather than a broken-image glyph on a co-op's website.
+    if (event.imageUrl) {
+      var thumb = document.createElement('div');
+      thumb.className = 'thumb';
+      thumb.style.backgroundImage = 'url("' + encodeURI(event.imageUrl) + '")';
+      // The host's own crop (EVT-43), not centre.
+      thumb.style.backgroundPosition =
+        'center ' + (typeof event.imageFocusY === 'number' ? event.imageFocusY : 50) + '%';
+      row.appendChild(thumb);
+    }
 
     var body = document.createElement('div');
     body.className = 'body';
@@ -271,22 +357,60 @@
     var title = document.createElement('div');
     title.className = 'title';
     title.textContent = event.title;
-    if (event.priceCents) {
-      var price = document.createElement('span');
-      price.className = 'price';
-      price.textContent = money(event.priceCents, event.currency);
-      title.appendChild(price);
-    }
     body.appendChild(title);
 
+    var meta = document.createElement('div');
+    meta.className = 'meta';
+
+    var w = document.createElement('span');
+    w.className = 'when';
+    w.textContent = when(event.startTime);
+    meta.appendChild(w);
+
     if (event.location) {
-      var meta = document.createElement('div');
-      meta.className = 'meta';
-      meta.textContent = event.location;
-      body.appendChild(meta);
+      var where = document.createElement('span');
+      where.textContent = event.location;
+      meta.appendChild(where);
     }
 
+    var age = ageBadge(event.maturityLevel);
+    if (age) {
+      var badge = document.createElement('span');
+      badge.className = 'age';
+      badge.textContent = age;
+      meta.appendChild(badge);
+    }
+
+    body.appendChild(meta);
     row.appendChild(body);
+
+    /*
+      The thing to press — the whole point of this change.
+
+      To the event's page, never straight to checkout: buying needs a seat
+      count (EVT-47) and an address, and a button on somebody's marketing
+      site that opens a payment form is not what anybody expects of it.
+
+      `rel="noopener"` because `target="_blank"` without it hands the opened
+      page a reference back to the co-op's own site.
+    */
+    if (event.url) {
+      var go = document.createElement('a');
+      var ticketed = typeof event.totalCents === 'number';
+      go.className = 'go ' + (ticketed ? 'buy' : 'look');
+      go.href = event.url;
+      go.target = '_blank';
+      go.rel = 'noopener';
+      /*
+        The total, fees and all — the figure Stripe will ring up. Printing
+        the face value here advertised a $384.70 ticket that charges $386.45.
+      */
+      go.textContent = ticketed
+        ? 'Buy ticket · ' + money(event.totalCents, event.currency)
+        : 'Details';
+      row.appendChild(go);
+    }
+
     return row;
   };
 
