@@ -32,6 +32,14 @@ export interface EventActions {
   onBuy: (eventId: string) => void;
   /** The co-op's plan, for quoting the ticket total before Stripe. */
   plan?: string | null;
+  /**
+   * The co-op's own ticket fee, in cents (EVT-48).
+   *
+   * Without it this list quoted ticket + MaybeOS's fee and left the venue's
+   * out, while the event page beside it quoted all three — two prices for one
+   * ticket, the lower one on the screen somebody presses Buy from.
+   */
+  ticketFeeCents?: number | null;
 }
 
 function RoomLine({ event }: { event: Event }) {
@@ -88,8 +96,11 @@ function EventAction({ event, actions }: { event: Event; actions: EventActions }
       {busy
         ? 'Opening checkout…'
         : `Buy ticket · ${money(
-            ticketCost({ ticketCents: event.priceCents, plan: actions.plan ?? undefined })
-              .totalCents,
+            ticketCost({
+              ticketCents: event.priceCents,
+              plan: actions.plan ?? undefined,
+              orgFeeCents: actions.ticketFeeCents ?? 0,
+            }).totalCents,
           )}`}
     </button>
   ) : actions.isMember ? (

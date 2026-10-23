@@ -223,6 +223,8 @@ export default function PortalEventsPage() {
     onRsvp: handleRsvp,
     onBuy: handleBuy,
     plan: org?.plan,
+    // The venue's own fee, so this list quotes what the event page quotes.
+    ticketFeeCents: org?.ticketFeeCents ?? 0,
   };
 
   return (

@@ -24,9 +24,43 @@ import { PublishBookingEventDto } from './dto/publish-booking-event.dto';
 import { ConnectService } from '../stripe/connect.service';
 import ical, { ICalCalendarMethod } from 'ical-generator';
 import { PUBLIC_EVENT_SELECT } from './event-view';
+import { priceTicket } from '../stripe/ticket-pricing';
+import { MaybeOsPlan } from '@prisma/client';
 import { escapeHtml } from '../../common/escape-html';
 
 /* ───────────────────────────── helpers ───────────────────────────── */
+
+/**
+ * What a ticket will actually cost, for a co-op's own website (EVT-48).
+ *
+ * Returns null rather than throwing, and that is the whole point of it being
+ * a function. `priceTicket` refuses a price that is not a positive whole
+ * number of cents — correctly, because it is about to create a charge — but
+ * this is a *listing*, and the two have opposite duties. One bad or missing
+ * price would otherwise take down the entire events embed on a co-op's
+ * marketing site: not a wrong number, a blank section, with the failure
+ * showing on their domain rather than ours.
+ *
+ * Null means "no figure to quote", which is also what a free event returns,
+ * so the renderer has one question to ask rather than three.
+ */
+export function embedTotal(
+  priceCents: number | null | undefined,
+  plan: MaybeOsPlan,
+  orgFeeCents: number,
+): number | null {
+  if (typeof priceCents !== 'number' || !Number.isInteger(priceCents) || priceCents <= 0) {
+    return null;
+  }
+
+  try {
+    return priceTicket({ ticketCents: priceCents, plan, orgFeeCents }).totalCents;
+  } catch {
+    // A co-op fee that is somehow not a whole number of cents. The event
+    // still belongs on the list; the price is the part we cannot vouch for.
+    return null;
+  }
+}
 
 function toSlug(title: string, date: string): string {
   const datePrefix = date.slice(0, 10); // YYYY-MM-DD
@@ -932,7 +966,11 @@ export class EventsService {
   async listEmbedEvents(orgSlug: string) {
     const org = await this.prisma.organization.findUnique({
       where: { slug: orgSlug },
-      select: { id: true, name: true, slug: true },
+      // The plan and the co-op's own ticket fee, because the embed quotes a
+      // price to a stranger who will then be charged (EVT-48). Quoting the
+      // face value and charging more at Stripe is the one mistake a ticket
+      // page must not make.
+      select: { id: true, name: true, slug: true, plan: true, ticketFeeCents: true },
     });
     if (!org) throw new NotFoundException('Organization not found');
 
@@ -953,6 +991,8 @@ export class EventsService {
       perPage: 200,
     });
 
+    const appUrl = this.configService.get<string>('APP_URL') ?? 'https://maybeos.org';
+
     return {
       org: { name: org.name, slug: org.slug },
       windowDays: EventsService.EMBED_WINDOW_DAYS,
@@ -964,7 +1004,42 @@ export class EventsService {
         endTime: event.endTime,
         location: event.location?.name ?? event.room?.name ?? null,
         priceCents: event.priceCents ?? null,
+        /*
+          What the buyer is actually charged, fees and all (EVT-48).
+
+          The embed used to print `priceCents`, which is the face value: a
+          $384.70 ticket was advertised at $384.70 and rung up at $386.45.
+          The member-facing pages quote the total, and a co-op's own website
+          is the *most* public place the number appears.
+
+          Null for a free event, so the renderer has one question to ask
+          rather than two.
+        */
+        totalCents: embedTotal(event.priceCents, org.plan, org.ticketFeeCents),
         currency: event.currency ?? 'usd',
+        /*
+          The picture, which is most of what makes the member list look like
+          a list of events rather than a timetable (EVT-48). Already in
+          `PUBLIC_EVENT_SELECT` — a co-op publishes the poster on purpose.
+        */
+        imageUrl: event.imageUrl ?? null,
+        imageFocusY: event.imageFocusY ?? 50,
+        /*
+          Who it is suitable for (SPC-22). On the poster, and the person
+          deciding whether to bring their teenager is exactly who reads a
+          co-op's website.
+        */
+        maturityLevel: event.maturityLevel ?? null,
+        /*
+          Where the button goes. Built here rather than in the embed script,
+          because the script runs on somebody else's domain and should not be
+          holding rules about MaybeOS's URL shape.
+
+          To the event's own page, never straight to Stripe: checkout needs a
+          quantity (EVT-47) and an address, and a button on a marketing site
+          that opens a payment form is not what anybody expects of it.
+        */
+        url: `${appUrl}/portal/${org.slug}/events/${event.slug}`,
       })),
     };
   }
