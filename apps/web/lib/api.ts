@@ -1325,6 +1325,23 @@ class ApiClient {
   };
 
   /**
+   * A ticket buyer's door pass (EVT-46).
+   *
+   * No session: ticket buyers are usually not members and have no account.
+   * The signed token is the authorisation and it authorises one thing —
+   * seeing how many seats one address holds for one event.
+   *
+   * Typed as `unknown` on purpose. The API answers a pass *or* `{ ok: false }`
+   * for every kind of refusal, and a union here would invite the page to
+   * read fields off the refusal. `isPass()` in `lib/ticket-pass.ts` is the
+   * one place that decides which arrived.
+   */
+  tickets = {
+    pass: (token: string) =>
+      this.request<unknown>(`/tickets/pass?token=${encodeURIComponent(token)}`),
+  };
+
+  /**
    * The monthly recap (RCP-01): what the month just ended added up to,
    * drafted on the 1st for an organiser to send.
    */
@@ -4322,6 +4339,15 @@ export interface DoorList {
     plusOnes: number;
     checkedIn: boolean;
     checkedInAt: string | null;
+    /**
+     * Which of this buyer's seats this row is (EVT-46), or null for anybody
+     * holding one.
+     *
+     * Checkout has no quantity selector, so two seats are two purchases and
+     * two guest RSVPs under one name. Without this the door sees a duplicate
+     * and tidies one away — which is a paying guest's friend turned away.
+     */
+    seat: { n: number; of: number } | null;
   }>;
   walkIns: Array<{ attendanceId: string; name: string; createdAt: string }>;
   attendanceCount: number;

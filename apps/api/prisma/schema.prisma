@@ -1152,6 +1152,17 @@ model Ticket {
   stripeSessionId       String    @unique
   stripePaymentIntentId String?
   refundedAt            DateTime?
+  /// When the buyer was told they had bought it (EVT-46).
+  ///
+  /// Null is the whole mechanism, not a missing timestamp: the webhook sends
+  /// on the way past and the scheduler sweeps whatever it missed, and both
+  /// decide by this column. A Postmark outage, a Lambda killed between the
+  /// commit and the send, a sale recorded before this feature existed — each
+  /// leaves a row that says so and gets picked up on the next run.
+  ///
+  /// Deliberately not a boolean. "When" answers the question somebody
+  /// actually asks when a buyer says they got nothing.
+  confirmationSentAt    DateTime?
   createdAt             DateTime  @default(now())
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
@@ -1159,6 +1170,12 @@ model Ticket {
 
   @@index([eventId])
   @@index([userId])
+  /// The sweep's query: unsent first, oldest first. Without it the scheduler
+  /// scans every ticket ever sold to find the handful it still owes.
+  @@index([confirmationSentAt])
+  /// How a pass counts seats — every ticket this address holds for this
+  /// event — and how the door list groups a buyer who checked out twice.
+  @@index([eventId, buyerEmail])
   @@map("tickets")
 }
 

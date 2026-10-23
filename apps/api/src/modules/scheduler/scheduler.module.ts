@@ -9,6 +9,7 @@ import { StripeModule } from '../stripe/stripe.module';
 import { RadarModule } from '../radar/radar.module';
 import { RecapModule } from '../recap/recap.module';
 import { CalendarModule } from '../calendar/calendar.module';
+import { TicketPassModule } from '../events/ticket-pass.module';
 import { SchedulerService } from './scheduler.service';
 
 /**
@@ -29,6 +30,9 @@ import { SchedulerService } from './scheduler.service';
     RecapModule,
     // Keeping the imported calendars true, unattended (CAL-13).
     CalendarModule,
+    // The safety net under ticket confirmations (EVT-46): whatever the
+    // webhook could not send, this sweeps up.
+    TicketPassModule,
   ],
   providers: [PrismaService, SchedulerService],
   exports: [SchedulerService],

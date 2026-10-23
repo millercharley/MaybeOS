@@ -11,6 +11,7 @@ import { AttachmentsModule } from './modules/attachments/attachments.module';
 import { OrgModule } from './modules/org/org.module';
 import { MemberModule } from './modules/member/member.module';
 import { EventsModule } from './modules/events/events.module';
+import { TicketPassModule } from './modules/events/ticket-pass.module';
 import { DoorModule } from './modules/door/door.module';
 import { SocialModule } from './modules/social/social.module';
 import { RadarModule } from './modules/radar/radar.module';
@@ -149,6 +150,7 @@ import { HealthModule } from './modules/health/health.module';
     AttachmentsModule,
     MemberModule,
     EventsModule,
+    TicketPassModule,
     DoorModule,
     SocialModule,
     RadarModule,

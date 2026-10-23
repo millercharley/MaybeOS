@@ -36,6 +36,48 @@ export interface BookingEmailData {
 }
 
 /**
+ * A paid ticket, confirmed to the person who paid for it (EVT-46).
+ *
+ * The buyer is usually not a member and has no account, so this email is the
+ * only thing they get and the pass link in it is the only record they hold.
+ * Everything a door might ask is in it.
+ */
+export interface TicketConfirmationData {
+  /** What Stripe collected at checkout. Null where it collected nothing. */
+  buyerName: string | null;
+  orgName: string;
+  eventTitle: string;
+  /** Already formatted in the event's own timezone by the caller. */
+  when: string;
+  /** One line, or null when the co-op has not said where. */
+  where: string | null;
+  /**
+   * Every seat this address holds for this event, not the one just bought.
+   *
+   * Checkout has no quantity selector, so somebody wanting two seats buys
+   * twice — and the second email saying "1 ticket" when they have paid for
+   * two is exactly the confusion this email exists to end. Annette Neblett
+   * bought twice, twenty-four seconds apart, and wrote in to ask where her
+   * two tickets were.
+   */
+  seats: number;
+  /** What this one purchase cost, all in. */
+  amountCents: number;
+  /**
+   * Which address holds the seats.
+   *
+   * Printed because a member with two addresses (MEM-19) gets this on both,
+   * and the pass counts seats for one of them. Saying which is the difference
+   * between a buyer checking and a buyer guessing.
+   */
+  email: string;
+  /** The signed pass they show at the door. */
+  passUrl: string;
+  eventUrl: string;
+  replyTo?: string | null;
+}
+
+/**
  * The co-op this message belongs to, if the payload names one (EML-01).
  *
  * Most of these emails already carry the co-op's name because they print it,
@@ -89,6 +131,17 @@ export function addresses(to: string | Addresses): { primary: string; also?: str
  * ours to, which is only possible if it reads the camelCase spelling, so one
  * is all it ever needed.
  */
+/**
+ * Cents, as a reader expects to see them.
+ *
+ * Its own small function rather than inlined arithmetic in a template string,
+ * because every email that prints a figure should print it the same way and
+ * two of them already did not.
+ */
+export function money(cents: number): string {
+  return `$${(Math.round(cents) / 100).toFixed(2)}`;
+}
+
 function dateWindow(fromDate: string, toDate: string): Record<string, string> {
   return { fromDate, toDate };
 }
@@ -159,7 +212,8 @@ export interface EmailJobData {
     | 'radar-digest'
     | 'recap'
     | 'recap-ready'
-    | 'booking-awaiting-approval';
+    | 'booking-awaiting-approval'
+    | 'ticket-confirmation';
   /**
    * Both of a member's addresses, where they have two (MEM-19).
    *
@@ -489,6 +543,18 @@ export class EmailService {
   // received, approved, rejected or cancelled. SpaceOS never called this
   // service at all.
 
+  /**
+   * Somebody bought a ticket (EVT-46).
+   *
+   * Transactional without question: it is the receipt for a payment the
+   * person made thirty seconds ago. It stays on the stream sign-in links use,
+   * and it is the one email here whose non-arrival is a support ticket — so
+   * it is the one that reports whether it went.
+   */
+  async sendTicketConfirmation(to: string | Addresses, d: TicketConfirmationData): Promise<boolean> {
+    return this.send({ type: 'ticket-confirmation', to, data: d });
+  }
+
   async sendBookingReceived(to: string | Addresses, d: BookingEmailData) {
     await this.send({ type: 'booking-received', to, data: d });
   }
@@ -762,7 +828,18 @@ export class EmailService {
     await this.send({ type: 'booking-awaiting-approval', to, data: d });
   }
 
-  private async send({ type, to, data }: EmailJobData): Promise<void> {
+  /**
+   * Returns whether the provider accepted it.
+   *
+   * Still never throws — the class doc comment's rule stands, and a failed
+   * notification must not roll back the thing it was notifying about. But a
+   * caller that needs to know could not find out, which is the trap `sendRaw`
+   * was given a return value to close (SRV-03): marking a message sent before
+   * knowing it went makes a Postmark failure permanent. Ticket confirmations
+   * (EVT-46) mark themselves only on a `true` from here. Every existing caller
+   * ignores the return and is unaffected.
+   */
+  private async send({ type, to, data }: EmailJobData): Promise<boolean> {
     const { subject, htmlBody } = this.buildEmail(type, data);
     const { primary, also } = addresses(to);
 
@@ -813,7 +890,8 @@ export class EmailService {
       this.logger.log(
         `[DEV] Would send email to=${primary} subject="${subject}"\n${htmlBody}`,
       );
-      return;
+      // True in development: nothing failed, there is simply no provider.
+      return true;
     }
 
     try {
@@ -841,6 +919,7 @@ export class EmailService {
       });
 
       this.logger.log(`Email sent successfully to ${primary} (type=${type})`);
+      return true;
     } catch (err) {
       // Swallowed deliberately — see the class doc comment. The caller's
       // operation (registration, invite, etc.) must still succeed.
@@ -850,6 +929,7 @@ export class EmailService {
         `Failed to send email to ${primary} (type=${type}): ${message}`,
         stack,
       );
+      return false;
     }
   }
 
@@ -1230,6 +1310,45 @@ export class EmailService {
             <p style="color:#666;font-size:14px;">Can't make it after all? Cancel from the event page so the next person on the list gets it.</p>
           `,
         };
+
+      /*
+        A ticket, confirmed (EVT-46).
+
+        Escaped throughout, unlike most of its neighbours. Every interpolated
+        value here came from a stranger at a public checkout — Stripe hands
+        back whatever name was typed into the card form — and a ticket page is
+        reachable by anybody with ten dollars. `door-code` is escaped for the
+        milder version of this reason; this one has no membership in front of
+        it at all.
+
+        The seat count is said in words and shown as a figure, because the
+        two jobs are different: the sentence is what the buyer reads to know
+        it worked, and the figure is what they hold up at a door.
+      */
+      case 'ticket-confirmation': {
+        const seats = Number(data.seats) || 1;
+        const name = typeof data.buyerName === 'string' && data.buyerName.trim()
+          ? data.buyerName.trim()
+          : 'there';
+        const place = typeof data.where === 'string' && data.where.trim()
+          ? `<br>${escapeHtml(data.where.trim())}`
+          : '';
+
+        return {
+          subject: `Your ${seats === 1 ? 'ticket' : `${seats} tickets`} — ${escapeHtml(data.eventTitle)}`,
+          htmlBody: `
+            <h1>You're going</h1>
+            <p>Hi ${escapeHtml(name)}, your ${seats === 1 ? 'ticket is' : 'tickets are'} confirmed for ${escapeHtml(data.orgName)}.</p>
+            <p><strong>${escapeHtml(data.eventTitle)}</strong><br>${escapeHtml(data.when)}${place}</p>
+            <p style="font-family:Georgia,'Times New Roman',serif;font-size:32px;font-weight:700;margin:24px 0 4px;">${seats} ${seats === 1 ? 'seat' : 'seats'}</p>
+            <p style="color:#8b8072;font-size:14px;margin-top:0;">held for ${escapeHtml(String(data.email ?? ''))}</p>
+            <p>There is nothing to print. Open your pass on your phone at the door — it shows your name and how many seats you hold, and it stays up to date if you buy more.</p>
+            <p><a href="${escapeHtml(data.passUrl)}" style="display:inline-block;padding:12px 24px;background:#c81e2c;color:#fffdf8;border:1.5px solid #211c16;border-radius:8px;text-decoration:none;font-weight:600;">Open your pass</a></p>
+            <p style="color:#8b8072;font-size:14px;">Paid ${escapeHtml(money(Number(data.amountCents) || 0))} for this purchase. Keep this email — the link is the only one you'll get, and it works without signing in.</p>
+            <p style="color:#8b8072;font-size:14px;">Event details: <a href="${escapeHtml(data.eventUrl)}">${escapeHtml(data.eventUrl)}</a></p>
+          `,
+        };
+      }
 
       // ─── Room bookings ──────────────────────────────────────────
       // Brand colours are inlined: email clients strip <style> blocks and have

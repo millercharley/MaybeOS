@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { StripeService } from '../stripe.service';
+import { TicketPassService } from '../../events/ticket-pass.service';
 import { ConnectService } from '../connect.service';
 import { PrismaService } from '../../../config/prisma.service';
 
@@ -43,6 +44,9 @@ describe('StripeService — per-member billing through the webhook', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         StripeService,
+        // Confirming a ticket to its buyer (EVT-46). After the webhook's
+        // transaction, so these suites assert nothing about it.
+        { provide: TicketPassService, useValue: { confirm: jest.fn() } },
         { provide: PrismaService, useValue: prisma },
         { provide: ConfigService, useValue: { get: () => 'whsec_test' } },
         {

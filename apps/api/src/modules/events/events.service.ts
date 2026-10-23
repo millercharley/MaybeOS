@@ -7,6 +7,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { normalizeEmail } from '../../common/email-address';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../config/prisma.service';
 import { EmailService } from '../email/email.service';
@@ -2446,16 +2447,52 @@ export class EventsService {
   async listAttendees(orgId: string, eventId: string, actor: { userId: string; isStaff: boolean }) {
     await this.loadEventForActor(orgId, eventId, actor.userId, actor.isStaff);
 
-    const [rsvps, attendance] = await Promise.all([
+    const [rsvps, attendance, paid] = await Promise.all([
       this.prisma.rsvp.findMany({
         where: { eventId, status: { in: ['CONFIRMED', 'WAITLISTED'] } },
+        // Ordered in the query rather than sorted afterwards, because this is
+        // what the seat numbering below counts along (EVT-46): "seat 1 of 2"
+        // has to mean the first one bought, and mean it again on the next
+        // load. An unordered `findMany` is not stable between two calls.
+        orderBy: { createdAt: 'asc' },
         include: { user: { select: { id: true, name: true, avatarUrl: true, avatarPath: true } } },
       }),
       this.prisma.attendance.findMany({
         where: { eventId },
         orderBy: { createdAt: 'asc' },
       }),
+      /*
+        Who paid, and how many times (EVT-46).
+
+        Only to count repeats. Checkout is created with `quantity: 1` and
+        offers no way to ask for two, so somebody wanting two seats buys twice
+        — and each purchase writes its own guest RSVP, so they appear on the
+        door list twice under one name. Annette Neblett and James Knowles both
+        did exactly that on *Dog Sees God*.
+
+        Two identical rows read as a duplicate somebody should clean up, and a
+        host who tidies one away has just turned a paying guest's friend away
+        at the door. Annotated instead, so the list says why the name is
+        there twice.
+      */
+      this.prisma.ticket.findMany({
+        where: { eventId, refundedAt: null },
+        orderBy: { createdAt: 'asc' },
+        select: { buyerEmail: true },
+      }),
     ]);
+
+    // Lowercased, because Stripe returns whatever the buyer typed and the
+    // same person's two checkouts can disagree about a capital.
+    const seatsHeld = new Map<string, number>();
+    for (const { buyerEmail } of paid) {
+      const key = normalizeEmail(buyerEmail);
+      if (key) seatsHeld.set(key, (seatsHeld.get(key) ?? 0) + 1);
+    }
+
+    // Which of their seats each row is. Counted in RSVP order so the numbering
+    // is stable between two loads of the same list.
+    const seatSoFar = new Map<string, number>();
 
     // Walk-ins are the rows `recordWalkIn` wrote, identified by their method.
     // Selecting on `userId: null` instead looked right and was not: a *guest*
@@ -2464,18 +2501,37 @@ export class EventsService {
     const walkIns = attendance.filter((a) => a.method === 'self');
 
     const expected = rsvps
-      .map((rsvp) => ({
-        rsvpId: rsvp.id,
-        userId: rsvp.userId,
-        name: rsvp.user?.name ?? rsvp.guestName ?? 'Guest',
-        avatarUrl: rsvp.user?.avatarUrl ?? null,
-        isGuest: rsvp.userId === null,
-        status: rsvp.status,
-        plusOnes: rsvp.plusOnes,
-        checkedIn: rsvp.checkedIn,
-        checkedInAt: rsvp.checkedInAt,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .map((rsvp) => {
+        /*
+          `seat` is set only where it tells the door something it could not
+          see: an address holding more than one. Everybody else gets null
+          rather than "seat 1 of 1", which is a label that adds a number to a
+          list without adding a fact to it.
+        */
+        const key = normalizeEmail(rsvp.guestEmail);
+        const of = key ? (seatsHeld.get(key) ?? 0) : 0;
+        let seat: { n: number; of: number } | null = null;
+        if (of > 1) {
+          const n = (seatSoFar.get(key) ?? 0) + 1;
+          seatSoFar.set(key, n);
+          seat = { n, of };
+        }
+
+        return {
+          rsvpId: rsvp.id,
+          userId: rsvp.userId,
+          name: rsvp.user?.name ?? rsvp.guestName ?? 'Guest',
+          avatarUrl: rsvp.user?.avatarUrl ?? null,
+          isGuest: rsvp.userId === null,
+          status: rsvp.status,
+          plusOnes: rsvp.plusOnes,
+          checkedIn: rsvp.checkedIn,
+          checkedInAt: rsvp.checkedInAt,
+          /** Which of this buyer's seats this row is, or null for a single. */
+          seat,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name) || (a.seat?.n ?? 0) - (b.seat?.n ?? 0));
 
     return {
       expected,
