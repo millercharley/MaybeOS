@@ -6,10 +6,28 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   outputFileTracingRoot: path.join(__dirname, '../../'),
   transpilePackages: ['@maybeos/shared'],
+  /**
+   * No remote host may be optimized (SEC-10).
+   *
+   * This was `remotePatterns: [{ protocol: 'https', hostname: '**' }]`, which
+   * let `/_next/image?url=…` fetch and process an image from anywhere on the
+   * internet, for anyone, without signing in. That is an open image proxy,
+   * and in October 2026 it became an unauthenticated remote code execution
+   * path: CVE-2026-96889 is a memory bug in the SVG renderer that Next.js
+   * reaches through `sharp`, and the optimizer was the way to reach it.
+   *
+   * Removing it costs nothing, which is the part worth recording. The only
+   * `next/image` in the product is the wordmark, a static import from
+   * `public/` — static imports never consult this list. Every other picture
+   * is a plain `<img>` pointing at Supabase storage or Unsplash and does not
+   * touch the optimizer at all. The wildcard was granting a capability
+   * nothing used.
+   *
+   * If a remote host ever genuinely needs optimizing, name that host. Not
+   * `**`.
+   */
   images: {
-    remotePatterns: [
-      { protocol: 'https', hostname: '**' },
-    ],
+    remotePatterns: [],
   },
   /**
    * The portal home is My Dashboard (NAV-04).
