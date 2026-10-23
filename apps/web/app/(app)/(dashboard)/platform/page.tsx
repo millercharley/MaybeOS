@@ -194,7 +194,9 @@ export default function PlatformPage() {
                   {org.billingWaived && <span className="ml-1 text-green-700">· comped</span>}
                 </p>
                 <p className="text-xs text-gray-500">
-                  {money(org.transactionFeeCents)} per transaction
+                  {/* Per ticket, not per checkout (D-040): somebody buying
+                      four seats pays it four times. */}
+                  {money(org.transactionFeeCents)} per ticket
                 </p>
                 {org.planStatus && org.planStatus !== 'active' && (
                   <p className="text-xs text-amber-700">{org.planStatus.replace('_', ' ')}</p>

@@ -3,17 +3,28 @@ import { MaybeOsPlan } from '@prisma/client';
 /**
  * What a ticket costs and how the money splits (D-013).
  *
- * MaybeOS takes a **flat fee per transaction**, set by the co-op's plan. Not a
+ * MaybeOS takes a **flat fee per seat**, set by the co-op's plan. Not a
  * percentage — the numbers are set deliberately, and a percentage would
  * quietly change what every co-op pays as ticket prices move.
  *
+ * **Per seat, not per checkout (D-040).** This file used to say "per
+ * transaction" and the public pricing page said "per ticket", and both looked
+ * right for a year because checkout was hardcoded to one seat: the two
+ * readings were the same number and nobody had to choose. EVT-47's quantity
+ * selector is what made them differ, and per seat is what has actually been
+ * charged all along — two seats meant two checkouts, so two fees. Reading it
+ * the other way would have made a usability fix into a silent repricing.
+ *
+ * Room hire is the genuinely per-transaction one and stays that way: a
+ * booking is one thing however many hours it covers. See `priceBooking`.
+ *
  * Repriced by Charley on 2026-08-21, from the live pricing table:
  *
- *   FREE       $0                              + $1.00 per transaction
- *   PLUS       $0.50/member/mo · $3.65/member/yr + $0.30 per transaction
- *   UNLIMITED  $349/mo · $299/mo billed yearly   + $0.10 per transaction
+ *   FREE       $0                              + $1.00 per seat
+ *   PLUS       $0.50/member/mo · $3.65/member/yr + $0.30 per seat
+ *   UNLIMITED  $349/mo · $299/mo billed yearly   + $0.10 per seat
  *
- * The subscription half and the per-transaction half work in opposite
+ * The subscription half and the per-sale half work in opposite
  * directions on purpose: a co-op that pays nothing up front pays most per
  * ticket, which is what lets "upfront cost should never block a community"
  * be true without MaybeOS earning nothing from the co-ops that use it most.
@@ -27,7 +38,12 @@ import { MaybeOsPlan } from '@prisma/client';
  * Everything is integer cents. Money in floats is how a ledger stops adding up.
  */
 
-/** MaybeOS's cut per transaction, in cents, by plan (D-013). */
+/**
+ * MaybeOS's cut, in cents, by plan (D-013).
+ *
+ * Per **seat** on a ticket (D-040) and per **booking** on room hire — the
+ * same number, applied to each of the things that plan is charged for.
+ */
 export const PLATFORM_FEE_CENTS: Record<MaybeOsPlan, number> = {
   FREE: 100,
   PLUS: 30,
@@ -173,9 +189,13 @@ export interface BookingBreakdown {
  * What hiring a room costs (SPC-06).
  *
  * The co-op sets an hourly rate and MaybeOS takes the same flat
- * per-transaction fee as a ticket sale — D-013's number for their plan, not a
- * percentage of the hire. A percentage would make MaybeOS's cut of a full-day
- * booking many times its cut of a ticket for no extra work.
+ * flat fee as a ticket seat — D-013's number for their plan, not a percentage
+ * of the hire. A percentage would make MaybeOS's cut of a full-day booking
+ * many times its cut of a ticket for no extra work.
+ *
+ * Charged **once per booking**, which is the one place "per transaction" is
+ * still the right phrase (D-040): a booking is a single thing however many
+ * hours it runs, where a ticket purchase is a seat per person coming.
  *
  * The fee is added on top, so a co-op charging $45/hour for three hours
  * receives $135. Charging the member $135 and passing on less is the co-op

@@ -97,7 +97,7 @@ const WEEK: WeekStep[] = [
     points: [
       'Posted to #events in the Commons automatically',
       'Shared to your Facebook Page and Instagram, credited to the host (rolling out)',
-      'Paid tickets with a flat fee, never a percentage',
+      'Paid tickets with a flat fee per ticket, never a percentage',
       'Calendar feeds and an embed for your own website',
     ],
     aside: (
@@ -499,7 +499,7 @@ export default function HomePage() {
             {[
               {
                 title: 'Flat fees. Never a percentage.',
-                body: 'A flat fee is added on top of tickets and paid room hire, and of dues on the Free plan, shown to the person paying. It never comes out of the price you set.',
+                body: 'A flat fee is added on top, shown to the person paying: once for each ticket they buy, once for a paid booking, and on dues on the Free plan. It never comes out of the price you set.',
               },
               {
                 title: 'Private by default.',
@@ -525,7 +525,7 @@ export default function HomePage() {
               <p className="font-mono text-xs uppercase tracking-[0.2em] text-brand-600">Pricing</p>
               <h2 className="mt-4 font-display text-2xl leading-tight text-ink md:text-3xl">Priced so cost never blocks a community</h2>
               <p className="mt-5 text-md text-ink-soft">
-                Pay nothing up front and a little more on each sale, or subscribe and pay less on each sale. Every plan
+                Pay nothing up front and a little more on each ticket, or subscribe and pay less on each ticket. Every plan
                 has every feature, and fees are flat, never a percentage.
               </p>
             </Reveal>

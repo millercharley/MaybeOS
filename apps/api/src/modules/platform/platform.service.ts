@@ -83,7 +83,7 @@ export class PlatformService {
       memberCount: _count.users,
       eventCount: _count.events,
       roomCount: _count.rooms,
-      /** What its buyers pay per transaction, which is what the plan is for. */
+      /** What its buyers pay per ticket (D-040), which is what the plan is for. */
       transactionFeeCents: PLATFORM_FEE_CENTS[org.plan],
       contact: firstAdmin.get(org.id) ?? null,
       /** A co-op with no organiser cannot be reached, or reach its own settings. */
@@ -192,7 +192,7 @@ export class PlatformService {
         entityType: 'organization',
         entityId: orgId,
         // Both figures, because the change a co-op actually feels is the
-        // per-transaction one and it is not in the plan's name.
+        // per-ticket one and it is not in the plan's name.
         metadata: {
           from: org.plan,
           to: input.plan,

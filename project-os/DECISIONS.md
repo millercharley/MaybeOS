@@ -24,6 +24,17 @@
 
 <!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
 
+### D-040 — MaybeOS's ticket fee is per seat, and the word "transaction" is retired
+
+- **Date:** 2026-10-23
+- **Status:** Active
+- **Area:** Billing, Pricing
+- **Decision:** MaybeOS's flat fee on a ticket sale is charged **once per seat**, not once per checkout. A purchase of four seats pays four fees, and `application_fee_amount` is `PLATFORM_FEE_CENTS[plan] × quantity`. Paid room hire is unchanged and stays **once per booking** — a booking is one thing, however many hours it covers. Clarifies D-013 and D-030 for the case neither could have foreseen, and supersedes the word "transaction" wherever it described a ticket fee: the fee table, the plan settings, the event form, the platform admin view and the public pricing copy now all say *per ticket*. The co-op's own ticket fee multiplies with it, per seat, and stays in the co-op's account.
+- **Alternatives rejected:** **Once per checkout, reading D-013 literally** — rejected because it would have made the selector a price cut nobody asked for, and because it contradicts what buyers have actually been charged all year. **Leave it undecided and let the code imply an answer** — rejected as how the ambiguity got here: with checkout hardcoded to `quantity: 1`, "per transaction" and "per ticket" were the same number and nobody had to choose, so two different sentences went into two different documents and both looked right. **Charge per seat but show the fee as one purchase-level line** — rejected because the breakdown beside it is per seat, and a total that does not equal its own parts reads as an arithmetic error to the one person guaranteed to check it.
+- **Rationale:** EVT-47 added a quantity selector, which is the change that forced the question. Until then two seats meant two checkouts, so MaybeOS collected two fees — Annette Neblett paid twice on *Dog Sees God* because there was no way not to. Per seat therefore keeps revenue and buyer cost exactly where they already were and changes only how many times somebody types their card in; per transaction would have been a silent repricing introduced by a usability fix. It is also the reading the public pricing page already published ("a flat fee per ticket"), which is the sentence co-ops signed up against and buyers read before paying — and where the two documents disagreed, the one the customer was shown wins. Charley confirmed it on the day: "Per seat is right, keep it." A test pins the multiplication so it cannot drift back, and the copy sweep is part of the decision rather than a follow-up, because the ambiguity was never in the code — it was in two sentences that had no reason to be compared until there was a selector.
+- **Supersedes:** none (clarifies D-013 and D-030)
+
+
 ### D-039 — A ticket buyer is told by email, and proves their seats with a signed link rather than an account
 
 - **Date:** 2026-10-23

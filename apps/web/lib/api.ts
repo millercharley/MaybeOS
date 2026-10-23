@@ -3666,7 +3666,7 @@ export interface Org {
    */
   locations?: Location[];
   tiers?: MembershipTier[];
-  /** MaybeOS plan, which sets the per-transaction ticket fee (D-013). */
+  /** MaybeOS plan, which sets the flat fee charged per ticket (D-013, D-040). */
   plan?: 'FREE' | 'PLUS' | 'UNLIMITED';
   /** A fee the co-op adds to its own ticket sales, in cents. */
   ticketFeeCents?: number;

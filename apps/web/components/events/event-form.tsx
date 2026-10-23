@@ -54,7 +54,7 @@ export interface EventFormValues extends CreateEventData {
   rooms?: { id: string; startTime: string; room: { id: string; name: string } }[];
 }
 
-/** MaybeOS's per-transaction fee by plan, in cents (D-013). */
+/** MaybeOS's flat fee per ticket by plan, in cents (D-013, D-040). */
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
@@ -113,7 +113,7 @@ export function EventForm({
   error?: string;
   onSubmit: (values: EventFormValues) => void;
   onCancel?: () => void;
-  /** The co-op's MaybeOS plan, which sets the per-transaction fee (D-013). */
+  /** The co-op's MaybeOS plan, which sets the per-ticket fee (D-013, D-040). */
   plan?: string;
   /** A fee the co-op adds on top of MaybeOS's, in cents. */
   orgFeeCents?: number;
