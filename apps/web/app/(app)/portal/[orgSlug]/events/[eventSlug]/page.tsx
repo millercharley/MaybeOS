@@ -13,6 +13,11 @@ import { AttachmentList } from '@/components/composer/attachment-list';
 import { RsvpFaces } from '@/components/events/rsvp-faces';
 import { uploadAttachments } from '@/lib/attachments';
 import { ticketCost, describeFees, money, MAX_SEATS_PER_PURCHASE } from '@/lib/fees';
+import {
+  submitGuestRsvp,
+  guestRsvpConfirmation,
+  type GuestRsvpState,
+} from '@/lib/guest-rsvp';
 import { eventArt } from '@/lib/event-art';
 import { focusStyle } from '@/lib/image-focus';
 import { PageHeader } from '@/components/layout/page-header';
@@ -251,6 +256,28 @@ export default function PortalEventPage(props: {
     below clamps whatever this holds, including "".
   */
   const [seats, setSeats] = useState('1');
+
+  /*
+    A stranger saying they are coming (EVT-49). The decision lives in
+    `lib/guest-rsvp.ts`, because this app's harness renders no components and
+    logic written in one is logic nothing can test.
+  */
+  const [guestName, setGuestName] = useState('');
+  const [guestEmail, setGuestEmail] = useState('');
+  const [guest, setGuest] = useState<GuestRsvpState>({ kind: 'idle' });
+
+  async function rsvpAsGuest() {
+    if (!org || !event) return;
+    setGuest({ kind: 'saving' });
+    setGuest(
+      await submitGuestRsvp({
+        orgId: org.id,
+        eventId: event.id,
+        name: guestName,
+        email: guestEmail,
+      }),
+    );
+  }
 
   async function buy() {
     if (!org || !event) return;
@@ -505,13 +532,51 @@ export default function PortalEventPage(props: {
                   <button onClick={rsvp} disabled={busy} className="btn-primary w-full text-sm">
                     {busy ? 'Saving…' : 'RSVP'}
                   </button>
-                ) : (
-                  <p className="text-center text-sm text-gray-500">
-                    <Link href={signInHref} className="text-brand-600 hover:underline">
-                      Sign in
-                    </Link>{' '}
-                    to RSVP.
+                ) : guest.kind === 'done' ? (
+                  <p className="rounded-lg border border-[var(--success)] px-3 py-2 text-center text-sm font-medium">
+                    {guestRsvpConfirmation(guest.status)}
                   </p>
+                ) : (
+                  /*
+                    A stranger can say they are coming (EVT-49).
+
+                    This said "Sign in to RSVP", which made the one page every
+                    link to an event lands on — a shared link, the website
+                    embed, a post — the one place a non-member could not do
+                    the thing the page is for. The API has served guest RSVPs
+                    since PUB-05; only this screen never offered one.
+                  */
+                  <div className="space-y-2">
+                    <input
+                      className="input w-full text-sm"
+                      placeholder="Your name"
+                      value={guestName}
+                      onChange={(e) => setGuestName(e.target.value)}
+                    />
+                    <input
+                      className="input w-full text-sm"
+                      type="email"
+                      placeholder="Your email"
+                      value={guestEmail}
+                      onChange={(e) => setGuestEmail(e.target.value)}
+                    />
+                    <button
+                      onClick={rsvpAsGuest}
+                      disabled={guest.kind === 'saving'}
+                      className="btn-primary w-full text-sm"
+                    >
+                      {guest.kind === 'saving' ? 'Saving…' : 'RSVP'}
+                    </button>
+                    {guest.kind === 'failed' && (
+                      <p className="text-center text-xs text-[var(--danger)]">{guest.message}</p>
+                    )}
+                    <p className="text-center text-xs text-gray-500">
+                      Already a member?{' '}
+                      <Link href={signInHref} className="text-brand-600 hover:underline">
+                        Sign in
+                      </Link>
+                    </p>
+                  </div>
                 )}
                 {rsvpError && (
                   <p className="mt-1.5 text-center text-xs text-[var(--danger)]">{rsvpError}</p>
