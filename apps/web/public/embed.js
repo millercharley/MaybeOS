@@ -133,13 +133,21 @@
       exactly wrong for the most common subject there is.
     */
     '.thumb { flex: 0 0 5.5rem; height: 4rem; border-radius: 8px; background: #ececec ' +
-      'center/cover no-repeat; }',
+      'center/cover no-repeat; display: block; }',
     // The accent carries the date as well as the price. It used to colour the
     // price alone, so a co-op whose events are free saw no change at all from
     // setting their brand colour (EVT-21).
     '.when { font-size: 13px; color: ' + accentText + '; font-variant-numeric: tabular-nums; font-weight: 600; }',
     '.body { min-width: 0; flex: 1; }',
-    '.title { font-weight: 600; }',
+    /*
+      The title links to the event (EVT-48). Inherits its colour rather than
+      going browser-blue: it sits on a co-op's own page, and a link that
+      recolours itself is a link that looks like somebody else's. The
+      underline on hover is what says it can be pressed.
+    */
+    '.title { font-weight: 600; color: inherit; text-decoration: none; display: inline-block; }',
+    '.title:hover { text-decoration: underline; }',
+    '.thumb:hover { filter: brightness(1.05); }',
     '.meta { margin-top: 2px; font-size: 13px; color: #666; display: flex; flex-wrap: wrap; gap: 4px 10px; }',
     // Who it is suitable for (SPC-22) — the thing a parent reads first.
     '.age { font-weight: 600; color: #333; }',
@@ -155,6 +163,31 @@
     '.go.look { background: #fff; color: ' + accentText + '; }',
     '.go:hover { filter: brightness(1.08); }',
     '.go:active { transform: translateY(1px); }',
+    /*
+      The next event, given the room it deserves (EVT-48).
+
+      Charley: "Make the nearest event featured at the top, just like the
+      example from the Events page." The member Events page leads with a hero
+      and then lists the rest, and the thing somebody most wants off a co-op's
+      website is what is on next.
+    */
+    '.hero { border: 1px solid #dcdcdc; border-radius: 12px; background: #fff; overflow: hidden; ' +
+      'margin-bottom: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }',
+    '.hero-label { padding: 14px 18px 0; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; ' +
+      'text-transform: uppercase; color: #666; }',
+    // A band of the co-op's own colour when there is no poster, so the hero is
+    // still a hero rather than a card with a hole in it.
+    '.hero-img { display: block; height: 9rem; margin: 12px 18px 0; border-radius: 8px; ' +
+      'background: ' + accent + ' center/cover no-repeat; }',
+    '.hero-body { padding: 14px 18px 18px; }',
+    '.hero-title { display: inline-block; font-size: 19px; font-weight: 700; line-height: 1.3; ' +
+      'color: inherit; text-decoration: none; }',
+    '.hero-title:hover { text-decoration: underline; }',
+    '.hero-when { margin-top: 4px; font-size: 14px; color: ' + accentText + '; font-weight: 600; }',
+    '.hero-desc { margin-top: 8px; font-size: 14px; color: #444; }',
+    '.chips { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }',
+    '.chip { font-size: 12px; color: #444; background: #f1f0ee; border-radius: 999px; padding: 5px 12px; }',
+    '.hero-go { margin-top: 14px; }',
     '.empty, .failed { padding: 24px 0; color: #666; font-size: 14px; }',
     /*
       On a phone the row stacks, and the button goes full width so it is a
@@ -322,6 +355,58 @@
   };
 
   /**
+   * A link to an event's page.
+   *
+   * One helper rather than three call sites, so `target`, `rel` and the
+   * href's origin are decided once (EVT-48). `rel="noopener"` because
+   * `target="_blank"` without it hands the opened page a handle back to the
+   * co-op's own site.
+   *
+   * The href is always the API's `event.url` and is never built here: this
+   * script runs on somebody else's domain and should hold no rule about
+   * MaybeOS's address shape.
+   */
+  var linkTo = function (event, className) {
+    var a = document.createElement('a');
+    a.className = className;
+    a.href = event.url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    return a;
+  };
+
+  /**
+   * The thing to press, in the two weights the member list uses: filled for
+   * buying, outlined for everything else.
+   *
+   * One helper for the row and the hero (EVT-48) — the wording and the
+   * figure are a promise about what happens next, and two copies of a promise
+   * is one copy that goes stale.
+   *
+   * To the event's page, never straight to checkout: buying needs a seat
+   * count (EVT-47) and an address, and a button on a marketing site that
+   * opens a payment form is not what anybody expects of it.
+   */
+  var action = function (event) {
+    var ticketed = typeof event.totalCents === 'number';
+    var go = linkTo(event, 'go ' + (ticketed ? 'buy' : 'look'));
+
+    /*
+      The total, fees and all — the figure Stripe will ring up. Printing the
+      face value advertised a $384.70 ticket that charges $386.45.
+
+      A free event says RSVP rather than "Details", because that is what the
+      page now offers a stranger (EVT-49): a button has to promise what the
+      destination does.
+    */
+    go.textContent = ticketed
+      ? 'Buy ticket · ' + money(event.totalCents, event.currency)
+      : 'RSVP';
+
+    return go;
+  };
+
+  /**
    * One event, shaped like the row a member sees (EVT-48).
    *
    * Charley: "I would like for the event list to look the same as the one
@@ -342,8 +427,26 @@
     // a wrapper, and an event with no picture is then simply a grey tile
     // rather than a broken-image glyph on a co-op's website.
     if (event.imageUrl) {
-      var thumb = document.createElement('div');
-      thumb.className = 'thumb';
+      /*
+        The poster opens the event too (Charley: "make sure the images and
+        titles are also clickable to get more details").
+
+        A link, but deliberately **not a third thing to tab to**: `tabindex`
+        -1 and `aria-hidden` keep it out of the keyboard order and out of a
+        screen reader, because it goes exactly where the title beside it
+        already goes. Three links to one destination is three stops and three
+        announcements for one event — worse for the people who rely on them
+        than one good link.
+      */
+      var thumb = event.url
+        ? linkTo(event, 'thumb')
+        : document.createElement('div');
+      if (event.url) {
+        thumb.setAttribute('tabindex', '-1');
+        thumb.setAttribute('aria-hidden', 'true');
+      } else {
+        thumb.className = 'thumb';
+      }
       thumb.style.backgroundImage = 'url("' + encodeURI(event.imageUrl) + '")';
       // The host's own crop (EVT-43), not centre.
       thumb.style.backgroundPosition =
@@ -354,8 +457,13 @@
     var body = document.createElement('div');
     body.className = 'body';
 
-    var title = document.createElement('div');
-    title.className = 'title';
+    /*
+      The title is the row's real link — the one a keyboard reaches and a
+      screen reader announces. Still textContent, never markup: a title is
+      text a co-op typed and this renders onto their domain.
+    */
+    var title = event.url ? linkTo(event, 'title') : document.createElement('div');
+    if (!event.url) title.className = 'title';
     title.textContent = event.title;
     body.appendChild(title);
 
@@ -394,22 +502,7 @@
       `rel="noopener"` because `target="_blank"` without it hands the opened
       page a reference back to the co-op's own site.
     */
-    if (event.url) {
-      var go = document.createElement('a');
-      var ticketed = typeof event.totalCents === 'number';
-      go.className = 'go ' + (ticketed ? 'buy' : 'look');
-      go.href = event.url;
-      go.target = '_blank';
-      go.rel = 'noopener';
-      /*
-        The total, fees and all — the figure Stripe will ring up. Printing
-        the face value here advertised a $384.70 ticket that charges $386.45.
-      */
-      go.textContent = ticketed
-        ? 'Buy ticket · ' + money(event.totalCents, event.currency)
-        : 'Details';
-      row.appendChild(go);
-    }
+    if (event.url) row.appendChild(action(event));
 
     return row;
   };
@@ -517,6 +610,112 @@
     return el;
   };
 
+  /**
+   * How soon, in words — "Starts in 36 minutes", "Tomorrow".
+   *
+   * Returns null beyond a week, where a countdown stops being information
+   * and starts being noise: "in 23 days" is the date again, worse.
+   */
+  var soon = function (startTime) {
+    var ms = new Date(startTime).getTime() - Date.now();
+    if (isNaN(ms) || ms < 0) return null;
+
+    var mins = Math.round(ms / 60000);
+    if (mins < 60) return 'Starts in ' + mins + (mins === 1 ? ' minute' : ' minutes');
+
+    var hours = Math.round(mins / 60);
+    if (hours < 24) return 'Starts in ' + hours + (hours === 1 ? ' hour' : ' hours');
+
+    var days = Math.round(hours / 24);
+    if (days === 1) return 'Tomorrow';
+    return days <= 7 ? 'In ' + days + ' days' : null;
+  };
+
+  /** Trim to a readable excerpt on a word, not mid-syllable. */
+  var clamp = function (text, max) {
+    if (!text || text.length <= max) return text || '';
+    var cut = text.slice(0, max);
+    var space = cut.lastIndexOf(' ');
+    return (space > max * 0.6 ? cut.slice(0, space) : cut) + '…';
+  };
+
+  /**
+   * The next event, given the room it deserves (EVT-48).
+   *
+   * Charley: "Make the nearest event featured at the top, just like the
+   * example from the Events page."
+   *
+   * The same PII line as the row: the member page's hero carries faces and
+   * "2 going", and this carries neither. A co-op's own website is the last
+   * place their members' faces belong.
+   */
+  var hero = function (event) {
+    var card = document.createElement('div');
+    card.className = 'hero';
+
+    var label = document.createElement('div');
+    label.className = 'hero-label';
+    label.textContent = 'Next event';
+    card.appendChild(label);
+
+    var img = event.url ? linkTo(event, 'hero-img') : document.createElement('div');
+    if (event.url) {
+      // Same reasoning as the row's thumbnail: it goes where the title goes,
+      // so it is not a second tab stop or a second announcement.
+      img.setAttribute('tabindex', '-1');
+      img.setAttribute('aria-hidden', 'true');
+    } else {
+      img.className = 'hero-img';
+    }
+    if (event.imageUrl) {
+      img.style.backgroundImage = 'url("' + encodeURI(event.imageUrl) + '")';
+      img.style.backgroundPosition =
+        'center ' + (typeof event.imageFocusY === 'number' ? event.imageFocusY : 50) + '%';
+    }
+    card.appendChild(img);
+
+    var body = document.createElement('div');
+    body.className = 'hero-body';
+
+    var title = event.url ? linkTo(event, 'hero-title') : document.createElement('div');
+    if (!event.url) title.className = 'hero-title';
+    title.textContent = event.title;
+    body.appendChild(title);
+
+    var w = document.createElement('div');
+    w.className = 'hero-when';
+    w.textContent = when(event.startTime);
+    body.appendChild(w);
+
+    if (event.description) {
+      var desc = document.createElement('div');
+      desc.className = 'hero-desc';
+      desc.textContent = clamp(event.description, 220);
+      body.appendChild(desc);
+    }
+
+    var chips = document.createElement('div');
+    chips.className = 'chips';
+    [soon(event.startTime), event.location, ageBadge(event.maturityLevel)]
+      .filter(Boolean)
+      .forEach(function (text) {
+        var chip = document.createElement('span');
+        chip.className = 'chip';
+        chip.textContent = text;
+        chips.appendChild(chip);
+      });
+    if (chips.childNodes.length) body.appendChild(chips);
+
+    if (event.url) {
+      var go = action(event);
+      go.className += ' hero-go';
+      body.appendChild(go);
+    }
+
+    card.appendChild(body);
+    return card;
+  };
+
   var renderEvents = function (data) {
     var events = data.events || [];
 
@@ -530,7 +729,14 @@
       return;
     }
 
-    events.forEach(function (event) {
+    /*
+      The soonest leads. `listEmbedEvents` returns them in date order, so the
+      first is the next one — not re-sorted here, because two places deciding
+      what "next" means is how they come to disagree.
+    */
+    wrap.appendChild(hero(events[0]));
+
+    events.slice(1).forEach(function (event) {
       wrap.appendChild(line(event));
     });
   };

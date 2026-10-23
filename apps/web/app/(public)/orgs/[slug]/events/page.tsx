@@ -6,6 +6,7 @@ import { ArrowLeft, Calendar, CalendarPlus, Clock, MapPin, Ticket } from 'lucide
 import { usePublicApi } from '@/hooks/use-api';
 import { api, apiUrl, type Event } from '@/lib/api';
 import { monthHeading, groupUpcoming, whenLabel } from '@/lib/event-list';
+import { submitGuestRsvp } from '@/lib/guest-rsvp';
 
 /**
  * What is on, for somebody who has no account (PUB-05).
@@ -154,27 +155,22 @@ function EventRow({ event, orgId, orgSlug }: { event: Event; orgId: string; orgS
   const ticketed = (event.priceCents ?? 0) > 0;
   const where = event.room?.name || event.location?.name;
 
+  /*
+    Through `lib/guest-rsvp.ts` (EVT-49), which the event page now also uses.
+    This was the only guest RSVP in the product and its rules lived inside
+    this component, where nothing could test them and a second caller had to
+    copy them — including the waitlist default, which is the one answer here
+    worth getting right.
+  */
   async function rsvp() {
-    if (!name.trim() || !email.trim()) {
-      setError('We need a name and an email so the host knows who is coming.');
-      return;
-    }
     setBusy(true);
     setError('');
-    try {
-      const result = await api.events.guestRsvp(orgId, event.id, {
-        name: name.trim(),
-        email: email.trim(),
-      });
-      // The API decides, and a full event with a waitlist says so rather than
-      // refusing — telling somebody they have a place when they do not is the
-      // one outcome worth avoiding here.
-      setDone(result.status ?? 'CONFIRMED');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'That did not go through.');
-    } finally {
-      setBusy(false);
-    }
+
+    const result = await submitGuestRsvp({ orgId, eventId: event.id, name, email });
+
+    if (result.kind === 'done') setDone(result.status);
+    if (result.kind === 'failed') setError(result.message);
+    setBusy(false);
   }
 
   async function buy() {

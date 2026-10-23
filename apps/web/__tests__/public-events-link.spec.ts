@@ -54,7 +54,16 @@ describe('the page MaybeOS hosts', () => {
     // View, RSVP, buy a ticket — all three already worked without an account;
     // what was missing was a page that offered them.
     expect(page).toContain('api.events.listPublic');
-    expect(page).toContain('api.events.guestRsvp');
+    /*
+      Through `submitGuestRsvp` rather than calling the client here (EVT-49).
+      The event page offers a guest RSVP too now, and the rules — what counts
+      as a usable name, and that a waitlist is reported as a waitlist — moved
+      to `lib/guest-rsvp.ts` so there is one copy of them. Asserted by name
+      rather than loosened away: this test's point is that the page still
+      offers the thing, and it would pass vacuously against a page that had
+      dropped it.
+    */
+    expect(page).toContain('submitGuestRsvp');
     expect(page).toContain('api.events.buyTicket');
   });
 
