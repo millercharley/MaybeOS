@@ -15,7 +15,7 @@ import {
  */
 describe('ticket pricing', () => {
   describe('what MaybeOS takes', () => {
-    it('is a flat fee per transaction, by plan', () => {
+    it('is a flat fee per seat, by plan (D-040)', () => {
       // Charley's live pricing table, 2026-08-21. FREE went 55 → 100 and the
       // $100 initiation fee was removed.
       expect(PLATFORM_FEE_CENTS).toEqual({ FREE: 100, PLUS: 30, UNLIMITED: 10 });

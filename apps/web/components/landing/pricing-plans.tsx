@@ -29,14 +29,14 @@ const PLANS: { plan: MaybeOsPlanName; name: string; headline: string; body: stri
     plan: 'PLUS',
     name: 'Plus',
     headline: 'Priced per member',
-    body: 'A lower flat fee on each sale, nothing added to dues, and no member limit. Only members are counted, not guests.',
+    body: 'A lower flat fee on each ticket, nothing added to dues, and no member limit. Only members are counted, not guests.',
     featured: true,
   },
   {
     plan: 'UNLIMITED',
     name: 'Unlimited',
     headline: 'One flat price',
-    body: 'The lowest flat fee on each sale, nothing added to dues, and the same price however many members you have.',
+    body: 'The lowest flat fee on each ticket, nothing added to dues, and the same price however many members you have.',
     featured: false,
   },
 ];

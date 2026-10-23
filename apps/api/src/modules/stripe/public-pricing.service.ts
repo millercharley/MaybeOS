@@ -14,7 +14,7 @@ export interface PublicPlan {
   yearlyCents: number | null;
   /** Whether the subscription is charged per member (Plus). */
   perMember: boolean;
-  /** MaybeOS's flat fee on each ticket or paid booking. */
+  /** MaybeOS's flat fee: once per ticket sold, once per paid booking (D-040). */
   transactionFeeCents: number;
   /** Added to each dues payment, when the co-op charges dues (PAY-09). 0 for none. */
   duesFeeCents: number;

@@ -74,7 +74,7 @@ export function MaybeOsPlan({
       {org.billingWaived && (
         <p className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-800">
           MaybeOS is free for {org.name} — you won&apos;t be charged for your plan. The
-          per-transaction fee above still applies to ticket sales.
+          fee above still applies: once per ticket sold, and once per paid booking.
         </p>
       )}
 

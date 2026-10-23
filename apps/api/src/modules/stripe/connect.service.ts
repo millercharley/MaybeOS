@@ -25,7 +25,8 @@ import { encodeState, decodeState } from '../../common/oauth-state';
  * transmission, not billing."
  *
  * So a ticket charge is created **on the co-op's connected account**, with
- * MaybeOS's per-transaction fee as the application fee. The co-op is paid by
+ * MaybeOS's flat fee as the application fee — per seat on a ticket, per
+ * booking on room hire (D-040). The co-op is paid by
  * Stripe on its own schedule; MaybeOS never holds the money.
  *
  * Deliberately separate from `StripeService`. That handles co-op → member dues

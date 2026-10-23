@@ -121,7 +121,10 @@ export default function TermsPage() {
         <p>
           Fees are <strong>added to</strong> the price a co-op sets, not taken out of
           it. A co-op charging $10 for a ticket, or $10 in dues, receives $10. The person
-          paying sees the fee as a fee. Stripe charges its own processing fees separately,
+          paying sees the fee as a fee. <strong>Per ticket means per seat</strong>:
+          somebody buying four seats in one go pays the fee four times, and sees it
+          said that way before they pay. A paid booking is charged once, however many
+          hours it covers. Stripe charges its own processing fees separately,
           to the co-op.
         </p>
         <p>
