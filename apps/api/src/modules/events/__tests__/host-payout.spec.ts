@@ -22,6 +22,9 @@ describe('HostPayoutService', () => {
     platformFeeCents: 100,
     orgFeeCents: 0,
     refundedAt: null,
+    // One seat, which is what every row was before EVT-47 and what these
+    // money cases are about. The multi-seat arithmetic has its own suite.
+    quantity: 1,
     ...over,
   });
 

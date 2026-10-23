@@ -56,7 +56,8 @@ describe('TicketPassService', () => {
           createdAt: new Date('2026-10-22T15:57:14Z'),
         }),
         findMany: jest.fn().mockResolvedValue([]),
-        count: jest.fn().mockResolvedValue(over.seats ?? 1),
+        // Seats are summed, not counted (EVT-47): one row can be several.
+        aggregate: jest.fn().mockResolvedValue({ _sum: { quantity: over.seats ?? 1 } }),
         update: jest.fn().mockResolvedValue({}),
       },
       event: { findUnique: jest.fn().mockResolvedValue({ id: EVENT, ...anEvent() }) },
@@ -217,12 +218,16 @@ describe('TicketPassService', () => {
 
       await service.confirm('ticket-1');
 
-      expect(prisma.ticket.count).toHaveBeenCalledWith({
+      expect(prisma.ticket.aggregate).toHaveBeenCalledWith({
         where: {
           eventId: EVENT,
           buyerEmail: { equals: EMAIL, mode: 'insensitive' },
           refundedAt: null,
         },
+        // Summed. A `count()` here shows somebody who bought three in one go
+        // a pass reading "1 seat", and is right about every row sold before
+        // the selector existed — which is what would hide it.
+        _sum: { quantity: true },
       });
     });
 

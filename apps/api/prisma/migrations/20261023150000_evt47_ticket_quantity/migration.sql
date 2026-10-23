@@ -1,0 +1,13 @@
+-- EVT-47: a buyer can ask for more than one seat.
+--
+-- Checkout was created with a hardcoded `quantity: 1` and the event page had
+-- no way to ask for two, so wanting two seats meant going through checkout
+-- twice. Two of the ten tickets sold before this were exactly that, by two
+-- different people, on the same show.
+--
+-- Defaulting to 1 is correct for every existing row rather than merely
+-- convenient: each of them really was one seat. It does mean SUM(quantity)
+-- and COUNT(*) agree on all historical data, so a reader that counts rows
+-- stays right until the first multi-seat sale and then is quietly wrong —
+-- which is why the seat counts are written as sums from the start.
+ALTER TABLE "tickets" ADD COLUMN "quantity" INTEGER NOT NULL DEFAULT 1;

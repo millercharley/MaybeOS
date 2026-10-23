@@ -1140,6 +1140,19 @@ model Ticket {
   userId                String?
   buyerEmail            String
   buyerName             String?
+  /// How many seats this one purchase is for (EVT-47).
+  ///
+  /// Added because there was no way to ask for two. Checkout was created with
+  /// a hardcoded `quantity: 1`, so somebody wanting two seats bought twice —
+  /// two Stripe sessions, two rows, two of everything. Annette Neblett and
+  /// James Knowles both did it on the same show, and Annette wrote in to ask
+  /// where her tickets were.
+  ///
+  /// Defaults to 1, which is what every row written before this is: true of
+  /// them individually and true of the ten that existed when it shipped.
+  /// Seats are therefore `SUM(quantity)` and never `COUNT(*)` — the two agree
+  /// on all historical data, which is exactly what makes the mistake easy.
+  quantity              Int       @default(1)
   /// What the buyer actually paid, all in. The three amounts below are how it
   /// was split, recorded at purchase rather than recomputed later — plans and
   /// fees change, and a receipt from March must still add up in December.

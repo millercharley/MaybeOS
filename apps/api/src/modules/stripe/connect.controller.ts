@@ -161,6 +161,7 @@ export class ConnectController {
           cancelUrl: dto.cancelUrl,
           buyerEmail: dto.email,
           userId: user?.userId,
+          quantity: dto.quantity,
         }),
       (err) =>
         this.logger.error(

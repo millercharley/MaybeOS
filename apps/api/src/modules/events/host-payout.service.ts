@@ -46,10 +46,19 @@ export class HostPayoutService {
 
     const tickets = await this.prisma.ticket.findMany({
       where: { eventId: event.id },
-      select: { amountCents: true, platformFeeCents: true, orgFeeCents: true, refundedAt: true },
+      select: {
+        amountCents: true,
+        platformFeeCents: true,
+        orgFeeCents: true,
+        refundedAt: true,
+        // Seats, for the counts below (EVT-47). The money fields are already
+        // purchase totals and need no multiplying.
+        quantity: true,
+      },
     });
 
     const sold = tickets.filter((t) => !t.refundedAt);
+    const seats = (rows: { quantity: number }[]) => rows.reduce((n, t) => n + t.quantity, 0);
     const grossCents = sold.reduce(
       (n, t) => n + (t.amountCents - t.platformFeeCents - t.orgFeeCents),
       0,
@@ -68,8 +77,13 @@ export class HostPayoutService {
       grossCents,
       shareBps,
       amountCents: shareOf(grossCents, shareBps),
-      ticketCount: sold.length,
-      refundedCount: tickets.length - sold.length,
+      /*
+        Seats, not rows (EVT-47). A host reading "2 tickets" against $35.25 of
+        takings would be reading a contradiction: the figure beside the money
+        has to count the same things the money was collected for.
+      */
+      ticketCount: seats(sold),
+      refundedCount: seats(tickets) - seats(sold),
       payout: event.payout,
     };
   }

@@ -437,6 +437,7 @@ export class ConnectService {
     cancelUrl,
     userId,
     buyerEmail,
+    quantity = 1,
   }: {
     orgId: string;
     eventId: string;
@@ -444,13 +445,14 @@ export class ConnectService {
     cancelUrl: string;
     userId?: string;
     buyerEmail?: string;
+    /** Seats (EVT-47). Absent means one, as every caller meant before. */
+    quantity?: number;
   }): Promise<{ url: string }> {
     const event = await this.prisma.event.findFirst({
       where: { id: eventId, orgId },
       include: {
         // The account id is omitted globally; charging needs it.
         org: { omit: { stripeAccountId: false } },
-        _count: { select: { tickets: true } },
       },
     });
     if (!event) throw new NotFoundException('Event not found');
@@ -473,8 +475,29 @@ export class ConnectService {
     if (event.endTime < new Date()) {
       throw new BadRequestException('This event has already happened');
     }
-    if (event.capacity !== null && event._count.tickets >= event.capacity) {
+    /*
+      Seats sold, summed rather than counted (EVT-47).
+
+      This was `_count.tickets >= capacity`, which counted *rows*. One row is
+      no longer one seat, so a 24-seat show could be sold 24 purchases of two
+      and admit 48 people. The two agree on every ticket sold before this,
+      which is what would have made it survive a casual read.
+    */
+    const sold = await this.seatsSold(eventId);
+
+    if (event.capacity !== null && sold >= event.capacity) {
       throw new BadRequestException('This event is sold out');
+    }
+    if (event.capacity !== null && sold + quantity > event.capacity) {
+      const left = event.capacity - sold;
+      // The number, not a refusal. Somebody asking for four seats of three
+      // left will take three; "sold out" sends them away from an event that
+      // is not.
+      throw new BadRequestException(
+        left === 1
+          ? 'Only 1 seat is left, so you can book one at a time'
+          : `Only ${left} seats are left`,
+      );
     }
 
     const org = event.org;
@@ -490,6 +513,9 @@ export class ConnectService {
       ticketCents: event.priceCents,
       plan: org.plan,
       orgFeeCents: org.ticketFeeCents,
+      // Throws for anything outside 1..MAX_SEATS_PER_PURCHASE, so a quantity
+      // that got past the DTO still cannot produce a charge.
+      quantity,
     });
 
     let session: Stripe.Checkout.Session;
@@ -499,10 +525,24 @@ export class ConnectService {
           mode: 'payment',
           line_items: [
             {
-              quantity: 1,
+              /*
+                One line item at `quantity` seats, rather than one item per
+                seat, so Stripe's own page reads "3 × $11.75" and the buyer
+                sees the per-seat price they were quoted.
+
+                Deliberately **not** `adjustable_quantity`, which would let
+                the buyer change the number on Stripe's page after the session
+                is made. Two things are already fixed by then and neither
+                follows the change: `application_fee_amount` is an absolute
+                figure, so MaybeOS would keep collecting one seat's fee on a
+                basket of five; and the capacity check above has already run
+                against the number asked for. Letting Stripe's UI move the
+                quantity would quietly undo both.
+              */
+              quantity: price.quantity,
               price_data: {
                 currency: event.currency,
-                unit_amount: price.totalCents,
+                unit_amount: price.unitTotalCents,
                 product_data: {
                   name: event.title,
                   description: `${org.name} · ${event.startTime.toDateString()}`,
@@ -511,8 +551,9 @@ export class ConnectService {
             },
           ],
           payment_intent_data: {
-            // MaybeOS's cut only. The co-op's own fee stays in the co-op's
-            // account — sweeping it in here would be MaybeOS taking it.
+            // MaybeOS's cut only, for every seat. The co-op's own fee stays
+            // in the co-op's account — sweeping it in here would be MaybeOS
+            // taking it.
             application_fee_amount: price.applicationFeeCents,
           },
           ...(buyerEmail ? { customer_email: buyerEmail } : {}),
@@ -522,8 +563,18 @@ export class ConnectService {
             eventId,
             userId: userId ?? '',
             ticketCents: String(price.ticketCents),
-            platformFeeCents: String(price.platformFeeCents),
-            orgFeeCents: String(price.orgFeeCents),
+            /*
+              Carried as **totals for the purchase**, not per seat.
+
+              `recordTicketFromSession` writes these straight onto the row,
+              and the row's own comment says they are how `amountCents` was
+              split — so a two-seat sale recording one seat's fee would be a
+              receipt that does not add up, in the table the payouts are
+              worked out from.
+            */
+            platformFeeCents: String(price.applicationFeeCents),
+            orgFeeCents: String(price.orgFeeCents * price.quantity),
+            quantity: String(price.quantity),
           },
           success_url: successUrl,
           cancel_url: cancelUrl,
@@ -572,6 +623,28 @@ export class ConnectService {
    * Found on 2026-08-18 by the first real ticket sale, which looked like a
    * success from every angle except the one that mattered.
    */
+  /**
+   * Seats sold for an event, summed (EVT-47).
+   *
+   * Never `count()`. One ticket row can now be several seats, and the two
+   * answers agree on every row written before the quantity selector existed —
+   * so a counter stays right until the first multi-seat sale and is then
+   * quietly wrong, in the function that decides whether a show is full.
+   *
+   * Refunded seats are not sold: a refund puts the seat back.
+   */
+  async seatsSold(
+    eventId: string,
+    db: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<number> {
+    const sum = await db.ticket.aggregate({
+      where: { eventId, refundedAt: null },
+      _sum: { quantity: true },
+    });
+
+    return sum._sum.quantity ?? 0;
+  }
+
   async recordTicketFromSession(
     session: Stripe.Checkout.Session,
     db: Prisma.TransactionClient | PrismaService = this.prisma,
@@ -584,12 +657,23 @@ export class ConnectService {
     });
     if (existing) return existing;
 
+    /*
+      Seats, from the session's own metadata (EVT-47).
+
+      Falls back to 1 rather than 0: a sale that somehow lost its metadata is
+      still at least one seat, and a zero-seat ticket is a row that admits
+      nobody while holding somebody's money. Sessions created before this
+      existed carry no `quantity` at all and are correctly read as one.
+    */
+    const quantity = Math.max(1, Number(meta.quantity ?? 1) || 1);
+
     const ticket = await db.ticket.create({
       data: {
         eventId: meta.eventId,
         userId: meta.userId || null,
         buyerEmail: session.customer_details?.email ?? 'unknown',
         buyerName: session.customer_details?.name ?? null,
+        quantity,
         amountCents: session.amount_total ?? 0,
         platformFeeCents: Number(meta.platformFeeCents ?? 0),
         orgFeeCents: Number(meta.orgFeeCents ?? 0),
@@ -602,11 +686,30 @@ export class ConnectService {
 
     // A ticket is also an RSVP. Buying one and then being asked to say whether
     // you are coming would be absurd, and the door list reads RSVPs.
+    /*
+      The seats beyond the first are the buyer's guests (EVT-47).
+
+      `plusOnes` is the field the door list already renders and the one the
+      expected head count already sums as `1 + plusOnes`, so a three-seat
+      purchase arrives on the door as one party of three without anything
+      downstream being taught a new idea. Writing three RSVPs instead would
+      put the same name on the list three times — which is the thing EVT-46
+      had to add a label to explain.
+    */
+    const plusOnes = quantity - 1;
+
     if (meta.userId) {
       await db.rsvp.upsert({
         where: { eventId_userId: { eventId: meta.eventId, userId: meta.userId } },
-        create: { eventId: meta.eventId, userId: meta.userId, status: 'CONFIRMED' },
-        update: { status: 'CONFIRMED' },
+        create: { eventId: meta.eventId, userId: meta.userId, status: 'CONFIRMED', plusOnes },
+        /*
+          Added to, not replaced. A member who bought two seats last week and
+          one more today is bringing three people, and `plusOnes: 0` from the
+          second purchase would have thrown the first two away. The unique
+          index on (eventId, userId) means this is the only row they get, so
+          it has to carry every seat they have bought.
+        */
+        update: { status: 'CONFIRMED', plusOnes: { increment: plusOnes } },
       });
     } else {
       await db.rsvp.create({
@@ -614,6 +717,7 @@ export class ConnectService {
           eventId: meta.eventId,
           guestEmail: ticket.buyerEmail,
           guestName: ticket.buyerName,
+          plusOnes,
           status: 'CONFIRMED',
         },
       });

@@ -1870,7 +1870,8 @@ class ApiClient {
     buyTicket: (
       orgId: string,
       eventId: string,
-      data: { successUrl: string; cancelUrl: string; email?: string },
+      /** `quantity` is seats (EVT-47); absent means one. */
+      data: { successUrl: string; cancelUrl: string; email?: string; quantity?: number },
       token?: string,
     ) =>
       this.request<{ url: string }>(`/orgs/${orgId}/events/${eventId}/tickets/checkout`, {
