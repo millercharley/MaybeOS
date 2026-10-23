@@ -18,6 +18,7 @@ import {
   ADVERTISED_PRICE_IDS,
 } from './maybeos-plans';
 import { ConnectService } from './connect.service';
+import { TicketPassService } from '../events/ticket-pass.service';
 import { membershipStatusFor } from './subscription-status';
 import { initiationOwed } from './initiation';
 import { applicationFeePercent, duesFeeFor } from './dues-pricing';
@@ -73,6 +74,9 @@ export class StripeService implements OnModuleInit {
     // Stripe posts to, so it dispatches to it (D-013 keeps the two billing
     // systems apart, not the one signature-verified entry point).
     private readonly connectService: ConnectService,
+    // Confirming a ticket to the person who bought it (EVT-46). Used only
+    // after the webhook's transaction has committed — see `handleWebhook`.
+    private readonly ticketPasses: TicketPassService,
   ) {
     const stripeKey = this.configService.get<string>('STRIPE_SECRET_KEY');
     if (!stripeKey) {
@@ -1025,7 +1029,56 @@ export class StripeService implements OnModuleInit {
       throw err;
     }
 
+    /*
+      Confirm the ticket to whoever bought it (EVT-46).
+
+      **After the transaction, deliberately, and outside it.** Everything this
+      webhook writes belongs in the claim's transaction (D-014) and a Postmark
+      call does not: the transaction holds the runtime's only connection
+      (D-018) on a 20s budget, and the first real ticket sale already missed a
+      5s one by 64ms. Posting to a third party from inside it is how that
+      failure comes back — the sale committed, the claim rolled back, and
+      Stripe retrying forever.
+
+      **Nothing here can throw.** The sale is committed and Stripe must be
+      told so. A redelivery would hit the claim's unique index, return
+      `already processed` and never reach this line, so an exception escaping
+      here would turn a successful sale into a confirmation nobody ever sends.
+      Failures are left on the row — `confirmationSentAt` stays null — and the
+      scheduler's sweep picks them up within fifteen minutes.
+    */
+    await this.confirmTicketIfAny(event);
+
     return { received: true };
+  }
+
+  /**
+   * The ticket this event sold, told to its buyer.
+   *
+   * Reads the row back by `stripeSessionId` rather than being handed one: the
+   * ticket was written inside a transaction this code is now outside of, and
+   * the unique index that makes the webhook idempotent is the same index that
+   * makes this a lookup.
+   */
+  private async confirmTicketIfAny(event: Stripe.Event): Promise<void> {
+    if (event.type !== 'checkout.session.completed') return;
+
+    const session = event.data.object as Stripe.Checkout.Session;
+    if (session.metadata?.kind !== 'event_ticket') return;
+
+    try {
+      const ticket = await this.prisma.ticket.findUnique({
+        where: { stripeSessionId: session.id },
+        select: { id: true },
+      });
+      if (!ticket) return;
+
+      await this.ticketPasses.confirm(ticket.id);
+    } catch (err) {
+      this.logger.error(
+        `Ticket confirmation for session ${session.id} failed; the sweep will retry it: ${String(err)}`,
+      );
+    }
   }
 
   /** Prisma P2002 = unique constraint violation, i.e. another delivery won the race. */

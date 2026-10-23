@@ -31,6 +31,7 @@ describe('EventsService — check-in', () => {
     eventCoHost: { findMany: jest.Mock };
     rsvp: { findFirst: jest.Mock; findMany: jest.Mock; update: jest.Mock };
     attendance: { create: jest.Mock; deleteMany: jest.Mock; findMany: jest.Mock };
+    ticket: { findMany: jest.Mock };
     $transaction: jest.Mock;
   };
 
@@ -42,6 +43,9 @@ describe('EventsService — check-in', () => {
       eventCoHost: { findMany: jest.fn().mockResolvedValue([]) },
       rsvp: { findFirst: jest.fn(), findMany: jest.fn(), update: jest.fn() },
       attendance: { create: jest.fn(), deleteMany: jest.fn(), findMany: jest.fn() },
+      // Who paid, for the seat numbering on the door list (EVT-46). These
+      // suites sell no tickets and assert nothing about it.
+      ticket: { findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
     };
 

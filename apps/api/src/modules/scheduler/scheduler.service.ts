@@ -10,6 +10,7 @@ import { RecapService } from '../recap/recap.service';
 import { HostBriefingService } from '../service/host-briefing.service';
 import { ServiceService } from '../service/service.service';
 import { CalendarImportService } from '../calendar/calendar-import.service';
+import { TicketPassService } from '../events/ticket-pass.service';
 import { CommonsDigestService } from '../commons/commons-digest.service';
 
 export interface TaskResult {
@@ -60,6 +61,7 @@ export class SchedulerService {
     private readonly recap: RecapService,
     private readonly rota: ServiceService,
     private readonly calendars: CalendarImportService,
+    private readonly ticketPasses: TicketPassService,
   ) {}
 
   async runDueTasks(now: Date = new Date()): Promise<RunResult> {
@@ -182,6 +184,34 @@ export class SchedulerService {
       };
     }
   }
+  /**
+   * Tell ticket buyers they bought a ticket (EVT-46).
+   *
+   * The webhook does this on the way past, so on a healthy day this finds
+   * nothing. It exists for the days that are not: a Postmark outage, a Lambda
+   * killed between the commit and the send, and — the first time it ran — the
+   * eight people who had already paid before any of this was built and had
+   * been told nothing at all.
+   *
+   * Reconciliation, like the door codes: it asks who is still owed rather
+   * than hanging off the one write that happens to create a ticket, so a sale
+   * arriving by some path written next year is covered too.
+   */
+  private async sendTicketConfirmations(): Promise<TaskResult> {
+    try {
+      const { sent, failed } = await this.ticketPasses.sweep();
+      if (sent > 0) this.logger.log(`Sent ${sent} ticket confirmation(s)`);
+      return { task: 'send-ticket-confirmations', processed: sent, failed, errors: [] };
+    } catch (error) {
+      return {
+        task: 'send-ticket-confirmations',
+        processed: 0,
+        failed: 1,
+        errors: [(error as Error).message],
+      };
+    }
+  }
+
   /**
    * Draft the monthly recap on the 1st (RCP-01).
    *

@@ -410,6 +410,17 @@ export function DoorList({
                         +{a.plusOnes} guest{a.plusOnes > 1 ? 's' : ''}
                       </span>
                     )}
+                    {/*
+                      Why the same name is on this list twice (EVT-46). Buying
+                      two seats means checking out twice, so it is two rows —
+                      and two rows reads as a mistake unless the list says
+                      otherwise. Both get tapped as both people arrive.
+                    */}
+                    {a.seat && (
+                      <span className="rounded-full bg-paper-dim px-2 py-0.5 text-ink">
+                        Seat {a.seat.n} of {a.seat.of}
+                      </span>
+                    )}
                   </span>
                 </span>
 

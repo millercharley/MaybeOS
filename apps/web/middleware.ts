@@ -28,6 +28,12 @@ const APP_ROUTES = [
   // `sunrise.maybeos.org/radar/unsubscribe` to a portal section that does not
   // exist, and the member would get a 404 instead of a way to stop the email.
   '/radar',
+  // A ticket buyer's door pass (EVT-46). Same category as `/radar`: a page
+  // opened from an email, belonging to the app rather than to a co-op. Without
+  // it, `maybeitsfate.maybeos.org/pass?token=…` would be rewritten to a portal
+  // section that does not exist, and somebody standing at the door would get a
+  // 404 instead of their seats.
+  '/pass',
 ];
 
 export function middleware(request: NextRequest) {

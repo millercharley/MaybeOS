@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { SchedulerService } from '../scheduler.service';
+import { TicketPassService } from '../../events/ticket-pass.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { CommonsService } from '../../commons/commons.service';
 import { ReportService } from '../../impact/report.service';
@@ -75,6 +76,12 @@ describe('SchedulerService', () => {
               .fn()
               .mockResolvedValue({ orgId: null, events: 0, bookings: 0, released: 0, finished: true }),
           },
+        },
+        // EVT-46. The safety net under ticket confirmations: on a healthy
+        // tick it finds nothing, because the webhook already sent them.
+        {
+          provide: TicketPassService,
+          useValue: { sweep: jest.fn().mockResolvedValue({ sent: 0, failed: 0 }) },
         },
         // DOR-01. The door pass is reconciliation, so it does nothing at all
         // unless a co-op has switched door access on and named a sheet.
@@ -236,6 +243,7 @@ describe('SchedulerService — compose-pending-reports', () => {
       providers: [
         SchedulerService,
         { provide: CalendarImportService, useValue: { runScheduled: jest.fn().mockResolvedValue({ orgId: null, events: 0, bookings: 0, released: 0, finished: true }) } },
+        { provide: TicketPassService, useValue: { sweep: jest.fn().mockResolvedValue({ sent: 0, failed: 0 }) } },
         { provide: PrismaService, useValue: prisma },
         { provide: CommonsService, useValue: { closeProposal: jest.fn() } },
         { provide: ReportService, useValue: reports },

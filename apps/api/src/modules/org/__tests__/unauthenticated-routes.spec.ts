@@ -40,6 +40,11 @@ const EXPECTED = [
   // Stopping Radar email from the link in one (RDR-01). HMAC-signed, and it
   // authorises exactly one thing: switching that membership's digest off.
   'POST /radar/unsubscribe',
+  // A ticket buyer's door pass (EVT-46). HMAC-signed over the event and the
+  // address that paid, and it authorises exactly one thing: seeing how many
+  // seats that address holds. The people it serves are not members and have
+  // no account, so there is no session to ask for.
+  'GET /tickets/pass',
   'GET /invites',
 
   // What a co-op has chosen to publish.

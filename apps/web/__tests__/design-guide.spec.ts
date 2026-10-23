@@ -49,6 +49,10 @@ const OUTSIDE_THE_SHELL = [
   // card in an empty viewport, opened from an email by somebody with no
   // session, so there is no shell around it to fill.
   'app/radar/',
+  // A ticket buyer's door pass (EVT-46). Same shape again: one card in an
+  // empty viewport, opened from an email by somebody who has no account to
+  // have a session with, so there is no shell around it to fill.
+  'app/pass/',
 ];
 
 /**
