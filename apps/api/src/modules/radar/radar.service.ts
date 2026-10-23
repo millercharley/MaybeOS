@@ -652,8 +652,10 @@ export class RadarService {
         (event) => !alreadySent.has(event.id) && !theirRsvps.has(event.id),
       );
 
-      const matches = rankMatches(candidates, standings, MAX_PER_DIGEST);
-      if (matches.length === 0) return false;
+      // Runs, not nights (RDR-05): three dates of one play are one entry, and
+      // the cap counts entries.
+      const runs = rankMatches(candidates, standings, MAX_PER_DIGEST);
+      if (runs.length === 0) return false;
 
       // Recorded before the send, like `doorPinEmailedAt`: EmailService
       // swallows failures, so the only honest thing a marker can mean is that
@@ -661,7 +663,21 @@ export class RadarService {
       // every fifteen minutes.
       await this.prisma.$transaction([
         this.prisma.radarSend.createMany({
-          data: matches.map((match) => ({ userOrgId: member.id, eventId: match.event.id })),
+          /*
+            Every night of a run is marked, not just the one on the card
+            (RDR-05).
+
+            `radarSend` is what stops a gathering being mentioned twice, and
+            it is keyed on the event. Marking only the night that happened to
+            lead the card would leave the other two unmarked and eligible —
+            so next week's digest would offer the same play again, as the
+            dates that had not been "sent" yet. The member would have been
+            told about it twice, which is the bug this change exists to fix,
+            arriving a week late.
+          */
+          data: runs.flatMap((run) =>
+            run.events.map((event) => ({ userOrgId: member.id, eventId: event.id })),
+          ),
           skipDuplicates: true,
         }),
         this.prisma.userOrg.update({
@@ -675,19 +691,30 @@ export class RadarService {
         {
         memberName: member.user.name ?? 'there',
         orgName: org.name,
-        events: matches.map((match) => ({
-          title: match.event.title,
-          when: match.event.startTime.toLocaleString('en-US', {
-            timeZone: match.event.timezone,
-            dateStyle: 'full',
-            timeStyle: 'short',
-          }),
-          where: match.event.room?.name ?? match.event.location?.name ?? null,
-          description: match.event.description ?? null,
-          matched: match.matched,
-          declaredMatches: match.declaredMatches,
-          ticketed: match.event.priceCents !== null,
-          rsvpUrl: this.rsvpUrl(org.slug, match.event.slug, match.event.priceCents !== null),
+        events: runs.map((run) => ({
+          title: run.event.title,
+          when: this.whenOf(run.event),
+          /*
+            Every night, so the card can show the run rather than imply it.
+            One entry for an ordinary gathering, which the template renders
+            as the single line it always did.
+          */
+          dates: run.events.map((event) => this.whenOf(event)),
+          where: run.event.room?.name ?? run.event.location?.name ?? null,
+          description: run.event.description ?? null,
+          matched: run.matched,
+          declaredMatches: run.declaredMatches,
+          ticketed: run.event.priceCents !== null,
+          /*
+            A run's button goes to the events list, not to one night
+            (Charley, RDR-05): "the 'Get a Ticket' button simply takes the
+            user the Events page to pick a show." Sending them to Thursday
+            when they wanted Saturday is a worse answer than asking.
+          */
+          rsvpUrl:
+            run.events.length > 1
+              ? `${this.appUrl()}/portal/${org.slug}/events`
+              : this.rsvpUrl(org.slug, run.event.slug, run.event.priceCents !== null),
         })),
         unsubscribeUrl: this.unsubscribeUrl(member.id),
         // Where a member's reply goes (EML-03).
@@ -721,6 +748,21 @@ export class RadarService {
    * filters, link previews and corporate scanners, and none of them should be
    * able to RSVP on a member's behalf. The page takes it from there.
    */
+  /**
+   * A night, in the event's own timezone (SPC-08).
+   *
+   * Pulled out of the payload builder because a run formats several of them
+   * and two spellings of the same date in one email is how somebody decides
+   * the times cannot be trusted.
+   */
+  private whenOf(event: { startTime: Date; timezone: string }): string {
+    return event.startTime.toLocaleString('en-US', {
+      timeZone: event.timezone,
+      dateStyle: 'full',
+      timeStyle: 'short',
+    });
+  }
+
   private rsvpUrl(orgSlug: string, eventSlug: string, ticketed: boolean): string {
     const event = `${this.appUrl()}/portal/${orgSlug}/events/${eventSlug}`;
     // A ticketed event is bought, not RSVPed: the page offers Buy and refuses

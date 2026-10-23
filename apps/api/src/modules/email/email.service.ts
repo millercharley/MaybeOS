@@ -230,6 +230,14 @@ export interface RadarDigestEvent {
   title: string;
   /** Already formatted in the event's own timezone by the caller. */
   when: string;
+  /**
+   * Every night of a run, soonest first, already formatted (RDR-05).
+   *
+   * One entry for an ordinary gathering, where it says the same thing as
+   * `when` and the card shows a single line. Optional so a caller written
+   * before runs existed still renders.
+   */
+  dates?: string[];
   where: string | null;
   description: string | null;
   /** The member's interests that earned it a place — printed as the reason. */
@@ -975,7 +983,20 @@ export class EmailService {
             (event) => `
             <div style="border:1px solid #ddd7cc;border-radius:12px;padding:16px;margin:0 0 16px;">
               <h2 style="margin:0 0 4px;font-size:18px;">${escapeHtml(event.title)}</h2>
-              <p style="margin:0 0 2px;color:#6b665e;">${escapeHtml(event.when)}</p>
+              ${
+                /*
+                  A run shows every night; an ordinary gathering shows the one
+                  line it always did (RDR-05). Listed rather than summarised
+                  as "and 2 more dates", because the member's next question is
+                  which nights — and an email that raises it without answering
+                  it has sent them to the website to find out.
+                */
+                (event.dates?.length ?? 0) > 1
+                  ? `<p style="margin:0 0 2px;color:#6b665e;">${event.dates!
+                      .map((date) => escapeHtml(date))
+                      .join('<br>')}</p>`
+                  : `<p style="margin:0 0 2px;color:#6b665e;">${escapeHtml(event.when)}</p>`
+              }
               ${event.where ? `<p style="margin:0 0 8px;color:#6b665e;">${escapeHtml(event.where)}</p>` : ''}
               ${event.description ? `<p style="margin:8px 0 12px;">${escapeHtml(clamp(event.description, 400))}</p>` : ''}
               <p style="margin:0 0 12px;color:#6b665e;font-size:13px;">${
@@ -984,7 +1005,16 @@ export class EmailService {
                   : `Because you've been to ${escapeHtml(event.matched.join(', '))} gatherings before`
               }</p>
               <p style="margin:0;"><a href="${escapeHtml(event.rsvpUrl)}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:#fff;border-radius:6px;text-decoration:none;">${
-                event.ticketed ? 'Get a ticket' : 'RSVP'
+                /*
+                  A run's button goes to the events list, so the word has to
+                  promise a choice rather than a seat: "Get a ticket" on a
+                  page listing three nights reads as a broken button.
+                */
+                (event.dates?.length ?? 0) > 1
+                  ? 'Pick a date'
+                  : event.ticketed
+                    ? 'Get a ticket'
+                    : 'RSVP'
               }</a></p>
             </div>`,
           )
