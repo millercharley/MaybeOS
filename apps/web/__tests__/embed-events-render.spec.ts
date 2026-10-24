@@ -140,6 +140,47 @@ describe('the events embed', () => {
   });
 
   /**
+   * The squashed button (EVT-50).
+   *
+   * In the row the button is a flex child and gets blockified for free; in
+   * the hero it is not, so a plain inline `<a>` ignored its `margin-top`
+   * entirely and rode up over the chips above it. An inline element's
+   * vertical margins do nothing, which is the kind of rule that is obvious
+   * once something looks wrong and invisible until then.
+   */
+  it('gives the button a box, so its top margin is not ignored', () => {
+    const go = SOURCE.slice(SOURCE.indexOf("'.go {"), SOURCE.indexOf("'.go.buy"));
+
+    expect(go).toContain('display: inline-block');
+  });
+
+  /**
+   * Each event is its own card (EVT-50).
+   *
+   * Charley: "I also want each event to have an outline or bubble, like the
+   * example screenshot." Hairlines between rows read as a timetable; the
+   * public events page draws cards, and so should a co-op's own website.
+   */
+  it('draws each event as a card rather than a ruled row', () => {
+    const event = SOURCE.slice(SOURCE.indexOf("'.event {"), SOURCE.indexOf("'.event:last-child"));
+
+    expect(event).toContain('border: 1px solid');
+    expect(event).toContain('border-radius');
+    expect(event).not.toContain('border-bottom');
+  });
+
+  /**
+   * And supplies its own ground. MaybeItsFate's accent is #afd2e9 and their
+   * page is near enough the same blue that a transparent card disappeared
+   * into it — the reason the membership cards had to do this too (PUB-04).
+   */
+  it('gives the card its own background, so it shows on any site', () => {
+    const event = SOURCE.slice(SOURCE.indexOf("'.event {"), SOURCE.indexOf("'.event:last-child"));
+
+    expect(event).toContain('background: #fff');
+  });
+
+  /**
    * A link that recolours itself to browser-blue on a co-op's own page is a
    * link that looks like somebody else's. The underline is what says it can
    * be pressed.
