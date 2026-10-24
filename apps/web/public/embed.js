@@ -122,8 +122,25 @@
       button in the row now, and baseline alignment hangs them off the first
       line of the title.
     */
-    '.event { display: flex; gap: 16px; padding: 16px 0; border-bottom: 1px solid #e2e2e2; align-items: center; }',
-    '.event:last-child { border-bottom: 0; }',
+    /*
+      A card, not a ruled row (EVT-50).
+
+      Charley: "I also want each event to have an outline or bubble, like the
+      example screenshot." The public events page at /orgs/:slug/events draws
+      each event as its own bordered card, and the embed was drawing a table
+      with hairlines between — which reads as a timetable on a co-op's
+      website rather than as a list of things to go to.
+
+      It also supplies its own white ground, for the reason the membership
+      cards had to (PUB-04): MaybeItsFate's brand colour is #afd2e9 and their
+      page is near enough the same blue that a transparent card vanished into
+      it. A card that carries its own background looks the same on anybody's
+      site, which is the whole promise of an embed.
+    */
+    '.event { display: flex; gap: 16px; align-items: center; background: #fff; ' +
+      'border: 1px solid #dcdcdc; border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; ' +
+      'box-shadow: 0 1px 2px rgba(0,0,0,0.04); }',
+    '.event:last-child { margin-bottom: 0; }',
     /*
       The poster. Fixed box with `object-fit: cover`, so a portrait photo and
       a wide one make the same shape and the rows stay a list.
@@ -156,7 +173,15 @@
       buying, outlined for looking. A co-op that sells a ticket and a co-op
       that runs a free night should not get the same emphasis on the same row.
     */
-    '.go { flex: 0 0 auto; text-decoration: none; white-space: nowrap; border-radius: 9px; ' +
+    /*
+      `inline-block` is load-bearing, not tidiness (EVT-50).
+
+      In the row this is a flex child and gets blockified for free. In the
+      hero it is not, so as a plain inline `<a>` it ignored `margin-top`
+      entirely and rode up over the chips above it — the squashed button
+      Charley photographed. An inline element's vertical margins do nothing.
+    */
+    '.go { display: inline-block; flex: 0 0 auto; text-decoration: none; white-space: nowrap; border-radius: 9px; ' +
       'padding: 10px 16px; font-size: 14px; font-weight: 700; border: 1px solid ' + accentText + '; ' +
       'transition: transform 0.06s ease, box-shadow 0.12s ease, filter 0.12s ease; }',
     '.go.buy { background: ' + accentText + '; color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.18); }',
@@ -172,7 +197,7 @@
       website is what is on next.
     */
     '.hero { border: 1px solid #dcdcdc; border-radius: 12px; background: #fff; overflow: hidden; ' +
-      'margin-bottom: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }',
+      'margin-bottom: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); }',
     '.hero-label { padding: 14px 18px 0; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; ' +
       'text-transform: uppercase; color: #666; }',
     // A band of the co-op's own colour when there is no poster, so the hero is
@@ -187,7 +212,9 @@
     '.hero-desc { margin-top: 8px; font-size: 14px; color: #444; }',
     '.chips { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }',
     '.chip { font-size: 12px; color: #444; background: #f1f0ee; border-radius: 999px; padding: 5px 12px; }',
-    '.hero-go { margin-top: 14px; }',
+    // Cleared because the chips above it are a flex row, which does not
+    // collapse margins with what follows the way stacked blocks would.
+    '.hero-go { display: inline-block; margin-top: 16px; }',
     '.empty, .failed { padding: 24px 0; color: #666; font-size: 14px; }',
     /*
       On a phone the row stacks, and the button goes full width so it is a
@@ -196,7 +223,7 @@
       somebody is reading.
     */
     '@media (max-width: 30rem) { .event { display: block; } .thumb { display: none; } ' +
-      '.go { display: block; width: 100%; text-align: center; margin-top: 12px; } }',
+      '.go, .hero-go { display: block; width: 100%; text-align: center; margin-top: 12px; } }',
     /*
       The header above the prices (PUB-03).
 
