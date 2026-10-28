@@ -20,9 +20,29 @@ export type UnreadKey = 'messages' | 'commons';
 export interface UnreadCounts {
   messages: number;
   commons: number;
+  /**
+   * The Commons total, split by channel (CMN-27).
+   *
+   * Optional because an API older than this page does not send it, and a
+   * missing breakdown should mean "no dots" rather than a crash. Channels
+   * with nothing unread are absent, not zero.
+   */
+  channels?: Record<string, number>;
 }
 
-export const NO_UNREAD: UnreadCounts = { messages: 0, commons: 0 };
+export const NO_UNREAD: UnreadCounts = { messages: 0, commons: 0, channels: {} };
+
+/**
+ * How many unread things are in one channel (CMN-27).
+ *
+ * The badge in the sidebar was a number nobody could act on: it said 2, and
+ * the Commons page gave no hint which of the co-op's channels held them — so
+ * a member opened the Commons, read whichever channel it landed on, and the 2
+ * stayed. This is what lets the channel list say where.
+ */
+export function unreadInChannel(channelId: string, counts: UnreadCounts): number {
+  return counts.channels?.[channelId] ?? 0;
+}
 
 /**
  * What the bubble reads.

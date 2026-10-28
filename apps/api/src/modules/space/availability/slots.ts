@@ -32,6 +32,22 @@ export interface Slot {
   /** UTC instant the slot starts. */
   start: Date;
   end: Date;
+  /**
+   * The local calendar date this slot belongs to, `YYYY-MM-DD` (SPC-34).
+   *
+   * Sent because the client cannot work it out. `start` is a UTC instant, and
+   * the booking screen derived the date from it by slicing the first ten
+   * characters of the ISO string — which is the local date only for rooms
+   * east of Greenwich. A member picking 8:30pm on 18 February in New York was
+   * shown "February 19" to confirm, because 20:30 EST is 01:30 UTC the next
+   * day. The booking itself was right; the sentence asking her to confirm it
+   * was not, which is worse — she had no way to tell which.
+   *
+   * `minutes` already exists for exactly this reason ("for rendering without
+   * re-deriving the zone"). This is its other half, and the pair of them mean
+   * the client never has to know what a timezone is.
+   */
+  date: string;
   /** Minutes past local midnight, for rendering without re-deriving the zone. */
   minutes: number;
   available: boolean;
@@ -193,7 +209,7 @@ export function slotsForDate(query: SlotQuery): Slot[] {
     const end = new Date(start.getTime() + durationMinutes * 60_000);
     const finishes = minutes + durationMinutes;
 
-    const slot: Slot = { start, end, minutes, available: true };
+    const slot: Slot = { start, end, date, minutes, available: true };
 
     // Order matters only for which reason gets reported. Time already gone is
     // the most useful thing to say, then the room's own hours, then what

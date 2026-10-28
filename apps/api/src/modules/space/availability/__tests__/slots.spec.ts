@@ -61,6 +61,56 @@ describe('slotsForDate', () => {
     expect(free(slots).at(-1)).toBe(15 * 60);
   });
 
+  /**
+   * The date a slot belongs to, said rather than inferred (SPC-34).
+   *
+   * A member tried to book 8:30pm on 18 February and the confirmation screen
+   * asked her to confirm 19 February. The booking was correct; the sentence
+   * was not, which is the worse way round — she had no way to tell which to
+   * believe, and stopped.
+   *
+   * The screen had been deriving the date by slicing the first ten characters
+   * off `start`, which is a UTC instant: 20:30 in New York is 01:30 UTC the
+   * next day. Every evening slot west of Greenwich was labelled with
+   * tomorrow's date.
+   */
+  describe('the local date on a slot', () => {
+    const evening: Rule = {
+      dayOfWeek: null,
+      startTime: '08:00',
+      endTime: '23:30',
+      isBlackout: false,
+      effectiveFrom: null,
+      effectiveTo: null,
+    };
+
+    it('is the date asked for, not the UTC date the instant falls on', () => {
+      const slots = slotsForDate(query({ rules: [evening] }));
+      const halfEight = slots.find((s) => s.minutes === 20 * 60 + 30)!;
+
+      expect(halfEight.date).toBe(DATE);
+      // The trap, stated: the instant really is the next day in UTC.
+      expect(halfEight.start.toISOString().slice(0, 10)).toBe('2026-09-03');
+    });
+
+    it('is the same date for every slot of that day, morning or night', () => {
+      const slots = slotsForDate(query({ rules: [evening] }));
+
+      expect(new Set(slots.map((s) => s.date))).toEqual(new Set([DATE]));
+    });
+
+    /** East of Greenwich the two agreed, which is why this went unnoticed. */
+    it('is right in a zone where slicing the instant would also have worked', () => {
+      const slots = slotsForDate(
+        query({ rules: [evening], timeZone: 'Europe/Berlin', now: new Date('2026-09-02T00:00:00Z') }),
+      );
+      const halfEight = slots.find((s) => s.minutes === 20 * 60 + 30)!;
+
+      expect(halfEight.date).toBe(DATE);
+      expect(halfEight.start.toISOString().slice(0, 10)).toBe(DATE);
+    });
+  });
+
   it('reports closed times rather than hiding them', () => {
     // A list that omits them looks like a quiet day rather than a shut one.
     const slots = slotsForDate(query());

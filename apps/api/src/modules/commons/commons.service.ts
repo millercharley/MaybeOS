@@ -1272,7 +1272,7 @@ export class CommonsService {
       this.unreadInCommons(orgId, userId),
     ]);
 
-    return { messages, commons };
+    return { messages, commons: commons.total, channels: commons.channels };
   }
 
   /**
@@ -1281,7 +1281,10 @@ export class CommonsService {
    * Their own are not counted — writing something is not a thing you need to
    * go and read — and neither is anything older than the line below.
    */
-  private async unreadInCommons(orgId: string, userId: string): Promise<number> {
+  private async unreadInCommons(
+    orgId: string,
+    userId: string,
+  ): Promise<{ total: number; channels: Record<string, number> }> {
     const [channels, reads, membership] = await Promise.all([
       this.prisma.channel.findMany({ where: { orgId }, select: { id: true } }),
       this.prisma.channelRead.findMany({
@@ -1293,7 +1296,7 @@ export class CommonsService {
         select: { memberSince: true },
       }),
     ]);
-    if (channels.length === 0) return 0;
+    if (channels.length === 0) return { total: 0, channels: {} };
 
     const readAt = new Map(reads.map((r) => [r.channelId, r.lastReadAt]));
 
@@ -1328,8 +1331,23 @@ export class CommonsService {
       channels.map((c) => ({ id: c.id, after: readAt.get(c.id) ?? joined })),
     );
 
-    const [posts, comments] = await Promise.all([
-      this.prisma.post.count({
+    /*
+      Grouped by channel, not just totalled (CMN-27).
+
+      Still two queries — `groupBy` costs the same round trip a `count` did,
+      and the sums fall out of the groups — but the answer can now say *where*
+      the unread things are. Without that the badge was a number a member
+      could not act on: the sidebar said 2, the Commons page showed no hint
+      which channel held them, and opening the Commons read a different one.
+
+      Comments group by their post's channel, which Prisma cannot do directly
+      — a comment knows its post, not its channel. The posts are fetched for
+      their channel and tallied here rather than in SQL, bounded by the same
+      `where` that bounds the count: these are only the unread ones.
+    */
+    const [postGroups, commentRows] = await Promise.all([
+      this.prisma.post.groupBy({
+        by: ['channelId'],
         where: {
           authorId: { not: userId },
           OR: windows.map((w) => ({
@@ -1337,8 +1355,9 @@ export class CommonsService {
             ...(w.after ? { createdAt: { gt: w.after } } : {}),
           })),
         },
+        _count: { _all: true },
       }),
-      this.prisma.comment.count({
+      this.prisma.comment.findMany({
         where: {
           authorId: { not: userId },
           OR: windows.map((w) => ({
@@ -1346,10 +1365,21 @@ export class CommonsService {
             ...(w.after ? { createdAt: { gt: w.after } } : {}),
           })),
         },
+        select: { post: { select: { channelId: true } } },
       }),
     ]);
 
-    return posts + comments;
+    const byChannel: Record<string, number> = {};
+    const add = (channelId: string, n: number) => {
+      if (n > 0) byChannel[channelId] = (byChannel[channelId] ?? 0) + n;
+    };
+
+    for (const group of postGroups) add(group.channelId, group._count._all);
+    for (const row of commentRows) add(row.post.channelId, 1);
+
+    const total = Object.values(byChannel).reduce((sum, n) => sum + n, 0);
+
+    return { total, channels: byChannel };
   }
 
   /**

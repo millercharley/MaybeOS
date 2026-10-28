@@ -10,4 +10,18 @@ export interface UnreadCounts {
   messages: number;
   /** Posts and comments in the co-op's channels they have not seen. */
   commons: number;
+  /**
+   * The same total, split by channel — `{ [channelId]: count }` (CMN-27).
+   *
+   * Added because the badge was unactionable without it. The sidebar said
+   * "Commons 2" and the Commons page gave no hint which channel held them, so
+   * a member opened the Commons, read the channel it happened to land on, and
+   * the 2 stayed — for days. Charley: "Why the 2 messages for new messages
+   * when no new messages?"
+   *
+   * Channels with nothing unread are left out rather than sent as zero. This
+   * is fetched on a sixty-second timer by every signed-in page, and a co-op
+   * with forty channels should not pay for thirty-nine noughts.
+   */
+  channels: Record<string, number>;
 }

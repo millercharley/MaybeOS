@@ -4733,6 +4733,16 @@ export interface AvailabilityRule {
 export interface Slot {
   start: string;
   end: string;
+  /**
+   * The co-op's own calendar date for this slot, `YYYY-MM-DD` (SPC-34).
+   *
+   * Sent by the API because the client cannot work it out: `start` is a UTC
+   * instant, and slicing its first ten characters gives the local date only
+   * east of Greenwich. 8:30pm on 18 February in New York is 01:30 UTC on the
+   * 19th — which is the date a member was asked to confirm for a booking she
+   * had made for the 18th.
+   */
+  date: string;
   /** Minutes past local midnight, so the UI need not re-derive the timezone. */
   minutes: number;
   available: boolean;
