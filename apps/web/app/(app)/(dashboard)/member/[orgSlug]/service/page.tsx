@@ -142,7 +142,7 @@ export default function MyServicePage() {
                   <div className="min-w-0">
                     <p className="font-medium">{claim.duty?.title}</p>
                     <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                      {shortDate(claim.occursAt.slice(0, 10))} ·{' '}
+                      {shortDate(claim.date)} ·{' '}
                       {timeOf(claim.occursAt, data!.timezone)}
                     </p>
                   </div>
@@ -222,7 +222,7 @@ export default function MyServicePage() {
                           Today ·
                         </span>
                       )}
-                      {shortDate(claim.occursAt.slice(0, 10))} ·{' '}
+                      {shortDate(claim.date)} ·{' '}
                       {timeOf(claim.occursAt, data!.timezone)}
                       {claim.status === 'CLAIMED' && ' · waiting on an organizer'}
                     </p>
@@ -311,7 +311,7 @@ export default function MyServicePage() {
                   </p>
                   <p className="mt-1 text-xs text-[var(--text-secondary)]">
                     {recurrenceLabel(adoption.duty?.recurrence ?? 'WEEKLY')} · since{' '}
-                    {shortDate(adoption.startedAt.slice(0, 10))}
+                    {shortDate(adoption.startedOn)}
                   </p>
                 </div>
                 <button
@@ -341,7 +341,7 @@ export default function MyServicePage() {
                 <div className="min-w-0">
                   <p className="font-medium">{claim.duty?.title}</p>
                   <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                    {shortDate(claim.occursAt.slice(0, 10))}
+                    {shortDate(claim.date)}
                     {claim.minutesNote && ` · ${claim.minutesNote}`}
                   </p>
                 </div>

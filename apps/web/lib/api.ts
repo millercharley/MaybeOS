@@ -5830,6 +5830,19 @@ export interface DutyClaim {
   id: string;
   dutyId: string;
   userId: string;
+  /**
+   * The co-op's own calendar day for this turn, "YYYY-MM-DD" (SRV-08).
+   *
+   * Sent because the client cannot work it out: `occursAt` is the instant the
+   * turn starts, so its UTC date is the co-op's date only east of Greenwich.
+   * A 7pm turn in New York is midnight UTC the next day, and every screen
+   * here was taking the first ten characters of the ISO string. Same cause as
+   * SPC-34 in room booking.
+   *
+   * `DutyOccurrence` has carried this all along, which is why the rota read
+   * correctly and the claim lists did not.
+   */
+  date: string;
   occursAt: string;
   status: DutyClaimStatus;
   minutes?: number | null;
@@ -5846,6 +5859,8 @@ export interface DutyAdoption {
   id: string;
   dutyId: string;
   userId: string;
+  /** The day the arrangement began, in the co-op's reckoning (SRV-08). */
+  startedOn: string;
   startedAt: string;
   releasedAt?: string | null;
   duty?: Pick<Duty, 'id' | 'title' | 'recurrence'>;
