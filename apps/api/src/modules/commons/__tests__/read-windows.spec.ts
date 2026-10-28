@@ -117,8 +117,25 @@ describe('the badge queries stay collapsed', () => {
     expect(body).not.toMatch(/channels\.map\(\s*\(c\)\s*=>\s*this\.prisma/);
     expect(body).toMatch(/readWindows\(/);
 
-    const counts = body.match(/this\.prisma\.\w+\.count\(/g) ?? [];
-    expect(counts).toHaveLength(2); // posts, comments — and that is all
+    /*
+      Any aggregate, not just `count` (CMN-27).
+
+      These became `groupBy` and `findMany` when the badge learned to say
+      *which* channel the unread things are in — same two round trips, two
+      different method names. Matching on `count` alone would have let this
+      test pass with nothing to count, which is exactly what it did.
+    */
+    const queries =
+      body.match(/this\.prisma\.(post|comment)\.(count|groupBy|findMany|aggregate)\(/g) ?? [];
+    expect(queries).toHaveLength(2); // posts, comments — and that is all
+
+    /*
+      And the setup above them stays one batch. `channel` and `channelRead`
+      are read once each inside a single `Promise.all`; the thing this guards
+      against is either of them growing a per-channel call.
+    */
+    const setup = body.match(/this\.prisma\.(channel|channelRead|userOrg)\.\w+\(/g) ?? [];
+    expect(setup).toHaveLength(3);
   });
 
   it('counts messages without a query per thread', () => {

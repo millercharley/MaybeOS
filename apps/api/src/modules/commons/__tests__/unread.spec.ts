@@ -42,7 +42,13 @@ type Clause = {
 };
 type Where = { authorId?: { not: string }; OR?: Clause[] };
 
-function countRows(rows: Row[], where: Where): number {
+/**
+ * The rows the service's own `where` would have matched.
+ *
+ * Split out of `countRows` because the service now asks for groups and rows
+ * rather than two numbers (CMN-27) — same predicate, three shapes.
+ */
+function matchRows(rows: Row[], where: Where): Row[] {
   return rows.filter((row) => {
     if (where.authorId?.not !== undefined && row.authorId === where.authorId.not) return false;
 
@@ -52,7 +58,35 @@ function countRows(rows: Row[], where: Where): number {
       if (clause.createdAt && !(row.createdAt > clause.createdAt.gt)) return false;
       return true;
     });
-  }).length;
+  });
+}
+
+function countRows(rows: Row[], where: Where): number {
+  return matchRows(rows, where).length;
+}
+
+/** What `post.groupBy({ by: ['channelId'], _count: { _all: true } })` returns. */
+function groupRows(rows: Row[], where: Where) {
+  const tally = new Map<string, number>();
+  for (const row of matchRows(rows, where)) {
+    tally.set(row.channelId, (tally.get(row.channelId) ?? 0) + 1);
+  }
+  return [...tally].map(([channelId, n]) => ({ channelId, _count: { _all: n } }));
+}
+
+/**
+ * Rows with no `postRows`/`commentRows` fixture, spread over one channel.
+ *
+ * Several cases here say only "there are 3 unread posts" and do not care
+ * where. Materialising them keeps those cases meaning what they meant before
+ * the service started asking for rows.
+ */
+function plainRows(n: number, channelId = 'ch-1'): Row[] {
+  return Array.from({ length: n }, () => ({
+    channelId,
+    authorId: 'somebody-else',
+    createdAt: new Date('2099-01-01'),
+  }));
 }
 
 describe('CommonsService — unread counts', () => {
@@ -91,13 +125,19 @@ describe('CommonsService — unread counts', () => {
           ),
       },
       post: {
-        count: jest.fn(({ where }: { where: Where }) =>
-          Promise.resolve(over.postRows ? countRows(over.postRows, where) : over.posts ?? 0),
+        groupBy: jest.fn(({ where }: { where: Where }) =>
+          Promise.resolve(
+            groupRows(over.postRows ?? plainRows(over.posts ?? 0), where),
+          ),
         ),
       },
       comment: {
-        count: jest.fn(({ where }: { where: Where }) =>
-          Promise.resolve(over.commentRows ? countRows(over.commentRows, where) : over.comments ?? 0),
+        findMany: jest.fn(({ where }: { where: Where }) =>
+          Promise.resolve(
+            matchRows(over.commentRows ?? plainRows(over.comments ?? 0), where).map((row) => ({
+              post: { channelId: row.channelId },
+            })),
+          ),
         ),
       },
     };
@@ -153,7 +193,7 @@ describe('CommonsService — unread counts', () => {
     });
 
     expect((await service.unreadCounts(ORG, ME)).commons).toBe(1);
-    expect(prisma.post.count.mock.calls[0][0].where.authorId).toEqual({ not: ME });
+    expect(prisma.post.groupBy.mock.calls[0][0].where.authorId).toEqual({ not: ME });
   });
 
   it('counts from where I last read a channel', async () => {
@@ -220,15 +260,15 @@ describe('CommonsService — unread counts', () => {
 
     await service.unreadCounts(ORG, ME);
 
-    expect(prisma.post.count).toHaveBeenCalledTimes(1);
-    expect(prisma.comment.count).toHaveBeenCalledTimes(1);
+    expect(prisma.post.groupBy).toHaveBeenCalledTimes(1);
+    expect(prisma.comment.findMany).toHaveBeenCalledTimes(1);
   });
 
   it('says nothing is unread when the co-op has no channels', async () => {
     const { service, prisma } = await build({ channels: [] });
 
     expect((await service.unreadCounts(ORG, ME)).commons).toBe(0);
-    expect(prisma.post.count).not.toHaveBeenCalled();
+    expect(prisma.post.groupBy).not.toHaveBeenCalled();
   });
 
   it('only looks at this co-op', async () => {
@@ -258,8 +298,8 @@ describe('CommonsService — marking things read', () => {
       },
       channelRead: { findMany: jest.fn().mockResolvedValue([]), upsert: jest.fn().mockResolvedValue({}) },
       userOrg: { findFirst: jest.fn().mockResolvedValue({ memberSince: new Date() }) },
-      post: { count: jest.fn().mockResolvedValue(0) },
-      comment: { count: jest.fn().mockResolvedValue(0) },
+      post: { groupBy: jest.fn().mockResolvedValue([]) },
+      comment: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -296,9 +336,12 @@ describe('CommonsService — marking things read', () => {
   it('hands back the new totals, so the badge can settle', async () => {
     const { service } = await build();
 
+    // The breakdown travels with the totals (CMN-27), so the page can clear
+    // the channel's own dot without waiting for the next poll.
     await expect(service.markChannelRead(ORG, ME, 'ch-1')).resolves.toEqual({
       messages: 0,
       commons: 0,
+      channels: {},
     });
   });
 });

@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Check, Loader2, Undo2 } from 'lucide-react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { Check, Loader2, Undo2, Users } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, HostPayoutPreview } from '@/lib/api';
 import { money } from '@/lib/fees';
@@ -19,6 +21,17 @@ import { PageHeader } from '@/components/layout/page-header';
 export default function PayoutsPage() {
   const token = useAuthStore((s) => s.token);
   const orgId = useAuthStore((s) => s.currentOrgId);
+  /*
+    The co-op from the address, for linking through to an event (EVT-51).
+
+    Charley: "Make sure an Admin can open Payouts and click through any event
+    to see who bought tickets to the specific event." The page that shows who
+    bought already existed at `/admin/:slug/events/:id` — nothing pointed at
+    it from here, so the only way in was to know the URL. An organiser
+    checking a payout is asking "who are these ticket sales?", and the answer
+    was two screens away with no path between them.
+  */
+  const orgSlug = String(useParams().orgSlug ?? '');
 
   const [rows, setRows] = useState<HostPayoutPreview[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,9 +129,27 @@ export default function PayoutsPage() {
                     {row.refundedCount > 0 && ` · ${row.refundedCount} refunded and excluded`}
                   </p>
                 </div>
-                <p className="shrink-0 text-lg font-semibold tabular-nums text-gray-900">
-                  {money(row.amountCents)}
-                </p>
+                <div className="shrink-0 text-right">
+                  <p className="text-lg font-semibold tabular-nums text-gray-900">
+                    {money(row.amountCents)}
+                  </p>
+                  {/*
+                    Who these sales actually were (EVT-51). The door list is
+                    the same screen the host uses to check people in, so an
+                    organiser answering "who bought these?" and a host
+                    answering "who is at the door?" land in one place rather
+                    than two that could disagree.
+                  */}
+                  {row.ticketCount > 0 && (
+                    <Link
+                      href={`/admin/${orgSlug}/events/${row.eventId}`}
+                      className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline"
+                    >
+                      <Users className="h-3 w-3" aria-hidden="true" />
+                      Who bought
+                    </Link>
+                  )}
+                </div>
               </div>
 
               {row.hasEnded ? (
@@ -165,6 +196,12 @@ export default function PayoutsPage() {
                   {row.payout!.note && ` · ${row.payout!.note}`}
                 </p>
               </div>
+              <Link
+                href={`/admin/${orgSlug}/events/${row.eventId}`}
+                className="ml-auto shrink-0 text-xs font-medium text-brand-600 hover:underline"
+              >
+                Who bought
+              </Link>
               <button
                 onClick={() => undo(row.eventId)}
                 disabled={busy === row.eventId}

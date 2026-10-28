@@ -28,6 +28,47 @@ export function looksLikeHtml(body: string): boolean {
 }
 
 /**
+ * The entities a contentEditable leaves in a body that has no tags (CMN-26).
+ *
+ * A browser writes `&nbsp;` for a space it must not collapse — a double
+ * space, or a space at the end of a line. Type "Cool!  I'll be there!" and
+ * what is stored is `Cool!&nbsp; I'll be there!`, with no tag anywhere in it.
+ *
+ * `looksLikeHtml` then says no, correctly by its own rule, and the body goes
+ * down the plain-text path to be escaped — turning `&nbsp;` into
+ * `&amp;nbsp;`, which the browser renders as the literal text "&nbsp;". Six
+ * bodies on production read that way, including Eddie Hickerson's "The new
+ * system looks awesome.&nbsp;".
+ *
+ * Decoded before escaping rather than routed through the sanitiser: the
+ * plain-text path is what preserves a member's line breaks and lets "a < b"
+ * survive intact, and both of those are worth more than the one case this
+ * fixes. The set is deliberately the handful a contentEditable actually
+ * emits — decoding everything would mean a member who typed `&copy;` on
+ * purpose sees a © they did not ask for.
+ */
+const COMPOSER_ENTITIES: ReadonlyArray<[RegExp, string]> = [
+  [/&nbsp;|&#160;|&#xa0;/gi, '\u00a0'],
+  [/&zwj;|&#8205;/gi, ''],
+  [/&lt;/gi, '<'],
+  [/&gt;/gi, '>'],
+  [/&quot;/gi, '"'],
+  [/&#39;|&apos;/gi, "'"],
+  /*
+    `&amp;` last, and this order matters.
+
+    Decoding it first would turn `&amp;lt;` — an ampersand the member actually
+    typed, followed by "lt;" — into `&lt;` and then into a `<` they never
+    wrote. Going the other way round, the literal stays literal.
+  */
+  [/&amp;/gi, '&'],
+];
+
+export function decodeComposerEntities(text: string): string {
+  return COMPOSER_ENTITIES.reduce((out, [pattern, char]) => out.replace(pattern, char), text);
+}
+
+/**
  * The HTML to render for a stored body.
  *
  * Always sanitised — the API accepts what a browser sent, and a browser is not
@@ -35,7 +76,10 @@ export function looksLikeHtml(body: string): boolean {
  * b" survives intact and newlines are preserved by the caller's CSS.
  */
 export function renderBodyHtml(body: string): string {
-  if (!looksLikeHtml(body)) return escapeHtml(body);
+  // Decoded first: a tagless body still came from a contentEditable, and the
+  // entities in it are the browser's encoding rather than something a member
+  // typed (CMN-26).
+  if (!looksLikeHtml(body)) return escapeHtml(decodeComposerEntities(body));
   return numberedIndent(dropEmptyBlocks(sanitizeWikiHtml(divsToParagraphs(body))));
 }
 

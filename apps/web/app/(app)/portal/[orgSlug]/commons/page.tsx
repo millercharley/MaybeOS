@@ -26,6 +26,7 @@ import { MemberName } from '@/components/member/member-name';
 import { Avatar } from '@/components/member/avatar';
 import { ReactionBar } from '@/components/reactions/reaction-bar';
 import { useUnread } from '@/contexts/unread-context';
+import { unreadInChannel, BADGE_MAX, type UnreadCounts } from '@/lib/unread';
 import { scrollParent, scrollToBottom } from '@/lib/scroll-container';
 
 type Tab = 'channels' | 'proposals';
@@ -93,7 +94,7 @@ export default function PortalCommonsPage() {
  */
 function ChannelsSection() {
   const { org } = usePortal();
-  const { settle } = useUnread();
+  const { settle, ...unread } = useUnread();
   const token = useAuthStore((s) => s.token);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [sections, setSections] = useState<ChannelSection[]>([]);
@@ -348,6 +349,7 @@ function ChannelsSection() {
             sections={sections}
             selected={selectedChannel}
             onSelect={loadPosts}
+            unread={unread}
           />
           {permissions?.canCreateChannel && (
             <button
@@ -486,11 +488,14 @@ function ChannelRail({
   sections,
   selected,
   onSelect,
+  unread,
 }: {
   channels: Channel[];
   sections: ChannelSection[];
   selected: string | null;
   onSelect: (channelId: string) => void;
+  /** Per-channel unread, so the rail can say where the sidebar's number is (CMN-27). */
+  unread: UnreadCounts;
 }) {
 
   const row = (channel: Channel) => (
@@ -504,6 +509,26 @@ function ChannelRail({
       {channel.isPinned && <Pin className="h-3 w-3 shrink-0 text-gray-400" aria-label="Pinned" />}
       <span aria-hidden="true" className="shrink-0">{channel.emoji || '#'}</span>
       <span className="truncate">{channel.name}</span>
+      {/*
+        Where the unread actually are (CMN-27).
+
+        The sidebar's "Commons 2" was a number with nowhere to go: nothing on
+        this page said which channel held them, so reading the channel it
+        happened to open left the badge sitting there. `ml-auto` pushes it to
+        the right edge the way every channel list does.
+
+        The label is spelled out for a screen reader, because "2" beside a
+        channel name is only meaningful if you can see where it sits.
+      */}
+      {unreadInChannel(channel.id, unread) > 0 && (
+        <span
+          className="ml-auto shrink-0 rounded-full bg-brand-600 px-1.5 py-0.5 text-xs font-semibold text-white"
+          aria-label={`${unreadInChannel(channel.id, unread)} unread in ${channel.name}`}
+        >
+          {Math.min(unreadInChannel(channel.id, unread), BADGE_MAX)}
+          {unreadInChannel(channel.id, unread) > BADGE_MAX ? '+' : ''}
+        </span>
+      )}
     </button>
   );
 

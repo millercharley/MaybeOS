@@ -278,7 +278,17 @@ export function RoomBooking({
             orgId={orgId}
             token={token}
             roomName={room.name}
-            when={`${dateLabel(chosen.start.slice(0, 10))} at ${timeLabel(chosen.minutes)}`}
+            /*
+              `chosen.date`, not a slice of `chosen.start` (SPC-34).
+
+              `start` is a UTC instant. Slicing its first ten characters gives
+              the local date only east of Greenwich — in New York, 8:30pm on
+              18 February is 01:30 UTC on the 19th, so this asked a member to
+              confirm a booking for "February 19" that she had made for the
+              18th. The booking was right and the sentence was wrong, which is
+              the worse way round: she had no way to tell which to believe.
+            */
+            when={`${dateLabel(chosen.date)} at ${timeLabel(chosen.minutes)}`}
             busy={booking !== null}
             onBack={() => setChosen(null)}
             onConfirm={(details) => book(chosen, details)}
@@ -361,7 +371,8 @@ export function RoomBooking({
           <div className="mt-4 rounded-lg border border-[var(--success)] px-4 py-3">
             <p className="flex items-center gap-2 text-sm font-medium">
               <Check size={14} className="text-[var(--success)]" aria-hidden="true" />
-              Booked — {dateLabel(confirmed.start.slice(0, 10))} at{' '}
+              {/* Same reason as the confirm step above (SPC-34). */}
+              Booked — {dateLabel(confirmed.date)} at{' '}
               {timeLabel(confirmed.minutes)}.
             </p>
 
