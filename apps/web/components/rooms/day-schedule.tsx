@@ -93,6 +93,9 @@ export function DaySchedule({ orgId, initialDate }: { orgId: string; initialDate
     const [y, m, d] = iso.split('-').map(Number);
     const at = new Date(Date.UTC(y, m - 1, d));
     at.setUTCDate(at.getUTCDate() + by);
+    // local-date-exempt: `at` is a calendar date this function built with
+    // `Date.UTC`, not an instant from the API — there is no zone to get
+    // wrong, which is the whole point of doing the arithmetic this way.
     return at.toISOString().slice(0, 10);
   }
 

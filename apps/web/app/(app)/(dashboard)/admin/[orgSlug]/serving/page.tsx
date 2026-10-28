@@ -166,7 +166,7 @@ export default function ServingPage() {
                     <MemberName userId={claim.userId} name={claim.user.name ?? 'A member'} /> · {claim.duty.title}
                   </p>
                   <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                    {shortDate(claim.occursAt.slice(0, 10))} ·{' '}
+                    {shortDate(claim.date)} ·{' '}
                     {formatMinutes(claim.duty.estimatedMinutes)}
                   </p>
                 </div>
@@ -256,7 +256,7 @@ export default function ServingPage() {
                         <span className="inline-flex items-center gap-1">
                           <Repeat size={12} aria-hidden="true" />
                           <MemberName userId={held.userId} name={held.user.name ?? 'A member'} /> has it on standing since{' '}
-                          {shortDate(held.startedAt.slice(0, 10))}
+                          {shortDate(held.startedOn)}
                         </span>
                       )}
                       {/*

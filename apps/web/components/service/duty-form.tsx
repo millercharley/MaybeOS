@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { localDate } from '@/lib/booking-calendar';
 import type { DutyInput, Recurrence } from '@/lib/api';
 
 /**
@@ -32,7 +33,23 @@ export function DutyForm({
   const [hours, setHours] = useState('0');
   const [minutes, setMinutes] = useState('30');
   const [recurrence, setRecurrence] = useState<Recurrence>('WEEKLY');
-  const [startsOn, setStartsOn] = useState(() => new Date().toISOString().slice(0, 10));
+  /*
+    Today where the person filling this in is, not today in UTC (SRV-08).
+
+    `toISOString().slice(0, 10)` is the UTC date: for anybody in the Americas
+    after early evening it is already tomorrow, so the form opened with a
+    start date a day ahead of the day they were sitting in. The same mistake
+    as SPC-34 and the claim lists, in the one place it quietly chooses a value
+    on somebody's behalf rather than merely labelling one.
+
+    The browser's own zone rather than the co-op's: this is a default a human
+    is about to read and adjust, and the day they are living in is the honest
+    starting point. Whichever date they settle on is interpreted in the
+    co-op's zone by `occurrencesBetween`, which is where that belongs.
+  */
+  const [startsOn, setStartsOn] = useState(() =>
+    localDate(new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone),
+  );
   const [endsOn, setEndsOn] = useState('');
   const [startTime, setStartTime] = useState('09:00');
   const [capacity, setCapacity] = useState('1');

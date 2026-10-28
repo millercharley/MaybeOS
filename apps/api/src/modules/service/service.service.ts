@@ -555,6 +555,23 @@ export class ServiceService {
 
   // ── A member's own record ───────────────────────────────────────────
 
+  /**
+   * A turn's own calendar day, said rather than left to be inferred (SRV-08).
+   *
+   * `occursAt` is the instant a turn starts, so its UTC date is the co-op's
+   * date only east of Greenwich. Every screen listing turns took the first
+   * ten characters of the ISO string, which makes an evening duty in New York
+   * read as tomorrow — the same mistake SPC-34 fixed in room booking, in the
+   * same week, from the same cause.
+   *
+   * `myService` has always computed this correctly for its own filtering; it
+   * simply never sent it. The client was left to re-derive a thing the server
+   * already knew, with the one piece of information it does not have.
+   */
+  private withLocalDate<T extends { occursAt: Date }>(claim: T, timeZone: string) {
+    return { ...claim, date: zonedParts(claim.occursAt, timeZone).date };
+  }
+
   async myService(orgId: string, userId: string) {
     const timeZone = await this.orgTimezone(orgId);
     const now = new Date();
@@ -622,7 +639,8 @@ export class ServiceService {
             c.status !== 'DONE' &&
             zonedParts(c.occursAt, timeZone).date >= zonedParts(now, timeZone).date,
         )
-        .sort((a, b) => a.occursAt.getTime() - b.occursAt.getTime()),
+        .sort((a, b) => a.occursAt.getTime() - b.occursAt.getTime())
+        .map((c) => this.withLocalDate(c, timeZone)),
       /**
        * Turns somebody took, whose day has gone, and which they have not
        * logged (SRV-04). Neither coming up nor done — and the only thing
@@ -634,9 +652,16 @@ export class ServiceService {
             c.status !== 'DONE' &&
             zonedParts(c.occursAt, timeZone).date < zonedParts(now, timeZone).date,
         )
-        .sort((a, b) => b.occursAt.getTime() - a.occursAt.getTime()),
-      past: claims.filter((c) => c.occursAt < now || c.status === 'DONE'),
-      adoptions,
+        .sort((a, b) => b.occursAt.getTime() - a.occursAt.getTime())
+        .map((c) => this.withLocalDate(c, timeZone)),
+      past: claims
+        .filter((c) => c.occursAt < now || c.status === 'DONE')
+        .map((c) => this.withLocalDate(c, timeZone)),
+      adoptions: adoptions.map((a) => ({
+        ...a,
+        // When the arrangement began, in the co-op's reckoning (SRV-08).
+        startedOn: zonedParts(a.startedAt, timeZone).date,
+      })),
     };
   }
 
@@ -859,7 +884,11 @@ export class ServiceService {
 
   /** Claims waiting on an organiser, for a gated duty. */
   async pendingClaims(orgId: string) {
-    return this.prisma.dutyClaim.findMany({
+    // The co-op's zone, because the rows carry instants and the screen shows
+    // days (SRV-08).
+    const timeZone = await this.orgTimezone(orgId);
+
+    const claims = await this.prisma.dutyClaim.findMany({
       where: { duty: { orgId }, status: 'CLAIMED' },
       include: {
         duty: { select: { id: true, title: true } },
@@ -867,10 +896,14 @@ export class ServiceService {
       },
       orderBy: { occursAt: 'asc' },
     });
+
+    return claims.map((claim) => this.withLocalDate(claim, timeZone));
   }
 
   /** Standing arrangements, and how long they have stood. */
   async standingDuties(orgId: string) {
+    const timeZone = await this.orgTimezone(orgId);
+
     const adoptions = await this.prisma.dutyAdoption.findMany({
       where: { releasedAt: null, duty: { orgId } },
       include: {
@@ -886,6 +919,8 @@ export class ServiceService {
     const now = new Date();
     return adoptions.map((adoption) => ({
       ...adoption,
+      // "Standing since" is a day, not an instant (SRV-08).
+      startedOn: zonedParts(adoption.startedAt, timeZone).date,
       needsReview: needsReview(adoption, now),
       reviewDueAt: reviewDueAt(adoption),
     }));
