@@ -116,10 +116,41 @@ export class PrismaService
     });
   }
 
+  /**
+   * Deliberately does **not** connect (OPS-36).
+   *
+   * This called `$connect()`, so every Lambda container opened a database
+   * connection the moment Nest booted — before knowing whether the request it
+   * woke up for would query anything. Prisma connects lazily on first query
+   * anyway, so for a container that does query this changes only *when* the
+   * connection is opened, by a few milliseconds.
+   *
+   * What it changes is the containers that never query. `JwtStrategy.validate`
+   * decodes the token and touches nothing, so every 401 took a connection and
+   * gave it straight back — 134 of them in two hours, about an eighth of all
+   * traffic. CORS preflights are the same. Under a burst those are connections
+   * stolen from requests that actually need one, which is the amplifying half
+   * of the outage on 2026-10-28: a deploy makes every container cold, a
+   * dashboard load fans out to fifteen of them, each takes a connection at
+   * boot, and Supavisor's 200-client ceiling arrives before the queries do.
+   *
+   * The hook stays rather than being deleted, because its absence would read
+   * as an oversight — this is a decision, and `OnModuleInit` is where somebody
+   * will look for it.
+   */
   async onModuleInit() {
-    await this.$connect();
+    // Nothing. See above.
   }
 
+  /**
+   * Still disconnects, and this half matters.
+   *
+   * The scheduled function closes its Nest app in a `finally` (D-022), so this
+   * is what hands that connection back between ticks. The `api` function never
+   * closes its app — `cachedHandler` is module-scoped and lives as long as the
+   * container — so there this never runs, which is precisely why a container's
+   * connection is held until AWS reaps it.
+   */
   async onModuleDestroy() {
     await this.$disconnect();
   }
