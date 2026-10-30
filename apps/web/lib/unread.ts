@@ -45,6 +45,62 @@ export function unreadInChannel(channelId: string, counts: UnreadCounts): number
 }
 
 /**
+ * How often to ask again (CMN-29).
+ *
+ * The badge polled every sixty seconds for as long as a tab was open, and
+ * each poll costs seven database queries — five for the Commons, two for
+ * messages. Measured over ninety minutes on production: 417 polls, about
+ * 2,900 queries, to render a number that changed **twice**.
+ *
+ * Express answers 304 for the unchanged ones, which saved the bandwidth and
+ * none of the work: the handler has already run every query, serialised the
+ * result and hashed it by the time it discovers nothing is different.
+ *
+ * So the interval backs off while nothing is happening and snaps back the
+ * moment something does. A co-op having a conversation keeps a live badge; a
+ * tab left open on a quiet afternoon stops asking every minute.
+ */
+export const POLL_BASE_MS = 60_000;
+
+/**
+ * Five minutes is the ceiling, not an hour.
+ *
+ * This is a badge somebody glances at, not a notification they are waiting
+ * on — but a member who comes back to a tab and sees nothing new for ten
+ * minutes would reasonably conclude the feature is broken. Returning to the
+ * tab resets it anyway, so this only governs how stale a *watched* tab gets.
+ */
+export const POLL_MAX_MS = 300_000;
+
+export function nextPollDelay(previous: number, changed: boolean): number {
+  if (changed) return POLL_BASE_MS;
+  return Math.min(previous * 2, POLL_MAX_MS);
+}
+
+/**
+ * Whether two readings say the same thing.
+ *
+ * Compared by value rather than by identity: the API builds a fresh object
+ * every time, so `!==` would report a change on every single poll and the
+ * backoff would never back off.
+ */
+export function sameCounts(a: UnreadCounts, b: UnreadCounts): boolean {
+  if (a.messages !== b.messages || a.commons !== b.commons) return false;
+
+  const left = a.channels ?? {};
+  const right = b.channels ?? {};
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+
+  // A channel that went from 2 to 0 leaves the map entirely (CMN-27), so the
+  // keys have to be unioned rather than walked from one side.
+  for (const key of keys) {
+    if ((left[key] ?? 0) !== (right[key] ?? 0)) return false;
+  }
+
+  return true;
+}
+
+/**
  * What the bubble reads.
  *
  * `99+` rather than `427`, because the difference between those two numbers

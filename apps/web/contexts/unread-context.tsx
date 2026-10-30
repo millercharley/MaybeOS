@@ -3,7 +3,13 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api } from '@/lib/api';
-import { NO_UNREAD, type UnreadCounts } from '@/lib/unread';
+import {
+  NO_UNREAD,
+  POLL_BASE_MS,
+  nextPollDelay,
+  sameCounts,
+  type UnreadCounts,
+} from '@/lib/unread';
 
 interface UnreadContextValue extends UnreadCounts {
   /** Ask again now — after opening a thread or a channel. */
@@ -22,9 +28,6 @@ const UnreadContext = createContext<UnreadContextValue>({
   refresh: () => {},
   settle: () => {},
 });
-
-/** How often to ask. */
-const EVERY = 60_000;
 
 /**
  * What this member has not read, for the whole signed-in app (CMN-14).
@@ -66,13 +69,17 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
    * Those are worth reporting if the API cannot be reached; a tick that
    * failed while the laptop was shut is not.
    */
-  const load = useCallback(async (background = false) => {
+  const load = useCallback(async (background = false): Promise<UnreadCounts | null> => {
     if (!orgId || !token) {
       setCounts(NO_UNREAD);
-      return;
+      return null;
     }
     try {
-      setCounts(await api.commons.unread(orgId, token, background));
+      const next = await api.commons.unread(orgId, token, background);
+      setCounts(next);
+      // Returned, not just stored: the timer below decides how long to wait
+      // by asking whether this reading differs from the last (CMN-29).
+      return next;
     } catch (err) {
       /*
         Quiet about a hiccup, but not about a refusal (OPS-37).
@@ -89,7 +96,7 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
         out, which is the truth and was previously invisible: the badge simply
         stopped changing.
       */
-      if (useAuthStore.getState().endSessionIfRejected(err)) return;
+      if (useAuthStore.getState().endSessionIfRejected(err)) return null;
 
       /*
         Anything else stays quiet. This is an adornment on the navigation,
@@ -98,18 +105,82 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
         the moment the API hiccups. The last known counts stay until the next
         run succeeds.
       */
+      return null;
     }
   }, [orgId, token]);
 
   useEffect(() => {
-    load();
-    if (!orgId || !token) return;
+    if (!orgId || !token) {
+      void load();
+      return;
+    }
 
-    // Not `setInterval(load, …)` — the timer hands its callback an argument,
-    // and `load`'s first parameter is the one that decides whether a failure
-    // is reported.
-    const timer = setInterval(() => load(true), EVERY);
-    return () => clearInterval(timer);
+    /*
+      A timer that backs off, and stops for a tab nobody is looking at
+      (CMN-29).
+
+      This was `setInterval(load, 60_000)`, which asked once a minute for as
+      long as a tab existed. Each ask costs seven database queries; over
+      ninety minutes on production that was 417 polls and about 2,900 queries
+      to render a number that changed twice. Express answered 304 to most of
+      them, which saved the bandwidth and none of the work — by then the
+      handler has run every query and hashed the result to find out.
+
+      `setTimeout` rather than `setInterval`, because the delay now varies.
+    */
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let delay = POLL_BASE_MS;
+    let last: UnreadCounts = NO_UNREAD;
+
+    const watching = () =>
+      typeof document === 'undefined' || document.visibilityState !== 'hidden';
+
+    const schedule = () => {
+      clearTimeout(timer);
+      // Nothing is scheduled for a hidden tab. `visibilitychange` starts it
+      // again, and refreshes immediately so the badge is right by the time
+      // the member has finished looking at it.
+      if (stopped || !watching()) return;
+      timer = setTimeout(run, delay);
+    };
+
+    const run = async () => {
+      const next = await load(true);
+      if (stopped) return;
+
+      if (next) {
+        delay = nextPollDelay(delay, !sameCounts(next, last));
+        last = next;
+      }
+
+      schedule();
+    };
+
+    const onVisibility = () => {
+      if (!watching()) {
+        clearTimeout(timer);
+        return;
+      }
+      // Back to the front of the queue: somebody is looking again, and what
+      // they most want is for the badge to be right now rather than in four
+      // minutes.
+      delay = POLL_BASE_MS;
+      void run();
+    };
+
+    void load().then((first) => {
+      if (first) last = first;
+      schedule();
+    });
+
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [load, orgId, token]);
 
   const refresh = useCallback(() => {

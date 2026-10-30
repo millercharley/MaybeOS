@@ -108,10 +108,21 @@ describe('a poll nobody is waiting for', () => {
   });
 
   it('marks the timer as background and nothing else', () => {
-    expect(context).toMatch(/setInterval\(\(\) => load\(true\), EVERY\)/);
+    /*
+      The timed call is the only one that passes `true` (CMN-29).
+
+      This used to pin the literal `setInterval(() => load(true), EVERY)`.
+      The timer became a `setTimeout` that backs off and skips hidden tabs,
+      so the shape moved — but the rule it protects did not: a tick nobody is
+      waiting for must not report a failure, and the first load and
+      `refresh()` must, because somebody is watching the badge when those
+      run.
+    */
+    expect(context).toMatch(/const run = async \(\) => \{\s*\n\s*const next = await load\(true\);/);
+
     // The first load and refresh() both have somebody waiting on them.
     expect(context).toMatch(/const load = useCallback\(async \(background = false\)/);
-    expect(context).toMatch(/void load\(\);/);
+    expect(context).toMatch(/void load\(\)/);
   });
 
   it('does not hand setInterval the function directly', () => {
