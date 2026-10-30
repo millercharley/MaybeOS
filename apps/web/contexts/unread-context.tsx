@@ -73,12 +73,30 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
     }
     try {
       setCounts(await api.commons.unread(orgId, token, background));
-    } catch {
+    } catch (err) {
       /*
-        Quiet. This is an adornment on the navigation, polled every minute,
-        and an error banner where a badge would be is worse than no badge —
-        it would appear on every screen in the product the moment the API
-        hiccups. The last known counts stay until the next run succeeds.
+        Quiet about a hiccup, but not about a refusal (OPS-37).
+
+        This was a bare `catch {}`. A tab left open past its token's expiry
+        therefore polled on, once a minute, for as long as it stayed open —
+        getting 401 every time and telling nobody. On production that and its
+        twin in `HappeningNow` were eighty requests in ninety minutes, about
+        an eighth of all API traffic, each one waking a Lambda container and
+        taking a database connection to be told no.
+
+        Ending the session clears `token`, which makes the effect below tear
+        the timer down on its own. The member then sees that they are signed
+        out, which is the truth and was previously invisible: the badge simply
+        stopped changing.
+      */
+      if (useAuthStore.getState().endSessionIfRejected(err)) return;
+
+      /*
+        Anything else stays quiet. This is an adornment on the navigation,
+        polled every minute, and an error banner where a badge would be is
+        worse than no badge — it would appear on every screen in the product
+        the moment the API hiccups. The last known counts stay until the next
+        run succeeds.
       */
     }
   }, [orgId, token]);

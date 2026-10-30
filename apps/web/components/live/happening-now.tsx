@@ -75,18 +75,34 @@ export function HappeningNow({ orgId, orgSlug }: { orgId: string; orgSlug: strin
     if (!orgId || !token) return;
     try {
       setData(await api.dashboard.happeningNow(orgId, token));
-    } catch {
-      // A quiet failure: this is an enhancement on somebody's home screen,
+    } catch (err) {
+      /*
+        A refusal is not a hiccup (OPS-37).
+
+        This panel polled once a minute and swallowed everything, so a tab
+        whose token had expired asked again every sixty seconds indefinitely —
+        twenty-six requests in ninety minutes on production, every one a 401,
+        at 16:04:22, 16:05:22, 16:06:22 and so on. Ending the session clears
+        `token`, which stops the timer below.
+      */
+      if (useAuthStore.getState().endSessionIfRejected(err)) return;
+
+      // Otherwise quiet: this is an enhancement on somebody's home screen,
       // and an error banner where the panel would be is worse than nothing.
       setData(null);
     }
   }, [orgId, token]);
 
   useEffect(() => {
+    // No timer without a session. `load` already refuses to fetch, but a
+    // timer that exists only to do nothing is one somebody has to reason
+    // about later (OPS-37).
+    if (!orgId || !token) return;
+
     load();
     const timer = setInterval(load, 60_000);
     return () => clearInterval(timer);
-  }, [load]);
+  }, [load, orgId, token]);
 
   if (!data) return null;
 

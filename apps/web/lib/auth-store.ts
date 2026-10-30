@@ -13,6 +13,22 @@ interface AuthState {
   setToken: (token: string) => void;
   setCurrentOrg: (orgId: string) => void;
   loadProfile: () => Promise<void>;
+  /**
+   * End the session because the API refused the credential (OPS-37).
+   *
+   * `loadProfile` has always done this in its own catch, but it only runs at
+   * boot — so a tab left open past its token's expiry kept its dead token
+   * forever. The background pollers caught their 401s and swallowed them, and
+   * `/unread` and `/happening-now` went on asking once a minute, for hours:
+   * eighty requests in ninety minutes on production, about an eighth of all
+   * API traffic, every one of them waking a Lambda container to be told no.
+   *
+   * Returns whether it recognised the error as a refusal, so a caller can
+   * tell "the session is over" from "the network hiccupped" — which is the
+   * distinction `loadProfile`'s catch was written to preserve and the one a
+   * bare `catch {}` destroys.
+   */
+  endSessionIfRejected: (err: unknown) => boolean;
   logout: () => void;
   init: () => void;
 }
@@ -133,14 +149,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // out and look, from the outside, exactly like a normal logout — no
       // error, no report, nothing to debug. Only an actual rejection of the
       // credential should end the session.
-      const rejected = err instanceof ApiError && (err.status === 401 || err.status === 403);
-
-      if (rejected) {
-        set({ token: null, user: null, isLoading: false });
-        Sentry.setUser(null);
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('maybeos_token');
-        }
+      // Through the shared path, so a refusal means the same thing here as it
+      // does to a background poller (OPS-37).
+      if (get().endSessionIfRejected(err)) {
+        set({ isLoading: false });
         return;
       }
 
@@ -152,6 +164,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         tags: { 'auth.stage': 'load-profile' },
       });
     }
+  },
+
+  endSessionIfRejected: (err: unknown) => {
+    /*
+      Only an actual rejection of the credential ends a session. A 500, a
+      dropped connection or a cold Lambda must not — that mistake was already
+      made once here, and it signed people out in a way that looked exactly
+      like a normal logout, with nothing to debug.
+    */
+    const rejected = err instanceof ApiError && (err.status === 401 || err.status === 403);
+    if (!rejected) return false;
+
+    set({ token: null, user: null });
+    Sentry.setUser(null);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('maybeos_token');
+    }
+
+    return true;
   },
 
   logout: () => {
