@@ -582,11 +582,58 @@ export class CommonsService {
           // which were the reader's own — and pressing one had to re-read the
           // post to find out what it had just done.
           reactions: { select: { emoji: true, userId: true } },
+          /*
+            The files, with the posts (CMN-28).
+
+            Each post's attachments were fetched by the component that renders
+            them, one request per post, all at once. A channel showing eleven
+            posts made eleven simultaneous calls to `/attachments` — measured
+            on production at 15:16:17.325, every one of them inside the same
+            millisecond.
+
+            On a warm Lambda each took about half a second; on a cold one,
+            six and a half. Eleven at once with nothing warm is eleven cold
+            starts and eleven of Supavisor's two hundred client connections,
+            for a screen the reader is still waiting to see.
+          */
+          attachments: {
+            select: {
+              id: true,
+              fileName: true,
+              mimeType: true,
+              sizeBytes: true,
+              path: true,
+              createdAt: true,
+            },
+            orderBy: { createdAt: 'asc' as const },
+          },
           _count: { select: { comments: true, reactions: true } },
         },
       }),
       this.prisma.post.count({ where: { channelId } }),
     ]);
+
+    /*
+      Signed in one request for the whole page (CMN-28).
+
+      `signedAttachmentUrls` already existed for exactly this — "one request
+      rather than one per row" — and nothing in the Commons used it. Five
+      minutes, not the hour a public asset would get: a signed URL is a bearer
+      token by construction, so the mitigation for member material is that it
+      dies quickly. Long enough to open a PDF, short enough that a link pasted
+      into a group chat is useless by the time it is read.
+    */
+    const signed = await this.storage.signedAttachmentUrls(
+      /*
+        `?? []` for the same reason the reactions mapping below gives: this is
+        a mapper, not a validator, and a post whose attachments were not
+        selected should not be a 500 that takes the whole channel down with
+        it. Trusting the select is how one narrowed query somewhere else
+        becomes an empty Commons.
+      */
+      posts.flatMap((post) => (post.attachments ?? []).map((a) => a.path)),
+      300,
+    );
 
     // The same envelope every other paginated endpoint in MaybeOS returns.
     // This one used to answer `{ data, total, page, perPage }` while the web
@@ -603,6 +650,15 @@ export class CommonsService {
         // selected is an empty bar, where the alternative is a 500 that takes
         // the whole channel down with it.
         reactions: groupReactions(post.reactions ?? [], viewerId ?? ''),
+        /*
+          `path` is dropped and the signed URL put in its place: the storage
+          key is not the reader's business, and a file whose signing failed
+          is left out rather than rendered as a broken link. One deleted
+          object should cost its own row, not the post it hangs from.
+        */
+        attachments: (post.attachments ?? [])
+          .filter((a) => signed.has(a.path))
+          .map(({ path, ...rest }) => ({ ...rest, url: signed.get(path)! })),
       })),
       meta: { page, perPage, total, totalPages: Math.ceil(total / perPage) },
     };

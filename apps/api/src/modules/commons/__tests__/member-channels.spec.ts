@@ -39,7 +39,15 @@ describe('CommonsService — member channels, sections and invitations', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CommonsService,
-        { provide: StorageService, useValue: { deleteAttachment: jest.fn() } },
+        {
+          provide: StorageService,
+          useValue: {
+            deleteAttachment: jest.fn(),
+            // The feed signs its posts' files in one request (CMN-28). These
+            // suites have no attachments; the method still has to exist.
+            signedAttachmentUrls: jest.fn().mockResolvedValue(new Map()),
+          },
+        },
         { provide: AuditService, useValue: { record: jest.fn() } },
         // The badge counts threads now (CMN-16); these tests are about the
         // Commons half of it.

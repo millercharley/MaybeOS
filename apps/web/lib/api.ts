@@ -5037,6 +5037,19 @@ export interface Post {
    * emoji it was. They arrive counted now, saying which are the reader's own.
    */
   reactions?: ReactionGroup[];
+  /**
+   * The post's files, signed and ready to render (CMN-28).
+   *
+   * Sent with the post rather than fetched per post. A channel of eleven
+   * posts used to make eleven simultaneous calls to `/attachments` — all
+   * inside the same millisecond, each one half a second against a warm
+   * Lambda and six and a half against a cold one.
+   *
+   * An empty array means the post has none. Optional only because an API
+   * older than this page does not send it, in which case the component falls
+   * back to asking.
+   */
+  attachments?: Attachment[];
   _count?: { comments: number; reactions: number };
 }
 

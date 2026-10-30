@@ -21,6 +21,7 @@ export function AttachmentList({
   commentId,
   eventId,
   publicEvent,
+  files,
 }: {
   orgId: string;
   token: string;
@@ -37,16 +38,36 @@ export function AttachmentList({
    * members-only, which the API enforces rather than this trusting it.
    */
   publicEvent?: { orgSlug: string; eventSlug: string };
+  /**
+   * The files, where the caller already has them (CMN-28).
+   *
+   * The Commons feed now ships each post's attachments with the post, so a
+   * channel of eleven posts makes one request rather than twelve. Before
+   * this, every rendered post fetched its own — eleven calls inside the same
+   * millisecond on production, each half a second warm and six and a half
+   * cold.
+   *
+   * An empty array is an answer, not an absence: it means "this post has
+   * none", and the component must not go and ask. Only `undefined` means the
+   * caller does not know, which is still true of comments and of the public
+   * event page.
+   */
+  files?: Attachment[];
 }) {
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [fetched, setFetched] = useState<Attachment[]>([]);
+  const given = files !== undefined;
+  const attachments = given ? files : fetched;
 
   useEffect(() => {
+    // Nothing to ask for: the caller already knows (CMN-28).
+    if (given) return;
+
     let cancelled = false;
     (publicEvent
       ? api.attachments.publicEventFiles(publicEvent.orgSlug, publicEvent.eventSlug)
       : api.attachments.list(orgId, { postId, commentId, eventId }, token))
       .then((found) => {
-        if (!cancelled) setAttachments(found);
+        if (!cancelled) setFetched(found);
       })
       // Silent: a post whose attachments fail to load should still be
       // readable, and there is nothing a member can do about it here.
@@ -54,12 +75,14 @@ export function AttachmentList({
     return () => {
       cancelled = true;
     };
-  }, [orgId, token, postId, commentId, eventId, publicEvent?.orgSlug, publicEvent?.eventSlug]);
+  }, [given, orgId, token, postId, commentId, eventId, publicEvent?.orgSlug, publicEvent?.eventSlug]);
 
   if (attachments.length === 0) return null;
 
   const images = attachments.filter((a) => isImage(a.mimeType) && a.url);
-  const files = attachments.filter((a) => !isImage(a.mimeType) || !a.url);
+  // Renamed from `files` when that became the prop above (CMN-28): these are
+  // the ones shown as a row rather than a thumbnail.
+  const documents = attachments.filter((a) => !isImage(a.mimeType) || !a.url);
 
   return (
     <div className="mt-2 space-y-2">
@@ -87,9 +110,9 @@ export function AttachmentList({
         </div>
       )}
 
-      {files.length > 0 && (
+      {documents.length > 0 && (
         <ul className="space-y-1">
-          {files.map((a) => (
+          {documents.map((a) => (
             <li key={a.id}>
               <a
                 href={a.url ?? '#'}

@@ -24,8 +24,21 @@ describe('ConnectService — seats', () => {
     id: EVENT,
     orgId: ORG,
     title: 'Dog Sees God',
-    startTime: new Date('2026-10-29T23:00:00Z'),
-    endTime: new Date('2026-10-30T01:00:00Z'),
+    /*
+      A century out, deliberately.
+
+      This said 2026-10-29 — the real Dog Sees God opening night, which was
+      the future when this was written on the 23rd and the past by the 30th.
+      Every capacity test then failed with "This event has already happened",
+      because `createTicketCheckout` refuses a past event before it ever
+      reaches the capacity check.
+
+      `checkout-errors.spec.ts` already had the answer and said why: "a fixed
+      past date would make this test start failing on its own one day". It
+      did. A fixture dated from real life is a fixture with a shelf life.
+    */
+    startTime: new Date('2126-10-29T23:00:00Z'),
+    endTime: new Date('2126-10-30T01:00:00Z'),
     priceCents: 1000,
     currency: 'usd',
     capacity: 24,

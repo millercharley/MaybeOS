@@ -975,7 +975,22 @@ function PostCard({
         onChannelMention={onChannelMention}
         className="prose prose-sm mt-1 max-w-none whitespace-pre-wrap text-sm text-gray-700"
       />
-      <AttachmentList orgId={orgId} token={token} postId={post.id} />
+      {/*
+        The feed ships each post's files with the post (CMN-28), so this
+        renders what it was handed instead of asking. `post.attachments` is
+        an empty array for a post with none — an answer, not an absence — so
+        the component does not fall back to fetching.
+
+        A comment still fetches its own, below: comments arrive from a
+        different endpoint and are opened one thread at a time, so there is no
+        burst to collapse.
+      */}
+      <AttachmentList
+        orgId={orgId}
+        token={token}
+        postId={post.id}
+        files={post.attachments}
+      />
 
       <ReactionBar reactions={reactions} onToggle={react} />
 
