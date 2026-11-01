@@ -217,6 +217,16 @@
     '.hero-go { display: inline-block; margin-top: 16px; }',
     '.empty, .failed { padding: 24px 0; color: #666; font-size: 14px; }',
     /*
+      "See More" (EVT-54). Deliberately quieter than the ticket buttons it
+      sits below — it reveals a list, it does not take anybody's money — so
+      it is an outline rather than a filled block, full width because it
+      belongs to the whole list rather than to any one row.
+    */
+    '.more { display: block; width: 100%; margin-top: 4px; padding: 12px 16px; ' +
+      'font: inherit; font-size: 14px; font-weight: 600; color: ' + accentText + '; ' +
+      'background: #fff; border: 1px solid #e2e0dc; border-radius: 12px; cursor: pointer; }',
+    '.more:hover { background: #faf9f7; }',
+    /*
       On a phone the row stacks, and the button goes full width so it is a
       target rather than a word. The picture is dropped rather than shrunk:
       at this width it is a thumbnail of nothing, and the title is what
@@ -347,14 +357,61 @@
     }
   };
 
-  var when = function (iso) {
-    var d = new Date(iso);
-    if (isNaN(d.getTime())) return '';
+  /** "Sun, Nov 1" — the date alone. */
+  var day = function (d) {
     return d.toLocaleDateString(undefined, {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
-    }) + ' · ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    });
+  };
+
+  /*
+    "4:30pm", not "4:30 PM" (EVT-54).
+
+    Charley asked for "5:30pm to 7:30pm". `toLocaleTimeString` gives "4:30 PM"
+    in en-US and a 24-hour "16:30" in most of the rest of the world, so this
+    lowercases and closes up the meridiem *if there is one* and otherwise
+    leaves the string alone. A visitor whose browser is set to 24-hour time
+    keeps 24-hour time; forcing hour12 would override a preference the
+    co-op's visitor set deliberately.
+
+    The space matched is \u202f as well as a plain one: that is the narrow
+    no-break space modern browsers put before the meridiem, and a plain
+    `' '` misses it.
+  */
+  var clock = function (d) {
+    return d
+      .toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+      .replace(/[\s\u202f\u00a0]*([AaPp])\.?[Mm]\.?$/, function (_, half) {
+        return half.toLowerCase() + 'm';
+      });
+  };
+
+  /*
+    "Sun, Nov 1 · 4:30pm to 7:30pm" (EVT-54).
+
+    An end time is most of what somebody planning an evening needs, and the
+    embed had only ever printed the start.
+
+    Three shapes rather than one, because a range is only a range when both
+    ends are real and in the right order:
+      - no end, or an unusable one → the start alone, as before;
+      - ending on another day → the date is repeated, so a 10pm-to-1am event
+        does not read as "10:00pm to 1:00am" on a single evening;
+      - otherwise → the plain range.
+  */
+  var when = function (iso, endIso) {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+
+    var start = day(d) + ' · ' + clock(d);
+    if (!endIso) return start;
+
+    var e = new Date(endIso);
+    if (isNaN(e.getTime()) || e.getTime() <= d.getTime()) return start;
+
+    return start + ' to ' + (day(e) === day(d) ? clock(e) : day(e) + ' · ' + clock(e));
   };
 
   // textContent throughout rather than innerHTML: this renders a co-op's own
@@ -499,7 +556,7 @@
 
     var w = document.createElement('span');
     w.className = 'when';
-    w.textContent = when(event.startTime);
+    w.textContent = when(event.startTime, event.endTime);
     meta.appendChild(w);
 
     if (event.location) {
@@ -711,7 +768,7 @@
 
     var w = document.createElement('div');
     w.className = 'hero-when';
-    w.textContent = when(event.startTime);
+    w.textContent = when(event.startTime, event.endTime);
     body.appendChild(w);
 
     if (event.description) {
@@ -766,6 +823,36 @@
     events.slice(1).forEach(function (event) {
       wrap.appendChild(line(event));
     });
+
+    /*
+      "See More" (EVT-54).
+
+      The 30-day window above is complete — every public event in it renders,
+      and always has. What this adds is the next 15 after the window closes,
+      for the co-op whose site otherwise ends on a quiet fortnight.
+
+      Only drawn when the API sent some. An older cached copy of this script
+      ignores `more` entirely and keeps the window-only list, which is the
+      right failure.
+    */
+    var more = data.more || [];
+    if (!more.length) return;
+
+    var expand = document.createElement('button');
+    expand.type = 'button';
+    expand.className = 'more';
+    expand.textContent = 'See More';
+    expand.addEventListener('click', function () {
+      more.forEach(function (event) {
+        // Inserted above the button so it stays at the end of the list, and
+        // so the page does not jump out from under the cursor.
+        wrap.insertBefore(line(event), expand);
+      });
+      // One shot: everything the feed carries is now on the page, and a
+      // button that does nothing is worse than no button.
+      expand.remove();
+    });
+    wrap.appendChild(expand);
   };
 
   /** "$19.50", "$10" — cents only when there are cents. */

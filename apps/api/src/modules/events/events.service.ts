@@ -962,6 +962,23 @@ export class EventsService {
    */
   /** How far ahead a website embed looks. See `listEmbedEvents` (EVT-21). */
   private static readonly EMBED_WINDOW_DAYS = 30;
+  /**
+   * How many events past the window "See More" reveals (EVT-54).
+   *
+   * Charley, looking at maybeitsfate.com/events: "Show every event in the
+   * next 30 days… Offer a button that reads 'See More' to reveal the next 15
+   * events."
+   *
+   * The window was never the thing truncating that page — the co-op has
+   * exactly ten *public* events in the next 30 days and all ten were already
+   * on it. Nine more in the same window are members-only, and a public embed
+   * is the one place those must not appear. So the list looked capped at ten
+   * by coincidence.
+   *
+   * What it does need is somewhere to go after the window ends, which is
+   * what this is: the next 15 by date, however far out they fall.
+   */
+  private static readonly EMBED_MORE_COUNT = 15;
 
   async listEmbedEvents(orgSlug: string) {
     const org = await this.prisma.organization.findUnique({
@@ -991,12 +1008,29 @@ export class EventsService {
       perPage: 200,
     });
 
+    /*
+      What "See More" reveals (EVT-54): the next 15 after the window closes.
+
+      A second read rather than one wide one, because these are a different
+      thing and the embed has to be able to tell them apart — everything in
+      `events` is inside the 30 days the co-op is advertising and renders
+      straight away, and everything in `more` is beyond it and stays behind
+      the button until somebody asks.
+
+      Taken from the horizon forward with no end, so a quiet co-op whose next
+      event is in March still has something to show rather than an empty
+      expander.
+    */
+    const { data: more } = await this.listPublicEvents(org.id, {
+      from: horizon.toISOString(),
+      perPage: EventsService.EMBED_MORE_COUNT,
+    });
+
     const appUrl = this.configService.get<string>('APP_URL') ?? 'https://maybeos.org';
 
-    return {
-      org: { name: org.name, slug: org.slug },
-      windowDays: EventsService.EMBED_WINDOW_DAYS,
-      events: data.map((event) => ({
+    // One shape for both lists: an event does not become a different thing
+    // for being three weeks further out.
+    const shape = (event: (typeof data)[number]) => ({
         title: event.title,
         slug: event.slug,
         description: event.description,
@@ -1040,7 +1074,21 @@ export class EventsService {
           that opens a payment form is not what anybody expects of it.
         */
         url: `${appUrl}/portal/${org.slug}/events/${event.slug}`,
-      })),
+    });
+
+    return {
+      org: { name: org.name, slug: org.slug },
+      windowDays: EventsService.EMBED_WINDOW_DAYS,
+      events: data.map(shape),
+      /*
+        Beyond the window, behind the button (EVT-54). A separate key rather
+        than a longer `events`, because the embed renders the two differently
+        and an older copy of the script — cached on a co-op's site for five
+        minutes, or longer by their own CDN — simply ignores a key it does
+        not know. Appending them to `events` would have made every stale
+        embed quietly start advertising next March.
+      */
+      more: more.map(shape),
     };
   }
 
