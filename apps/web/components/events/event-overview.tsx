@@ -112,6 +112,15 @@ export function EventOverview({
   const [busy, setBusy] = useState(false);
   const [hostError, setHostError] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  /**
+   * Why the delete was refused (EVT-53).
+   *
+   * Its own state rather than `hostError`, which renders inside the co-hosts
+   * card further up the page. A refusal about an event's RSVPs appearing
+   * under "who else is running it" reads as a co-host problem, and on a long
+   * event page it may not be on screen at all.
+   */
+  const [deleteError, setDeleteError] = useState('');
   const router = useRouter();
 
   const coHosts = event.coHosts ?? [];
@@ -496,19 +505,25 @@ export function EventOverview({
             Delete “{event.title}” for good? This cannot be undone. If anyone is expecting
             it, hide or cancel it instead.
           </p>
+          {deleteError && (
+            <p className="mt-2 text-sm font-semibold text-red-900">{deleteError}</p>
+          )}
           <div className="mt-2 flex gap-2">
             <button
               type="button"
               disabled={busy}
               onClick={async () => {
                 setBusy(true);
-                setHostError('');
+                setDeleteError('');
                 try {
                   await api.events.remove(orgId, event.id, token ?? '');
                   // The page it was on no longer describes anything.
                   if (backHref) router.push(backHref);
                 } catch (err) {
-                  setHostError(err instanceof Error ? err.message : 'Could not delete that');
+                  // The API's refusal names the number — "1 member is
+                  // expecting this event" — and that number is the only
+                  // thing that tells an organiser what to do next.
+                  setDeleteError(err instanceof Error ? err.message : 'Could not delete that');
                 } finally {
                   setBusy(false);
                 }
@@ -519,7 +534,10 @@ export function EventOverview({
             </button>
             <button
               type="button"
-              onClick={() => setConfirmDelete(false)}
+              onClick={() => {
+                setDeleteError('');
+                setConfirmDelete(false);
+              }}
               className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700"
             >
               Keep it

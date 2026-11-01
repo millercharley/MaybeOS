@@ -52,6 +52,20 @@ export default function EventsPage() {
   const [formError, setFormError] = useState('');
   /** Which event is a click away from being destroyed (EVT-30). */
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  /**
+   * Why hiding or deleting *this* row did not work (EVT-53).
+   *
+   * Separate from `formError`, which is rendered by `EventForm` — and
+   * `EventForm` is only mounted while creating or editing. Hide and Delete
+   * were writing their failures there, so the one message that explains the
+   * refusal was put into state that nothing on screen rendered.
+   *
+   * Carries the event id because one page draws every event: a refusal
+   * belongs against the row it came from, not at the top of a list of 793.
+   */
+  const [actionError, setActionError] = useState<{ id: string; message: string } | null>(
+    null,
+  );
   const token = useAuthStore((s) => s.token);
   const orgId = useAuthStore((s) => s.currentOrgId);
 
@@ -183,12 +197,15 @@ export default function EventsPage() {
   async function hideEvent(eventId: string) {
     if (!token || !orgId) return;
     setBusy(true);
-    setFormError('');
+    setActionError(null);
     try {
       await api.events.unpublish(orgId, eventId, token);
       refetch();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Could not hide that event');
+      setActionError({
+        id: eventId,
+        message: err instanceof Error ? err.message : 'Could not hide that event',
+      });
     } finally {
       setBusy(false);
     }
@@ -197,15 +214,28 @@ export default function EventsPage() {
   async function deleteEvent(eventId: string) {
     if (!token || !orgId) return;
     setBusy(true);
-    setFormError('');
+    setActionError(null);
     try {
       await api.events.remove(orgId, eventId, token);
       setConfirmDelete(null);
       refetch();
     } catch (err) {
-      // The API refuses one somebody is expecting and says how many. That
-      // sentence is the whole value of the refusal.
-      setFormError(err instanceof Error ? err.message : 'Could not delete that event');
+      /*
+        The API refuses one somebody is expecting and says how many — "1
+        member is expecting this event, so it cannot be deleted. Cancel it
+        instead…". That sentence is the whole value of the refusal, and it
+        used to go to `formError`, which only `EventForm` renders and
+        `EventForm` is not mounted unless you are editing something.
+
+        So Delete it appeared to do nothing at all: the confirm box stayed
+        open, the button flickered through "Deleting…", and the reason was
+        written to a variable nothing was drawing. The event is still there,
+        which is correct; being told nothing about it was not.
+      */
+      setActionError({
+        id: eventId,
+        message: err instanceof Error ? err.message : 'Could not delete that event',
+      });
     } finally {
       setBusy(false);
     }
@@ -436,7 +466,7 @@ export default function EventsPage() {
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  setFormError('');
+                  setActionError(null);
                   setConfirmDelete(confirmDelete === event.id ? null : event.id);
                 }}
                 disabled={busy}
@@ -454,6 +484,13 @@ export default function EventsPage() {
                 <p className="mt-3 text-xs text-gray-500">{share.reason}</p>
               )}
 
+              {/* Hide has no confirm box to put its failure in. */}
+              {actionError?.id === event.id && confirmDelete !== event.id && (
+                <p className="mt-3 text-xs font-semibold text-red-700">
+                  {actionError.message}
+                </p>
+              )}
+
               {confirmDelete === event.id && (
                 <div
                   onClick={(e) => {
@@ -466,6 +503,14 @@ export default function EventsPage() {
                     Delete “{event.title}” for good? This cannot be undone. If anyone is
                     expecting it, hide or cancel it instead.
                   </p>
+                  {/* The refusal, where the person who caused it is looking.
+                      It stays above the buttons so Delete it is still there
+                      to try again after they cancel an RSVP. */}
+                  {actionError?.id === event.id && (
+                    <p className="mt-2 text-xs font-semibold text-red-900">
+                      {actionError.message}
+                    </p>
+                  )}
                   <div className="mt-2 flex gap-2">
                     <button
                       type="button"
