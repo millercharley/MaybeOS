@@ -1277,6 +1277,62 @@ export class EventsService {
     };
   }
 
+  /* ─── Member Event by Slug ──────────────────────────────────── */
+
+  /**
+   * One event a member can see, found by its slug (EVT-52).
+   *
+   * The member detail page used to find its event by reading the member list
+   * and searching it for a matching slug. That list is paginated — 20 rows,
+   * ordered by start time ascending, with no `from` filter — so the page was
+   * searching the twenty *oldest* events this co-op ever held. MaybeItsFate
+   * has 793 visible events, so an event at row 606 was simply not in the
+   * array being searched, and `.find` returned undefined.
+   *
+   * The fallback then asked the public by-slug endpoint, which correctly
+   * refuses a members-only event because it answers to the open internet.
+   * So a member clicking their own co-op's event read "Event not found":
+   * 739 of 793 events were unreachable, and the only ones that worked were
+   * public ones rescued by that fallback.
+   *
+   * Looking one event up by its own key rather than scanning a page of them
+   * is both the fix and the cheaper query. The predicate is deliberately
+   * identical to `listPublicEvents` for a member — published, not cancelled,
+   * PUBLIC or MEMBERS_ONLY — so this reaches exactly what the list would
+   * have shown and nothing more. A PRIVATE event still answers 404.
+   *
+   * `orgId` comes from the guarded path, so an event belonging to another
+   * co-op cannot be read through this route whatever slug is asked for.
+   */
+  async getMemberEventBySlug(orgId: string, eventSlug: string) {
+    const event = await this.prisma.event.findUnique({
+      where: { orgId_slug: { orgId, slug: eventSlug } },
+      // The same relations the member list carries, so the page receives the
+      // shape it already handles. The host travels in the row's own columns,
+      // which is the half of the payload the public endpoint withholds.
+      include: {
+        location: true,
+        room: true,
+        ...CONFIRMED_RSVP_COUNT,
+        ...RSVP_FACES,
+      },
+    });
+
+    if (!event) throw new NotFoundException('Event not found');
+
+    if (
+      !event.isPublished ||
+      event.canceledAt ||
+      !(event.visibility === 'PUBLIC' || event.visibility === 'MEMBERS_ONLY')
+    ) {
+      // Same message a missing event gets, on purpose: a member probing
+      // slugs should not learn that a draft or a private event exists.
+      throw new NotFoundException('Event not found');
+    }
+
+    return withRsvpFaces(withRsvpCount(event));
+  }
+
   /* ─── Public Event by Slug ──────────────────────────────────── */
 
   async getPublicEventBySlug(orgSlug: string, eventSlug: string) {

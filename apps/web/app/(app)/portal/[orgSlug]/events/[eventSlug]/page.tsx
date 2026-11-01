@@ -96,19 +96,32 @@ export default function PortalEventPage(props: {
   useEffect(() => {
     let cancelled = false;
 
-    // A member of this co-op reads its own list first. The public by-slug
-    // endpoint returns 404 for a members-only event — correctly, it answers
-    // to the open internet — so going public-first would have told a co-op
-    // its own event did not exist. The member list also carries the host,
-    // which the public payload deliberately withholds.
-    //
-    // Everyone else gets the public read, which is what a link shared on
-    // social has to land on.
+    /*
+      A member of this co-op asks for the one event. The public by-slug
+      endpoint returns 404 for a members-only event — correctly, it answers to
+      the open internet — so going public-first would tell a co-op its own
+      event did not exist. The member read also carries the host, which the
+      public payload deliberately withholds.
+
+      This used to read `listVisible` and search it for a matching slug
+      (EVT-52). That list is paginated — twenty rows, ordered by start time
+      ascending, no `from` filter — so it was searching the twenty *oldest*
+      events the co-op ever held. MaybeItsFate has 793, and the two Charley
+      reported sat at rows 605 and 606. `.find` returned undefined, the
+      fallback asked the public endpoint, the public endpoint refused a
+      members-only event, and the page said "Event not found" for 739 of 793
+      events. The ones that worked were public, rescued by that fallback,
+      which is why it looked like only *some* events were broken.
+
+      No fallback now, because there is nothing left for it to catch: the
+      member route serves PUBLIC and MEMBERS_ONLY alike, and a draft or a
+      PRIVATE event is meant to 404.
+
+      Everyone else gets the public read, which is what a link shared on
+      social has to land on.
+    */
     const read = isMember && org && token
-      ? api.events
-          .listVisible(org.id, token)
-          .then((all) => all.find((e) => e.slug === eventSlug))
-          .then((found) => found ?? api.events.getPublicBySlug(orgSlug, eventSlug))
+      ? api.events.getBySlug(org.id, eventSlug, token)
       : api.events.getPublicBySlug(orgSlug, eventSlug);
 
     read

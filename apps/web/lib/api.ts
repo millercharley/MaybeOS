@@ -1902,6 +1902,25 @@ class ApiClient {
       this.request<Event>(`/public/events/${orgSlug}/${eventSlug}`),
 
     /**
+     * One event a member can see, by slug (EVT-52).
+     *
+     * The member detail page used to call `listVisible` and search the result
+     * for a matching slug. That list is a *page* — twenty rows, oldest first
+     * — so for a co-op with 793 events the search looked at the twenty from
+     * last year and found nothing. The public fallback then 404'd every
+     * members-only event, which is how "Event not found" reached a member
+     * looking at their own co-op's calendar.
+     *
+     * `safePath` already folds `by-slug/<slug>` to `by-slug/:slug`, so this
+     * groups as one route in Sentry rather than one issue per event.
+     */
+    getBySlug: (orgId: string, eventSlug: string, token: string) =>
+      this.request<Event>(
+        `/orgs/${orgId}/events/by-slug/${encodeURIComponent(eventSlug)}`,
+        { token },
+      ),
+
+    /**
      * RSVP without an account (PUB-05).
      *
      * The path was `/guest-rsvp` and the API has always served `/rsvp/guest`,

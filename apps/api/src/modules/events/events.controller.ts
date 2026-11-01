@@ -275,6 +275,28 @@ export class EventsController {
     );
   }
 
+  /**
+   * One visible event, by its slug (EVT-52).
+   *
+   * The member detail page had no way to ask for a single event by slug, so
+   * it fetched the first page of the member list and searched it — twenty
+   * rows out of the 793 MaybeItsFate has. Everything past row 20 read "Event
+   * not found".
+   *
+   * Declared above `orgs/:orgId/events/:eventId` so the literal segment wins,
+   * though `by-slug` would not satisfy that route's UUID pipe in any case.
+   */
+  @Get('orgs/:orgId/events/by-slug/:eventSlug')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get one published event visible to a member, by slug' })
+  async getMemberEventBySlug(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('eventSlug') eventSlug: string,
+  ) {
+    return this.eventsService.getMemberEventBySlug(orgId, eventSlug);
+  }
+
   /* ─── Paying a member who hosted (EVT-15) ───────────────────── */
 
   /**
