@@ -90,6 +90,32 @@ if (missingUploadVars.length > 0 && missingUploadVars.length < sentryUploadVars.
 }
 
 export default withSentryConfig(nextConfig, {
+  /**
+   * And everything else Sentry does at build time becomes a warning rather
+   * than a failure (OPS-39).
+   *
+   * `errorHandler` is not a `withSentryConfig` option in this version —
+   * Netlify's own suggestion to add one there does not apply to
+   * @sentry/nextjs 8.55 — but it is an option of the bundler plugin
+   * underneath, and `unstable_sentryWebpackPluginOptions` is the documented
+   * way through. Without a handler the plugin throws and the bundle stops;
+   * with one, compilation continues unless the handler itself throws.
+   *
+   * Deliberately `console.warn` rather than silence: a build that quietly
+   * stops uploading source maps is how production stack traces turn back
+   * into minified soup months later with nobody noticing. `silent: false`
+   * below exists for the same reason.
+   */
+  unstable_sentryWebpackPluginOptions: {
+    errorHandler: (err: Error) => {
+      console.warn(
+        '[sentry] Build-time step failed; continuing without it. ' +
+          'Source maps or the release may be incomplete for this deploy.',
+        err,
+      );
+    },
+  },
+
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
   authToken: process.env.SENTRY_AUTH_TOKEN,
@@ -120,4 +146,27 @@ export default withSentryConfig(nextConfig, {
 
   // This is a Netlify deploy, not Vercel.
   automaticVercelMonitors: false,
+
+  /**
+   * Sentry must never be able to fail a production deploy (OPS-39).
+   *
+   * On 2 November a build died on `sentry-cli releases finalize`, which came
+   * back `504 gateway timeout`. The source maps had already uploaded; only
+   * the finalize call failed, and it failed because Sentry's API was briefly
+   * unavailable. That took maybeos.org's deploy down with it.
+   *
+   * Error tracking is not worth taking the site down for — the comment above
+   * already says that about a missing auth token, and an outage at Sentry is
+   * the same bargain with worse timing.
+   *
+   * Two changes, because they cover different things:
+   *
+   * `finalize: false` removes the call that failed. Finalizing only stamps a
+   * release with an end timestamp; the release is still created, the maps are
+   * still attached, and a stack trace still resolves without it. That is a
+   * very small thing to trade for a build that cannot be stopped by it.
+   */
+  release: {
+    finalize: false,
+  },
 });
