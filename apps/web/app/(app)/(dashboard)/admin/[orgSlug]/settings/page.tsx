@@ -11,6 +11,7 @@ import { MaybeOsPlan } from '@/components/settings/maybeos-plan';
 import { Locations } from '@/components/settings/locations';
 import { Support } from '@/components/settings/support';
 import { WebsiteEmbed } from '@/components/settings/website-embed';
+import { EmailEmbed } from '@/components/settings/email-embed';
 import { JoinPage } from '@/components/settings/join-page';
 import { PublicEventsLink } from '@/components/settings/public-events-link';
 import { MemberDashboard } from '@/components/settings/member-dashboard';
@@ -539,6 +540,12 @@ export default function SettingsPage() {
 
       {activeTab === 'website' && org && <WebsiteEmbed org={org} show="membership" />}
       {activeTab === 'website' && org && <WebsiteEmbed org={org} show="events" />}
+      {/* The same events for a campaign (EVT-55). On this tab rather than its
+          own, because an organiser looking for "how do my events get out of
+          MaybeOS" looks in one place — and because the mistake worth
+          preventing is pasting the script above into an email, which only
+          reads as a mistake when the two sit together. */}
+      {activeTab === 'website' && org && <EmailEmbed org={org} />}
 
       {activeTab === 'branding' && (
         <section className="card space-y-4">
