@@ -142,10 +142,20 @@ describe('which of them break the rule', () => {
 });
 
 describe('the source tree', () => {
-  const files = [
-    ...sourceFiles(join(REPO, 'apps', 'api')),
-    ...sourceFiles(join(REPO, 'apps', 'web')),
-  ];
+  /*
+    The whole repository, not just the two apps.
+
+    It scanned `apps/api` and `apps/web` when it was written, and the next
+    thing found in this repo was a real ticket buyer's name in
+    `project-os/DECISIONS.md` — joined to the show they bought seats to, on a
+    public default branch, in a directory this test was not looking at. Seven
+    tracked directories sat outside it: `project-os`, `integrations`,
+    `netlify`, `packages`, `tools`, `.github`, `.claude`.
+
+    A guard that covers where the leaks have happened but not where the next
+    one happens is the shape of the problem, not a fix for it.
+  */
+  const files = sourceFiles(REPO);
   const found = files.flatMap((file) =>
     addressesIn(readFileSync(file, 'utf8'), relative(REPO, file)),
   );
@@ -159,6 +169,12 @@ describe('the source tree', () => {
     expect(readFileSync(join(REPO, 'package.json'), 'utf8')).toContain('"workspaces"');
     expect(files.length).toBeGreaterThan(500);
     expect(files).toContain(join(REPO, 'apps', 'api', 'src', 'common', 'email-address.ts'));
+
+    // And the directories it used to miss, named so that narrowing the scan
+    // back again is a failing test rather than a quiet regression.
+    for (const outside of ['project-os', 'integrations', 'netlify', 'packages', 'tools']) {
+      expect(files.some((f) => f.startsWith(join(REPO, outside)))).toBe(true);
+    }
   });
 
   it('has the addresses this is about in it', () => {
@@ -166,8 +182,8 @@ describe('the source tree', () => {
     expect(found.some((f) => f.file.endsWith('email-address.ts'))).toBe(true);
   });
 
-  it('exempts this file and nothing else', () => {
-    expect(EXEMPT_FILES).toEqual([relative(REPO, __filename)]);
+  it('exempts this file and the lockfile, and nothing else', () => {
+    expect(EXEMPT_FILES).toEqual([relative(REPO, __filename), 'package-lock.json']);
   });
 
   it('holds no address a real person could read', () => {
@@ -200,6 +216,10 @@ describe('the source tree', () => {
     }));
     const reported = new Set(offendersIn(planted).map((f) => f.file));
 
-    expect(planted.map((f) => f.file).filter((file) => !reported.has(file))).toEqual(EXEMPT_FILES);
+    const dropped = planted.map((f) => f.file).filter((file) => !reported.has(file));
+
+    // Sorted: the planted order follows the directory walk, which is not the
+    // order the list is written in and has no business being asserted.
+    expect(dropped.sort()).toEqual([...EXEMPT_FILES].sort());
   });
 });

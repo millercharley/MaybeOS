@@ -6,7 +6,9 @@
 - Every entry requires my explicit approval before being committed.
 - This is the project's permanent memory of *why* — read it before any change that touches an established decision.
 
-**Redactions (2026-11-02):** two entries named a real ticket buyer, one of them
+**Redactions (2026-11-02):** Charley's own personal address, in the D-012
+trigger, where the address itself was never the point — that he registered one
+and was offered a co-op instead was. And two entries named a real ticket buyer, one of them
 alongside the show they bought seats to. The repository was public, so a named
 individual was joined to a purchase in a file anybody could read. Both are now
 "a buyer", which is all the reasoning ever needed — the decisions turned on
@@ -315,7 +317,7 @@ a new entry, not a rewrite.
 - **Date:** 2026-08-11
 - **Status:** Active — **not yet built**
 - **Area:** MemberOS, Billing, Onboarding
-- **Trigger:** Charley registered `owner@example.net` in production, clicked "Join as Sustainer", and was taken to *create a new organization* instead of joining MaybeItsFate. No membership was created and no payment was ever offered.
+- **Trigger:** Charley registered a personal address in production, clicked "Join as Sustainer", and was taken to *create a new organization* instead of joining MaybeItsFate. No membership was created and no payment was ever offered.
 - **Why it happened (all three layers):** the "Join as X" button is a plain `<Link href="/register">` that discards which org and tier were chosen; registering creates a `User` and never a `UserOrg` because **no self-join endpoint exists anywhere**; and the dashboard, seeing a user with no organizations, correctly-for-its-own-logic concludes they must be founding one. The button has always been decorative, like "Add Room" was before SPC-01.
 - **Decision (Charley's, 2026-08-11):**
   1. **Public join** — a stranger joining through the public page lands as **`MEMBER`**. The `UserOrg` is created **immediately** with `subscriptionStatus: NONE`, and **payment status is reported** rather than hidden, so an admin can see who has joined but not yet paid. An abandoned checkout leaves a resumable record instead of a dead end.

@@ -48,6 +48,9 @@ export const DOCUMENTATION_SUFFIXES = ['.example', '.test', '.invalid', '.localh
 export const OUR_DOMAINS = [
   'maybeos.org',
   'maybeos.app',
+  // Appears as a `noreply@` sender in the decision log, recording what the
+  // address used to be. A role address is categorically not a person.
+  'maybeos.com',
   'maybeitsfate.com',
   'maybeitsfate.community',
   'maybe-its-fate.com',
@@ -138,19 +141,27 @@ export function addressesIn(source: string, file = ''): FoundAddress[] {
 }
 
 /*
-  The spec file is the one exemption, and it needs to be: its fixtures are
-  addresses at the providers this rule refuses, which is what they are for.
+  Two files, for two different reasons.
 
-  Written as `['Member@', 'bellsouth.net'].join('')` they would pass with no
-  exemption at all — but teaching a file to hide addresses from a scan, that
-  file in particular, is a worse habit than naming the exception out loud.
+  The spec is the first, and it needs to be: its fixtures *are* addresses at
+  the providers this rule refuses, which is what they are for. Written as
+  `['Member@', 'bellsouth.net'].join('')` they would pass with no exemption at
+  all — but teaching a file to hide addresses from a scan, that file in
+  particular, is a worse habit than naming the exception out loud.
 
-  It is a list of exact paths rather than a prefix on purpose. An exemption
-  that covered a directory would quietly cover every file added to it later,
-  and the first version of this rule escaped a mutation that did exactly
-  that.
+  The lockfile is the second. npm writes upstream maintainers' published
+  contact addresses into its deprecation notices; none of them is a member,
+  none is ours to redact, and the file is generated, so a scrub would be
+  undone by the next install.
+
+  Exact paths rather than prefixes, on purpose. An exemption covering a
+  directory would quietly cover every file added to it later, and the first
+  version of this rule escaped a mutation that did exactly that.
 */
-export const EXEMPT_FILES = ['apps/api/src/common/__tests__/no-real-addresses.spec.ts'];
+export const EXEMPT_FILES = [
+  'apps/api/src/common/__tests__/no-real-addresses.spec.ts',
+  'package-lock.json',
+];
 
 /**
  * The addresses that break the rule.
@@ -164,7 +175,37 @@ export function offendersIn(found: FoundAddress[]): FoundAddress[] {
   );
 }
 
-const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.js', '.mjs', '.sql', '.prisma'];
+/*
+  Every text file, not just the code.
+
+  This was the six code extensions, which made widening the scan to the whole
+  repository worth nothing: `project-os` is entirely Markdown, so the walk
+  collected none of it, and the ticket buyer's name in `DECISIONS.md` would
+  have gone on sitting there with a green suite over it. The leak was in prose
+  both times — a comment, then a decision log — so prose is what this has to
+  read.
+
+  Matches the list in `tools/export-single-org.js`, which gates publication.
+  Two checks over the same rule should not disagree about which files exist.
+*/
+const SOURCE_EXTENSIONS = [
+  '.ts',
+  '.tsx',
+  '.js',
+  '.mjs',
+  '.cjs',
+  '.json',
+  '.sql',
+  '.prisma',
+  '.md',
+  '.yml',
+  '.yaml',
+  '.txt',
+  '.html',
+  '.css',
+  '.sh',
+  '.gs',
+];
 const SKIP_DIRECTORIES = ['node_modules', 'dist', '.next', '.git', 'coverage'];
 
 /** Every source file under `root`, recursively. */

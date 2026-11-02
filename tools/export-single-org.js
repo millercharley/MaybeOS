@@ -217,8 +217,10 @@ const TEXT = ['.ts', '.tsx', '.js', '.mjs', '.cjs', '.json', '.sql', '.prisma', 
  * inventing a second answer.
  *
  * A lockfile carries the published contact address of every upstream
- * maintainer. `i@izs.me` is not a MaybeItsFate member and not ours to redact,
- * and the file is generated, so a scrub would be undone by the next install.
+ * maintainer — none of them a MaybeItsFate member, none of them ours to
+ * redact, and the file is generated, so a scrub would be undone by the next
+ * install. (This comment used to quote one of them to make the point, which
+ * the very rule it describes refused.)
  * Note this is the *person* scan: a lockfile is still worth reading for a
  * private registry URL with a credential in it, which is a different check.
  */
