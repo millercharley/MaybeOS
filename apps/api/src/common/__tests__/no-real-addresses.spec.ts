@@ -3,8 +3,10 @@ import { join, relative } from 'node:path';
 import {
   addressesIn,
   isAllowedDomain,
+  offendersIn,
   sourceFiles,
   DOCUMENTATION_DOMAINS,
+  EXEMPT_FILES,
   FIXTURE_PLACEHOLDERS,
   OUR_DOMAINS,
 } from '../testing/address-scan';
@@ -17,17 +19,6 @@ import {
  * rule and the reasoning are in `address-scan.ts`; this is the sweep.
  */
 const REPO = join(__dirname, '..', '..', '..', '..', '..');
-
-/*
-  This file is the one exemption, and it needs to be: its fixtures are
-  addresses at the providers the rule refuses, which is what they are for.
-  `Member@bellsouth.net` below is the shape of the address behind AUTH-07.
-
-  Writing them as `['Member@', 'bellsouth.net'].join('')` would pass without
-  an exemption, but teaching a file to hide addresses from a scan — this file
-  in particular — is a worse habit than naming the exception out loud.
-*/
-const EXEMPT = ['apps/api/src/common/__tests__/no-real-addresses.spec.ts'];
 
 describe('which domains a fixture may use', () => {
   it('allows the ones reserved for documentation, and their subdomains', () => {
@@ -131,6 +122,25 @@ describe('finding the addresses in a file', () => {
   });
 });
 
+describe('which of them break the rule', () => {
+  const at = (file: string, address: string) => addressesIn(address, file);
+
+  it('reports an address at a domain nobody ruled on', () => {
+    const found = at('apps/api/src/x.ts', 'Member@bellsouth.net');
+
+    expect(offendersIn(found)).toEqual(found);
+  });
+
+  it('says nothing about one at an allowed domain', () => {
+    expect(offendersIn(at('apps/api/src/x.ts', 'ruth@example.net'))).toEqual([]);
+  });
+
+  it('says nothing about the exempt file', () => {
+    expect(offendersIn(at(EXEMPT_FILES[0], 'Member@bellsouth.net'))).toEqual([]);
+  });
+
+});
+
 describe('the source tree', () => {
   const files = [
     ...sourceFiles(join(REPO, 'apps', 'api')),
@@ -157,15 +167,39 @@ describe('the source tree', () => {
   });
 
   it('exempts this file and nothing else', () => {
-    expect(EXEMPT).toEqual([relative(REPO, __filename)]);
+    expect(EXEMPT_FILES).toEqual([relative(REPO, __filename)]);
   });
 
   it('holds no address a real person could read', () => {
-    const offenders = found
-      .filter((f) => !EXEMPT.includes(f.file))
-      .filter((f) => !isAllowedDomain(f.domain))
-      .map((f) => `${f.file}:${f.line}  ${f.address}`);
+    const offenders = offendersIn(found).map((f) => `${f.file}:${f.line}  ${f.address}`);
 
     expect(offenders).toEqual([]);
+  });
+
+  /*
+    This is the strong form of "exempts this file and nothing else", and it
+    took two tries to get there.
+
+    First `EXEMPT_FILES` was asserted to hold one path — but the sweep did its
+    own filtering, so a second skip added beside it hid a planted address with
+    every test still green. Then the exemption moved in here with the rule and
+    three neighbouring paths were checked, which a skip for some *other*
+    directory walked straight past.
+
+    Sampling paths cannot close that, because the next skip names a path the
+    sample does not hold. So plant the same refused address at every file in
+    the tree and require that precisely the listed ones come back clean. Any
+    exemption nobody wrote down shows up as a file missing from the report.
+  */
+  it('exempts no file but the ones listed, whatever its path', () => {
+    const planted = files.map((file) => ({
+      address: 'Member@bellsouth.net',
+      domain: 'bellsouth.net',
+      file: relative(REPO, file),
+      line: 1,
+    }));
+    const reported = new Set(offendersIn(planted).map((f) => f.file));
+
+    expect(planted.map((f) => f.file).filter((file) => !reported.has(file))).toEqual(EXEMPT_FILES);
   });
 });

@@ -137,6 +137,33 @@ export function addressesIn(source: string, file = ''): FoundAddress[] {
   return found;
 }
 
+/*
+  The spec file is the one exemption, and it needs to be: its fixtures are
+  addresses at the providers this rule refuses, which is what they are for.
+
+  Written as `['Member@', 'bellsouth.net'].join('')` they would pass with no
+  exemption at all — but teaching a file to hide addresses from a scan, that
+  file in particular, is a worse habit than naming the exception out loud.
+
+  It is a list of exact paths rather than a prefix on purpose. An exemption
+  that covered a directory would quietly cover every file added to it later,
+  and the first version of this rule escaped a mutation that did exactly
+  that.
+*/
+export const EXEMPT_FILES = ['apps/api/src/common/__tests__/no-real-addresses.spec.ts'];
+
+/**
+ * The addresses that break the rule.
+ *
+ * The exemption lives in here with the rule rather than in the sweep, so that
+ * widening it is a change to a function with tests on it.
+ */
+export function offendersIn(found: FoundAddress[]): FoundAddress[] {
+  return found.filter(
+    (f) => !EXEMPT_FILES.includes(f.file) && !isAllowedDomain(f.domain),
+  );
+}
+
 const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.js', '.mjs', '.sql', '.prisma'];
 const SKIP_DIRECTORIES = ['node_modules', 'dist', '.next', '.git', 'coverage'];
 
