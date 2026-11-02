@@ -46,6 +46,17 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://test:test@localhost:5432/maybeos_test
+      # The schema's datasource needs both (OPS-11): `DATABASE_URL` goes
+      # through Supabase's transaction pooler, which cannot run migrations
+      # because they need a session that holds advisory locks, so `DIRECT_URL`
+      # connects straight to Postgres.
+      #
+      # Here they are the same string: this is a plain `postgres:16-alpine`
+      # service with no pooler in front of it. It still has to be set — the
+      # first CI run that ever happened failed on `Environment variable not
+      # found: DIRECT_URL`, which is the same way D-007 broke a Railway
+      # deploy.
+      DIRECT_URL: postgresql://test:test@localhost:5432/maybeos_test
       JWT_SECRET: test-secret-key-at-least-32-characters-long
 
     steps:
