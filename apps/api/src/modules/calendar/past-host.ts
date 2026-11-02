@@ -128,6 +128,38 @@ export function nameKey(name: string | null | undefined): string | null {
 }
 
 /**
+ * The keys a reservation's title might be naming somebody by (SPC-35).
+ *
+ * `nameKey` keys the *whole* title, which only matches a calendar entry
+ * called exactly "Avery Lanning". MaybeItsFate's rooms are mostly booked
+ * under a house convention instead — "avery lanning · White Elephant ·
+ * Attic", "Avery Lanning • 3rd Floor Attic" — and against those the whole
+ * title matches nobody, so 203 reservations naming 44 members read as the
+ * co-op's and sat in nobody's My Bookings.
+ *
+ * Names in these comments are stand-ins; the real ones stay in the
+ * database.
+ *
+ * Only the segment before a `·` or a `•` is tried, never a bare prefix of
+ * the words. The separator is structure the co-op actually wrote; a prefix
+ * is a guess, and "Sarah Jones Memorial Lecture" is not Sarah Jones's
+ * booking. 149 of the 203 carry a separator, and the rest are left alone
+ * rather than attributed on a hunch — the same under-claiming this file
+ * already prefers.
+ */
+export function titleNameKeys(title: string | null | undefined): string[] {
+  const whole = nameKey(title);
+  if (!whole) return [];
+
+  const keys = [whole];
+  // Split on the separator only. A hyphen is excluded deliberately: it lives
+  // inside plenty of real names.
+  const lead = nameKey(whole.split(/[\u00b7\u2022]/)[0]);
+  if (lead && lead !== whole) keys.push(lead);
+  return keys;
+}
+
+/**
  * Names that belong to exactly one member.
  *
  * A name two people share identifies neither, and a reservation handed to

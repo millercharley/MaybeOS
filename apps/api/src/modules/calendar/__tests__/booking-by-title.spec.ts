@@ -73,9 +73,19 @@ describe('what the importer does with it', () => {
   const writeBookings = src.slice(src.indexOf('private async writeBookings'));
 
   it('prefers the guest line, which is the stronger signal', () => {
-    // The automation writes "Guest • Linnet Hale (…)" and that names the
-    // person outright. A title is a guess by comparison.
-    expect(writeBookings).toMatch(/const titleKey = guest \? null : nameKey\(entry\.title\)/);
+    /*
+      The automation writes "Guest • Linnet Hale (…)" and that names the
+      person outright. A title is a guess by comparison.
+
+      This used to pin `const titleKey = guest ? null : nameKey(entry.title)`.
+      The title is now keyed several ways rather than one, because
+      MaybeItsFate books as "avery lanning · White Elephant · Attic" and a
+      whole-title key matched nobody (SPC-35) — so the expression moved. The
+      rule it protects did not: the title is consulted only when there is no
+      guest line, and the title still loses to nothing else.
+    */
+    expect(writeBookings).toMatch(/const byTitle = guest\s*\n?\s*\? null/);
+    expect(writeBookings).toMatch(/titleNameKeys\(entry\.title\)/);
     expect(writeBookings).toMatch(/const matched = byTitle \?\? byEmail/);
   });
 

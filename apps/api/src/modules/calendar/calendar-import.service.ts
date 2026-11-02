@@ -3,7 +3,14 @@ import { Prisma } from '@prisma/client';
 import { calendar_v3 } from 'googleapis';
 import { PrismaService } from '../../config/prisma.service';
 import { CalendarService } from './calendar.service';
-import { hostFields, hostKey, hostLabel, nameKey, personFor, unambiguousNames } from './past-host';
+import {
+  hostFields,
+  hostKey,
+  hostLabel,
+  personFor,
+  titleNameKeys,
+  unambiguousNames,
+} from './past-host';
 import { guestFrom } from './booking-guest';
 import { slugCandidates } from './event-slug';
 import { budget, nextCursor, startOf, type ImportCursor } from './import-cursor';
@@ -868,9 +875,12 @@ export class CalendarImportService {
             roomId,
             googleEventId: { in: entries.map((e) => e.googleEventId) },
           },
-          select: { id: true, googleEventId: true },
+          // `isCoopHold` and `userId` come too (SPC-35): a later pass has
+          // to know whether this reservation is already somebody's before it
+          // decides to take it off them.
+          select: { id: true, googleEventId: true, isCoopHold: true, userId: true },
         })
-      ).map((row) => [row.googleEventId as string, row.id]),
+      ).map((row) => [row.googleEventId as string, row]),
     );
 
     for (const [index, entry] of withGuests.entries()) {
@@ -882,8 +892,11 @@ export class CalendarImportService {
 
       // Guest line first, then the title, then whoever's address is on it.
       const guest = guests.get(entry.googleEventId);
-      const titleKey = guest ? null : nameKey(entry.title);
-      const byTitle = titleKey ? (byName.get(titleKey) ?? null) : null;
+      const byTitle = guest
+        ? null
+        : (titleNameKeys(entry.title)
+            .map((key) => byName.get(key) ?? null)
+            .find(Boolean) ?? null);
       const matched = byTitle ?? byEmail;
       // `userId` is required, so an unmatched reservation still has to be
       // filed under somebody — but it no longer *claims* to be theirs.
@@ -922,19 +935,50 @@ export class CalendarImportService {
         them exactly as invisible.
       */
       const named = Boolean(guest) || byTitle !== null;
-      const isCoopHold = matched === null || (!named && matched === fallback.userId);
-      const bookedFor = matched
-        ? { bookedForEmail: null, bookedForName: null }
-        : {
-            bookedForEmail: hostKey(person.email),
-            bookedForName: hostLabel(person.name, person.email),
-          };
+      const computedCoopHold = matched === null || (!named && matched === fallback.userId);
+      // Filled in below, once it is known whether this reservation is
+      // already somebody's — `bookedFor` names the person a *co-op hold* is
+      // being held for, so stamping one onto a member's own booking would
+      // put somebody else's name on it.
+      const bookedForPerson = {
+        bookedForEmail: hostKey(person.email),
+        bookedForName: hostLabel(person.name, person.email),
+      };
+      const mine = { bookedForEmail: null, bookedForName: null };
 
       const existing = already.get(entry.googleEventId);
 
+      /*
+        A reservation that is already somebody's stays theirs (SPC-35).
+
+        `isCoopHold` was recomputed from scratch on every pass while `userId`
+        was only ever moved forward — so a pass with weaker evidence than the
+        one before it could take a booking away from the member it was filed
+        under, and leave it filed under them. Nothing in the UI says so: it
+        simply stops appearing in My Bookings while still being theirs in the
+        database.
+
+        That is what a member's four reservations for the 5th of December did. They were created correctly on 13 October — matched
+        to her by the address on the calendar entry, and visible. A later
+        pass no longer resolved that address, recomputed them as the co-op's,
+        and they vanished from her list. She had the confirmation emails and
+        could see them on Google, which is exactly the shape of a bug that
+        reads as the member's mistake.
+
+        So the downgrade needs evidence, not merely the absence of it: a
+        reservation that is already attributed to a real member keeps its
+        owner. Promotion is unaffected — a pass that *does* recognise
+        somebody still hands it over, which is how the 149 currently stuck as
+        co-op holds come back.
+      */
+      const attributed =
+        existing != null && !existing.isCoopHold && existing.userId !== fallback.userId;
+      const isCoopHold = attributed ? false : computedCoopHold;
+      const bookedFor = matched || attributed ? mine : bookedForPerson;
+
       if (existing) {
         await this.prisma.booking.update({
-          where: { id: existing },
+          where: { id: existing.id },
           data: {
             title: entry.title,
             startTime: entry.start,
