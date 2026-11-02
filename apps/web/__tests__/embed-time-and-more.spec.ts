@@ -45,15 +45,17 @@ const when: (start: string, end?: string | null) => string = (() => {
 })();
 
 describe('the time a visitor reads', () => {
-  // Fixed so the expectations are about the formatter, not about where the
-  // machine running them happens to be.
-  const ORIGINAL_TZ = process.env.TZ;
-  beforeAll(() => {
-    process.env.TZ = 'America/New_York';
-  });
-  afterAll(() => {
-    process.env.TZ = ORIGINAL_TZ;
-  });
+  /*
+    These expectations are wall-clock times, so they need a known zone. It is
+    pinned in `jest.config.js`, which runs in jest's parent process before any
+    worker forks — the only place early enough, since jsdom fixes its `Intl`
+    when it builds its realm.
+
+    It used to be pinned by a `beforeAll` right here, which did nothing at
+    all for that reason. The suite passed only because the machine it was
+    written on is in that zone, and all seven of these went down the first
+    time CI ran them, in UTC.
+  */
 
   it('prints the exact format asked for', () => {
     // The Louisville TimeBank potluck, which is the row in Charley's
