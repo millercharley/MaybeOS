@@ -121,13 +121,77 @@ describe('the feed lists events, one item each', () => {
     expect(feed([EVENT])).toContain(`<link>${EVENT.url}</link>`);
   });
 
-  it('dates each item by when the event happens', () => {
+  /*
+    Ordering (EVT-61).
+
+    `pubDate` was the event's own start time, on the reasoning that this is
+    the honest date of the item. Almost every reader sorts newest-first, so
+    the *furthest* event came out on top — and worse, every event in this
+    feed is in the future by construction, so every item was future-dated,
+    which some readers suppress entirely.
+
+    Mirrored now: the soonest event is dated now, the next a minute earlier.
+    Newest-first and document order agree, and nothing is future-dated.
+  */
+  const dates = (xml: string) =>
+    [...xml.matchAll(/<pubDate>([^<]+)<\/pubDate>/g)].map((m) => new Date(m[1]).getTime());
+
+  const titles = (xml: string) =>
+    [...xml.matchAll(/<title>([^<]+)<\/title>/g)].slice(1).map((m) => m[1]);
+
+  it('dates the soonest event most recently', () => {
+    const xml = feed([EVENT, TICKETED, { ...EVENT, slug: 'third' }]);
+    const stamps = dates(xml);
+    expect(stamps).toHaveLength(3);
+    expect(stamps[0]).toBeGreaterThan(stamps[1]);
+    expect(stamps[1]).toBeGreaterThan(stamps[2]);
+  });
+
+  it('dates nothing in the future', () => {
+    // Every event here is ahead of now, so dating items by their start time
+    // future-dated the whole feed.
+    for (const stamp of dates(feed([EVENT, TICKETED]))) {
+      expect(stamp).toBeLessThanOrEqual(NOW.getTime());
+    }
+  });
+
+  it('reads soonest-first whether a reader sorts or not', () => {
+    const xml = feed([EVENT], [TICKETED, { ...EVENT, slug: 'third' }]);
+    const inDocument = titles(xml);
+
+    const byNewest = [...xml.matchAll(/<item>[\s\S]*?<\/item>/g)]
+      .map((m) => ({
+        title: /<title>([^<]+)</.exec(m[0])![1],
+        at: new Date(/<pubDate>([^<]+)</.exec(m[0])![1]).getTime(),
+      }))
+      .sort((a, b) => b.at - a.at)
+      .map((i) => i.title);
+
+    expect(byNewest).toEqual(inDocument);
+  });
+
+  it('spaces them a minute apart, not a second', () => {
+    // Some readers round to the minute, which would collapse the lot into
+    // one timestamp and sort arbitrarily among them.
+    const stamps = dates(feed([EVENT, TICKETED]));
+    expect(stamps[0] - stamps[1]).toBe(60_000);
+  });
+
+  it('does not depend on the dates being stable between builds', () => {
     /*
-      Rather than by when the feed was built. Every item sharing a build
-      timestamp leaves a reader sorting arbitrarily among them, and an
-      event's date is the honest date of the item.
+      They shift with the build time, which costs nothing: identity is the
+      guid, and that is content-addressed. This pins the thing that must not
+      move — a later build must not change which item is newest.
     */
-    expect(feed([EVENT])).toContain(`<pubDate>${rfc822(new Date(EVENT.startTime))}</pubDate>`);
+    const later = rssFeed({
+      org: ORG,
+      events: [EVENT, TICKETED],
+      more: [],
+      siteUrl: 'https://maybeos.org',
+      now: new Date(NOW.getTime() + 86_400_000),
+    });
+    expect(titles(later)).toEqual(titles(feed([EVENT, TICKETED])));
+    expect(dates(later)[0]).toBeGreaterThan(dates(later)[1]);
   });
 
   it('gives every item its own guid', () => {

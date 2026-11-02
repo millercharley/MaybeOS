@@ -612,12 +612,31 @@ export function simpleItemHtml(event: EmbedEvent, theme: Theme): string {
 /**
  * The feed: one item per event.
  *
- * `<pubDate>` is the event's own start time rather than the moment the feed
- * was built. Every item sharing a build timestamp leaves a reader sorting
- * arbitrarily among them, and an event's date is the honest date of the
- * item. A reader that sorts newest-first will therefore show the furthest
- * event first — the document order is soonest-first for everything that
- * respects it, which is most things.
+ * `<pubDate>` descends as the event date ascends: the soonest event is dated
+ * now, the next a minute earlier, and so on (EVT-61).
+ *
+ * It used to be the event's own start time, on the reasoning that this is
+ * the honest date of the item. Two things wrong with that, and I chose it
+ * knowing the first:
+ *
+ *   - Almost every reader sorts newest-first, so the *furthest* event came
+ *     out on top. An events list reading backwards is worse than one whose
+ *     timestamps are a device.
+ *   - Worse, and I missed it: every event in this feed is in the future by
+ *     construction, so every item was future-dated. Readers that suppress
+ *     items dated ahead of now would show nothing at all.
+ *
+ * Mirroring the order fixes both. Newest-first and document order now agree,
+ * nothing is future-dated, and a reader that prints the date shows "just
+ * now" rather than a day in 2027.
+ *
+ * Spaced a minute apart rather than a second, because some readers round to
+ * the minute and would otherwise collapse the lot into one timestamp and
+ * sort arbitrarily among them — which is the problem this is here to avoid.
+ *
+ * These shift each time the feed is built. That costs nothing: identity is
+ * the guid, which is content-addressed, so nothing re-sends because a
+ * timestamp moved.
  *
  * `<guid>` is the event's slug with a digest of its own content, which is
  * the same rule the single-block item learned (EVT-58): stable while the
@@ -635,7 +654,9 @@ export function rssFeed(input: EmailFeedInput): string {
     timeZone: input.org.timezone || 'America/New_York',
   };
 
-  const items = [...input.events, ...input.more].map((event) => {
+  const ordered = [...input.events, ...input.more];
+
+  const items = ordered.map((event, index) => {
     // Rendered once: it is the item's content and the thing its guid is
     // taken from, and rendering it twice would let the two disagree.
     const body = simpleItemHtml(event, theme);
@@ -645,7 +666,7 @@ export function rssFeed(input: EmailFeedInput): string {
       '  <item>',
       `    <title>${escapeXml(event.title)}</title>`,
       `    <link>${escapeXml(event.url)}</link>`,
-      `    <pubDate>${rfc822(new Date(event.startTime))}</pubDate>`,
+      `    <pubDate>${rfc822(new Date(input.now.getTime() - index * 60_000))}</pubDate>`,
       `    <guid isPermaLink="false">${escapeXml(event.slug ?? event.url)}-${id}</guid>`,
       `    <description>${cdata(body)}</description>`,
       '  </item>',
