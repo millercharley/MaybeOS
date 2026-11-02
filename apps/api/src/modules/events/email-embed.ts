@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 /**
  * The events embed, for an email campaign (EVT-55).
  *
@@ -547,14 +549,15 @@ export function eventsHtml(input: EmailFeedInput): string {
  * carrying the whole laid-out block gives a co-op the list they wanted. One
  * item per event would hand them a loop to configure and a layout to rebuild
  * in somebody else's editor.
- *
- * `<guid>` is stable for the same reason — `<slug>-events-feed` every time,
- * never a date — so a campaign tool treats each fetch as the same block
- * updated rather than as a new post to send on its own.
  */
 export function rssFeed(input: EmailFeedInput): string {
   const site = input.siteUrl.replace(/\/+$/, '');
   const orgUrl = `${site}/orgs/${input.org.slug}/events`;
+
+  // Rendered once: it is the item's content and the thing the guid is taken
+  // from, and rendering it twice would let the two disagree.
+  const block = eventsHtml(input);
+  const blockId = createHash('sha256').update(block).digest('hex').slice(0, 16);
 
   return [
     '<?xml version="1.0" encoding="UTF-8" ?>',
@@ -568,8 +571,28 @@ export function rssFeed(input: EmailFeedInput): string {
     '    <title>Latest Events Feed Block</title>',
     `    <link>${escapeXml(orgUrl)}</link>`,
     `    <pubDate>${rfc822(input.now)}</pubDate>`,
-    `    <guid isPermaLink="false">${escapeXml(input.org.slug)}-events-feed</guid>`,
-    `    <description>${cdata(eventsHtml(input))}</description>`,
+    /*
+      The guid changes when, and only when, the block does (EVT-58).
+
+      It was `<slug>-events-feed`, fixed, on the reasoning that each fetch is
+      the same block updated rather than a new post to send. That reasoning
+      was wrong about what a guid means to the thing reading it. A guid is
+      how a consumer recognises an item it already has — so a guid that never
+      changes says "you have seen this", and MailerLite kept rendering the
+      copy it stored the first time. Two deploys of layout fixes reached the
+      campaign as the original markup, because nothing in the feed ever told
+      it otherwise.
+
+      A timestamp would be the other extreme: every poll would look like a
+      new item, which is what makes an RSS campaign send twice.
+
+      Hashing the rendered block gives both. Identical content keeps its
+      identifier and is recognised as the same item; a change of any kind —
+      a new event, an edited time, a layout fix like this one — produces a
+      new one and the item is re-read.
+    */
+    `    <guid isPermaLink="false">${escapeXml(input.org.slug)}-events-${blockId}</guid>`,
+    `    <description>${cdata(block)}</description>`,
     '  </item>',
     '</channel>',
     '</rss>',

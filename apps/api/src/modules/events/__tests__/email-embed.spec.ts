@@ -36,6 +36,10 @@ import {
  */
 const NOW = new Date('2026-11-02T13:00:00.000Z');
 
+/** The same digest the feed takes, for the one test that needs to predict it. */
+const createHashOf = (text: string) =>
+  require('node:crypto').createHash('sha256').update(text).digest('hex').slice(0, 16);
+
 const EVENT: EmbedEvent = {
   title: 'Figure drawing',
   slug: 'figure-drawing',
@@ -94,11 +98,81 @@ describe('the document', () => {
     expect(xml).toContain('<title>Latest Events Feed Block</title>');
   });
 
-  it('keeps the guid stable so each fetch is the same block', () => {
-    // A guid that moved would make a campaign tool treat every poll as a new
-    // post to send on its own.
-    expect(feed([EVENT])).toContain('maybeitsfate-events-feed');
+  /*
+    The guid tracks the content (EVT-58).
+
+    It was fixed — `<slug>-events-feed` — on the reasoning that each fetch is
+    the same block updated rather than a new post. That was wrong about what
+    a guid means to the reader: it is how a consumer recognises an item it
+    already holds, so one that never changes says "you have seen this".
+    MailerLite went on rendering the copy it stored the first time, and two
+    deploys of layout fixes reached the campaign as the original markup.
+  */
+  const guidOf = (xml: string) => /<guid[^>]*>([^<]+)<\/guid>/.exec(xml)?.[1];
+
+  it('is marked as an identifier rather than a URL', () => {
     expect(feed([EVENT])).toContain('isPermaLink="false"');
+    expect(guidOf(feed([EVENT]))).toMatch(/^maybeitsfate-events-[0-9a-f]{16}$/);
+  });
+
+  it('does not change while the block does not', () => {
+    // Otherwise every poll looks like a new item, which is what makes an RSS
+    // campaign send the same events twice.
+    expect(guidOf(feed([EVENT]))).toBe(guidOf(feed([EVENT])));
+  });
+
+  it('changes when an event is added', () => {
+    expect(guidOf(feed([EVENT]))).not.toBe(guidOf(feed([EVENT, TICKETED])));
+  });
+
+  it('changes when an event is edited', () => {
+    const moved = { ...EVENT, startTime: '2026-11-02T23:30:00.000Z' };
+    expect(guidOf(feed([EVENT]))).not.toBe(guidOf(feed([moved])));
+  });
+
+  it('changes when the layout changes but the events do not', () => {
+    /*
+      The case that caused this. Both deploys altered only the markup, and a
+      fixed guid meant the campaign never re-read it.
+    */
+    const asBefore = guidOf(feed([EVENT]));
+    const withDifferentMarkup = createHashOf(
+      eventsHtml({
+        org: ORG,
+        events: [EVENT],
+        more: [],
+        siteUrl: 'https://maybeos.org',
+        now: NOW,
+      }).replace('cellpadding="20"', 'cellpadding="0"'),
+    );
+    expect(asBefore).not.toContain(withDifferentMarkup);
+  });
+
+  it('identifies the block it actually shipped', () => {
+    /*
+      The invariant behind all of the above: the guid is the digest of the
+      description in the same document, not of a second render that happens
+      to agree today. Asserting only that they are each correct let a version
+      through that rendered the block twice — harmless while the render is
+      deterministic, and a silent mismatch the moment it is not.
+    */
+    const xml = feed([EVENT, TICKETED], [{ ...EVENT, slug: 'later' }]);
+    const body = /<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/.exec(xml)?.[1];
+    expect(body).toBeTruthy();
+    expect(guidOf(xml)).toBe(`maybeitsfate-events-${createHashOf(body as string)}`);
+  });
+
+  it('does not move merely because time passed', () => {
+    // A timestamp would be the other extreme, and the reason the fixed guid
+    // looked right in the first place.
+    const later = rssFeed({
+      org: ORG,
+      events: [EVENT],
+      more: [],
+      siteUrl: 'https://maybeos.org',
+      now: new Date(NOW.getTime() + 86_400_000),
+    });
+    expect(guidOf(feed([EVENT]))).toBe(guidOf(later));
   });
 
   it('dates the feed in RFC 822, which is what pubDate means', () => {
