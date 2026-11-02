@@ -1,13 +1,32 @@
 name: CI
 
+# This had never run, once, in the repo's history.
+#
+# The triggers named `main`, and there is no `main` — the default branch is
+# `claude/maybeOS-suite-foundation-1Wauk`, which is also what Netlify deploys
+# from. So every push went straight to production with nothing checked, and
+# the workflow sat here looking like it was checking. That is also why the
+# SEC-04 tenant-scoping guard lives in the jest suite and `npm run lint`
+# exited 127 for months without anybody noticing (OPS-13).
+#
+# The deploy branch is named in full rather than filtered loosely, so it is
+# obvious which branch this is about. If it is ever renamed, rename it here
+# too — `pull_request` is left unfiltered so at least that half cannot go
+# stale the same way.
 on:
   push:
-    branches: [main]
+    branches:
+      - claude/maybeOS-suite-foundation-1Wauk
   pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
-  lint-and-build:
+  # Named for what it does. It was `lint-and-build` and ran no lint: `npm run
+  # lint` reports 59 errors on the existing code, so putting it in here would
+  # go red on a backlog rather than on anything this job is checking. That
+  # backlog is worth clearing on its own, and then this gets a lint step and
+  # its old name back.
+  build-and-test:
     runs-on: ubuntu-latest
 
     services:
