@@ -78,7 +78,7 @@ describe('Auth (e2e)', () => {
       await request(app.getHttpServer())
         .post('/api/auth/register')
         .send({
-          email: 'short-pass@test.com',
+          email: 'short-pass@example.com',
           password: 'short',
         })
         .expect(400);
@@ -112,7 +112,7 @@ describe('Auth (e2e)', () => {
       await request(app.getHttpServer())
         .post('/api/auth/login')
         .send({
-          email: 'nobody@test.com',
+          email: 'nobody@example.com',
           password: 'DoesntMatter123!',
         })
         .expect(401);
@@ -158,7 +158,7 @@ describe('Auth (e2e)', () => {
     it('should accept request for non-existent email (no leak)', async () => {
       const res = await request(app.getHttpServer())
         .post('/api/auth/magic-link')
-        .send({ email: 'nonexistent@test.com' })
+        .send({ email: 'nonexistent@example.com' })
         .expect(201);
 
       expect(res.body.message).toContain('magic link');

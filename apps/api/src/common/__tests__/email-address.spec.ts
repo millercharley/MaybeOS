@@ -42,7 +42,7 @@ describe('normalising an address', () => {
    * kind than leaving two rows for somebody to look at.
    */
   it('does not strip dots', () => {
-    expect(normalizeEmail('wren.l.oakes@gmail.com')).toBe('wren.l.oakes@gmail.com');
+    expect(normalizeEmail('wren.l.oakes@example.com')).toBe('wren.l.oakes@example.com');
   });
 
   it('does not collapse a plus alias', () => {

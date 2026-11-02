@@ -34,8 +34,9 @@ import { normalizeEmail } from '../../common/email-address';
 export interface TicketPassToken {
   eventId: string;
   /**
-   * Normalised at signing, so the token for `calla.marsh@example.net` and the one
-   * for `tamsin.reed@example.com` are the same token and count the same seats.
+   * Normalised at signing, so the token for `Tamsin.Reed@Example.com` and
+   * the one for `tamsin.reed@example.com` are the same token and count the
+   * same seats.
    * Stripe returns whatever the buyer typed, and it varies between two
    * checkouts by the same person twenty-four seconds apart.
    */

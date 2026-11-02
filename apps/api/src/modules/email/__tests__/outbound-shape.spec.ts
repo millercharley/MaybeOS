@@ -194,7 +194,7 @@ describe('the message handed to the provider', () => {
     it('never copies somebody on their own mail', async () => {
       const { service, sendEmail } = build();
       await service.sendBookingConfirmed(
-        { primary: 'ruth@example.net', also: 'ruth@example.net' },
+        { primary: 'ruth@example.net', also: 'RUTH@example.net' },
         booking,
       );
 
