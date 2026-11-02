@@ -22,7 +22,7 @@ on:
 
 jobs:
   # Named for what it does. It was `lint-and-build` and ran no lint: `npm run
-  # lint` reports 59 errors on the existing code, so putting it in here would
+  # lint` reports 57 errors on the existing code, so putting it in here would
   # go red on a backlog rather than on anything this job is checking. That
   # backlog is worth clearing on its own, and then this gets a lint step and
   # its old name back.

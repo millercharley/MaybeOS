@@ -56,10 +56,6 @@
     return 0.2126 * ch(c[0]) + 0.7152 * ch(c[1]) + 0.0722 * ch(c[2]);
   };
 
-  // Text laid ON the accent. 0.179 is where white and black are equally
-  // readable against a colour.
-  var onAccent = !rgb ? '#fff' : luminance(rgb) > 0.179 ? '#1a1a1a' : '#fff';
-
   // The accent used AS text, on the card's white ground — prices, dates,
   // check marks. Same colour, darkened until it can be read: a pale brand
   // colour at 14px on white is a decoration, not a price. Hue is kept, which
@@ -346,6 +342,7 @@
   wrap.className = 'wrap';
   root.appendChild(wrap);
 
+  /** "$19.50", and the right symbol for a co-op not billing in dollars. */
   var money = function (cents, currency) {
     try {
       return new Intl.NumberFormat(undefined, {
@@ -853,11 +850,6 @@
       expand.remove();
     });
     wrap.appendChild(expand);
-  };
-
-  /** "$19.50", "$10" — cents only when there are cents. */
-  var money = function (cents) {
-    return '$' + (cents % 100 === 0 ? cents / 100 : (cents / 100).toFixed(2));
   };
 
   /**
