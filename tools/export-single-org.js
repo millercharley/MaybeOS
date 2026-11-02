@@ -84,10 +84,100 @@ const PATCH = [
     ],
   },
   {
-    file: 'apps/api/src/app.module.ts',
-    why: 'PlatformModule still loads — AuditService lives in it — but with no controller.',
-    edits: [],
+    file: 'apps/web/lib/nav.ts',
+    // Emptying the array was not enough: `next build` runs eslint, and it
+    // failed on `Landmark`, `platformNav` and `isPlatformAdmin` all being
+    // assigned and never read. The tests and `tsc` were both clean, so this
+    // is the one the build catches and nothing else does.
+    why: "The nav section linking to the console's page, and the plumbing that fed it.",
+    edits: [
+      ['  Landmark,\n', ''],
+      [
+        `/**
+ * MaybeOS's own console (PLT-01), shown only to a platform admin.
+ *
+ * Deliberately its own section rather than an entry among a co-op's tools:
+ * it is not one of them, and a co-op's organiser must never see it at all.
+ */
+const platformNav: NavItem[] = [
+  { href: '/platform', label: 'Co-ops on MaybeOS', icon: Landmark },
+];
+
+`,
+        '',
+      ],
+      ['  isPlatformAdmin = false,\n', ''],
+      ["  /** MaybeOS's own operators. Nobody else ever sees this section. */\n  isPlatformAdmin?: boolean;\n", ''],
+      [
+        `  if (signedIn && isPlatformAdmin) {
+    sections.push({ label: 'MaybeOS', id: 'platform', items: platformNav });
+  }
+
+`,
+        '',
+      ],
+    ],
   },
+  {
+    file: 'apps/web/components/layout/sidebar.tsx',
+    why: 'Stops passing a flag the single-org nav no longer takes.',
+    edits: [["    isPlatformAdmin: user?.globalRole === 'PLATFORM_ADMIN',\n", '']],
+  },
+  {
+    file: 'apps/web/lib/api.ts',
+    why: 'The client for the five console endpoints, none of which the export serves.',
+    edits: [
+      [
+        `  platform = {
+    summary: (token: string) => this.request<PlatformSummary>('/platform/summary', { token }),
+
+    orgs: (token: string) => this.request<PlatformOrg[]>('/platform/orgs', { token }),
+
+    suspend: (orgId: string, reason: string, token: string) =>
+      this.request<unknown>(\`/platform/orgs/\${orgId}/suspend\`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+        token,
+      }),
+
+    restore: (orgId: string, token: string) =>
+      this.request<unknown>(\`/platform/orgs/\${orgId}/restore\`, { method: 'POST', token }),
+
+    setPlan: (
+      orgId: string,
+      data: { plan?: string; billingWaived?: boolean; reason?: string },
+      token: string,
+    ) =>
+      this.request<unknown>(\`/platform/orgs/\${orgId}/plan\`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+  };
+
+`,
+        '',
+      ],
+    ],
+  },
+];
+
+/*
+  Strings that must not survive the patches.
+
+  The import-resolving report below cannot see these: a nav entry linking to
+  `/platform` is a string, not an import, and so is a `this.request()` to an
+  endpoint the export does not serve. Both were found by hand after the first
+  clean run, which is exactly the kind of thing that stops being found once
+  somebody trusts the script.
+*/
+const FORBIDDEN = [
+  // A *string literal* beginning `/platform` — the route, or an endpoint
+  // under it. Matched from the opening quote on purpose: `../platform/
+  // platform.module` also contains `/platform/`, and those imports are the
+  // AuditService ones that must stay. Substring matching flagged 36 of them
+  // and refused to publish, which was the right instinct and the wrong rule.
+  [/['"`]\/platform(?:['"`\/])/, 'a link or call to the console, which the export does not serve'],
 ];
 
 /* ─────────────────────────── the PII preflight ──────────────────────── */
@@ -118,6 +208,25 @@ function allowedDomain(domain) {
 
 const TEXT = ['.ts', '.tsx', '.js', '.mjs', '.cjs', '.json', '.sql', '.prisma', '.md', '.yml', '.yaml', '.txt', '.html', '.css', '.sh', '.gs'];
 
+/**
+ * Two things the address rule cannot judge on its own.
+ *
+ * `no-real-addresses.spec.ts` is the jest guard, and its fixtures *are*
+ * addresses at refused domains — that is what they test. The suite exempts it
+ * by exact path (`EXEMPT_FILES`); this honours the same exemption rather than
+ * inventing a second answer.
+ *
+ * A lockfile carries the published contact address of every upstream
+ * maintainer. `i@izs.me` is not a MaybeItsFate member and not ours to redact,
+ * and the file is generated, so a scrub would be undone by the next install.
+ * Note this is the *person* scan: a lockfile is still worth reading for a
+ * private registry URL with a credential in it, which is a different check.
+ */
+const PII_SCAN_SKIP = [
+  'apps/api/src/common/__tests__/no-real-addresses.spec.ts',
+  'package-lock.json',
+];
+
 /* ─────────────────────────────── the run ────────────────────────────── */
 
 const git = (...args) => execFileSync('git', args, { cwd: REPO, encoding: 'utf8' });
@@ -132,11 +241,6 @@ if (!dest) die('give me somewhere to write to:  node tools/export-single-org.js 
 const OUT = path.resolve(dest);
 if (OUT === REPO) die('that is this repo');
 
-// Exporting an uncommitted state publishes something no commit describes.
-if (git('status', '--porcelain').trim()) {
-  die('the working tree is dirty', git('status', '--short'));
-}
-
 const tracked = git('ls-files').split('\n').filter(Boolean);
 const isExcluded = (file) => EXCLUDE.find(([p]) => (p.endsWith('/') ? file.startsWith(p) : file === p));
 
@@ -144,6 +248,23 @@ const kept = [];
 const dropped = [];
 for (const file of tracked) {
   (isExcluded(file) ? dropped : kept).push(file);
+}
+
+/*
+  Exporting an uncommitted state publishes something no commit describes.
+
+  Scoped to the files that actually ship: `tools/` is held back, so editing
+  this script cannot change the output, and refusing to run because of it just
+  makes the script untestable while you are writing it. The guard is about
+  what leaves, not about tidiness.
+*/
+const dirty = git('status', '--porcelain')
+  .split('\n')
+  .filter(Boolean)
+  .map((line) => line.slice(3).trim())
+  .filter((file) => kept.includes(file));
+if (dirty.length) {
+  die('these files ship and are uncommitted', dirty.join('\n'));
 }
 
 // An exclude entry that matches nothing is a path that moved, and silence
@@ -178,9 +299,15 @@ for (const { file, edits } of PATCH) {
 }
 
 // Preflight: no real address may leave the building.
+const strayedSkip = PII_SCAN_SKIP.filter((f) => !kept.includes(f) && !dropped.includes(f));
+if (strayedSkip.length) {
+  die('a PII-scan exemption names no file — it has moved', strayedSkip.join('\n'));
+}
+
 const leaks = [];
 for (const file of kept) {
   if (!TEXT.includes(path.extname(file))) continue;
+  if (PII_SCAN_SKIP.includes(file)) continue;
   const body = fs.readFileSync(path.join(OUT, file), 'utf8');
   body.split('\n').forEach((line, i) => {
     for (const found of line.match(ADDRESS) ?? []) {
@@ -194,19 +321,104 @@ if (leaks.length) {
   die(`${leaks.length} address(es) at domains the rule refuses — nothing written`, leaks.join('\n'));
 }
 
-// Report: what in the kept tree still reaches for what was held back.
+/*
+  Report: what in the kept tree still imports what was held back.
+
+  Resolved properly, against each importer's own directory. Matching on the
+  basename instead reported `social.controller.ts -> page`, because the
+  console's file is `platform/page.tsx` and half of Next's files are called
+  `page` — a detector whose output you have to second-guess is worse than
+  none, since the whole job here is telling you what still needs doing.
+*/
+const heldBackModules = new Set(
+  dropped.filter((f) => /\.(ts|tsx)$/.test(f)).map((f) => f.replace(/\.(tsx?)$/, '')),
+);
+const SPECIFIER = /(?:from|require\()\s*['"]([^'"]+)['"]/g;
+
 const dangling = [];
-const excludedStems = dropped
-  .filter((f) => /\.(ts|tsx)$/.test(f))
-  .map((f) => path.basename(f).replace(/\.(ts|tsx)$/, ''));
 for (const file of kept) {
   if (!/\.(ts|tsx)$/.test(file)) continue;
   const body = fs.readFileSync(path.join(OUT, file), 'utf8');
-  for (const stem of new Set(excludedStems)) {
-    if (body.includes(`./${stem}'`) || body.includes(`/${stem}'`)) {
-      dangling.push(`${file}  ->  ${stem}`);
+  for (const match of body.matchAll(SPECIFIER)) {
+    const specifier = match[1];
+    let resolved;
+    if (specifier.startsWith('.')) {
+      resolved = path.posix.normalize(path.posix.join(path.posix.dirname(file), specifier));
+    } else if (specifier.startsWith('@/')) {
+      // The web app's alias for its own root.
+      resolved = path.posix.join('apps/web', specifier.slice(2));
+    } else {
+      continue; // A package, not one of ours.
+    }
+    if (heldBackModules.has(resolved) || heldBackModules.has(`${resolved}/index`)) {
+      dangling.push(`${file}\n         imports ${specifier}`);
     }
   }
+}
+
+/**
+ * Comments blanked, for the forbidden-reference check only.
+ *
+ * Note the inversion. The PII scan above *must* read comments: both times a
+ * member's address was committed it was in one, explaining that member's bug.
+ * This check must not: every hit on the first run was prose with the route in
+ * markdown backticks — three comments explaining why a platform admin has a
+ * console of their own, which are worth keeping and are not references.
+ *
+ * Same algorithm as `apps/api/src/common/testing/source-scan.ts`, which is
+ * the canonical one; repeated because this is plain node and cannot import
+ * TypeScript. Walks the text rather than matching a pattern, because deciding
+ * whether `//` opens a comment means knowing whether you are inside a string
+ * — and `'https://maybeos.org'` is the case that catches a regex out.
+ */
+function stripComments(source) {
+  const out = source.split('');
+  const blank = (from, to) => {
+    for (let j = from; j < to && j < out.length; j += 1) if (out[j] !== '\n') out[j] = ' ';
+  };
+  let i = 0;
+  while (i < source.length) {
+    const c = source[i];
+    const next = source[i + 1];
+    if (c === '"' || c === "'" || c === '`') {
+      i += 1;
+      while (i < source.length && source[i] !== c) i += source[i] === '\\' ? 2 : 1;
+      i += 1;
+      continue;
+    }
+    if (c === '/' && next === '/') {
+      const end = source.indexOf('\n', i);
+      blank(i, end === -1 ? source.length : end);
+      i = end === -1 ? source.length : end;
+      continue;
+    }
+    if (c === '/' && next === '*') {
+      const close = source.indexOf('*/', i + 2);
+      const end = close === -1 ? source.length : close + 2;
+      blank(i, end);
+      i = end;
+      continue;
+    }
+    i += 1;
+  }
+  return out.join('');
+}
+
+// Fail closed on the strings the import report cannot see.
+const survived = [];
+for (const file of kept) {
+  if (!TEXT.includes(path.extname(file))) continue;
+  const body = stripComments(fs.readFileSync(path.join(OUT, file), 'utf8'));
+  body.split('\n').forEach((line, i) => {
+    for (const [pattern, why] of FORBIDDEN) {
+      const found = line.match(pattern);
+      if (found) survived.push(`${file}:${i + 1}  ${found[0]} — ${why}`);
+    }
+  });
+}
+if (survived.length) {
+  fs.rmSync(OUT, { recursive: true, force: true });
+  die(`${survived.length} reference(s) to held-back surfaces survived — nothing written`, survived.join('\n'));
 }
 
 console.log(`\n  wrote ${kept.length} files to ${OUT}`);
