@@ -19,7 +19,9 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
+import { ConfigService } from '@nestjs/config';
 import { EventsService } from './events.service';
+import { rssFeed } from './email-embed';
 import { HostPayoutService } from './host-payout.service';
 import { MarkPayoutPaidDto, SetShareDto } from './dto/host-payout.dto';
 import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
@@ -59,6 +61,7 @@ export class EventsController {
     private readonly payouts: HostPayoutService,
     private readonly storage: StorageService,
     private readonly unsplash: UnsplashService,
+    private readonly configService: ConfigService,
   ) {}
 
   /* ─── An event's picture (EVT-22) ───────────────────────────── */
@@ -444,6 +447,43 @@ export class EventsController {
   @ApiOperation({ summary: 'Public events for a co-op, for a website embed' })
   async embedEvents(@Param('orgSlug') orgSlug: string) {
     return this.eventsService.listEmbedEvents(orgSlug);
+  }
+
+  /**
+   * The same events, as an RSS feed a campaign tool can drop in (EVT-55).
+   *
+   * The website embed is a `<script>` tag, which every email client strips —
+   * so pasting it into MailerLite produced nothing. That embed is not at
+   * fault and is untouched; this is a second way out of the same data for
+   * the one medium that cannot run code.
+   *
+   * The whole laid-out block rides in one item's `<description>`, inside
+   * CDATA, which is the shape campaign tools know how to drop into a
+   * template.
+   */
+  @Get('embed/:orgSlug/rss')
+  @Header('Access-Control-Allow-Origin', '*')
+  @Header('Content-Type', 'application/rss+xml; charset=utf-8')
+  // Five minutes, matching the website embed. A campaign tool polls this on
+  // its own schedule and a co-op editing an event wants the next send to
+  // carry it.
+  @Header('Cache-Control', 'public, max-age=300, s-maxage=300')
+  @ApiOperation({ summary: 'Upcoming public events as an email-safe RSS feed' })
+  async embedRss(@Param('orgSlug') orgSlug: string, @Res() res: Response) {
+    const feed = await this.eventsService.listEmbedEvents(orgSlug);
+    const site = (this.configService.get<string>('WEB_URL') || 'https://maybeos.org')
+      .split(',')[0]
+      .trim();
+
+    res.send(
+      rssFeed({
+        org: feed.org,
+        events: feed.events,
+        more: feed.more,
+        siteUrl: site,
+        now: new Date(),
+      }),
+    );
   }
 
   /* ─── JSON Feed (no auth, cached) ──────────────────────────── */

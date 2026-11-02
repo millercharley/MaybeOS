@@ -58,6 +58,14 @@ const EXPECTED = [
   'GET /public/reports/:orgSlug/:reportSlug',
   'GET /embed/:orgSlug/events',
   'GET /embed/:orgSlug/membership',
+  /*
+    The same public events as an email-safe RSS feed (EVT-55). Public for
+    the same reason the website embed is — a campaign tool fetches it with
+    no session and no way to hold one — and it carries exactly what that
+    embed carries, which is `listPublicEvents` without the member flag.
+    Members-only events are not in it, and neither are faces or attendance.
+  */
+  'GET /embed/:orgSlug/rss',
 
   // Joining and buying, for somebody who is not a member yet.
   'POST /orgs/:orgId/events/:eventId/rsvp/guest',

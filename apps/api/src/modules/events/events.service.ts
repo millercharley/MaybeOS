@@ -987,7 +987,18 @@ export class EventsService {
       // price to a stranger who will then be charged (EVT-48). Quoting the
       // face value and charging more at Stripe is the one mistake a ticket
       // page must not make.
-      select: { id: true, name: true, slug: true, plan: true, ticketFeeCents: true },
+      // `brandColor` and `timezone` for the email feed (EVT-55): it is
+      // rendered once on a server for everybody, so it cannot read a
+      // browser's colour scheme or its clock the way the script can.
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        plan: true,
+        ticketFeeCents: true,
+        brandColor: true,
+        timezone: true,
+      },
     });
     if (!org) throw new NotFoundException('Organization not found');
 
@@ -1077,7 +1088,12 @@ export class EventsService {
     });
 
     return {
-      org: { name: org.name, slug: org.slug },
+      org: {
+        name: org.name,
+        slug: org.slug,
+        brandColor: org.brandColor,
+        timezone: org.timezone,
+      },
       windowDays: EventsService.EMBED_WINDOW_DAYS,
       events: data.map(shape),
       /*
