@@ -66,6 +66,10 @@ const EXPECTED = [
     Members-only events are not in it, and neither are faces or attendance.
   */
   'GET /embed/:orgSlug/rss',
+  // The same public events as one laid-out HTML block (EVT-60), for pasting
+  // into a campaign tool that rewrites what a feed hands it. Same data, same
+  // reason it is public: it is fetched with no session.
+  'GET /embed/:orgSlug/email.html',
 
   // Joining and buying, for somebody who is not a member yet.
   'POST /orgs/:orgId/events/:eventId/rsvp/guest',

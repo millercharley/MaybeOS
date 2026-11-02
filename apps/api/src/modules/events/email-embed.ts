@@ -550,14 +550,107 @@ export function eventsHtml(input: EmailFeedInput): string {
  * item per event would hand them a loop to configure and a layout to rebuild
  * in somebody else's editor.
  */
+/**
+ * One event, described plainly (EVT-60).
+ *
+ * The feed used to carry the whole designed block in a single item, because
+ * a campaign tool drops an item's description into a template and one item
+ * gave a co-op the finished list. That is still the right shape for a tool
+ * that renders what it is handed — and MailerLite's RSS block is not one. It
+ * resizes images to the column width and repaints backgrounds in its own
+ * palette, so the design never arrived however the markup was written.
+ *
+ * So the feed is now what a feed is: one item per event, described simply
+ * enough that any reader can lay it out itself. The designed block has not
+ * gone — it is served whole at its own address, for pasting into something
+ * that does not rewrite its input.
+ *
+ * Deliberately plain markup. No tables, no inline layout, no fixed widths:
+ * a paragraph, a line break, an image and a link. Everything here degrades
+ * to readable text in a reader that strips all of it, and the one thing that
+ * must survive — the way in — is a plain `<a>`.
+ */
+export function simpleItemHtml(event: EmbedEvent, theme: Theme): string {
+  const ticketed = typeof event.totalCents === 'number';
+  const action = ticketed
+    ? `Buy ticket · ${money(event.totalCents as number, event.currency ?? 'usd')}`
+    : 'RSVP';
+
+  const facts = [
+    when(event.startTime, event.endTime, theme.timeZone),
+    event.location,
+    ageBadge(event.maturityLevel),
+  ].filter(Boolean) as string[];
+
+  return [
+    /*
+      The poster at full width, which is what a reader will do to it anyway.
+      In the designed block an image is a 72px thumbnail beside the text and
+      being stretched ruins the row; here it is the event's own picture and
+      filling the column is right.
+    */
+    event.imageUrl
+      ? `<p><img src="${escapeHtml(event.imageUrl)}" alt="${escapeHtml(event.title)}" /></p>`
+      : '',
+    `<p><strong>${escapeHtml(facts.join(' · '))}</strong></p>`,
+    event.description ? `<p>${escapeHtml(clamp(event.description, 300))}</p>` : '',
+    /*
+      The way in, and the reason this feed exists at all (Charley: "Make sure
+      each event maintains a link to RSVP or buy a ticket").
+
+      Its own paragraph and its own sentence, so it survives a reader that
+      shows only the first line, and reads as an instruction rather than as
+      a word that happens to be blue. The figure is `totalCents` — the total
+      Stripe rings up, never the face value.
+    */
+    `<p><a href="${escapeHtml(event.url)}">${escapeHtml(action)}</a></p>`,
+  ]
+    .filter(Boolean)
+    .join('');
+}
+
+/**
+ * The feed: one item per event.
+ *
+ * `<pubDate>` is the event's own start time rather than the moment the feed
+ * was built. Every item sharing a build timestamp leaves a reader sorting
+ * arbitrarily among them, and an event's date is the honest date of the
+ * item. A reader that sorts newest-first will therefore show the furthest
+ * event first — the document order is soonest-first for everything that
+ * respects it, which is most things.
+ *
+ * `<guid>` is the event's slug with a digest of its own content, which is
+ * the same rule the single-block item learned (EVT-58): stable while the
+ * event is unchanged, so nothing re-sends it, and new the moment its time,
+ * price or picture moves, so a reader holding a stale copy re-reads it.
+ */
 export function rssFeed(input: EmailFeedInput): string {
   const site = input.siteUrl.replace(/\/+$/, '');
   const orgUrl = `${site}/orgs/${input.org.slug}/events`;
 
-  // Rendered once: it is the item's content and the thing the guid is taken
-  // from, and rendering it twice would let the two disagree.
-  const block = eventsHtml(input);
-  const blockId = createHash('sha256').update(block).digest('hex').slice(0, 16);
+  const theme: Theme = {
+    accent: input.org.brandColor || DEFAULT_ACCENT,
+    text: accentText(input.org.brandColor || DEFAULT_ACCENT),
+    label: input.org.name,
+    timeZone: input.org.timezone || 'America/New_York',
+  };
+
+  const items = [...input.events, ...input.more].map((event) => {
+    // Rendered once: it is the item's content and the thing its guid is
+    // taken from, and rendering it twice would let the two disagree.
+    const body = simpleItemHtml(event, theme);
+    const id = createHash('sha256').update(body).digest('hex').slice(0, 12);
+
+    return [
+      '  <item>',
+      `    <title>${escapeXml(event.title)}</title>`,
+      `    <link>${escapeXml(event.url)}</link>`,
+      `    <pubDate>${rfc822(new Date(event.startTime))}</pubDate>`,
+      `    <guid isPermaLink="false">${escapeXml(event.slug ?? event.url)}-${id}</guid>`,
+      `    <description>${cdata(body)}</description>`,
+      '  </item>',
+    ].join('\n');
+  });
 
   return [
     '<?xml version="1.0" encoding="UTF-8" ?>',
@@ -565,35 +658,9 @@ export function rssFeed(input: EmailFeedInput): string {
     '<channel>',
     `  <title>${escapeXml(input.org.name)} — Upcoming Events</title>`,
     `  <link>${escapeXml(orgUrl)}</link>`,
-    '  <description>Automated email campaign feed</description>',
+    `  <description>Upcoming public events at ${escapeXml(input.org.name)}</description>`,
     `  <lastBuildDate>${rfc822(input.now)}</lastBuildDate>`,
-    '  <item>',
-    '    <title>Latest Events Feed Block</title>',
-    `    <link>${escapeXml(orgUrl)}</link>`,
-    `    <pubDate>${rfc822(input.now)}</pubDate>`,
-    /*
-      The guid changes when, and only when, the block does (EVT-58).
-
-      It was `<slug>-events-feed`, fixed, on the reasoning that each fetch is
-      the same block updated rather than a new post to send. That reasoning
-      was wrong about what a guid means to the thing reading it. A guid is
-      how a consumer recognises an item it already has — so a guid that never
-      changes says "you have seen this", and MailerLite kept rendering the
-      copy it stored the first time. Two deploys of layout fixes reached the
-      campaign as the original markup, because nothing in the feed ever told
-      it otherwise.
-
-      A timestamp would be the other extreme: every poll would look like a
-      new item, which is what makes an RSS campaign send twice.
-
-      Hashing the rendered block gives both. Identical content keeps its
-      identifier and is recognised as the same item; a change of any kind —
-      a new event, an edited time, a layout fix like this one — produces a
-      new one and the item is re-read.
-    */
-    `    <guid isPermaLink="false">${escapeXml(input.org.slug)}-events-${blockId}</guid>`,
-    `    <description>${cdata(block)}</description>`,
-    '  </item>',
+    ...items,
     '</channel>',
     '</rss>',
     '',

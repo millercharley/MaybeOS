@@ -25,6 +25,10 @@ export function EmailEmbed({ org }: { org: Org }) {
   // a production feed.
   const origin = typeof window === 'undefined' ? 'https://maybeos.org' : window.location.origin;
   const feedUrl = `${origin}/api/embed/${org.slug}/rss`;
+  // The same events as one laid-out block, for a tool that rewrites a feed
+  // (EVT-60). The preview and Copy HTML both read it, so what is on screen is
+  // the bytes that get copied.
+  const htmlUrl = `${origin}/api/embed/${org.slug}/email.html`;
 
   async function copy() {
     try {
@@ -43,8 +47,9 @@ export function EmailEmbed({ org }: { org: Org }) {
         <h2 className="text-base font-semibold text-gray-900">Your events in an email</h2>
         <p className="mt-1 text-sm text-gray-500">
           The embed above is a script, and email clients strip scripts — so it shows nothing in a
-          campaign. Give your email tool this address instead. It is an RSS feed: your events
-          arrive already laid out, and the next send picks up whatever has changed.
+          campaign. Give your email tool this address instead. It is an RSS feed with one entry per
+          event, each carrying its own RSVP or ticket link, so any reader can list them — and the
+          next send picks up whatever has changed.
         </p>
       </div>
 
@@ -61,7 +66,7 @@ export function EmailEmbed({ org }: { org: Org }) {
         {copied ? 'Copied' : 'Copy feed address'}
       </button>
 
-      <EmailPreview feedUrl={feedUrl} />
+      <EmailPreview htmlUrl={htmlUrl} />
 
       <div className="space-y-2 border-t border-gray-100 pt-3 text-xs text-gray-500">
         <p>
@@ -80,8 +85,10 @@ export function EmailEmbed({ org }: { org: Org }) {
           </span>{' '}
           MailerLite&rsquo;s RSS block normalises whatever it is given — it strips inline styles,
           stretches any image to the column width and repaints backgrounds in its own palette — so
-          the layout cannot survive it. Use <em>Copy HTML</em> above and paste that into a custom
-          HTML block, where nothing is rewritten. The trade is that an HTML block is a snapshot:
+          a laid-out design cannot survive it. The feed above is written plainly for that reason,
+          and any reader can list it well. When you want it to look like your website instead,
+          use <em>Copy HTML</em> above and paste that into a custom HTML block, where nothing is
+          rewritten. The trade is that an HTML block is a snapshot:
           it will not update itself, so paste it again when you next send.
         </p>
         <p>
@@ -109,7 +116,7 @@ export function EmailEmbed({ org }: { org: Org }) {
  * descriptions members wrote, and a sandboxed frame renders it without
  * handing it the admin page.
  */
-function EmailPreview({ feedUrl }: { feedUrl: string }) {
+function EmailPreview({ htmlUrl }: { htmlUrl: string }) {
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -145,24 +152,28 @@ function EmailPreview({ feedUrl }: { feedUrl: string }) {
     setLoading(true);
     setError('');
     try {
-      // `cache: 'no-store'`, because the feed is cached for five minutes at
-      // the edge and an organiser pressing Refresh after an edit means it.
-      const res = await fetch(feedUrl, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`The feed answered ${res.status}.`);
+      /*
+        The block is served whole now, rather than dug out of the feed's
+        first item (EVT-60). The feed became one item per event — which is
+        what a feed is for — so parsing a list to rebuild a layout would mean
+        reconstructing something the API already renders.
 
-      const doc = new DOMParser().parseFromString(await res.text(), 'application/xml');
-      if (doc.querySelector('parsererror')) throw new Error('The feed is not valid XML.');
+        `cache: 'no-store'`, because it is cached for five minutes at the
+        edge and an organiser pressing Refresh after an edit means it.
+      */
+      const res = await fetch(htmlUrl, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`The block answered ${res.status}.`);
 
-      const block = doc.querySelector('item > description')?.textContent ?? '';
-      if (!block.trim()) throw new Error('The feed carried no events.');
+      const block = await res.text();
+      if (!block.trim()) throw new Error('There are no events to show.');
       setHtml(block);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'The feed could not be read.');
+      setError(err instanceof Error ? err.message : 'The block could not be read.');
       setHtml(null);
     } finally {
       setLoading(false);
     }
-  }, [feedUrl]);
+  }, [htmlUrl]);
 
   useEffect(() => {
     void load();

@@ -21,7 +21,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { ConfigService } from '@nestjs/config';
 import { EventsService } from './events.service';
-import { rssFeed } from './email-embed';
+import { eventsHtml, rssFeed } from './email-embed';
 import { HostPayoutService } from './host-payout.service';
 import { MarkPayoutPaidDto, SetShareDto } from './dto/host-payout.dto';
 import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
@@ -471,16 +471,50 @@ export class EventsController {
   @ApiOperation({ summary: 'Upcoming public events as an email-safe RSS feed' })
   async embedRss(@Param('orgSlug') orgSlug: string, @Res() res: Response) {
     const feed = await this.eventsService.listEmbedEvents(orgSlug);
-    const site = (this.configService.get<string>('WEB_URL') || 'https://maybeos.org')
-      .split(',')[0]
-      .trim();
 
     res.send(
       rssFeed({
         org: feed.org,
         events: feed.events,
         more: feed.more,
-        siteUrl: site,
+        siteUrl: this.webUrl(),
+        now: new Date(),
+      }),
+    );
+  }
+
+  /** The first configured web address, which is where an event page lives. */
+  private webUrl(): string {
+    return (this.configService.get<string>('WEB_URL') || 'https://maybeos.org')
+      .split(',')[0]
+      .trim();
+  }
+
+  /**
+   * The designed block, on its own, as HTML (EVT-60).
+   *
+   * The feed above is one item per event now, plainly described, because a
+   * feed is read by things that lay it out themselves — and MailerLite's RSS
+   * block rewrites anything it is handed, so the design never arrived there.
+   *
+   * This is the other half: the whole laid-out block, for pasting into
+   * something that does not rewrite its input. The admin's preview and its
+   * Copy HTML button both read it from here, so what an organiser sees is
+   * the bytes they copy.
+   */
+  @Get('embed/:orgSlug/email.html')
+  @Header('Access-Control-Allow-Origin', '*')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  @Header('Cache-Control', 'public, max-age=300, s-maxage=300')
+  @ApiOperation({ summary: 'Upcoming public events as one email-safe HTML block' })
+  async embedEmailHtml(@Param('orgSlug') orgSlug: string, @Res() res: Response) {
+    const feed = await this.eventsService.listEmbedEvents(orgSlug);
+    res.send(
+      eventsHtml({
+        org: feed.org,
+        events: feed.events,
+        more: feed.more,
+        siteUrl: this.webUrl(),
         now: new Date(),
       }),
     );

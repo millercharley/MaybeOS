@@ -4,8 +4,10 @@ import {
   cdata,
   clamp,
   escapeHtml,
+  escapeXml,
   eventsHtml,
   heroBlock,
+  simpleItemHtml,
   money,
   onAccent,
   rfc822,
@@ -77,111 +79,145 @@ const feed = (events: EmbedEvent[], more: EmbedEvent[] = []) =>
 const block = (events: EmbedEvent[], more: EmbedEvent[] = []) =>
   eventsHtml({ org: ORG, events, more, siteUrl: 'https://maybeos.org', now: NOW });
 
-describe('the document', () => {
+describe('the feed lists events, one item each', () => {
+  /*
+    It used to be a single item carrying the whole designed block, so a
+    campaign tool could drop one description into a template. That is right
+    for a tool which renders what it is handed, and MailerLite's RSS block is
+    not one — measured in its own preview, it resizes images to the column
+    width and repaints backgrounds in its own palette, so the design never
+    arrived however the markup was written.
+
+    So the feed is what a feed is, and the designed block is served whole at
+    its own address instead.
+  */
+  const items = (xml: string) => xml.match(/<item>/g)?.length ?? 0;
+  const itemsOf = (xml: string) => xml.split('<item>').slice(1).map((i) => i.split('</item>')[0]);
+
   it('is a valid RSS 2.0 envelope', () => {
     const xml = feed([EVENT]);
     expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8" ?>')).toBe(true);
     expect(xml).toContain('<rss version="2.0">');
     expect(xml).toContain('<channel>');
-    expect(xml).toContain('<description>Automated email campaign feed</description>');
   });
 
-  it('carries the whole block in one item, not one item per event', () => {
+  it('carries one item per event, not one for the whole list', () => {
+    expect(items(feed([EVENT]))).toBe(1);
+    expect(items(feed([EVENT, TICKETED]))).toBe(2);
+    expect(items(feed([EVENT], [TICKETED, { ...EVENT, slug: 'c' }]))).toBe(3);
+  });
+
+  it('includes what lies past the 30-day window', () => {
+    // A reader lists them all and sorts for itself; there is no button here
+    // to reveal anything.
+    expect(feed([EVENT], [TICKETED])).toContain(escapeXml(TICKETED.title));
+  });
+
+  it('titles each item with the event', () => {
+    expect(feed([EVENT])).toContain(`<title>${EVENT.title}</title>`);
+  });
+
+  it('links each item to the event’s own page', () => {
+    expect(feed([EVENT])).toContain(`<link>${EVENT.url}</link>`);
+  });
+
+  it('dates each item by when the event happens', () => {
     /*
-      The point of the thing. A campaign tool drops an item's description
-      into a template, so one item carrying the laid-out list gives a co-op
-      what they asked for; one item per event would hand them a loop to
-      configure and a layout to rebuild in somebody else's editor.
+      Rather than by when the feed was built. Every item sharing a build
+      timestamp leaves a reader sorting arbitrarily among them, and an
+      event's date is the honest date of the item.
     */
-    const xml = feed([EVENT, TICKETED, { ...EVENT, slug: 'third' }]);
-    expect(xml.match(/<item>/g) ?? []).toHaveLength(1);
-    expect(xml).toContain('<title>Latest Events Feed Block</title>');
+    expect(feed([EVENT])).toContain(`<pubDate>${rfc822(new Date(EVENT.startTime))}</pubDate>`);
   });
 
-  /*
-    The guid tracks the content (EVT-58).
-
-    It was fixed — `<slug>-events-feed` — on the reasoning that each fetch is
-    the same block updated rather than a new post. That was wrong about what
-    a guid means to the reader: it is how a consumer recognises an item it
-    already holds, so one that never changes says "you have seen this".
-    MailerLite went on rendering the copy it stored the first time, and two
-    deploys of layout fixes reached the campaign as the original markup.
-  */
-  const guidOf = (xml: string) => /<guid[^>]*>([^<]+)<\/guid>/.exec(xml)?.[1];
-
-  it('is marked as an identifier rather than a URL', () => {
-    expect(feed([EVENT])).toContain('isPermaLink="false"');
-    expect(guidOf(feed([EVENT]))).toMatch(/^maybeitsfate-events-[0-9a-f]{16}$/);
+  it('gives every item its own guid', () => {
+    const [a, b] = itemsOf(feed([EVENT, TICKETED]));
+    const guid = (i: string) => /<guid[^>]*>([^<]+)<\/guid>/.exec(i)?.[1];
+    expect(guid(a)).not.toBe(guid(b));
+    expect(guid(a)).toMatch(/^figure-drawing-[0-9a-f]{12}$/);
   });
 
-  it('does not change while the block does not', () => {
-    // Otherwise every poll looks like a new item, which is what makes an RSS
-    // campaign send the same events twice.
-    expect(guidOf(feed([EVENT]))).toBe(guidOf(feed([EVENT])));
+  it('keeps a guid still while its event is unchanged', () => {
+    // Otherwise every poll looks like a new event and the campaign sends it
+    // again.
+    expect(feed([EVENT])).toContain(feed([EVENT]).match(/<guid[^>]*>[^<]+/)![0]);
+    const twice = [feed([EVENT]), feed([EVENT])].map((x) => /<guid[^>]*>([^<]+)/.exec(x)![1]);
+    expect(twice[0]).toBe(twice[1]);
   });
 
-  it('changes when an event is added', () => {
-    expect(guidOf(feed([EVENT]))).not.toBe(guidOf(feed([EVENT, TICKETED])));
+  it('moves a guid when its event changes', () => {
+    const guid = (xml: string) => /<guid[^>]*>([^<]+)/.exec(xml)![1];
+    expect(guid(feed([EVENT]))).not.toBe(guid(feed([{ ...EVENT, location: 'Salon' }])));
   });
 
-  it('changes when an event is edited', () => {
-    const moved = { ...EVENT, startTime: '2026-11-02T23:30:00.000Z' };
-    expect(guidOf(feed([EVENT]))).not.toBe(guidOf(feed([moved])));
-  });
-
-  it('changes when the layout changes but the events do not', () => {
-    /*
-      The case that caused this. Both deploys altered only the markup, and a
-      fixed guid meant the campaign never re-read it.
-    */
-    const asBefore = guidOf(feed([EVENT]));
-    const withDifferentMarkup = createHashOf(
-      eventsHtml({
-        org: ORG,
-        events: [EVENT],
-        more: [],
-        siteUrl: 'https://maybeos.org',
-        now: NOW,
-      }).replace('cellpadding="20"', 'cellpadding="0"'),
-    );
-    expect(asBefore).not.toContain(withDifferentMarkup);
-  });
-
-  it('identifies the block it actually shipped', () => {
-    /*
-      The invariant behind all of the above: the guid is the digest of the
-      description in the same document, not of a second render that happens
-      to agree today. Asserting only that they are each correct let a version
-      through that rendered the block twice — harmless while the render is
-      deterministic, and a silent mismatch the moment it is not.
-    */
-    const xml = feed([EVENT, TICKETED], [{ ...EVENT, slug: 'later' }]);
-    const body = /<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/.exec(xml)?.[1];
-    expect(body).toBeTruthy();
-    expect(guidOf(xml)).toBe(`maybeitsfate-events-${createHashOf(body as string)}`);
-  });
-
-  it('does not move merely because time passed', () => {
-    // A timestamp would be the other extreme, and the reason the fixed guid
-    // looked right in the first place.
-    const later = rssFeed({
-      org: ORG,
-      events: [EVENT],
-      more: [],
-      siteUrl: 'https://maybeos.org',
-      now: new Date(NOW.getTime() + 86_400_000),
-    });
-    expect(guidOf(feed([EVENT]))).toBe(guidOf(later));
-  });
-
-  it('dates the feed in RFC 822, which is what pubDate means', () => {
-    expect(rfc822(NOW)).toBe('Mon, 02 Nov 2026 13:00:00 +0000');
-    expect(feed([EVENT])).toContain('<pubDate>Mon, 02 Nov 2026 13:00:00 +0000</pubDate>');
-  });
-
-  it('wraps the markup in CDATA', () => {
+  it('wraps each description in CDATA', () => {
     expect(feed([EVENT])).toContain('<![CDATA[');
+  });
+});
+
+describe('what one item says', () => {
+  const body = (event: EmbedEvent) => simpleItemHtml(event, THEME);
+
+  it('always offers a way in', () => {
+    // Charley: "Make sure each event maintains a link to RSVP or buy a
+    // ticket."
+    expect(body(EVENT)).toContain(`<a href="${EVENT.url}">RSVP</a>`);
+    expect(body(TICKETED)).toContain(`<a href="${TICKETED.url}">Buy ticket · $16.75</a>`);
+  });
+
+  it('puts that link in its own paragraph', () => {
+    // So it survives a reader that shows only the first line, and reads as
+    // an instruction rather than a word that happens to be blue.
+    expect(body(EVENT)).toMatch(/<p><a href="[^"]+">RSVP<\/a><\/p>$/);
+  });
+
+  it('quotes the total, fees and all', () => {
+    expect(body(TICKETED)).toContain('$16.75');
+  });
+
+  it('leads with the facts somebody is deciding on', () => {
+    expect(body(EVENT)).toContain(
+      '<strong>Sun, Nov 1 · 6:30pm to 9:30pm · Attic · 21+</strong>',
+    );
+  });
+
+  it('carries the poster, which a reader may stretch and should', () => {
+    // In the designed block an image is a 72px thumbnail and stretching it
+    // ruins the row. Here it is the event's own picture.
+    expect(body(TICKETED)).toContain(`<img src="${TICKETED.imageUrl}"`);
+    expect(body(EVENT)).not.toContain('<img');
+  });
+
+  it('describes the picture for somebody who cannot see it', () => {
+    expect(body(TICKETED)).toContain(`alt="${escapeHtml(TICKETED.title)}"`);
+  });
+
+  it('lays nothing out', () => {
+    /*
+      The whole point of this half. No tables, no widths, no inline styles —
+      everything a reader would rewrite anyway, and the reason the designed
+      block never survived one.
+    */
+    const html = body(TICKETED);
+    expect(html).not.toContain('<table');
+    expect(html).not.toContain('style=');
+    expect(html).not.toContain('width=');
+    expect(html).not.toContain('bgcolor');
+  });
+
+  it('degrades to readable text if every tag is stripped', () => {
+    const text = body(TICKETED).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    expect(text).toContain('Sun, Nov 1');
+    // The fixture inherits its room from EVENT; the point is the room is
+    // still in the text once the tags are gone.
+    expect(text).toContain('Attic');
+    expect(text).toContain('Buy ticket');
+  });
+
+  it('escapes what a member wrote', () => {
+    const html = body({ ...EVENT, title: 'Tom & Jerry <b>live</b>', description: 'a < b' });
+    expect(html).toContain('a &lt; b');
+    expect(html).not.toContain('<b>live</b>');
   });
 });
 

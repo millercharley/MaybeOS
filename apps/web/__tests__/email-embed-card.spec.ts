@@ -137,15 +137,24 @@ describe('copying the rendered HTML', () => {
 });
 
 describe('the preview is the real thing', () => {
-  it('reads the feed rather than re-rendering the layout', () => {
+  it('reads the block from the API rather than re-rendering the layout', () => {
     /*
       A preview built from a second implementation can disagree with what
-      gets sent, which is the failure it exists to catch. This parses the
-      real RSS and shows the real item.
+      gets sent, which is the failure it exists to catch. It fetches the same
+      bytes the Copy HTML button hands over.
+
+      It used to dig the block out of the feed's first item. The feed is one
+      item per event now (EVT-60), so parsing a list to rebuild a layout
+      would mean reconstructing something the API already renders whole.
     */
-    expect(CARD).toContain('new DOMParser()');
-    expect(CARD).toContain("doc.querySelector('item > description')");
-    expect(CARD).toMatch(/await fetch\(feedUrl/);
+    expect(CARD).toMatch(/await fetch\(htmlUrl, \{ cache: 'no-store' \}\)/);
+    expect(CARD).toMatch(/const block = await res\.text\(\);/);
+    expect(CARD).not.toContain('DOMParser');
+  });
+
+  it('previews the address it tells you to copy from', () => {
+    expect(CARD).toMatch(/const htmlUrl = `\$\{origin\}\/api\/embed\/\$\{org\.slug\}\/email\.html`/);
+    expect(CARD).toContain('<EmailPreview htmlUrl={htmlUrl} />');
   });
 
   it('bypasses the edge cache when asked to refresh', () => {
@@ -178,7 +187,7 @@ describe('the preview is the real thing', () => {
 
   it('says what went wrong rather than showing an empty box', () => {
     // The three it can distinguish.
-    for (const message of ['not valid XML', 'carried no events', 'answered']) {
+    for (const message of ['no events to show', 'answered', 'could not be read']) {
       expect(CARD).toContain(message);
     }
 
