@@ -1,3 +1,4 @@
+import { stripComments } from '../../../common/testing/source-scan';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { EventsService } from '../events.service';
@@ -172,9 +173,7 @@ describe('the by-slug route is scoped to the org in its path', () => {
       // Comments stripped before scanning: this file's own prose names every
       // guard it is checking for, and a scan that matches a comment proves
       // nothing. Line breaks are preserved so a failure still points at a
-      // line.
-      .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-      .replace(/\/\/[^\n]*/g, '');
+      // stripComments(line.);
 
   const CONTROLLER = read('events.controller.ts');
   const SERVICE = read('events.service.ts');

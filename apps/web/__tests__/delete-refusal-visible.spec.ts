@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -28,9 +29,7 @@ const read = (...parts: string[]) =>
   readFileSync(join(__dirname, '..', ...parts), 'utf8')
     // Comments blanked, line breaks kept: these files now *describe* the bug
     // in prose, and a scan that matched prose would pass on documentation
-    // alone.
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-    .replace(/\/\/[^\n]*/g, '');
+    // stripComments(alone.);
 
 const slice = (src: string, from: string, length: number) => {
   const at = src.indexOf(from);

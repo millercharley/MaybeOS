@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import {
   nextPollDelay,
   sameCounts,
@@ -98,7 +99,7 @@ describe('the poller', () => {
     `tenant-scoping`, the embed scan and `local-date-from-instant`: a file
     that fixes a bug also describes it.
   */
-  const SOURCE = RAW.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+  const SOURCE = stripComments(RAW);
 
   it('really did strip its comments', () => {
     // Otherwise every check below passes or fails for the wrong reason.

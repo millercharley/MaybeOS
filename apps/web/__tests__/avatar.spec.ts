@@ -1,9 +1,10 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { popoverPosition } from '@/lib/popover';
 
 const strip = (s: string) =>
-  s.replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  stripComments(s);
 const read = (...p: string[]) => strip(readFileSync(join(__dirname, '..', ...p), 'utf8'));
 
 /**

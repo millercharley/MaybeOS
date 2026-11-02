@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 
@@ -53,9 +54,7 @@ describe('dates shown to a member', () => {
     down again here because the next one will too.
   */
   const blankComments = (src: string) =>
-    src
-      .replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ' '))
-      .replace(/^([ \t]*)\/\/.*$/gm, (line) => line.replace(/[^\n]/g, ' '));
+    stripComments(src);
 
   /*
     Both copies kept, and each is read for a different thing: offenders from

@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -14,7 +15,7 @@ import { join } from 'path';
  * so the one screen for setting a password refused almost the whole co-op.
  */
 const strip = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  stripComments(s);
 
 const src = strip(
   readFileSync(join(__dirname, '..', 'components', 'member', 'change-password.tsx'), 'utf8'),

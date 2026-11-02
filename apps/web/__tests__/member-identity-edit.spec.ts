@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -9,7 +10,7 @@ import { join } from 'path';
  * by first having an address fail. A roster that came out of a CSV is full of
  * "SMITH, JANE" and domains with a typo in them.
  */
-const page = readFileSync(
+const page = stripComments(readFileSync(
   join(
     __dirname,
     '..',
@@ -22,10 +23,7 @@ const page = readFileSync(
     'page.tsx',
   ),
   'utf8',
-)
-  .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '')
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/\/\/.*$/gm, '');
+));
 
 describe('the members list', () => {
   it('offers the edit from a member’s own row', () => {

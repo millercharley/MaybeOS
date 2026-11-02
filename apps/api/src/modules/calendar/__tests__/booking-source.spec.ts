@@ -1,3 +1,4 @@
+import { stripComments } from '../../../common/testing/source-scan';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -23,9 +24,7 @@ import { join } from 'node:path';
 const read = (...p: string[]) =>
   readFileSync(join(__dirname, '..', ...p), 'utf8')
     // Comments blanked, line breaks kept: both files now explain this at
-    // length, and a scan matching prose proves nothing.
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-    .replace(/\/\/[^\n]*/g, '');
+    // length, and a scan matching prose proves stripComments(nothing.);
 
 const IMPORT = read('calendar-import.service.ts');
 const CALENDAR = read('calendar.service.ts');

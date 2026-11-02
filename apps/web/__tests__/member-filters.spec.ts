@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
@@ -150,7 +151,7 @@ describe('the page', () => {
     ),
     'utf8',
   );
-  const code = source.replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '').replace(/\/\/.*$/gm, '');
+  const code = stripComments(source);
 
   it('asks the server to narrow the list, not the browser', () => {
     // MEM-22 moved searching to the server after a 426-member co-op searched

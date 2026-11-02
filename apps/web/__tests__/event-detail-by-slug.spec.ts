@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { safePath } from '../lib/api';
@@ -32,10 +33,7 @@ describe('the event detail page asks for one event', () => {
   // comment quotes the bad code it replaced — a scan that matched prose would
   // fail the moment somebody documented the fix, and pass if somebody
   // reintroduced it.
-  const CODE = PAGE.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' ')).replace(
-    /\/\/[^\n]*/g,
-    '',
-  );
+  const CODE = stripComments(PAGE);
 
   it('reads the member endpoint by slug', () => {
     expect(CODE).toMatch(/api\.events\.getBySlug\(org\.id,\s*eventSlug,\s*token\)/);
@@ -58,9 +56,7 @@ describe('the event detail page asks for one event', () => {
 });
 
 describe('the client method', () => {
-  const API = readFileSync(join(__dirname, '..', 'lib/api.ts'), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-    .replace(/\/\/[^\n]*/g, '');
+  const API = stripComments(readFileSync(join(__dirname, '..', 'lib/api.ts'), 'utf8'));
 
   const BODY = (() => {
     const at = API.indexOf('getBySlug: (orgId: string, eventSlug: string, token: string)');

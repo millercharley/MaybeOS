@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
@@ -206,12 +207,10 @@ describe('the dialog', () => {
     the very text asserted against below, so the guard passed against the
     old behaviour still being there.
   */
-  const src = readFileSync(
+  const src = stripComments(readFileSync(
     join(__dirname, '..', 'components', 'events', 'share-event-dialog.tsx'),
     'utf8',
-  )
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/.*$/gm, '');
+  ));
 
   it('offers the event’s picture without requiring it', () => {
     expect(src).toMatch(/prepareFromUrl\(o\.imageUrl\)/);

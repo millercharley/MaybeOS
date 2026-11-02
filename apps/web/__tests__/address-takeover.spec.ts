@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -9,7 +10,7 @@ import { join } from 'path';
  * address. Check whether they have two accounts here." He didn't — one of them
  * was the account he had just removed, and the advice could not be followed.
  */
-const page = readFileSync(
+const page = stripComments(readFileSync(
   join(
     __dirname,
     '..',
@@ -22,10 +23,7 @@ const page = readFileSync(
     'page.tsx',
   ),
   'utf8',
-)
-  .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '')
-  .replace(/\/\*[\s\S]*?\*\//g, '')
-  .replace(/\/\/.*$/gm, '');
+));
 
 describe('when a save is blocked by a removed account', () => {
   it('asks what taking the address back would involve', () => {

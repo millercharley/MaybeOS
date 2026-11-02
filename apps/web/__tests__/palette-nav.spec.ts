@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { paletteHref, resolveOrgSlug, type Membership } from '@/lib/palette-nav';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -78,12 +79,10 @@ describe('the address a result goes to', () => {
 });
 
 describe('the palette itself', () => {
-  const code = readFileSync(
+  const code = stripComments(readFileSync(
     join(process.cwd(), 'components/layout/command-palette.tsx'),
     'utf8',
-  )
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '');
+  ));
 
   it('no longer casts the route param to a string', () => {
     // `as string` on a value that is genuinely undefined is what silenced

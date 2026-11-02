@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -10,12 +11,10 @@ import { join } from 'path';
  * nobody is watching it, so a sync failing all week against a revoked Google
  * token must not look like a sync with nothing to do.
  */
-const panel = readFileSync(
+const panel = stripComments(readFileSync(
   join(__dirname, '..', 'components', 'settings', 'calendar-import.tsx'),
   'utf8',
-)
-  .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '')
-  .replace(/\/\/.*$/gm, '');
+));
 
 describe('the import panel', () => {
   it('asks how the automatic sync is getting on', () => {

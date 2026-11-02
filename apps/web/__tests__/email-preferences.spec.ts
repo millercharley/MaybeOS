@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -24,7 +25,7 @@ const profile = readFileSync(
 );
 
 function code(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  return stripComments(source);
 }
 const flat = (source: string) => code(source).replace(/\s+/g, '');
 

@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { execFileSync } from 'child_process';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
@@ -80,9 +81,7 @@ describe('loading it at all', () => {
       file asserts that the history is undocumented, which is the opposite of
       what is wanted.
     */
-    const src = readFileSync(join(__dirname, '..', 'lib', 'wiki-html.ts'), 'utf8')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\/\/.*$/gm, '');
+    const src = stripComments(readFileSync(join(__dirname, '..', 'lib', 'wiki-html.ts'), 'utf8'));
 
     expect(src).not.toMatch(/jsdom|isomorphic-dompurify|DOMPurify/);
     expect(sanitizeWikiHtml('<p>same</p>')).toBe('<p>same</p>');

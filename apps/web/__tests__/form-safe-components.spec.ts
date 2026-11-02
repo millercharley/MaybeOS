@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -43,9 +44,7 @@ const INSIDE_A_FORM = [
  * all have types now.
  */
 function markupOnly(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '');
+  return stripComments(source);
 }
 
 const read = (file: string) =>

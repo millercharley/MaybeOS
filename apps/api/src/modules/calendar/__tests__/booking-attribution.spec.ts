@@ -1,3 +1,4 @@
+import { stripComments } from '../../../common/testing/source-scan';
 import { titleNameKeys, unambiguousNames } from '../past-host';
 
 /**
@@ -105,9 +106,7 @@ describe('the importer does not take a booking off its owner', () => {
   const SOURCE = require('fs')
     .readFileSync(require('path').join(__dirname, '..', 'calendar-import.service.ts'), 'utf8')
     // Comments blanked, line breaks kept: the file now describes this bug at
-    // length and a scan that matched prose would prove nothing.
-    .replace(/\/\*[\s\S]*?\*\//g, (m: string) => m.replace(/[^\n]/g, ' '))
-    .replace(/\/\/[^\n]*/g, '');
+    // length and a scan that matched prose would prove stripComments(nothing.);
 
   it('reads the existing attribution before deciding', () => {
     // The shape grew a `source` with SPC-36; what matters is that the pass

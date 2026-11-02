@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { scrubEvent } from '@/sentry.shared';
@@ -79,7 +80,7 @@ describe('a poll nobody is waiting for', () => {
     against, so the guard passed against the bug until it was taken out.
   */
   const strip = (s: string) =>
-    s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    stripComments(s);
 
   const api = strip(readFileSync(join(__dirname, '..', 'lib', 'api.ts'), 'utf8'));
   const context = strip(readFileSync(join(__dirname, '..', 'contexts', 'unread-context.tsx'), 'utf8'));

@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -15,7 +16,7 @@ import { join } from 'path';
  * this event".
  */
 const strip = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  stripComments(s);
 
 const read = (...p: string[]) => strip(readFileSync(join(__dirname, '..', ...p), 'utf8'));
 

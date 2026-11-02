@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 
@@ -52,10 +53,7 @@ function hiddenControls() {
         version of this test passed happily with the class removed. A guard
         that reads its own explanation is not a guard.
       */
-      const labelTag = source
-        .slice(labelAt, match.index)
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .replace(/\/\/.*$/gm, '');
+      const labelTag = stripComments(source.slice(labelAt, match.index));
 
       if (!/\brelative\b/.test(labelTag)) {
         const line = before.split('\n').length;

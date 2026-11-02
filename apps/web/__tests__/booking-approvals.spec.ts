@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { approvalSummary, awaitingCount, whenLabel } from '@/lib/booking-approvals';
@@ -69,7 +70,7 @@ describe('when the room is wanted', () => {
 
 describe('the queue', () => {
   const strip = (s: string) =>
-    s.replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    stripComments(s);
 
   const panel = strip(readFileSync(join(__dirname, '..', 'components', 'rooms', 'booking-approvals.tsx'), 'utf8'));
   const page = strip(

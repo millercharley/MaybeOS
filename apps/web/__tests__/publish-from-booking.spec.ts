@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -10,7 +11,7 @@ import { join } from 'path';
  * for an organiser holds the whole co-op's.
  */
 const strip = (s: string) =>
-  s.replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  stripComments(s);
 
 const bookings = strip(
   readFileSync(

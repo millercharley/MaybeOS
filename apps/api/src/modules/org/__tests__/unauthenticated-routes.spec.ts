@@ -1,3 +1,4 @@
+import { stripComments } from '../../../common/testing/source-scan';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 
@@ -101,7 +102,7 @@ function controllers(dir: string): string[] {
  * which is the failure it exists to prevent.
  */
 function withoutComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+  return stripComments(src);
 }
 
 function unguardedRoutes(): string[] {

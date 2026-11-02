@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import { movedTo, MOVED_TO_SETTINGS } from '@/lib/moved-sections';
@@ -14,7 +15,7 @@ import { movedTo, MOVED_TO_SETTINGS } from '@/lib/moved-sections';
 const MEMBER = 'app/(app)/(dashboard)/member/[orgSlug]';
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
 const code = (p: string) =>
-  read(p).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  stripComments(read(p));
 
 describe('the split by audience', () => {
   const profile = code(`${MEMBER}/profile/page.tsx`);

@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { offerPassword, readPrompt, settlePrompt } from '@/lib/password-prompt';
@@ -12,7 +13,7 @@ import { offerPassword, readPrompt, settlePrompt } from '@/lib/password-prompt';
  * settings only serves people who already suspect the option is there.
  */
 const strip = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  stripComments(s);
 
 const read = (...parts: string[]) => readFileSync(join(__dirname, '..', ...parts), 'utf8');
 

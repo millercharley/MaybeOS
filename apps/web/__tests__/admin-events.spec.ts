@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { adminEventWindow } from '@/lib/event-list';
@@ -16,26 +17,26 @@ import { adminEventWindow } from '@/lib/event-list';
  * calendar)."
  */
 
-const page = readFileSync(
-  join(__dirname, '..', 'app', '(app)', '(dashboard)', 'admin', '[orgSlug]', 'events', 'page.tsx'),
-  'utf8',
-)
-  /*
-    Comments blanked before any of this reads the file, line breaks kept so a
-    failure still points at a line.
+/*
+  Comments are blanked by `stripComments` before any of this reads the file,
+  line breaks kept so a failure still points at a line.
 
-    Two assertions below locate a control by slicing around the first
-    occurrence of a word — `indexOf('Hide')` for the Hide button. The page
-    documents itself heavily, so the first "Hide" in the file stopped being
-    the button the moment a comment mentioned hiding (EVT-53), and the test
-    failed on a change that touched nothing it was guarding.
+  Two assertions below locate a control by slicing around the first
+  occurrence of a word — `indexOf('Hide')` for the Hide button. The page
+  documents itself heavily, so the first "Hide" in the file stopped being the
+  button the moment a comment mentioned hiding (EVT-53), and the test failed
+  on a change that touched nothing it was guarding.
 
-    The word is still the anchor, because the alternative is pinning markup
-    that is allowed to move. Stripping prose is what makes the anchor mean
-    the control rather than the paragraph about it.
-  */
-  .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-  .replace(/\/\/[^\n]*/g, '');
+  The word is still the anchor, because the alternative is pinning markup
+  that is allowed to move. Stripping prose is what makes the anchor mean the
+  control rather than the paragraph about it.
+*/
+const page = stripComments(
+  readFileSync(
+    join(__dirname, '..', 'app', '(app)', '(dashboard)', 'admin', '[orgSlug]', 'events', 'page.tsx'),
+    'utf8',
+  ),
+);
 
 describe('which events each tab asks for', () => {
   const now = new Date('2026-10-02T19:30:00Z');

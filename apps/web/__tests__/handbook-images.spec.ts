@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { sanitizeWikiHtml } from '@/lib/wiki-html';
@@ -12,7 +13,7 @@ import { sanitizeWikiHtml } from '@/lib/wiki-html';
  * is wants the photograph next to the sentence about it.
  */
 const strip = (s: string) =>
-  s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  stripComments(s);
 
 const read = (...p: string[]) => strip(readFileSync(join(__dirname, '..', ...p), 'utf8'));
 

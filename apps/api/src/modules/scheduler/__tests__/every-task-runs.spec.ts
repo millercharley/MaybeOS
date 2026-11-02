@@ -1,3 +1,4 @@
+import { stripComments } from '../../../common/testing/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -35,9 +36,7 @@ function source(): string {
   // Comments stripped first: `runDueTasks` has a commented-out task in its
   // history and a doc comment naming methods, and either would be read as
   // code by a bare regex. The same lesson as the route index.
-  return readFileSync(SOURCE, 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^[ \t]*\/\/.*$/gm, '');
+  return stripComments(readFileSync(SOURCE, 'utf8'));
 }
 
 /** The array inside `runDueTasks`. */

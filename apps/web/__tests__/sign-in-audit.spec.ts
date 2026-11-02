@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import type { SignInAudit } from '@/lib/api';
@@ -150,7 +151,7 @@ describe('the panel', () => {
 
   // Comments quote the very labels these guards look for, and have broken this
   // kind of test before. Strip them first.
-  const code = source.replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '').replace(/\/\/.*$/gm, '');
+  const code = stripComments(source);
 
   it('offers the check against the provider', () => {
     expect(code).toMatch(/>\s*\{busy \? 'Checking…' : audit \? 'Check again' : 'Check with the provider'\}\s*</);

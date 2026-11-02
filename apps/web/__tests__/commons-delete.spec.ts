@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -13,10 +14,7 @@ import { join } from 'path';
  * is offered the button, and that is visible in the source.
  */
 const read = (...parts: string[]) =>
-  readFileSync(join(__dirname, '..', ...parts), 'utf8')
-    .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/.*$/gm, '');
+  stripComments(readFileSync(join(__dirname, '..', ...parts), 'utf8'));
 
 const adminCommons = read('app', '(app)', '(dashboard)', 'admin', '[orgSlug]', 'commons', 'page.tsx');
 const portalCommons = read('app', '(app)', 'portal', '[orgSlug]', 'commons', 'page.tsx');

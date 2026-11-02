@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -14,21 +15,17 @@ import { join } from 'path';
  * worth preventing is pasting the script into an email, which only reads as a
  * mistake when the two sit together.
  */
-const read = (...p: string[]) =>
-  readFileSync(join(__dirname, '..', ...p), 'utf8')
-    /*
-      Comments blanked, line breaks kept: both files explain this at length
-      and a scan matching prose proves nothing.
+/*
+  Comments are blanked by `stripComments` before any of this reads the file:
+  both files explain this at length and a scan matching prose proves nothing.
 
-      The line comments are stripped only where one *starts* a line. The
-      obvious `\/\/[^\n]*` also matches the `//` inside `https://maybeos.org`,
-      which truncated the very line this file checks the origin on — the
-      assertion failed on a rule the code keeps. Same form the other embed
-      scans use.
-    */
-    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
-    .replace(/\{\/\*[\s\S]*?\*\/\}/g, (m) => m.replace(/[^\n]/g, ' '))
-    .replace(/^[ \t]*\/\/.*$/gm, '');
+  It walks the text rather than matching a pattern, because deciding whether
+  a double slash starts a comment means knowing whether you are inside a
+  string. The obvious pattern also matches the one inside
+  `https://maybeos.org`, which truncated the very line this file checks the
+  origin on — the assertion failed on a rule the code keeps (OPS-40).
+*/
+const read = (...p: string[]) => stripComments(readFileSync(join(__dirname, '..', ...p), 'utf8'));
 
 const CARD = read('components/settings/email-embed.tsx');
 const SETTINGS = read('app/(app)/(dashboard)/admin/[orgSlug]/settings/page.tsx');

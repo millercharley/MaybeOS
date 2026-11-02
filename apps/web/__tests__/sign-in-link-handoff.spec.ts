@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -30,7 +31,7 @@ const members = readFileSync(
  * matching the paragraph explaining why the thing must not happen.
  */
 function code(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  return stripComments(source);
 }
 
 describe('warning an organiser what the link is', () => {

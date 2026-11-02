@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { MATURITY_LEVELS, maturityBadge } from '@/lib/maturity';
@@ -25,7 +26,7 @@ const RAW = readFileSync(join(__dirname, '..', 'public', 'embed.js'), 'utf8');
  * lesson `unauthenticated-routes.spec.ts` and `tenant-scoping.spec.ts` both
  * had to learn.
  */
-const SOURCE = RAW.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+const SOURCE = stripComments(RAW);
 
 describe('the events embed', () => {
   it('has a file to read, and comments really were stripped', () => {

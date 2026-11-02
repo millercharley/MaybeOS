@@ -1,3 +1,4 @@
+import { stripComments } from '../testing/source-scan';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 
@@ -26,9 +27,7 @@ function sources(): { path: string; code: string }[] {
       } else if (entry.endsWith('.ts') && !entry.endsWith('.spec.ts')) {
         out.push({
           path: rel,
-          code: readFileSync(join(SRC, rel), 'utf8')
-            .replace(/\/\*[\s\S]*?\*\//g, '')
-            .replace(/^\s*\/\/.*$/gm, ''),
+          code: stripComments(readFileSync(join(SRC, rel), 'utf8')),
         });
       }
     }

@@ -1,3 +1,4 @@
+import { stripComments } from '../../../common/testing/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { globSync } from 'glob';
@@ -24,9 +25,7 @@ function sources(): { path: string; code: string }[] {
     .map((p) => ({
       path: p,
       // Comments say all the right things and change no behaviour.
-      code: readFileSync(join(SRC, p), 'utf8')
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .replace(/^\s*\/\/.*$/gm, ''),
+      code: stripComments(readFileSync(join(SRC, p), 'utf8')),
     }));
 }
 

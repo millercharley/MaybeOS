@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -22,7 +23,7 @@ const RAW = readFileSync(join(__dirname, '..', 'public', 'embed.js'), 'utf8');
 
 // Comments stripped: this file's prose names every rule it checks, and the
 // embed's prose now quotes the format it produces.
-const SOURCE = RAW.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+const SOURCE = stripComments(RAW);
 
 /**
  * The real `when`, lifted out of the file and run.

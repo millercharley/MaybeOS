@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -17,9 +18,7 @@ const files = {
 };
 
 function code(path: string): string {
-  return readFileSync(join(process.cwd(), path), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '');
+  return stripComments(readFileSync(join(process.cwd(), path), 'utf8'));
 }
 const flat = (path: string) => code(path).replace(/\s+/g, '');
 

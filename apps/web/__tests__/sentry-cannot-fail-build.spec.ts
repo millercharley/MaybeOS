@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -33,9 +34,7 @@ const CONFIG = readFileSync(join(__dirname, '..', 'next.config.ts'), 'utf8');
 // pass to find. Written as line comments here for the same reason: the first
 // draft of this note put a closing delimiter inside the block it was in, and
 // ended the comment three lines early.
-const CODE = CONFIG.replace(/^[ \t]*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, (m) =>
-  m.replace(/[^\n]/g, ' '),
-);
+const CODE = stripComments(CONFIG);
 
 describe('the build survives Sentry being unavailable', () => {
   it('does not finalize the release', () => {

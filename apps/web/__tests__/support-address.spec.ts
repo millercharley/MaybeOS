@@ -1,3 +1,4 @@
+import { stripComments } from './helpers/source-scan';
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join, relative } from 'path';
 import { SUPPORT_EMAIL, supportMailto } from '@/lib/support';
@@ -39,7 +40,7 @@ describe('the support address', () => {
    * guard starts shaping prose instead of catching mistakes.
    */
   const codeOnly = (source: string) =>
-    source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    stripComments(source);
 
   it('is written out in exactly one module', () => {
     const literals = files.filter(
