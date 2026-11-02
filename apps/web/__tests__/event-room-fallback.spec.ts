@@ -9,7 +9,7 @@ import { join } from 'path';
  * sure that a member can post their event even when there's a missing room
  * reservation."
  *
- * Brooke Sullivan Brown held the Attic and the Library on 24 October. Both
+ * Marlo Quint held the Attic and the Library on 24 October. Both
  * reservations were in MaybeOS, both filed under the person who typed them
  * into Google rather than the person they were for — so the picker offered
  * her nothing, told her to book rooms she already had, and the co-op's

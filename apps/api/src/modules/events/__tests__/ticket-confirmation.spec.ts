@@ -9,7 +9,7 @@ import { decodeTicketPass, encodeTicketPass } from '../ticket-pass';
  * Telling a ticket buyer they bought a ticket (EVT-46).
  *
  * Eight tickets had been sold on the live account and not one buyer had been
- * emailed anything, because nothing ever sent them anything. Calla Marsh
+ * emailed anything, because nothing ever sent them anything. Tamsin Reed
  * found it: "I have purchased 2 tickets and have not received them yet."
  *
  * The tests that matter here are the ones about *not* sending twice and *not*
@@ -19,7 +19,7 @@ import { decodeTicketPass, encodeTicketPass } from '../ticket-pass';
 describe('TicketPassService', () => {
   const SECRET = 'test-secret';
   const EVENT = 'event-1';
-  const EMAIL = 'calla.marsh@example.net';
+  const EMAIL = 'tamsin.reed@example.com';
 
   const anEvent = (over: Record<string, unknown> = {}) => ({
     title: 'Dog Sees God',
@@ -37,7 +37,7 @@ describe('TicketPassService', () => {
     id: 'ticket-1',
     eventId: EVENT,
     buyerEmail: EMAIL,
-    buyerName: 'Calla Marsh',
+    buyerName: 'Tamsin R Reed',
     amountCents: 1175,
     refundedAt: null,
     confirmationSentAt: null,
@@ -52,7 +52,7 @@ describe('TicketPassService', () => {
           over.ticket === undefined ? aTicket() : over.ticket,
         ),
         findFirst: jest.fn().mockResolvedValue({
-          buyerName: 'Calla Marsh',
+          buyerName: 'Tamsin R Reed',
           createdAt: new Date('2026-10-22T15:57:14Z'),
         }),
         findMany: jest.fn().mockResolvedValue([]),
@@ -103,7 +103,7 @@ describe('TicketPassService', () => {
     });
 
     /**
-     * Calla's actual case. Two checkouts twenty-four seconds apart, because
+     * Tamsin's actual case. Two checkouts twenty-four seconds apart, because
      * Checkout offers no quantity selector — so the email has to count what
      * the address holds rather than what this one row cost.
      */
@@ -209,7 +209,7 @@ describe('TicketPassService', () => {
      *
      * - `insensitive`, because Stripe returns the address as the buyer typed
      *   it and one person's two checkouts can disagree about a capital. Lose
-     *   this and Calla holds "1 seat" at a door she paid for twice.
+     *   this and Tamsin holds "1 seat" at a door she paid for twice.
      * - `refundedAt: null`, because a refund is the co-op taking the seat
      *   back. Lose this and a refunded pass still admits somebody.
      */
@@ -252,7 +252,7 @@ describe('TicketPassService', () => {
 
       expect(pass).toMatchObject({
         seats: 2,
-        holder: { name: 'Calla Marsh', email: EMAIL },
+        holder: { name: 'Tamsin R Reed', email: EMAIL },
         event: { title: 'Dog Sees God', orgName: 'MaybeItsFate', canceled: false },
       });
     });

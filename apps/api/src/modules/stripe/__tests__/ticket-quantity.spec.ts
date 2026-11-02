@@ -5,8 +5,8 @@ import { priceTicket, MAX_SEATS_PER_PURCHASE, describeFees } from '../ticket-pri
  *
  * There was no way to. Checkout was created with a hardcoded `quantity: 1`
  * and the event page offered no control, so two seats meant two trips through
- * Stripe — which is exactly what Calla Marsh and Rune Halvorsen each did
- * on *Dog Sees God*, and what made Calla write in asking where her tickets
+ * Stripe — which is exactly what Tamsin Reed and Orrin Blake each did
+ * on *Dog Sees God*, and what made Tamsin write in asking where her tickets
  * were.
  */
 describe('pricing a multi-seat purchase', () => {
@@ -24,7 +24,7 @@ describe('pricing a multi-seat purchase', () => {
     });
   });
 
-  /** Calla's purchase, as it should have been possible to make it. */
+  /** Tamsin's purchase, as it should have been possible to make it. */
   it('multiplies the whole thing by the seats', () => {
     expect(priceTicket({ ...base, quantity: 2 })).toMatchObject({
       quantity: 2,

@@ -189,7 +189,7 @@ describe('who is running it, in one line', () => {
   });
 
   it('uses the name an imported event kept for a host who left', () => {
-    expect(hostLine({ host: null, hostName: 'Idris Mawr' })).toBe('Idris Mawr');
+    expect(hostLine({ host: null, hostName: 'Perry Okonkwo' })).toBe('Perry Okonkwo');
   });
 
   it('says so when nobody is set', () => {

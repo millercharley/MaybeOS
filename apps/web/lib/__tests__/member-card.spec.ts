@@ -3,7 +3,7 @@ import { commonsPostHref, relativeTime, sinceLabel, socialKind } from '../member
 /** Pieces of the member card (MEM-18). */
 describe('socialKind', () => {
   it('knows the networks Circle shows icons for', () => {
-    expect(socialKind('https://www.instagram.com/rebeccajnortonstudios/')).toBe('instagram');
+    expect(socialKind('https://www.instagram.com/rebeccajvasquezstudios/')).toBe('instagram');
     expect(socialKind('https://linkedin.com/in/ada')).toBe('linkedin');
     expect(socialKind('https://x.com/ada')).toBe('twitter');
     expect(socialKind('https://youtu.be/abc')).toBe('youtube');

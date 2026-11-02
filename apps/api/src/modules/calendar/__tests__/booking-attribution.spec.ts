@@ -19,14 +19,14 @@ import { titleNameKeys, unambiguousNames } from '../past-host';
  *    saying so, which is the shape of bug that reads as the member's error.
  *
  * 2. A title was keyed whole, so it matched only an entry called exactly
- *    "Brooke Sullivan Brown". MaybeItsFate books under a house convention —
+ *    "Marlo Quint". MaybeItsFate books under a house convention —
  *    "avery lanning · White Elephant · Attic" — and against that the title
  *    named nobody. 203 reservations naming 44 members were co-op holds;
  *    149 of them carry a separator and come back.
  */
 describe('titleNameKeys', () => {
   it('keys the whole title, as it always did', () => {
-    expect(titleNameKeys('Brooke Sullivan Brown')).toContain('brooke sullivan brown');
+    expect(titleNameKeys('Marlo Quint')).toContain('marlo quint');
   });
 
   it('also keys the name before a middle dot', () => {
@@ -92,7 +92,7 @@ describe('titleNameKeys', () => {
   it('finds the member the house convention names', () => {
     const byName = unambiguousNames([
       { userId: 'u-nat', name: 'avery lanning' },
-      { userId: 'u-tali', name: 'Nell Ashcombe' },
+      { userId: 'u-tali', name: 'Sable Reyes' },
     ]);
     const hit = titleNameKeys('avery lanning · White Elephant · Attic')
       .map((k) => byName.get(k))

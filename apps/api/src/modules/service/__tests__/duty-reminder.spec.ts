@@ -23,7 +23,7 @@ describe('ServiceService.remindDue', () => {
       orgId: 'org-1',
       estimatedMinutes: 20,
     },
-    user: { email: 'marlow@example.com', name: 'Marlow Tolliver' },
+    user: { email: 'marlow@example.com', name: 'Theo Brandt' },
     ...over,
   });
 

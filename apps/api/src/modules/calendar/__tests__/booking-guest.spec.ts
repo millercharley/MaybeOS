@@ -17,14 +17,14 @@ const REAL = `Event • 3rd Floor Attic
 
 Location • 1425 Story Ave
 
-Guest • Linnet Hale (linnet.hale@example.net)
+Guest • Rosalind Pike (rosalind.pike@example.com)
 
 Event Title
 Rehearsal`;
 
 describe('reading the booker out of a description', () => {
   it('reads MaybeItsFate’s own format', () => {
-    expect(guestFrom(REAL)).toEqual({ email: 'linnet.hale@example.net', name: 'Linnet Hale' });
+    expect(guestFrom(REAL)).toEqual({ email: 'rosalind.pike@example.com', name: 'Rosalind Pike' });
   });
 
   it('lowercases the address, because that is what it is matched on', () => {
@@ -54,7 +54,7 @@ describe('reading the booker out of a description', () => {
   });
 
   it('prefers the line that says whose it is over one that does not', () => {
-    const text = 'Contact hello@maybeitsfate.com\nGuest • Linnet Hale (abby@example.com)';
+    const text = 'Contact hello@maybeitsfate.com\nGuest • Rosalind Pike (abby@example.com)';
 
     expect(guestFrom(text)?.email).toBe('abby@example.com');
   });
@@ -67,7 +67,7 @@ describe('reading the booker out of a description', () => {
   });
 
   it('has nothing to say about a hold with no description at all', () => {
-    // "HOLD for Pia Halloran" is a real entry on MaybeItsFate's calendar: a
+    // "HOLD for Wren Calloway" is a real entry on MaybeItsFate's calendar: a
     // name in the title and nothing else. A guess from a title would be a
     // guess, and these stay the co-op's.
     expect(guestFrom('')).toBeNull();

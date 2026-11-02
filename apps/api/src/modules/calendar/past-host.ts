@@ -117,7 +117,7 @@ export function personFor(
  * A member's name, as a key for matching a calendar entry's title (SPC-34).
  *
  * MaybeItsFate's room calendars carry entries typed by hand, where the only
- * record of whose reservation it is, is the title: "Brooke Sullivan Brown".
+ * record of whose reservation it is, is the title: "Marlo Quint".
  * No guest line, and the creator is whoever was at the keyboard — so these
  * imported as that person's, and were marked the co-op's because the creator
  * was the organiser they would have fallen back to anyway.

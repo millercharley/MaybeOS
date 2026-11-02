@@ -15,29 +15,29 @@ describe('ticket pass tokens', () => {
   const EVENT = 'eb8feb3c-5378-4aca-8d25-04aaf75fabba';
 
   it('round-trips an event and an address', () => {
-    const token = encodeTicketPass({ eventId: EVENT, email: 'calla.marsh@example.net' }, SECRET);
+    const token = encodeTicketPass({ eventId: EVENT, email: 'tamsin.reed@example.com' }, SECRET);
 
     expect(decodeTicketPass(token, SECRET)).toEqual({
       eventId: EVENT,
-      email: 'calla.marsh@example.net',
+      email: 'tamsin.reed@example.com',
     });
   });
 
   /**
    * The AUTH-07 bug, in the one place it would be invisible.
    *
-   * Stripe returns whatever the buyer typed into the card form, and Calla
-   * Marsh's two checkouts were twenty-four seconds apart — either could
+   * Stripe returns whatever the buyer typed into the card form, and Tamsin
+   * Reed's two checkouts were twenty-four seconds apart — either could
    * have carried a capital. A token that distinguished them would count her
    * two seats as one each and show her "1 seat" at a door where she is
    * standing with a friend.
    */
   it('treats one address spelled two ways as one address', () => {
-    const lower = encodeTicketPass({ eventId: EVENT, email: 'calla.marsh@example.net' }, SECRET);
-    const shouty = encodeTicketPass({ eventId: EVENT, email: '  calla.marsh@example.net ' }, SECRET);
+    const lower = encodeTicketPass({ eventId: EVENT, email: 'tamsin.reed@example.com' }, SECRET);
+    const shouty = encodeTicketPass({ eventId: EVENT, email: '  Tamsin.Reed@Example.COM ' }, SECRET);
 
     expect(shouty).toBe(lower);
-    expect(decodeTicketPass(shouty, SECRET)?.email).toBe('calla.marsh@example.net');
+    expect(decodeTicketPass(shouty, SECRET)?.email).toBe('tamsin.reed@example.com');
   });
 
   it('refuses a token signed with another secret', () => {

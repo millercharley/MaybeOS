@@ -15,7 +15,7 @@ import {
  * The page a ticket buyer shows at the door (EVT-46).
  *
  * **No sign-in.** The people this serves bought a ticket to a public show and
- * have no account. Calla Marsh bought two seats to *Dog Sees God*, was
+ * have no account. Tamsin Reed bought two seats to *Dog Sees God*, was
  * sent nothing at all, and wrote in to ask what to do — and there was nothing
  * to send her, because the only record of her purchase lived behind a session
  * she had no reason to have. The signed token in the address is the

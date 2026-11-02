@@ -11,8 +11,8 @@ import { EmailService } from '../../email/email.service';
  *
  * Stripe Checkout is created with `quantity: 1` and offers no way to ask for
  * two, so buying two seats means checking out twice — and each purchase
- * writes its own guest RSVP. On *Dog Sees God*, Calla Marsh and James
- * Halvorsen each did that, so each appears on the list twice under one name.
+ * writes its own guest RSVP. On *Dog Sees God*, Tamsin Reed and James
+ * Blake each did that, so each appears on the list twice under one name.
  *
  * Two identical rows read as a duplicate somebody should tidy away, and a
  * host who tidies one has turned a paying guest's friend away at the door.
@@ -75,12 +75,12 @@ describe('EventsService — seats on the door list', () => {
 
   it('numbers both rows when one address bought twice', async () => {
     prisma.rsvp.findMany.mockResolvedValue([
-      guest('rsvp-1', 'Calla Marsh', 'calla.marsh@example.net', '2026-10-22T15:56:50Z'),
-      guest('rsvp-2', 'Calla Marsh', 'calla.marsh@example.net', '2026-10-22T15:57:14Z'),
+      guest('rsvp-1', 'T R Reed', 'tamsin.reed@example.com', '2026-10-22T15:56:50Z'),
+      guest('rsvp-2', 'T R Reed', 'tamsin.reed@example.com', '2026-10-22T15:57:14Z'),
     ]);
     prisma.ticket.findMany.mockResolvedValue([
-      { buyerEmail: 'calla.marsh@example.net' },
-      { buyerEmail: 'calla.marsh@example.net' },
+      { buyerEmail: 'tamsin.reed@example.com' },
+      { buyerEmail: 'tamsin.reed@example.com' },
     ]);
 
     const { expected } = await service.listAttendees('org-1', EVENT, STAFF);
@@ -99,9 +99,9 @@ describe('EventsService — seats on the door list', () => {
    */
   it('says nothing about somebody holding a single seat', async () => {
     prisma.rsvp.findMany.mockResolvedValue([
-      guest('rsvp-1', 'Vesper Lund', 'vesper.lund@example.net', '2026-10-17T21:19:37Z'),
+      guest('rsvp-1', 'Dee Carter', 'dee.carter@example.com', '2026-10-17T21:19:37Z'),
     ]);
-    prisma.ticket.findMany.mockResolvedValue([{ buyerEmail: 'vesper.lund@example.net' }]);
+    prisma.ticket.findMany.mockResolvedValue([{ buyerEmail: 'dee.carter@example.com' }]);
 
     const { expected } = await service.listAttendees('org-1', EVENT, STAFF);
 
@@ -111,12 +111,12 @@ describe('EventsService — seats on the door list', () => {
   /** Stripe returns the address as the buyer typed it, capitals and all. */
   it('matches the buyer however they capitalised their address', async () => {
     prisma.rsvp.findMany.mockResolvedValue([
-      guest('rsvp-1', 'Calla Marsh', 'calla.marsh@example.net', '2026-10-22T15:56:50Z'),
-      guest('rsvp-2', 'Calla Marsh', 'calla.marsh@example.net', '2026-10-22T15:57:14Z'),
+      guest('rsvp-1', 'T R Reed', 'Tamsin.Reed@Example.com', '2026-10-22T15:56:50Z'),
+      guest('rsvp-2', 'T R Reed', 'tamsin.reed@example.com', '2026-10-22T15:57:14Z'),
     ]);
     prisma.ticket.findMany.mockResolvedValue([
-      { buyerEmail: 'calla.marsh@example.net' },
-      { buyerEmail: 'calla.marsh@example.net' },
+      { buyerEmail: 'tamsin.reed@example.com' },
+      { buyerEmail: 'TAMSIN.REED@EXAMPLE.COM' },
     ]);
 
     const { expected } = await service.listAttendees('org-1', EVENT, STAFF);
@@ -130,7 +130,7 @@ describe('EventsService — seats on the door list', () => {
    */
   it('does not count refunded tickets', async () => {
     prisma.rsvp.findMany.mockResolvedValue([
-      guest('rsvp-1', 'Calla Marsh', 'calla.marsh@example.net', '2026-10-22T15:56:50Z'),
+      guest('rsvp-1', 'T R Reed', 'tamsin.reed@example.com', '2026-10-22T15:56:50Z'),
     ]);
 
     await service.listAttendees('org-1', EVENT, STAFF);
@@ -156,7 +156,7 @@ describe('EventsService — seats on the door list', () => {
         user: { id: 'user-1', name: 'A Member', avatarUrl: null, avatarPath: null },
       },
     ]);
-    prisma.ticket.findMany.mockResolvedValue([{ buyerEmail: 'calla.marsh@example.net' }]);
+    prisma.ticket.findMany.mockResolvedValue([{ buyerEmail: 'tamsin.reed@example.com' }]);
 
     const { expected } = await service.listAttendees('org-1', EVENT, STAFF);
 
@@ -185,12 +185,12 @@ describe('EventsService — seats on the door list', () => {
    */
   it('numbers along the purchase order, not the sorted order', async () => {
     prisma.rsvp.findMany.mockResolvedValue([
-      guest('rsvp-first', 'Calla Marsh', 'calla.marsh@example.net', '2026-10-22T15:56:50Z'),
-      guest('rsvp-second', 'Calla Marsh', 'calla.marsh@example.net', '2026-10-22T15:57:14Z'),
+      guest('rsvp-first', 'T R Reed', 'tamsin.reed@example.com', '2026-10-22T15:56:50Z'),
+      guest('rsvp-second', 'T R Reed', 'tamsin.reed@example.com', '2026-10-22T15:57:14Z'),
     ]);
     prisma.ticket.findMany.mockResolvedValue([
-      { buyerEmail: 'calla.marsh@example.net' },
-      { buyerEmail: 'calla.marsh@example.net' },
+      { buyerEmail: 'tamsin.reed@example.com' },
+      { buyerEmail: 'tamsin.reed@example.com' },
     ]);
 
     const { expected } = await service.listAttendees('org-1', EVENT, STAFF);

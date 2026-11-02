@@ -1,4 +1,10 @@
 generator client {
+
+/// Names and addresses in comments and fixtures throughout this repo are
+/// stand-ins, checked against the member table so none of them is a real
+/// person (OPS-38). The incidents they describe are real; the people are
+/// not. Real member data lives in the database and stays there.
+
   provider      = "prisma-client-js"
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
@@ -1144,8 +1150,8 @@ model Ticket {
   ///
   /// Added because there was no way to ask for two. Checkout was created with
   /// a hardcoded `quantity: 1`, so somebody wanting two seats bought twice —
-  /// two Stripe sessions, two rows, two of everything. Calla Marsh and
-  /// Rune Halvorsen both did it on the same show, and Calla wrote in to ask
+  /// two Stripe sessions, two rows, two of everything. Tamsin Reed and
+  /// Orrin Blake both did it on the same show, and Tamsin wrote in to ask
   /// where her tickets were.
   ///
   /// Defaults to 1, which is what every row written before this is: true of

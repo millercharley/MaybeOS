@@ -28,7 +28,7 @@ describe('EventsService — reservations an event may claim', () => {
       event: { findFirst: jest.fn().mockResolvedValue(null) },
       // Whose name this is, for the reservations the migration filed under
       // somebody else (SPC-33).
-      user: { findUnique: jest.fn().mockResolvedValue({ name: 'Brooke Sullivan Brown' }) },
+      user: { findUnique: jest.fn().mockResolvedValue({ name: 'Marlo Quint' }) },
       booking: { findMany: jest.fn().mockResolvedValue([]) },
     };
 
@@ -143,7 +143,7 @@ describe('EventsService — reservations an event may claim', () => {
 
     it('is offered to them', async () => {
       expect(await claimClause()).toMatchObject({
-        title: { equals: 'Brooke Sullivan Brown', mode: 'insensitive' },
+        title: { equals: 'Marlo Quint', mode: 'insensitive' },
       });
     });
 
@@ -157,13 +157,13 @@ describe('EventsService — reservations an event may claim', () => {
     });
 
     it('matches the whole title, not a part of it', async () => {
-      // "Sable Thorne • 3rd Floor Attic" must not match Sable Thorne —
+      // "Avery Lanning • 3rd Floor Attic" must not match Avery Lanning —
       // that one already has its owner, and a prefix match would start
       // handing out reservations that merely mention somebody.
       const clause = await claimClause();
       expect(clause.title.contains).toBeUndefined();
       expect(clause.title.startsWith).toBeUndefined();
-      expect(clause.title.equals).toBe('Brooke Sullivan Brown');
+      expect(clause.title.equals).toBe('Marlo Quint');
     });
 
     it('is not offered when the member has no name to match', async () => {

@@ -56,7 +56,7 @@ export interface TicketConfirmationData {
    *
    * Checkout has no quantity selector, so somebody wanting two seats buys
    * twice — and the second email saying "1 ticket" when they have paid for
-   * two is exactly the confusion this email exists to end. Calla Marsh
+   * two is exactly the confusion this email exists to end. Tamsin Reed
    * bought twice, twenty-four seconds apart, and wrote in to ask where her
    * two tickets were.
    */

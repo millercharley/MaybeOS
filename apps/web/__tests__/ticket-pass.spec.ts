@@ -18,7 +18,7 @@ describe('the ticket pass page', () => {
       canceled: false,
       past: false,
     },
-    holder: { name: 'Calla Marsh', email: 'calla.marsh@example.net' },
+    holder: { name: 'Tamsin R Reed', email: 'tamsin.reed@example.com' },
     seats: 2,
     boughtAt: '2026-10-22T15:57:14Z',
     ...over,
@@ -82,7 +82,7 @@ describe('the ticket pass page', () => {
       expect(seatLine(1)).toBe('1 seat');
     });
 
-    /** Calla's case: two checkouts, one pass, one number. */
+    /** Tamsin's case: two checkouts, one pass, one number. */
     it('is plural for more', () => {
       expect(seatLine(2)).toBe('2 seats');
       expect(seatLine(11)).toBe('11 seats');

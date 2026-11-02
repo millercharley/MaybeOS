@@ -12,7 +12,7 @@
  *
  *     Event • 3rd Floor Attic
  *     Location • 1425 Story Ave
- *     Guest • Linnet Hale (linnet.hale@example.net)
+ *     Guest • Rosalind Pike (rosalind.pike@example.com)
  *
  * 2,348 of MaybeItsFate's 3,017 reservations carry that line, naming 216
  * different people. The creator never varied; this does.

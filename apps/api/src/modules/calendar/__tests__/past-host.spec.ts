@@ -27,13 +27,13 @@ describe('matching a host', () => {
 
 describe('naming a host who is not here', () => {
   it('uses the name Google had', () => {
-    expect(hostLabel('Idris Mawr', 'sam@example.com')).toBe('Idris Mawr');
+    expect(hostLabel('Perry Okonkwo', 'sam@example.com')).toBe('Perry Okonkwo');
   });
 
   it('falls back to the local part, never the whole address', () => {
     // An event page is read by the whole co-op. Publishing a departed
     // member's address on it is not ours to do.
-    expect(hostLabel(null, 'sam.mawr@example.com')).toBe('idris mawr');
+    expect(hostLabel(null, 'perry.okonkwo@example.com')).toBe('perry okonkwo');
     expect(hostLabel('  ', 'sam@example.com')).toBe('sam');
   });
 
@@ -52,7 +52,7 @@ describe('what gets written on the event', () => {
   it('prefers the member, and keeps no copy of their name', () => {
     // A name copied from a calendar invitation three years ago would outlive
     // every rename they ever make.
-    expect(hostFields('u-sam', 'sam@example.com', 'Idris Mawr')).toEqual({
+    expect(hostFields('u-sam', 'sam@example.com', 'Perry Okonkwo')).toEqual({
       hostId: 'u-sam',
       hostEmail: null,
       hostName: null,
@@ -60,10 +60,10 @@ describe('what gets written on the event', () => {
   });
 
   it('records the organiser when nobody matched', () => {
-    expect(hostFields(null, 'Sam@Example.com', 'Idris Mawr')).toEqual({
+    expect(hostFields(null, 'Sam@Example.com', 'Perry Okonkwo')).toEqual({
       hostId: null,
       hostEmail: 'sam@example.com',
-      hostName: 'Idris Mawr',
+      hostName: 'Perry Okonkwo',
     });
   });
 

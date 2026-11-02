@@ -4,7 +4,7 @@ import { normalizeEmail } from '../../common/email-address';
 /**
  * The signed link that proves somebody paid (EVT-46).
  *
- * A ticket buyer is usually not a member. Calla Marsh bought two seats to
+ * A ticket buyer is usually not a member. Tamsin Reed bought two seats to
  * *Dog Sees God*, got no email at all, and wrote to ask what to do — and even
  * if she had been emailed, there was nothing to send her: MaybeOS had no page
  * that would show a guest what they had bought. The door list was the only
@@ -16,7 +16,7 @@ import { normalizeEmail } from '../../common/email-address';
  *
  * **It names an address, not a ticket.** Checkout is created with
  * `quantity: 1` and no quantity selector, so two seats are two Stripe sessions
- * and two `Ticket` rows — which is what Calla and Rune Halvorsen both did.
+ * and two `Ticket` rows — which is what Tamsin and Orrin Blake both did.
  * A token per ticket would have given her two links for one arrival and no way
  * to show a doorman she holds two seats. Keyed on the address, one link
  * answers the question she is actually being asked at the door, and it stays
@@ -35,7 +35,7 @@ export interface TicketPassToken {
   eventId: string;
   /**
    * Normalised at signing, so the token for `calla.marsh@example.net` and the one
-   * for `calla.marsh@example.net` are the same token and count the same seats.
+   * for `tamsin.reed@example.com` are the same token and count the same seats.
    * Stripe returns whatever the buyer typed, and it varies between two
    * checkouts by the same person twenty-four seconds apart.
    */

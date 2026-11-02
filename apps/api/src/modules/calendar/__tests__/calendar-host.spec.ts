@@ -40,14 +40,14 @@ describe('telling a calendar from a person', () => {
 describe('who ran it', () => {
   const entry = (over: Partial<Parameters<typeof personFor>[0]> = {}) => ({
     organiserEmail: 'sam@example.com',
-    organiserName: 'Idris Mawr',
+    organiserName: 'Perry Okonkwo',
     creatorEmail: 'dee@example.com',
     creatorName: 'Dee Carter',
     ...over,
   });
 
   it('is the organiser when the organiser is a person', () => {
-    expect(personFor(entry(), CAL)).toEqual({ email: 'sam@example.com', name: 'Idris Mawr' });
+    expect(personFor(entry(), CAL)).toEqual({ email: 'sam@example.com', name: 'Perry Okonkwo' });
   });
 
   it('is the creator when the calendar organised it', () => {

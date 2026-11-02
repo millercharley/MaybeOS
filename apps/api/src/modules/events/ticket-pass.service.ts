@@ -12,7 +12,7 @@ import { decodeTicketPass, encodeTicketPass } from './ticket-pass';
  * account — two shows of *Dog Sees God*, $11.75 each, all eight recorded
  * correctly with the money in MaybeItsFate's Stripe account — and every one of
  * those buyers was sent nothing whatsoever. The first anybody heard of it was
- * Calla Marsh writing in: "I have purchased 2 tickets and have not
+ * Tamsin Reed writing in: "I have purchased 2 tickets and have not
  * received them yet. Please let me know what to do."
  *
  * Nothing was broken. The webhook recorded her sale, confirmed her RSVP and
@@ -74,7 +74,7 @@ export class TicketPassService {
    * away in front of a queue.
    *
    * Case-insensitive on the address because Stripe returns what the buyer
-   * typed. Calla's two checkouts were twenty-four seconds apart and either
+   * typed. Tamsin's two checkouts were twenty-four seconds apart and either
    * one could have carried a capital.
    */
   private async seatsFor(eventId: string, email: string): Promise<number> {

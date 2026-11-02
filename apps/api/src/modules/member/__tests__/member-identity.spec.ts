@@ -27,7 +27,7 @@ describe('correcting a member’s address', () => {
 
   const MEMBERSHIP = {
     id: 'm1',
-    user: { id: 'u1', email: 'marlow.tolliver@example.net', name: 'Marlow Tolliver' },
+    user: { id: 'u1', email: 'theo.brandt@example.com', name: 'Theo Brand' },
   };
 
   beforeEach(async () => {
@@ -115,7 +115,7 @@ describe('correcting a member’s address', () => {
   });
 
   it('refuses the address it already is, rather than reporting a fix', async () => {
-    const result = await service.updateMemberIdentity('org-1', 'u1', { email: 'marlow.tolliver@example.net' }, 'admin-1');
+    const result = await service.updateMemberIdentity('org-1', 'u1', { email: 'Theo.Brandt@example.com' }, 'admin-1');
 
     expect(result).toMatchObject({ changed: false, reason: 'unchanged' });
     expect(prisma.$transaction).not.toHaveBeenCalled();
@@ -142,7 +142,7 @@ describe('correcting a member’s address', () => {
         orgId: 'org-1',
         actorId: 'admin-1',
         action: 'member.identity_changed',
-        metadata: { emailFrom: 'marlow.tolliver@example.net', emailTo: 'marlow@example.com' },
+        metadata: { emailFrom: 'theo.brandt@example.com', emailTo: 'marlow@example.com' },
       }),
     );
   });
@@ -176,14 +176,14 @@ describe('correcting a member’s address', () => {
       const result = await service.updateMemberIdentity(
         'org-1',
         'u1',
-        { name: 'Marlow Tolliver' },
+        { name: 'Theo Brandt' },
         'admin-1',
       );
 
-      expect(result).toEqual({ changed: true, name: 'Marlow Tolliver' });
+      expect(result).toEqual({ changed: true, name: 'Theo Brandt' });
 
       const [userWrite] = prisma.user.update.mock.calls[0];
-      expect(userWrite.data.name).toBe('Marlow Tolliver');
+      expect(userWrite.data.name).toBe('Theo Brandt');
       // Not a new address, so none of the address machinery fires.
       expect(userWrite.data).not.toHaveProperty('email');
       expect(userWrite.data).not.toHaveProperty('emailVerified');
@@ -199,7 +199,7 @@ describe('correcting a member’s address', () => {
         into the queue to be written to again — four hundred of those is the
         whole reason the audit exists.
       */
-      await service.updateMemberIdentity('org-1', 'u1', { name: 'Marlow Tolliver' }, 'admin-1');
+      await service.updateMemberIdentity('org-1', 'u1', { name: 'Theo Brandt' }, 'admin-1');
 
       expect(prisma.userOrg.update).not.toHaveBeenCalled();
     });
@@ -210,7 +210,7 @@ describe('correcting a member’s address', () => {
       prisma.userOrg.count.mockResolvedValue(1);
 
       await expect(
-        service.updateMemberIdentity('org-1', 'u1', { name: 'Marlow Tolliver' }, 'admin-1'),
+        service.updateMemberIdentity('org-1', 'u1', { name: 'Theo Brandt' }, 'admin-1'),
       ).resolves.toMatchObject({ changed: true });
     });
 
@@ -226,19 +226,19 @@ describe('correcting a member’s address', () => {
       const result = await service.updateMemberIdentity(
         'org-1',
         'u1',
-        { name: 'Marlow Tolliver', email: 'marlow@example.com' },
+        { name: 'Theo Brandt', email: 'marlow@example.com' },
         'admin-1',
       );
 
       expect(result).toEqual({
         changed: true,
-        name: 'Marlow Tolliver',
+        name: 'Theo Brandt',
         email: 'marlow@example.com',
       });
 
       const [userWrite] = prisma.user.update.mock.calls[0];
       expect(userWrite.data).toMatchObject({
-        name: 'Marlow Tolliver',
+        name: 'Theo Brandt',
         email: 'marlow@example.com',
       });
       // And the address half does reset the sign-in record.
@@ -248,7 +248,7 @@ describe('correcting a member’s address', () => {
     it('says nothing changed when the name is the one they already have', async () => {
       // A no-op reporting success looks like a fix that did not take.
       await expect(
-        service.updateMemberIdentity('org-1', 'u1', { name: '  Marlow Tolliver  ' }, 'admin-1'),
+        service.updateMemberIdentity('org-1', 'u1', { name: '  Theo Brand  ' }, 'admin-1'),
       ).resolves.toMatchObject({ changed: false, reason: 'unchanged' });
     });
 
@@ -260,11 +260,11 @@ describe('correcting a member’s address', () => {
     });
 
     it('records the name it replaced, as well as the one it set', async () => {
-      await service.updateMemberIdentity('org-1', 'u1', { name: 'Marlow Tolliver' }, 'admin-1');
+      await service.updateMemberIdentity('org-1', 'u1', { name: 'Theo Brandt' }, 'admin-1');
 
       expect(audit.record.mock.calls[0][0].metadata).toEqual({
-        nameFrom: 'Marlow Tolliver',
-        nameTo: 'Marlow Tolliver',
+        nameFrom: 'Theo Brand',
+        nameTo: 'Theo Brandt',
       });
     });
   });

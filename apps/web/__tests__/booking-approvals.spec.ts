@@ -19,7 +19,7 @@ const req = (over: Partial<PendingBooking> = {}): PendingBooking => ({
   endTime: '2026-10-21T00:00:00.000Z',
   createdAt: '2026-10-08T16:44:51.000Z',
   room: { id: 'r1', name: 'Main Gallery' },
-  user: { id: 'u1', name: 'Bryn Carrow' },
+  user: { id: 'u1', name: 'Juno Vasquez' },
   lapsed: false,
   ...over,
 });

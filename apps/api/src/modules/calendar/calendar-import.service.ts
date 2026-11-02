@@ -827,7 +827,7 @@ export class CalendarImportService {
       Every entry on a co-op's room calendar has the same creator — the
       account the booking automation runs on — so the creator says nothing
       about whose booking it is. The description does: MaybeItsFate's
-      automation writes "Guest • Linnet Hale (linnet.hale@example.net)", and
+      automation writes "Guest • Rosalind Pike (rosalind.pike@example.com)", and
       2,348 of its 3,017 reservations carry that line naming 216 people.
 
       The guest wins where there is one. The creator is the fallback, for a
@@ -847,7 +847,7 @@ export class CalendarImportService {
       The title, when nothing else names anybody (SPC-34).
 
       A room calendar kept by hand records whose reservation it is in the
-      title and nowhere else: "Brooke Sullivan Brown". There is no guest line,
+      title and nowhere else: "Marlo Quint". There is no guest line,
       and the creator is whoever was at the keyboard — so these came in as
       that person's, and were then marked the co-op's precisely *because* the
       creator was the organiser they would have fallen back to anyway. 47 of

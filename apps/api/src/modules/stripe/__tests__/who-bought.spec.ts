@@ -46,8 +46,8 @@ describe('ConnectService — who bought tickets', () => {
         findMany: jest.fn().mockResolvedValue([
           {
             id: 't1',
-            buyerEmail: 'calla@example.com',
-            buyerName: 'Calla Marsh',
+            buyerEmail: 'tamsin@example.com',
+            buyerName: 'Tamsin R Reed',
             amountCents: 1175,
             quantity: 2,
           },

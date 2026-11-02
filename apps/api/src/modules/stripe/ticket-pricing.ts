@@ -144,7 +144,7 @@ export function priceTicket({
       buyers read before paying.
 
       Per seat also matches what has actually been charged: with no selector,
-      two seats meant two checkouts, so Calla Marsh paid MaybeOS twice.
+      two seats meant two checkouts, so Tamsin Reed paid MaybeOS twice.
       Keeping it per seat means the selector changes how many times she has
       to type her card in, and nothing about what anybody is paid.
     */

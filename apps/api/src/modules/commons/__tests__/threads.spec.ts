@@ -67,8 +67,8 @@ describe('who is in a conversation', () => {
 describe('what a conversation is called', () => {
   const people = [
     { userId: 'me', name: 'Charley' },
-    { userId: 'r', name: 'Bryn Carrow' },
-    { userId: 'e', name: 'Esker Dunn' },
+    { userId: 'r', name: 'Juno Vasquez' },
+    { userId: 'e', name: 'Devon Ashbury' },
   ];
 
   it('leaves the reader out of it', () => {
@@ -78,11 +78,11 @@ describe('what a conversation is called', () => {
   });
 
   it('names the other person, for a conversation between two', () => {
-    expect(threadName(people.slice(0, 2), 'me')).toBe('Bryn Carrow');
+    expect(threadName(people.slice(0, 2), 'me')).toBe('Juno Vasquez');
   });
 
   it('reads as a sentence for a few people', () => {
-    expect(threadName(people, 'me')).toBe('Bryn Carrow and Esker Dunn');
+    expect(threadName(people, 'me')).toBe('Juno Vasquez and Devon Ashbury');
   });
 
   it('counts the rest once there are too many to read', () => {
@@ -95,7 +95,7 @@ describe('what a conversation is called', () => {
 
   it('prefers a name somebody gave it', () => {
     expect(threadName(people, 'me', 'Kiln crew')).toBe('Kiln crew');
-    expect(threadName(people, 'me', '   ')).toBe('Bryn Carrow and Esker Dunn');
+    expect(threadName(people, 'me', '   ')).toBe('Juno Vasquez and Devon Ashbury');
   });
 
   it('does not print an empty name for somebody who has not set one', () => {

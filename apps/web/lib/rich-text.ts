@@ -37,7 +37,7 @@ export function looksLikeHtml(body: string): boolean {
  * `looksLikeHtml` then says no, correctly by its own rule, and the body goes
  * down the plain-text path to be escaped — turning `&nbsp;` into
  * `&amp;nbsp;`, which the browser renders as the literal text "&nbsp;". Six
- * bodies on production read that way, including Esker Dunn's "The new
+ * bodies on production read that way, including Devon Ashbury's "The new
  * system looks awesome.&nbsp;".
  *
  * Decoded before escaping rather than routed through the sanitiser: the

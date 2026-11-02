@@ -2078,7 +2078,7 @@ export class EventsService {
       So a reservation whose title is exactly this member's name is offered
       to them. Narrow on purpose, because this is offering somebody else's
       row: only an imported one, only one still attached to nothing, and only
-      an exact match on the whole title. "Sable Thorne • 3rd Floor Attic"
+      an exact match on the whole title. "Avery Lanning • 3rd Floor Attic"
       does not match, and does not need to — that one already has its owner.
     */
     const me = who.anyone
@@ -2650,7 +2650,7 @@ export class EventsService {
         Only to count repeats. Checkout is created with `quantity: 1` and
         offers no way to ask for two, so somebody wanting two seats buys twice
         — and each purchase writes its own guest RSVP, so they appear on the
-        door list twice under one name. Calla Marsh and Rune Halvorsen both
+        door list twice under one name. Tamsin Reed and Orrin Blake both
         did exactly that on *Dog Sees God*.
 
         Two identical rows read as a duplicate somebody should clean up, and a

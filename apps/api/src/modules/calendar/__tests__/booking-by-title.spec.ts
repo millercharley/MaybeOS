@@ -6,7 +6,7 @@ import { nameKey, unambiguousNames } from '../past-host';
  * Charley: "See why the migration of the calendars did not connect this
  * member to her events."
  *
- * Brooke Sullivan Brown held the Attic and the Library on 24 October. Both
+ * Marlo Quint held the Attic and the Library on 24 October. Both
  * entries were typed onto the shared room calendars by hand, with her name
  * as the title and nothing else to go on — no guest line, and a creator who
  * was whoever was at the keyboard.
@@ -18,8 +18,8 @@ import { nameKey, unambiguousNames } from '../past-host';
  */
 describe('reading a name out of a title', () => {
   it('matches however it was typed', () => {
-    expect(nameKey('  Brooke   Sullivan Brown ')).toBe('brooke sullivan brown');
-    expect(nameKey('BROOKE SULLIVAN BROWN')).toBe('brooke sullivan brown');
+    expect(nameKey('  Marlo   Quint ')).toBe('marlo quint');
+    expect(nameKey('MARLO QUINT')).toBe('marlo quint');
   });
 
   it('is nothing for a title that is not there', () => {
@@ -31,15 +31,15 @@ describe('reading a name out of a title', () => {
 
 describe('which names identify somebody', () => {
   const members = [
-    { userId: 'u-brooke', name: 'Brooke Sullivan Brown' },
-    { userId: 'u-mel', name: 'Orrin Lattimer' },
+    { userId: 'u-marlo', name: 'Marlo Quint' },
+    { userId: 'u-mel', name: 'Noor Haddad' },
   ];
 
   it('maps a member to their name', () => {
     const by = unambiguousNames(members);
 
-    expect(by.get('brooke sullivan brown')).toBe('u-brooke');
-    expect(by.get('orrin lattimer')).toBe('u-mel');
+    expect(by.get('marlo quint')).toBe('u-marlo');
+    expect(by.get('noor haddad')).toBe('u-mel');
   });
 
   it('refuses a name two members share', () => {
@@ -48,15 +48,15 @@ describe('which names identify somebody', () => {
       is worse than one handed to nobody — the room looks held by somebody
       who did not hold it, and the person who did still cannot publish.
     */
-    const by = unambiguousNames([...members, { userId: 'u-other', name: 'Orrin Lattimer' }]);
+    const by = unambiguousNames([...members, { userId: 'u-other', name: 'Noor Haddad' }]);
 
-    expect(by.has('orrin lattimer')).toBe(false);
-    expect(by.get('brooke sullivan brown')).toBe('u-brooke');
+    expect(by.has('noor haddad')).toBe(false);
+    expect(by.get('marlo quint')).toBe('u-marlo');
   });
 
   it('is not confused by the same member appearing twice', () => {
     const by = unambiguousNames([members[0], { ...members[0] }]);
-    expect(by.get('brooke sullivan brown')).toBe('u-brooke');
+    expect(by.get('marlo quint')).toBe('u-marlo');
   });
 
   it('ignores members with no name', () => {
@@ -74,7 +74,7 @@ describe('what the importer does with it', () => {
 
   it('prefers the guest line, which is the stronger signal', () => {
     /*
-      The automation writes "Guest • Linnet Hale (…)" and that names the
+      The automation writes "Guest • Rosalind Pike (…)" and that names the
       person outright. A title is a guess by comparison.
 
       This used to pin `const titleKey = guest ? null : nameKey(entry.title)`.

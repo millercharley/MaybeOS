@@ -10,7 +10,7 @@ import { IsEmail, MaxLength } from 'class-validator';
  */
 export class TakeOverAddressDto {
   /** The address the removed account is still holding. */
-  @ApiProperty({ example: 'juno.vale@example.net' })
+  @ApiProperty({ example: 'kit.ellery@example.com' })
   @IsEmail({}, { message: 'That does not look like an email address' })
   @MaxLength(320)
   email!: string;
