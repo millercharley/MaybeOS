@@ -243,17 +243,45 @@ const BORDER = '#dcdcdc';
 const INK = '#1a1a1a';
 const MUTED = '#555555';
 
+/*
+  Layout lives in attributes, not in CSS (EVT-57).
+
+  MailerLite's RSS block runs the feed through a sanitiser that removes every
+  `style` attribute: of the 268 this block carries, its output kept none,
+  while `align`, `valign`, `border`, `cellpadding`, `cellspacing`, `width`,
+  `height` and `bgcolor` all came through untouched. So the campaign rendered
+  unstyled text at the wrong width — not because the markup was wrong, but
+  because the one mechanism email normally leaves you was taken away.
+
+  That is deliberate on their part rather than a bug: the block has its own
+  Title / Meta / Text / Link controls, because it is built to pour a feed into
+  the campaign's own typography.
+
+  So this now says everything structural twice. Spacing is `cellpadding` and
+  spacer rows with a `height`, fills are `bgcolor`, widths are `width`,
+  emphasis is `<b>`. The inline styles stay for the clients that honour them,
+  and for anyone pasting this into a plain HTML block — but nothing depends on
+  them any more. Where a cell has `cellpadding`, its style carries no padding,
+  or the two would add up in every client that reads both.
+
+  What cannot be carried this way is typography: there is no attribute for a
+  font. In MailerLite the campaign supplies it, which is what that block is
+  for; everywhere else the inline styles still do.
+*/
+
+/** A row of empty space, which is the only margin that survives. */
+function gap(height: number): string {
+  return `<tr><td height="${height}" style="height:${height}px;font-size:0;line-height:0;">&nbsp;</td></tr>`;
+}
+
 /**
  * The picture, when there is one.
  *
  * Returns null rather than a placeholder, because the website embed draws no
  * thumbnail cell at all for an event without a poster — the title starts at
- * the card's edge. Filling that space with a coloured square, which is what
- * this did first, put a block of brand colour beside every untitled row and
- * made the list read as a column of swatches.
- *
- * `width` and `height` are attributes as well as styles: Outlook ignores the
- * styles.
+ * the card's edge. Filling that space with a coloured square put a block of
+ * brand colour beside every untitled row and made the list read as a column
+ * of swatches.
  */
 function thumb(event: EmbedEvent, size: number): string | null {
   if (!event.imageUrl) return null;
@@ -264,9 +292,8 @@ function thumb(event: EmbedEvent, size: number): string | null {
  * The hero's picture, or a block of the co-op's colour.
  *
  * Here the fallback stays, because the hero is a poster-shaped space and an
- * empty one reads as a broken image rather than as a choice. The raw accent,
- * not the darkened text colour — MaybeItsFate's `#afd2e9` is a pale blue and
- * that is what the website embed fills this with.
+ * empty one reads as a broken image. The raw accent, which for MaybeItsFate
+ * is a pale blue, not the darkened colour the dates and buttons use.
  */
 function heroPicture(event: EmbedEvent, theme: Theme): string {
   if (event.imageUrl) {
@@ -283,50 +310,55 @@ function heroPicture(event: EmbedEvent, theme: Theme): string {
  * The facts under a title, in the weights the website embed gives them.
  *
  * Three different things, so three different treatments rather than one
- * accent-coloured string joined with separators: the date is the accent and
- * bold because it is what somebody is scanning for, the room is quiet grey
- * because it is context, and the age limit is dark and bold because it is a
- * condition of coming.
+ * accent-coloured string: the date is what somebody is scanning for, the room
+ * is context, the age limit is a condition of coming. `<b>` as well as a
+ * weight in the style, so the distinction survives a sanitiser.
  */
 function facts(event: EmbedEvent, theme: Theme): string {
+  // The style goes on the `<b>` rather than on a `<span>` inside it: a
+  // stripped `<b><span>…</span></b>` leaves an element that means nothing,
+  // and this markup is read by people debugging a campaign.
   const parts = [
-    `<span style="color:${theme.text};font-weight:700;">${escapeHtml(when(event.startTime, event.endTime, theme.timeZone))}</span>`,
+    `<b style="color:${theme.text};font-weight:700;">${escapeHtml(when(event.startTime, event.endTime, theme.timeZone))}</b>`,
   ];
   if (event.location) {
     parts.push(`<span style="color:#6b6b6b;">${escapeHtml(event.location)}</span>`);
   }
   const age = ageBadge(event.maturityLevel);
   if (age) {
-    parts.push(`<span style="color:${INK};font-weight:700;">${escapeHtml(age)}</span>`);
+    parts.push(`<b style="color:${INK};font-weight:700;">${escapeHtml(age)}</b>`);
   }
   // Non-breaking spaces rather than a margin: there is no reliable spacing
-  // between inline elements in Outlook.
+  // between inline elements in Outlook, and none at all once styles are gone.
   return parts.join('&nbsp;&nbsp;&nbsp;');
 }
 
 /** One chip of meta — a room name, an age limit. */
 function chip(text: string): string {
   return [
-    '<td style="padding:0 8px 0 0;" valign="top">',
-    '<table role="presentation" border="0" cellpadding="0" cellspacing="0" style="border-collapse:separate;"><tr>',
-    `<td bgcolor="#f1f0ee" style="background-color:#f1f0ee;border-radius:999px;padding:7px 14px;mso-padding-alt:7px 14px;font-family:${FONT};font-size:13px;color:#444444;white-space:nowrap;">${escapeHtml(text)}</td>`,
+    '<td valign="top">',
+    '<table role="presentation" border="0" cellpadding="7" cellspacing="0" style="border-collapse:separate;"><tr>',
+    `<td bgcolor="#f1f0ee" style="background-color:#f1f0ee;border-radius:999px;font-family:${FONT};font-size:13px;color:#444444;white-space:nowrap;">${escapeHtml(text)}</td>`,
     '</tr></table>',
     '</td>',
+    // A spacer cell, because `margin` between chips does not survive.
+    '<td width="8" style="width:8px;font-size:0;line-height:0;">&nbsp;</td>',
   ].join('');
 }
 
 /**
  * The thing to press.
  *
- * A bare `<a>` with padding collapses in Outlook, which lays out through
- * Word and ignores padding on an inline element — so the button is a
- * one-cell table and the padding is the cell's. Filled for buying, outlined
- * for everything else, which is the website embed's two weights.
+ * A one-cell table with `cellpadding`, not a padded `<a>`: Outlook lays out
+ * through Word and ignores padding on an inline element, and a sanitiser that
+ * drops styles would leave a bare link besides.
  *
- * The wording is a promise about what happens next and is ported exactly:
- * the figure is `totalCents`, the total Stripe will ring up, never the face
- * value. Advertising a face value in an email is the same mistake as
- * advertising it on a website, posted to more people.
+ * Both weights use a pale fill. The website embed fills its buy button with
+ * the darkened accent and writes on it in white — which works only while the
+ * text colour is ours to set. Strip the styles and the label falls back to
+ * whatever colour the campaign gives links, which on a dark fill can be
+ * unreadable. A pale fill is legible under either rule, and the price in the
+ * label is what distinguishes buying from attending anyway.
  */
 function button(event: EmbedEvent, theme: Theme, align: 'left' | 'right'): string {
   const ticketed = typeof event.totalCents === 'number';
@@ -334,15 +366,14 @@ function button(event: EmbedEvent, theme: Theme, align: 'left' | 'right'): strin
     ? `Buy ticket · ${money(event.totalCents as number, event.currency ?? 'usd')}`
     : 'RSVP';
 
-  const fill = ticketed ? theme.text : '#ffffff';
-  const ink = ticketed ? onAccent(theme.text) : theme.text;
-  const edge = ticketed ? theme.text : BORDER;
+  const fill = ticketed ? theme.accent : '#ffffff';
+  const ink = ticketed ? onAccent(theme.accent) : theme.text;
 
   return [
-    `<table role="presentation" border="0" cellpadding="0" cellspacing="0" align="${align}" style="border-collapse:separate;">`,
+    `<table role="presentation" border="0" cellpadding="11" cellspacing="0" align="${align}" style="border-collapse:separate;">`,
     '<tr>',
-    `<td align="center" bgcolor="${fill}" style="background-color:${fill};border:1px solid ${edge};border-radius:10px;padding:11px 20px;mso-padding-alt:11px 20px;">`,
-    `<a href="${escapeHtml(event.url)}" target="_blank" style="font-family:${FONT};font-size:14px;font-weight:700;color:${ink};text-decoration:none;display:inline-block;white-space:nowrap;">${escapeHtml(label)}</a>`,
+    `<td align="center" bgcolor="${fill}" style="background-color:${fill};border:1px solid ${ticketed ? theme.accent : BORDER};border-radius:10px;">`,
+    `<a href="${escapeHtml(event.url)}" target="_blank" style="font-family:${FONT};font-size:14px;font-weight:700;color:${ink};text-decoration:none;display:inline-block;white-space:nowrap;"><b>${escapeHtml(label)}</b></a>`,
     '</td>',
     '</tr>',
     '</table>',
@@ -352,6 +383,10 @@ function button(event: EmbedEvent, theme: Theme, align: 'left' | 'right'): strin
 /**
  * The next event, given the room it deserves — the website embed's hero.
  *
+ * Built as a single-column table with spacer rows rather than divs with
+ * bottom padding, because the padding was in a style and the styles do not
+ * always arrive. A row with a `height` is spacing nothing can take away.
+ *
  * Carries no faces and no "2 going", the same line the website embed holds:
  * an event link may be public so strangers can come, the guest list is not.
  * In an email that matters more, because an email gets forwarded.
@@ -359,30 +394,32 @@ function button(event: EmbedEvent, theme: Theme, align: 'left' | 'right'): strin
 export function heroBlock(event: EmbedEvent, theme: Theme): string {
   const chips = [event.location, ageBadge(event.maturityLevel)].filter(Boolean) as string[];
 
-  return [
-    `<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#ffffff" style="border-collapse:separate;width:100%;background-color:#ffffff;border:1px solid ${BORDER};border-radius:12px;margin:0 0 16px 0;">`,
-    '<tr><td style="padding:22px;">',
-
-    `<div style="font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:${MUTED};padding:0 0 14px 0;">Next Event</div>`,
-
-    `<div style="padding:0 0 16px 0;">${heroPicture(event, theme)}</div>`,
-
-    `<div style="font-family:${FONT};font-size:24px;font-weight:700;line-height:1.25;color:${INK};padding:0 0 8px 0;">`,
-    `<a href="${escapeHtml(event.url)}" target="_blank" style="color:${INK};text-decoration:none;">${escapeHtml(event.title)}</a>`,
-    '</div>',
-
-    `<div style="font-family:${FONT};font-size:15px;font-weight:700;color:${theme.text};padding:0 0 12px 0;">${escapeHtml(when(event.startTime, event.endTime, theme.timeZone))}</div>`,
-
+  const inner = [
+    `<tr><td style="font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:0.09em;text-transform:uppercase;color:${MUTED};"><b>NEXT EVENT</b></td></tr>`,
+    gap(12),
+    `<tr><td>${heroPicture(event, theme)}</td></tr>`,
+    gap(14),
+    `<tr><td style="font-family:${FONT};font-size:24px;font-weight:700;line-height:1.25;color:${INK};">`,
+    `<a href="${escapeHtml(event.url)}" target="_blank" style="color:${INK};text-decoration:none;"><b>${escapeHtml(event.title)}</b></a>`,
+    '</td></tr>',
+    gap(6),
+    `<tr><td style="font-family:${FONT};font-size:15px;font-weight:700;color:${theme.text};"><b>${escapeHtml(when(event.startTime, event.endTime, theme.timeZone))}</b></td></tr>`,
+    event.description ? gap(10) : '',
     event.description
-      ? `<div style="font-family:${FONT};font-size:15px;line-height:1.55;color:#444444;padding:0 0 16px 0;">${escapeHtml(clamp(event.description, 220))}</div>`
+      ? `<tr><td style="font-family:${FONT};font-size:15px;line-height:1.55;color:#444444;">${escapeHtml(clamp(event.description, 220))}</td></tr>`
       : '',
-
+    chips.length ? gap(14) : '',
     chips.length
-      ? `<table role="presentation" border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 18px 0;"><tr>${chips.map(chip).join('')}</tr></table>`
+      ? `<tr><td><table role="presentation" border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tr>${chips.map(chip).join('')}</tr></table></td></tr>`
       : '',
+    gap(16),
+    `<tr><td>${button(event, theme, 'left')}</td></tr>`,
+  ].join('');
 
-    button(event, theme, 'left'),
-
+  return [
+    `<table role="presentation" border="0" cellpadding="20" cellspacing="0" width="100%" bgcolor="#ffffff" style="border-collapse:separate;width:100%;background-color:#ffffff;border:1px solid ${BORDER};border-radius:12px;">`,
+    '<tr><td>',
+    `<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;width:100%;">${inner}</table>`,
     '</td></tr>',
     '</table>',
   ].join('');
@@ -396,30 +433,26 @@ export function heroBlock(event: EmbedEvent, theme: Theme): string {
  * what keeps a list of mostly-imageless events from reading as a column of
  * coloured squares.
  *
- * They stay side by side at phone width rather than stacking: the website
- * embed stacks them with a media query, and a media query is the first thing
- * Gmail removes. A 72px thumbnail and a short button fit at 320px without
- * one.
+ * `cellpadding` on the table rather than padding on each cell, so the card
+ * still has room to breathe once the styles are gone.
  */
 export function rowBlock(event: EmbedEvent, theme: Theme): string {
   const picture = thumb(event, 72);
 
   return [
-    `<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#ffffff" style="border-collapse:separate;width:100%;background-color:#ffffff;border:1px solid ${BORDER};border-radius:12px;margin:0 0 12px 0;">`,
+    `<table role="presentation" border="0" cellpadding="14" cellspacing="0" width="100%" bgcolor="#ffffff" style="border-collapse:separate;width:100%;background-color:#ffffff;border:1px solid ${BORDER};border-radius:12px;">`,
     '<tr>',
 
-    picture
-      ? `<td width="86" valign="middle" style="padding:16px 0 16px 16px;width:86px;">${picture}</td>`
-      : '',
+    picture ? `<td width="72" valign="middle" style="width:72px;">${picture}</td>` : '',
 
-    `<td valign="middle" style="padding:16px ${picture ? '14px' : '16px'};">`,
-    `<div style="font-family:${FONT};font-size:16px;font-weight:700;line-height:1.3;color:${INK};padding:0 0 4px 0;">`,
-    `<a href="${escapeHtml(event.url)}" target="_blank" style="color:${INK};text-decoration:none;">${escapeHtml(event.title)}</a>`,
+    '<td valign="middle">',
+    `<div style="font-family:${FONT};font-size:16px;font-weight:700;line-height:1.3;color:${INK};">`,
+    `<a href="${escapeHtml(event.url)}" target="_blank" style="color:${INK};text-decoration:none;"><b>${escapeHtml(event.title)}</b></a>`,
     '</div>',
     `<div style="font-family:${FONT};font-size:14px;line-height:1.4;">${facts(event, theme)}</div>`,
     '</td>',
 
-    `<td align="right" valign="middle" style="padding:16px 16px 16px 0;">${button(event, theme, 'right')}</td>`,
+    `<td align="right" valign="middle">${button(event, theme, 'right')}</td>`,
 
     '</tr>',
     '</table>',
@@ -460,7 +493,7 @@ export function eventsHtml(input: EmailFeedInput): string {
   if (!all.length) {
     return [
       `<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:separate;width:100%;">`,
-      `<tr><td style="font-family:${FONT};font-size:14px;color:${MUTED};padding:24px 0;">No events in the next 30 days.</td></tr>`,
+      `<tr><td style="font-family:${FONT};font-size:14px;color:${MUTED};">No events in the next 30 days.</td></tr>`,
       '</table>',
     ].join('');
   }
@@ -468,22 +501,40 @@ export function eventsHtml(input: EmailFeedInput): string {
   const [first, ...rest] = all;
   const afterWindow = Math.max(input.events.length - 1, 0);
 
-  const blocks = rest.map((event, index) => {
+  /*
+    Each card is its own row of the outer table, with a spacer row between.
+
+    They used to be siblings separated by a bottom margin, and a margin is a
+    style — so once MailerLite stripped the styles every card sat flush
+    against the next and the list read as one grey slab.
+  */
+  const rows = [`<tr><td>${heroBlock(first, theme)}</td></tr>`];
+
+  rest.forEach((event, index) => {
     // One rule where the advertised window ends, so "Later on" is a fact
     // about the calendar rather than a guess about how far down you are.
-    const divider =
-      index === afterWindow && input.more.length
-        ? `<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;width:100%;"><tr><td style="font-family:${FONT};font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${MUTED};padding:10px 0 12px 0;border-top:1px solid ${BORDER};">Later on</td></tr></table>`
-        : '';
-    return divider + rowBlock(event, theme);
+    if (index === afterWindow && input.more.length) {
+      rows.push(gap(10));
+      rows.push(
+        `<tr><td style="font-family:${FONT};font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${MUTED};"><b>LATER ON</b></td></tr>`,
+      );
+    }
+    rows.push(gap(12));
+    rows.push(`<tr><td>${rowBlock(event, theme)}</td></tr>`);
   });
 
+  /*
+    `width="100%"`, not a fixed 600.
+
+    The outer table used to set `max-width:600px; margin:0 auto` in a style,
+    which is exactly what a sanitiser removes — so the block spilled to
+    whatever width it was dropped into. An email tool already gives its
+    content column a width; filling it is both what they expect and the only
+    instruction that survives.
+  */
   return [
-    `<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;width:100%;max-width:600px;margin:0 auto;">`,
-    '<tr><td style="padding:0;">',
-    heroBlock(first, theme),
-    ...blocks,
-    '</td></tr>',
+    '<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;width:100%;">',
+    rows.join(''),
     '</table>',
   ].join('');
 }

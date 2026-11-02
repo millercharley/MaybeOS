@@ -233,10 +233,16 @@ describe('the markup is email-safe', () => {
     */
     const row = rowBlock(TICKETED, THEME);
 
-    // The button's own table, not the row cell that happens to be aligned
-    // right as well — which is what the first attempt at this matched.
+    /*
+      The button's own table, not the row cell that happens to be aligned
+      right as well — which is what the first attempt at this matched.
+
+      The padding moved from the cell's style to the table's `cellpadding`
+      (EVT-57), so it survives a sanitiser; `mso-padding-alt` went with it,
+      having been the Outlook half of a style that is no longer there.
+    */
     expect(row).toMatch(
-      /<table role="presentation"[^>]*align="right"[^>]*><tr><td align="center"[^>]*mso-padding-alt[^>]*><a href=/,
+      /<table role="presentation" border="0" cellpadding="11" cellspacing="0" align="right"[^>]*><tr><td align="center" bgcolor="[^"]*"[^>]*><a href=/,
     );
     // And the hero's, which is the other weight.
     expect(heroBlock(EVENT, THEME)).toMatch(
@@ -245,16 +251,143 @@ describe('the markup is email-safe', () => {
   });
 });
 
+/**
+ * It still stands up with every style removed (EVT-57).
+ *
+ * MailerLite's RSS block sanitises the markup before it renders it: of the
+ * 268 `style` attributes this block carries, its output kept none, while
+ * `align`, `valign`, `border`, `cellpadding`, `cellspacing`, `width`,
+ * `height` and `bgcolor` all came through untouched. The campaign showed
+ * unstyled text at the wrong width — not because the markup was wrong, but
+ * because the one mechanism email normally leaves you had been taken away.
+ *
+ * Their block has its own Title / Meta / Text / Link controls, so this is
+ * deliberate: it is built to pour a feed into the campaign's own typography.
+ * Fighting it is the wrong move; surviving it is not.
+ *
+ * So everything structural is said twice, and these run against a copy with
+ * the styles removed — which is the version a campaign actually renders.
+ */
+describe('with every style stripped, as MailerLite does', () => {
+  const bare = (html: string) => html.replace(/\sstyle="[^"]*"/g, '');
+  const stripped = bare(block([EVENT, TICKETED], [{ ...EVENT, slug: 'later' }]));
+
+  it('really has no styles left to lean on', () => {
+    expect(stripped).not.toContain('style=');
+  });
+
+  it('fills the column it is dropped into', () => {
+    // `max-width:600px; margin:0 auto` was a style, so the block spilled to
+    // whatever width the RSS block gave it.
+    expect(stripped).toMatch(/^<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">/);
+    expect(stripped).not.toContain('max-width');
+  });
+
+  it('keeps the cards apart', () => {
+    /*
+      The gap between cards was a bottom margin, so they sat flush and the
+      list read as one grey slab.
+
+      Checking that a `height="12"` row exists anywhere was not enough — the
+      hero's own internal spacers are the same height, so the assertion
+      passed with every gap between cards removed.
+    */
+    expect(stripped).toMatch(
+      /<\/table><\/td><\/tr><tr><td height="\d+">&nbsp;<\/td><\/tr><tr><td><table/,
+    );
+    // One spacer for each card after the hero.
+    const cards = stripped.match(/<table [^>]*bgcolor="#ffffff"/g) ?? [];
+    const spacers = stripped.match(/<tr><td height="12">/g) ?? [];
+    expect(spacers.length).toBeGreaterThanOrEqual(cards.length - 1);
+  });
+
+  it('keeps room inside every card', () => {
+    // Padding was on the cells, in a style. `cellpadding` is an attribute.
+    expect(stripped).toContain('cellpadding="20"');
+    expect(stripped).toContain('cellpadding="14"');
+    expect(stripped).toContain('cellpadding="11"');
+  });
+
+  it('does not pad twice where cellpadding carries it', () => {
+    /*
+      The trap in saying it both ways: a client that reads the attribute and
+      the style adds them. So a cell with `cellpadding` has no padding left
+      in its own style.
+    */
+    const full = block([EVENT, TICKETED]);
+    for (const table of full.split('<table').slice(1)) {
+      const open = table.slice(0, table.indexOf('>'));
+      const padded = /cellpadding="([1-9]\d*)"/.exec(open);
+      if (!padded) continue;
+      const firstCell = table.slice(table.indexOf('<td'), table.indexOf('</td>'));
+      expect(firstCell).not.toMatch(/[^-]padding:/);
+    }
+  });
+
+  it('keeps the white cards and the coloured fills', () => {
+    expect(stripped).toContain('bgcolor="#ffffff"');
+    expect(stripped).toContain(`bgcolor="${THEME.accent}"`);
+  });
+
+  it('keeps the titles and dates emphasised', () => {
+    /*
+      `font-weight` was a style; `<b>` is not.
+
+      Anchored at the hero and at a row separately: matching the title
+      anywhere passed while the hero's own `<b>` was gone, because another
+      event further down still had one.
+    */
+    const hero = bare(heroBlock(EVENT, THEME));
+    expect(hero).toMatch(/<a href[^>]*><b>Figure drawing<\/b><\/a>/);
+    const row = bare(rowBlock(TICKETED, THEME));
+    expect(row).toMatch(/<a href[^>]*><b>The Guy Who Didn&#39;t Like Musicals<\/b><\/a>/);
+    expect(stripped).toMatch(/<b>Sun, Nov 1 · 6:30pm to 9:30pm<\/b>/);
+    expect(stripped).toContain('<b>NEXT EVENT</b>');
+    expect(stripped).toContain('<b>LATER ON</b>');
+  });
+
+  it('keeps the thumbnail sized', () => {
+    expect(stripped).toContain('width="72" height="72"');
+  });
+
+  it('keeps the hero’s colour block standing', () => {
+    // Its height was in a style as well as an attribute.
+    expect(stripped).toMatch(/<td bgcolor="#afd2e9" height="220">/);
+  });
+
+  it('keeps the buttons legible without a text colour', () => {
+    /*
+      The website embed fills its buy button with the darkened accent and
+      writes on it in white, which works only while the text colour is ours
+      to set. Stripped, the label falls back to whatever colour the campaign
+      gives links — and white-on-slate becomes unreadable-on-slate. A pale
+      fill is legible under either rule.
+    */
+    const buy = bare(rowBlock(TICKETED, THEME));
+    expect(buy).toContain(`bgcolor="${THEME.accent}"`);
+    expect(buy).not.toContain(`bgcolor="${THEME.text}"`);
+    expect(buy).toContain('<b>Buy ticket · $16.75</b>');
+  });
+
+  it('still separates the three facts without colour', () => {
+    expect(stripped).toMatch(
+      /<b>Sun, Nov 1[^<]*<\/b>&nbsp;&nbsp;&nbsp;<span>Attic<\/span>&nbsp;&nbsp;&nbsp;<b>13\+<\/b>/,
+    );
+  });
+});
+
 describe('what the blocks say', () => {
   it('leads with a hero labelled Next Event', () => {
     const html = block([EVENT, TICKETED]);
-    expect(html).toContain('Next Event');
-    expect(html.indexOf('Next Event')).toBeLessThan(html.indexOf(escapeHtml(TICKETED.title)));
+    // Upper-cased in the markup rather than by `text-transform`, which is a
+    // style and therefore not guaranteed to arrive (EVT-57).
+    expect(html).toContain('NEXT EVENT');
+    expect(html.indexOf('NEXT EVENT')).toBeLessThan(html.indexOf(escapeHtml(TICKETED.title)));
   });
 
   it('draws only one hero, however many events there are', () => {
     const html = block([EVENT, TICKETED, { ...EVENT, slug: 'c' }]);
-    expect(html.match(/Next Event/g) ?? []).toHaveLength(1);
+    expect(html.match(/NEXT EVENT/g) ?? []).toHaveLength(1);
   });
 
   it('does not also draw the first event as a row', () => {
@@ -307,10 +440,10 @@ describe('what the blocks say', () => {
     expect(bare).not.toContain(`bgcolor="${THEME.accent}"`);
     // The thumbnail cell is the one with a fixed width; counting every `<td`
     // would count the button's own cell too.
-    expect(bare).not.toContain('<td width="86"');
+    expect(bare).not.toContain('<td width="72"');
 
     // And it is there when there is something to put in it.
-    expect(rowBlock(TICKETED, THEME)).toContain('<td width="86"');
+    expect(rowBlock(TICKETED, THEME)).toContain('<td width="72"');
   });
 
   it('gives the date, the room and the age limit different weights', () => {
@@ -318,9 +451,9 @@ describe('what the blocks say', () => {
     // condition of coming. One accent-coloured joined string said they were
     // the same thing.
     const row = rowBlock(TICKETED, THEME);
-    expect(row).toContain(`<span style="color:${THEME.text};font-weight:700;">Sun, Nov`);
+    expect(row).toContain(`<b style="color:${THEME.text};font-weight:700;">Sun, Nov`);
     expect(row).toContain('<span style="color:#6b6b6b;">Attic</span>');
-    expect(row).toContain(`<span style="color:#1a1a1a;font-weight:700;">13+</span>`);
+    expect(row).toContain(`<b style="color:#1a1a1a;font-weight:700;">13+</b>`);
   });
 
   it('uses the poster when there is one, with width as an attribute', () => {
@@ -359,11 +492,11 @@ describe('the window and what lies past it', () => {
   it('marks where the advertised window ends', () => {
     // Running them together unlabelled would make "upcoming" quietly mean
     // three months.
-    expect(block([EVENT], [TICKETED])).toContain('Later on');
+    expect(block([EVENT], [TICKETED])).toContain('LATER ON');
   });
 
   it('draws no divider when there is nothing past the window', () => {
-    expect(block([EVENT, TICKETED], [])).not.toContain('Later on');
+    expect(block([EVENT, TICKETED], [])).not.toContain('LATER ON');
   });
 
   it('says so plainly when there is nothing at all', () => {
