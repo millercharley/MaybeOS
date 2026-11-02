@@ -75,6 +75,16 @@ export function EmailEmbed({ org }: { org: Org }) {
           name or face is in it, because an email gets forwarded.
         </p>
         <p>
+          <span className="font-medium text-gray-700">
+            If your tool restyles it, paste the HTML instead.
+          </span>{' '}
+          MailerLite&rsquo;s RSS block normalises whatever it is given — it strips inline styles,
+          stretches any image to the column width and repaints backgrounds in its own palette — so
+          the layout cannot survive it. Use <em>Copy HTML</em> above and paste that into a custom
+          HTML block, where nothing is rewritten. The trade is that an HTML block is a snapshot:
+          it will not update itself, so paste it again when you next send.
+        </p>
+        <p>
           <span className="font-medium text-gray-700">Send yourself a test first.</span> Email
           clients disagree about almost everything, and Outlook on Windows is the one worth
           checking.
@@ -103,7 +113,33 @@ function EmailPreview({ feedUrl }: { feedUrl: string }) {
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [copiedHtml, setCopiedHtml] = useState(false);
   const frame = useRef<HTMLIFrameElement>(null);
+
+  /**
+   * The rendered block, for pasting into a custom HTML block (EVT-59).
+   *
+   * The feed URL above is the auto-updating route and is the right default.
+   * This is the escape hatch for a campaign tool that normalises what it is
+   * given — MailerLite's RSS block strips every inline style, resizes any
+   * image to the column width and repaints backgrounds in its own palette,
+   * so the design cannot survive it however the markup is written. Pasted
+   * into a custom HTML block instead, nothing is rewritten and it looks like
+   * the website embed.
+   *
+   * The trade is in the wording below rather than hidden: this is a snapshot,
+   * and a snapshot does not update itself.
+   */
+  const copyHtml = async () => {
+    if (!html) return;
+    try {
+      await navigator.clipboard.writeText(html);
+      setCopiedHtml(true);
+      setTimeout(() => setCopiedHtml(false), 2000);
+    } catch {
+      setCopiedHtml(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -154,15 +190,26 @@ function EmailPreview({ feedUrl }: { feedUrl: string }) {
             drawing of it.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={loading}
-          className="btn-ghost inline-flex shrink-0 items-center gap-1.5 text-xs"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => void copyHtml()}
+            disabled={!html}
+            className="btn-ghost inline-flex items-center gap-1.5 text-xs"
+          >
+            {copiedHtml ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            {copiedHtml ? 'Copied' : 'Copy HTML'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className="btn-ghost inline-flex items-center gap-1.5 text-xs"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="mt-2 overflow-hidden rounded-lg border border-dashed border-gray-300 bg-[#faf9f7] p-4">

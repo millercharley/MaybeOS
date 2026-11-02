@@ -77,6 +77,65 @@ describe('what it hands over', () => {
   });
 });
 
+/**
+ * The escape hatch for a tool that restyles the block (EVT-59).
+ *
+ * MailerLite's RSS block does not merely strip inline styles. Measured in its
+ * own preview: a `<img width="72">` renders at 540px because the block sets
+ * an inline width of its own, and a `<table bgcolor="#ffffff">` comes back
+ * computed as `#bfdeff`, the block's palette. It normalises what it is given
+ * rather than laying it out, so the design cannot survive it however the
+ * markup is written — three rounds of markup work proved that the expensive
+ * way.
+ *
+ * So the card offers the rendered HTML as well as the feed. Pasted into a
+ * custom HTML block nothing is rewritten. The cost is that it is a snapshot,
+ * and the card says so rather than letting somebody discover it.
+ */
+describe('copying the rendered HTML', () => {
+  it('offers it beside the preview it came from', () => {
+    expect(CARD).toContain('Copy HTML');
+    expect(CARD).toMatch(/const copyHtml = async \(\) => \{/);
+  });
+
+  it('copies the block itself, not the feed address', () => {
+    const at = CARD.indexOf('const copyHtml');
+    const body = CARD.slice(at, CARD.indexOf('};', at));
+    expect(body).toContain('navigator.clipboard.writeText(html)');
+    expect(body).not.toContain('feedUrl');
+  });
+
+  it('does nothing until there is something to copy', () => {
+    const at = CARD.indexOf('const copyHtml');
+    expect(CARD.slice(at, at + 120)).toContain('if (!html) return;');
+    expect(CARD).toMatch(/disabled=\{!html\}/);
+  });
+
+  it('survives the clipboard being refused', () => {
+    // Same as the address button: permission can be denied.
+    const at = CARD.indexOf('const copyHtml');
+    expect(CARD.slice(at, CARD.indexOf('};', at))).toContain('catch');
+  });
+
+  it('says the feed is still the default route', () => {
+    // The auto-updating one should stay the obvious choice; this is the
+    // answer to a tool that will not render it.
+    expect(CARD.indexOf('Copy feed address')).toBeLessThan(CARD.indexOf('Copy HTML'));
+  });
+
+  it('warns that a snapshot does not update itself', () => {
+    expect(CARD).toMatch(/will not update itself/);
+    expect(CARD).toMatch(/paste it again when you next send/);
+  });
+
+  it('names what the RSS block actually does to it', () => {
+    // Not "some tools may differ" — the three specific rewrites measured.
+    for (const fact of ['strips inline styles', 'column width', 'own palette']) {
+      expect(CARD).toContain(fact);
+    }
+  });
+});
+
 describe('the preview is the real thing', () => {
   it('reads the feed rather than re-rendering the layout', () => {
     /*
