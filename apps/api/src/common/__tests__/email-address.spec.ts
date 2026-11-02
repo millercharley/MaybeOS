@@ -10,19 +10,19 @@ import { normalizeEmail, normalizeEmailOrNull } from '../email-address';
  */
 describe('normalising an address', () => {
   it('lowercases it', () => {
-    expect(normalizeEmail('wren.oakes@example.net')).toBe('wren.oakes@example.net');
+    expect(normalizeEmail('Wren.oakes@example.net')).toBe('wren.oakes@example.net');
   });
 
   it('lowercases the domain as well as the local part', () => {
-    expect(normalizeEmail('wren.oakes@example.net')).toBe('wren.oakes@example.net');
+    expect(normalizeEmail('Wren@Example.NET')).toBe('wren@example.net');
   });
 
   it('trims the whitespace a paste leaves behind', () => {
-    expect(normalizeEmail('  wren.oakes@example.net \n')).toBe('wren.oakes@example.net');
+    expect(normalizeEmail('  wren@example.net \n')).toBe('wren@example.net');
   });
 
   it('makes the two spellings that caused this agree', () => {
-    expect(normalizeEmail('wren.oakes@example.net')).toBe(
+    expect(normalizeEmail('Wren.oakes@example.net')).toBe(
       normalizeEmail('wren.oakes@example.net'),
     );
   });
@@ -42,11 +42,11 @@ describe('normalising an address', () => {
    * kind than leaving two rows for somebody to look at.
    */
   it('does not strip dots', () => {
-    expect(normalizeEmail('wren.oakes@example.net')).toBe('wren.oakes@example.net');
+    expect(normalizeEmail('wren.l.oakes@gmail.com')).toBe('wren.l.oakes@gmail.com');
   });
 
   it('does not collapse a plus alias', () => {
-    expect(normalizeEmail('wren.oakes@example.net')).toBe('wren.oakes@example.net');
+    expect(normalizeEmail('wren+maybeos@example.net')).toBe('wren+maybeos@example.net');
   });
 
   it('keeps two genuinely different people apart', () => {
@@ -56,7 +56,7 @@ describe('normalising an address', () => {
 
 describe('normalising something that may be absent', () => {
   it('keeps a real address', () => {
-    expect(normalizeEmailOrNull(' wren.oakes@example.net ')).toBe('wren.oakes@example.net');
+    expect(normalizeEmailOrNull(' Wren@Example.net ')).toBe('wren@example.net');
   });
 
   it.each([

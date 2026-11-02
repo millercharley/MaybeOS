@@ -7,7 +7,7 @@
  * duplicate of their own community.
  *
  * Nothing had gone wrong by the code's own account. `users.email` is unique
- * and case-sensitive, and `wren.oakes@example.net` is genuinely not
+ * and case-sensitive, and `Wren.oakes@example.net` is genuinely not
  * `wren.oakes@example.net`. RFC 5321 even agrees: the local part is
  * case-sensitive, and a server is within its rights to treat the two as
  * different people.

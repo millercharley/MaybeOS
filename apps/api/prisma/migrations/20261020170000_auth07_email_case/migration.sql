@@ -1,10 +1,13 @@
 -- AUTH-07: one spelling of an email address.
 --
--- `users.email` is unique and case-sensitive, so `wren.oakes@example.net`
--- and `wren.oakes@example.net` were two people. A member of MaybeItsFate
--- typed their own address with a capital, was not recognised, was offered a
--- co-op of their own instead, and took it — ending with two accounts, two
--- passwords, and a duplicate of their own community.
+-- `users.email` is unique and case-sensitive, so `Member@example.net` and
+-- `member@example.net` were two people. A member of MaybeItsFate typed their
+-- own address with a capital, was not recognised, was offered a co-op of
+-- their own instead, and took it — ending with two accounts, two passwords,
+-- and a duplicate of their own community.
+--
+-- The address above is a stand-in (OPS-38). The incident is real; the
+-- spelling that caused it stays in the database.
 --
 -- The code fix (normalising on register, sign-in and magic link) stops new
 -- ones. This brings the stored rows into line.

@@ -32,7 +32,7 @@ describe('one spelling of an address', () => {
     return { service, findUnique, create };
   }
 
-  const TYPED = '  wren.oakes@example.net ';
+  const TYPED = '  Wren.oakes@Example.net ';
   const STORED = 'wren.oakes@example.net';
 
   it('finds the account when a password sign-in capitalises it', async () => {
