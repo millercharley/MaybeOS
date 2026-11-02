@@ -72,6 +72,29 @@ jobs:
       - name: Generate Prisma client
         run: cd apps/api && npx prisma generate
 
+      # Thirteen migrations end with `REVOKE ALL ON TABLE ... FROM anon,
+      # authenticated` — Supabase's two public roles, which a plain Postgres
+      # does not have. The first run to reach a migration died on
+      # `role "anon" does not exist`, at `mem17_share_ledger`.
+      #
+      # So the chain only applies to a database that has those roles, which is
+      # worth knowing and was invisible while this workflow never ran. It is
+      # not a problem in production — that is Supabase — but it does mean a
+      # plain local Postgres cannot take these migrations without this.
+      #
+      # Creating the roles here rather than rewriting the REVOKEs: those
+      # migrations are applied, and editing an applied migration means
+      # rewriting its checksum in every database's `_prisma_migrations` by
+      # hand. CI is standing in for Supabase, so CI should look like it.
+      #
+      # `service_role` and `postgres` appear only in comments, so they are
+      # left out rather than created on the off chance.
+      - name: Create the Supabase roles the migrations revoke from
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -c 'CREATE ROLE anon NOLOGIN' \
+            -c 'CREATE ROLE authenticated NOLOGIN'
+
       - name: Run migrations
         run: cd apps/api && npx prisma migrate deploy
 
