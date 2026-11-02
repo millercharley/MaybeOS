@@ -102,8 +102,13 @@ describe('what the importer does with it', () => {
     // The update path leaves `userId` alone on purpose, so a reservation
     // somebody has been handed stays theirs. A title now naming a member is
     // the one thing that moves it.
+    //
+    // SPC-36 added `!ours &&` in front: a booking MaybeOS made is never
+    // moved by the import, however the calendar entry is titled. The
+    // correction this guards is for imported rows, which is all it ever
+    // meant.
     expect(writeBookings).toMatch(
-      /\.\.\.\(byTitle && byTitle !== fallback\.userId \? \{ userId: byTitle \} : \{\}\)/,
+      /\.\.\.\(!ours && byTitle && byTitle !== fallback\.userId \? \{ userId: byTitle \} : \{\}\)/,
     );
   });
 

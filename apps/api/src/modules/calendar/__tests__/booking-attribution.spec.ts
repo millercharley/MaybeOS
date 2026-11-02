@@ -110,7 +110,11 @@ describe('the importer does not take a booking off its owner', () => {
     .replace(/\/\/[^\n]*/g, '');
 
   it('reads the existing attribution before deciding', () => {
-    expect(SOURCE).toMatch(/select: \{ id: true, googleEventId: true, isCoopHold: true, userId: true \}/);
+    // The shape grew a `source` with SPC-36; what matters is that the pass
+    // can see what the row already says before it decides anything.
+    for (const field of ['id: true', 'googleEventId: true', 'isCoopHold: true', 'userId: true']) {
+      expect(SOURCE).toContain(field);
+    }
   });
 
   it('treats a row already filed under a real member as attributed', () => {
@@ -120,7 +124,13 @@ describe('the importer does not take a booking off its owner', () => {
   });
 
   it('keeps an attributed booking out of the co-op holds', () => {
-    expect(SOURCE).toMatch(/const isCoopHold = attributed \? false : computedCoopHold;/);
+    /*
+      SPC-36 put a prior branch in front of this one — a booking MaybeOS
+      made is not reconsidered at all. The rule here is the fallback behind
+      it and still has to hold: among the reservations the import *may*
+      judge, one already attributed to a member is not taken off them.
+    */
+    expect(SOURCE).toMatch(/attributed \? false : computedCoopHold;/);
   });
 
   it('still lets a pass with real evidence claim an unattributed one', () => {
@@ -131,7 +141,9 @@ describe('the importer does not take a booking off its owner', () => {
   });
 
   it('puts nobody else’s name on a booking that is already somebody’s', () => {
-    expect(SOURCE).toMatch(/const bookedFor = matched \|\| attributed \? mine : bookedForPerson;/);
+    // `ours ||` joined the front of this with SPC-36; `attributed` still has
+    // to be in it, which is what this guards.
+    expect(SOURCE).toMatch(/const bookedFor = [^;]*\battributed\b[^;]*\? mine : bookedForPerson;/);
   });
 
   it('matches a title through the separator-aware keys', () => {

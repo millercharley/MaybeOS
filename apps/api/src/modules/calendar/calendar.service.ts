@@ -533,6 +533,25 @@ export class CalendarService implements OnModuleInit {
         summary: booking.title,
         description: booking.description || `Booking for ${room.name}`,
         location: booking.location || undefined,
+        /*
+          The booking's own id, travelling with the event (SPC-36).
+
+          A MaybeOS booking is tracked by this id across every system it
+          touches. The row already stored Google's id; this is the other
+          direction, and it was the half that was missing — without it the
+          calendar cannot say which of its entries MaybeOS already owns, so
+          the importer treated our own bookings as reservations to identify
+          and re-own from the title and the creator's address.
+
+          `private` rather than `shared`: it is ours to read, and not
+          something to publish onto a calendar a co-op may embed.
+
+          Survives a title or time edit made in Google, which is exactly
+          when the weaker signals stop working.
+        */
+        extendedProperties: {
+          private: { maybeosBookingId: booking.id },
+        },
         // The member, so the booking appears in their own calendar. Their
         // address goes here rather than into the description, where it would
         // sit in the body of a calendar a co-op may embed on its website.
@@ -595,6 +614,12 @@ export class CalendarService implements OnModuleInit {
         summary: booking.title,
         description: booking.description || `Booking for ${room.name}`,
         location: booking.location || undefined,
+        // Repeated here on purpose: `events.update` replaces the whole
+        // event, so omitting this would quietly strip the id off every
+        // booking anyone edits (SPC-36).
+        extendedProperties: {
+          private: { maybeosBookingId: booking.id },
+        },
         attendees: booking.attendeeEmail
           ? [{ email: booking.attendeeEmail, responseStatus: 'accepted' }]
           : undefined,

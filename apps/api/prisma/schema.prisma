@@ -1334,6 +1334,28 @@ model AvailabilityRule {
   @@map("availability_rules")
 }
 
+/// Where a booking came from (SPC-36).
+///
+/// MaybeOS creates a booking, pushes it to Google, and stores the returned
+/// `googleEventId` on the row. The importer then matched on that same id,
+/// found "an existing row", and re-derived whose it was from the calendar's
+/// own weak signals — so our own bookings were being adopted by the thing
+/// that is only supposed to watch for reservations made outside us. 175 of
+/// MaybeItsFate's 228 native bookings had been turned into co-op holds that
+/// way, 140 of them upcoming and invisible to 33 members.
+///
+/// A MaybeOS booking is identified by its own id across every system it
+/// touches, including the Google event, which carries it in
+/// `extendedProperties.private.maybeosBookingId`. The import keeps the
+/// secondary job it was always for: noticing what somebody reserved in
+/// Google directly.
+enum BookingSource {
+  /// Made in MaybeOS. The row is the record; Google holds a copy.
+  MAYBEOS
+  /// Found on the co-op's Google calendar, made somewhere else.
+  GOOGLE
+}
+
 enum BookingStatus {
   /// Held while the member is in Stripe Checkout (SPC-06). A room slot is
   /// exclusive, so unlike a ticket it cannot be sold twice and sorted out
@@ -1376,6 +1398,15 @@ model Booking {
   /// see it, and it is in nobody's My Bookings. MaybeItsFate's import filed
   /// 3,017 of them under one person, which is how this was found.
   isCoopHold     Boolean @default(false)
+
+  /// Who made this, which decides who may change it (SPC-36).
+  ///
+  /// Defaults to MAYBEOS because that is what creating a `Booking` row
+  /// means everywhere except the importer, which sets GOOGLE explicitly.
+  /// The default is the safe one: a row of unknown origin is treated as
+  /// ours and therefore left alone by the import, rather than being offered
+  /// up for re-ownership.
+  source         BookingSource @default(MAYBEOS)
   title          String
   description    String?
 

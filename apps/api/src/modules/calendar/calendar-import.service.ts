@@ -878,7 +878,13 @@ export class CalendarImportService {
           // `isCoopHold` and `userId` come too (SPC-35): a later pass has
           // to know whether this reservation is already somebody's before it
           // decides to take it off them.
-          select: { id: true, googleEventId: true, isCoopHold: true, userId: true },
+          select: {
+            id: true,
+            googleEventId: true,
+            isCoopHold: true,
+            userId: true,
+            source: true,
+          },
         })
       ).map((row) => [row.googleEventId as string, row]),
     );
@@ -971,10 +977,29 @@ export class CalendarImportService {
         somebody still hands it over, which is how the 149 currently stuck as
         co-op holds come back.
       */
+      /*
+        A booking MaybeOS made is not the import's to reinterpret (SPC-36).
+
+        MaybeOS creates the booking, pushes it to Google, and stores the
+        returned `googleEventId` on the row — so the import, matching on
+        that same id, found "an existing row" and re-derived whose it was
+        from the title and the creator's address. Our own bookings were
+        being identified by the thing that exists to watch for reservations
+        made *outside* us. 175 of MaybeItsFate's 231 native bookings had
+        become co-op holds that way, 140 upcoming and invisible to 33
+        members.
+
+        The row says where it came from now, so this can simply decline.
+        Times and title still follow Google, because somebody dragging a
+        booking in the calendar means it, but who it belongs to is settled
+        at the point it was made and nothing here revisits it.
+      */
+      const ours = existing?.source === 'MAYBEOS';
+
       const attributed =
         existing != null && !existing.isCoopHold && existing.userId !== fallback.userId;
-      const isCoopHold = attributed ? false : computedCoopHold;
-      const bookedFor = matched || attributed ? mine : bookedForPerson;
+      const isCoopHold = ours ? existing.isCoopHold : attributed ? false : computedCoopHold;
+      const bookedFor = ours || matched || attributed ? mine : bookedForPerson;
 
       if (existing) {
         await this.prisma.booking.update({
@@ -993,7 +1018,7 @@ export class CalendarImportService {
               before it could read titles would then stay wrong for ever — so
               a title that now names a member moves it, and nothing else does.
             */
-            ...(byTitle && byTitle !== fallback.userId ? { userId: byTitle } : {}),
+            ...(!ours && byTitle && byTitle !== fallback.userId ? { userId: byTitle } : {}),
           },
         });
       } else {
@@ -1001,6 +1026,10 @@ export class CalendarImportService {
           data: {
             roomId,
             userId,
+            // The one place a booking is not MaybeOS's own (SPC-36). The
+            // column defaults to MAYBEOS precisely so that a row of unknown
+            // origin is left alone rather than offered up for re-ownership.
+            source: 'GOOGLE',
             isCoopHold,
             ...bookedFor,
             googleEventId: entry.googleEventId,
