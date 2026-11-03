@@ -13,24 +13,34 @@ import { toUpdatePayload } from '@/lib/events';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
 import { ShareEventDialog } from '@/components/events/share-event-dialog';
 import { TransferEvents } from '@/components/events/transfer-events';
+import { EventTabs } from '@/components/events/event-tabs';
+import { emptyNote, searchEvents, splitEvents, type EventTab } from '@/lib/event-tabs';
 import { SHARE_LABEL, shareability, shouldOfferAfterPublish } from '@/lib/event-sharing';
 import { PageHeader } from '@/components/layout/page-header';
 import { useReveal } from '@/hooks/use-reveal';
 
-type FilterTab = 'all' | 'upcoming' | 'past' | 'draft';
-
-const tabs: { key: FilterTab; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'upcoming', label: 'Upcoming' },
-  { key: 'past', label: 'Past' },
-  { key: 'draft', label: 'Draft' },
-];
-
 export default function EventsPage() {
   const orgSlug = useParams()?.orgSlug as string;
-  // What is coming, not everything that ever happened (EVT-31). A console
-  // for 777 events opened on November 2024, which is nobody's first question.
-  const [activeTab, setActiveTab] = useState<FilterTab>('upcoming');
+  /*
+    Upcoming or past, and nothing that mixes them (EVT-49).
+
+    Charley: "Always provide a second tab on any screen where previous events
+    are listed… not listed with upcoming events." This console had four tabs
+    and two of them broke that: **All** was 767 events of both kinds in one
+    scroll, and **Draft** held unpublished events from 2025 beside ones for
+    next spring.
+
+    So the time split is the only axis the tabs carry, and drafts became a
+    filter that narrows whichever side is open — which is the more useful
+    shape anyway: an organiser's unfinished events for next month are a
+    working queue, and the ones left over from last year are a different job.
+
+    What is coming, not everything that ever happened (EVT-31): a console for
+    777 events opened on November 2024, which is nobody's first question.
+  */
+  const [activeTab, setActiveTab] = useState<EventTab>('upcoming');
+  const [search, setSearch] = useState('');
+  const [draftsOnly, setDraftsOnly] = useState(false);
   /**
    * Posting an event to the co-op's Instagram and Facebook (SOC-02).
    *
@@ -249,13 +259,24 @@ export default function EventsPage() {
     }
   }
 
-  const filtered = events.filter((event) => {
-    const isPast = new Date(event.startTime) < now;
-    if (activeTab === 'upcoming') return !isPast && event.isPublished;
-    if (activeTab === 'past') return isPast;
-    if (activeTab === 'draft') return !event.isPublished;
-    return true;
-  });
+  /*
+    `splitEvents` measures past from the end, which this page did not: it
+    compared `startTime`, so an evening that began an hour ago had already
+    moved to Past — away from the organiser most likely to be looking it up.
+
+    Drafts are shown inside both tabs rather than hidden from Upcoming, which
+    is what the old `event.isPublished` test did. Every card already carries a
+    Published or Draft badge, so an unfinished event in the list reads as one;
+    being unable to see it at all was the thing that made the fourth tab
+    necessary.
+  */
+  const { upcoming, past } = splitEvents(events, { now });
+  const inWindow = activeTab === 'past' ? past : upcoming;
+  const filtered = searchEvents(
+    draftsOnly ? inWindow.filter((event) => !event.isPublished) : inWindow,
+    search,
+    (event) => [event.title, event.location?.name, event.room?.name],
+  );
 
   return (
     <div className="space-y-6">
@@ -349,21 +370,37 @@ export default function EventsPage() {
         </section>
       )}
 
-      <div className="flex gap-1 border-b border-gray-200">
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${
-              activeTab === tab.key
-                ? 'border-b-2 border-brand-600 text-brand-600'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="space-y-3">
+        <EventTabs
+          tab={activeTab}
+          onTab={(next) => setActiveTab(next as EventTab)}
+          counts={{ upcoming: upcoming.length, past: past.length }}
+          search={search}
+          onSearch={setSearch}
+          label="Which events"
+          searchPlaceholder="Search events…"
+        />
+
+        {/* Drafts narrow whichever side is open, rather than being a third
+            kind of date (EVT-49). */}
+        <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={draftsOnly}
+            onChange={(e) => setDraftsOnly(e.target.checked)}
+            className="rounded border-gray-300"
+          />
+          Drafts only
+        </label>
       </div>
+
+      {filtered.length === 0 && (
+        <p className="text-sm text-gray-500">
+          {draftsOnly && !search.trim()
+            ? `No drafts ${activeTab === 'past' ? 'among the past events' : 'coming up'}.`
+            : emptyNote(activeTab, Boolean(search.trim()))}
+        </p>
+      )}
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
         {filtered.map((event) => {

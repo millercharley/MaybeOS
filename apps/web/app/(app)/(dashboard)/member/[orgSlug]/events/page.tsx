@@ -12,6 +12,8 @@ import { api, HostedEvent, Org } from '@/lib/api';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
 import { toUpdatePayload } from '@/lib/events';
 import { MyRsvps } from '@/components/events/my-rsvps';
+import { EventTabs } from '@/components/events/event-tabs';
+import { emptyNote, searchEvents, splitEvents, type EventTab } from '@/lib/event-tabs';
 import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 import { HostEarnings } from '@/components/events/host-earnings';
 import { PageHeader } from '@/components/layout/page-header';
@@ -83,6 +85,9 @@ export default function MyEventsPage() {
     formPane.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [creating, editing]);
   const [busy, setBusy] = useState(false);
+  /** Upcoming or past, and what is typed in the box beside them (EVT-49). */
+  const [tab, setTab] = useState<EventTab>('upcoming');
+  const [search, setSearch] = useState('');
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
@@ -194,21 +199,24 @@ export default function MyEventsPage() {
   }
 
   /*
-    Both nearest to now, in opposite directions (EVT-26).
+    Upcoming or past, behind a tab (EVT-49).
 
-    The API hands these back newest-first, which is right for a past list and
-    backwards for a future one: with 209 upcoming events — which is what a
-    co-op looks like after importing its calendar — "Coming up" opened on
-    2028 and buried tomorrow's event at the bottom of the page. A list headed
-    "Coming up" that starts two years out and reads backwards is one somebody
-    reasonably describes as showing them the past.
+    Charley: "Inside My Events I see previous events list with upcoming
+    events." They were two sections on one page — "Coming up", then the
+    earnings panel, then "Past" — so a host with 584 finished events had
+    their whole history stacked under the three they have coming, and no way
+    to find one but scrolling.
+
+    `splitEvents` holds the sort both ways round (EVT-26) and measures past
+    from the end rather than the start, so an evening in progress stays where
+    somebody would look for it.
   */
-  const upcoming = events
-    .filter((e) => !e.isPast)
-    .sort((a, b) => a.startTime.localeCompare(b.startTime));
-  const past = events
-    .filter((e) => e.isPast)
-    .sort((a, b) => b.startTime.localeCompare(a.startTime));
+  const { upcoming, past } = splitEvents(events);
+  const shownEvents = searchEvents(tab === 'past' ? past : upcoming, search, (e) => [
+    e.title,
+    e.location?.name,
+    e.room?.name,
+  ]);
 
   return (
     <div className="space-y-6">
@@ -301,28 +309,41 @@ export default function MyEventsPage() {
         </div>
       ) : (
         <>
-          <Section
-            title="Coming up"
-            events={upcoming}
-            onCancel={cancelEvent}
-            onPublish={publish}
-            onEdit={setEditing}
-            busy={busy}
-            sharingOn={Boolean(org?.socialSharingEnabled)}
+          <EventTabs
+            tab={tab}
+            onTab={(next) => setTab(next as EventTab)}
+            counts={{ upcoming: upcoming.length, past: past.length }}
+            search={search}
+            onSearch={setSearch}
+            label="Which of your events"
+            searchPlaceholder="Search your events…"
           />
+
+          {shownEvents.length === 0 ? (
+            <p className="text-sm text-gray-500">{emptyNote(tab, Boolean(search.trim()))}</p>
+          ) : (
+            <Section
+              events={shownEvents}
+              onCancel={cancelEvent}
+              onPublish={publish}
+              // Nothing useful is left to change about an evening that has
+              // happened, which is what the past list has always assumed.
+              onEdit={tab === 'past' ? undefined : setEditing}
+              busy={busy}
+              sharingOn={tab === 'past' ? false : Boolean(org?.socialSharingEnabled)}
+              muted={tab === 'past'}
+            />
+          )}
+
+          {org && token && <HostEarnings orgId={org.id} token={token} />}
+
           {/* Only for somebody who has actually been to something. The PRD's
               post-event question is a follow-up, and asking it of a member
               with no past events is asking about an event that never
               happened. The visit is the moment rather than a scheduled
               nudge — a timed follow-up needs a notification MaybeOS does not
               send yet (IMP-19). */}
-          {org && token && <HostEarnings orgId={org.id} token={token} />}
-
           {past.length > 0 && org && <TouchpointAsk orgId={org.id} touchpoint="POST_EVENT" />}
-
-          {past.length > 0 && (
-            <Section title="Past" events={past} onCancel={cancelEvent} onPublish={publish} busy={busy} muted />
-          )}
         </>
       )}
 
@@ -346,7 +367,13 @@ function Section({
   muted = false,
   sharingOn = false,
 }: {
-  title: string;
+  /**
+   * The heading, when the list needs one.
+   *
+   * Absent now on this page: the tab above says which list this is, and a
+   * panel headed "Past" under a pill reading "Past" says it twice (EVT-49).
+   */
+  title?: string;
   events: HostedEvent[];
   onCancel: (id: string) => void;
   onPublish: (id: string) => void;
@@ -359,9 +386,8 @@ function Section({
 }) {
   if (events.length === 0) return null;
 
-  return (
-    <Panel title={title}>
-      <div className={`space-y-3 ${muted ? 'opacity-70' : ''}`}>
+  const rows = (
+    <div className={`space-y-3 ${muted ? 'opacity-70' : ''}`}>
         {events.map((event) => (
           <EventRow
             key={event.id}
@@ -373,9 +399,10 @@ function Section({
             sharingOn={sharingOn}
           />
         ))}
-      </div>
-    </Panel>
+    </div>
   );
+
+  return title ? <Panel title={title}>{rows}</Panel> : rows;
 }
 
 function EventRow({

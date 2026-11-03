@@ -5,7 +5,10 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Calendar, Clock, MapPin, Users } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
+import { useState } from 'react';
 import { api, MyRsvp } from '@/lib/api';
+import { EventTabs } from '@/components/events/event-tabs';
+import { emptyNote, searchEvents, splitEvents, type EventTab } from '@/lib/event-tabs';
 
 /**
  * What this member is going to (EVT-01).
@@ -19,6 +22,9 @@ import { api, MyRsvp } from '@/lib/api';
  */
 export function MyRsvps() {
   const orgSlug = useParams()?.orgSlug as string;
+  /** Upcoming or past, behind a tab, like every other event list (EVT-49). */
+  const [tab, setTab] = useState<EventTab>('upcoming');
+  const [search, setSearch] = useState('');
   const { data: rsvps, loading, error } = useApi(
     (token, orgId) => api.events.myRsvps(orgId, token),
     [],
@@ -41,9 +47,23 @@ export function MyRsvps() {
   }
 
   const all = rsvps ?? [];
-  // Upcoming first, because that is what somebody opening this page wants.
-  const upcoming = all.filter((r) => !r.isPast && r.status !== 'CANCELED');
-  const past = all.filter((r) => r.isPast || r.status === 'CANCELED');
+
+  /*
+    Split by time, and only by time (EVT-49).
+
+    This used to read `r.isPast || r.status === 'CANCELED'`, so an RSVP you
+    cancelled for next Tuesday was filed under "Past and canceled" — the same
+    conflation My Bookings had, where a reservation called off for a date
+    that has not arrived sat under a heading saying "Past". What you did
+    about an event is not when the event is, and the badge on the row already
+    says "You canceled".
+  */
+  const { upcoming, past } = splitEvents(all, { timeOf: (r) => r.event });
+  const shown = searchEvents(tab === 'past' ? past : upcoming, search, (r) => [
+    r.event.title,
+    r.event.room?.name,
+    r.event.location?.name,
+  ]);
 
   return (
     <div className="space-y-8">
@@ -60,8 +80,20 @@ export function MyRsvps() {
         </div>
       ) : (
         <>
-          <Section title="Upcoming" rsvps={upcoming} emptyNote="Nothing coming up." />
-          {past.length > 0 && <Section title="Past and canceled" rsvps={past} muted />}
+          <EventTabs
+            tab={tab}
+            onTab={(next) => setTab(next as EventTab)}
+            counts={{ upcoming: upcoming.length, past: past.length }}
+            search={search}
+            onSearch={setSearch}
+            label="Which events you are going to"
+            searchPlaceholder="Search what you are going to…"
+          />
+          <Section
+            rsvps={shown}
+            emptyNote={emptyNote(tab, Boolean(search.trim()))}
+            muted={tab === 'past'}
+          />
         </>
       )}
     </div>
@@ -69,19 +101,19 @@ export function MyRsvps() {
 }
 
 function Section({
-  title,
   rsvps,
   emptyNote,
   muted = false,
 }: {
-  title: string;
   rsvps: MyRsvp[];
   emptyNote?: string;
   muted?: boolean;
 }) {
   return (
     <section>
-      <h2 className="mb-3 text-lg font-semibold text-[var(--text-primary)]">{title}</h2>
+      {/* No heading of its own any more: the tab above says which list this
+          is, and a heading reading "Past" under a pill reading "Past" says
+          it twice (EVT-49). */}
       {rsvps.length === 0 ? (
         <p className="text-sm text-[var(--text-secondary)]">{emptyNote}</p>
       ) : (

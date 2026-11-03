@@ -128,7 +128,9 @@ describe('where it is rendered', () => {
 
 describe('the events list', () => {
   it('opens on what is coming', () => {
-    expect(listPage).toMatch(/useState<FilterTab>\('upcoming'\)/);
+    // `FilterTab` went when the four tabs became two plus a filter (EVT-49);
+    // what it opens on did not change.
+    expect(listPage).toMatch(/useState<EventTab>\('upcoming'\)/);
   });
 });
 
