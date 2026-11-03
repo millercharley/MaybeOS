@@ -22,6 +22,7 @@ export const GATHERING_KINDS = [
   'Dance and movement',
   'Organizing or meetings',
   'Social',
+  'Conversation',
   'Learning',
   'Rehearsal or practice',
   'Care or support',

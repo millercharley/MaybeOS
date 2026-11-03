@@ -45,6 +45,12 @@ describe('what kind of gathering', () => {
     expect(GATHERING_KINDS).toContain('Dance and movement');
   });
 
+  it('includes conversation', () => {
+    // Charley, 2026-11-03. Offered on both forms, because this list is the
+    // one the booking form shows too.
+    expect(GATHERING_KINDS).toContain('Conversation');
+  });
+
   it('keeps the kinds it had', () => {
     for (const kind of [
       'Art or expression',

@@ -39,4 +39,15 @@ export const STARTER_INTERESTS: readonly StarterInterest[] = [
   { name: 'Wellbeing and movement', emoji: '🧘' },
   { name: 'Family and kids', emoji: '🧸' },
   { name: 'Volunteering', emoji: '🧹' },
+  /*
+    Charley, 2026-11-03: "Add 'conversation' to one of the room and event
+    types."
+
+    Its own kind rather than a shade of Social or Learning. A co-op's
+    discussion evenings are neither — nobody is being taught and it is not a
+    party — and a member looking for one has no other word to search. Added
+    to the co-ops that already hold this list as well as to the list itself,
+    because a name here only reaches a co-op that was created after it.
+  */
+  { name: 'Conversation', emoji: '💬' },
 ] as const;

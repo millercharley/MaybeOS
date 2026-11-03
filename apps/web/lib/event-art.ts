@@ -36,6 +36,7 @@ const PALETTES: Record<string, [string, string]> = {
   // booking saved before the rename keeps the art it was given.
   'Organising or meetings': ['#1e3a5f', '#3b82f6'],
   Social: ['#7c2d55', '#ec4899'],
+  Conversation: ['#3730a3', '#818cf8'],
   Learning: ['#166534', '#65a30d'],
   'Rehearsal or practice': ['#4c1d95', '#8b5cf6'],
   'Care or support': ['#155e63', '#14b8a6'],
