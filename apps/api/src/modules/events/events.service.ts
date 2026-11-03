@@ -19,6 +19,7 @@ import { canEditEvent, canManageHosts, coHostProblem, NOT_YOURS, NOT_YOUR_EVENT 
 import { attachProblem, whoseRoomsCount } from './event-rooms';
 import { groupOwnedEvents, transferProblem } from './host-transfer';
 import { mostRecentPerTitle } from './reusable-events';
+import { canRemoveEvent, NOT_YOURS_TO_REMOVE, removalProblem } from './event-removal';
 import { describeRecurrence, horizonFrom, occurrencesOf } from './recurrence';
 import { RepeatEventDto } from './dto/repeat-event.dto';
 import { CloneEventDto } from './dto/clone-event.dto';
@@ -2735,12 +2736,59 @@ export class EventsService {
    * early, an event that needs reworking. It keeps its RSVPs, its history and
    * its link, and it stops appearing anywhere members look.
    */
-  async unpublish(orgId: string, eventId: string) {
+  /**
+   * Load an event and decide whether this person may take it away (EVT-50).
+   *
+   * Shared by hiding and deleting, because the two answer the same two
+   * questions — whose event is it, and is anybody out of pocket — and they
+   * used to answer them differently: deleting counted every ticket row ever
+   * written and refused on a single RSVP, while hiding checked nothing at
+   * all.
+   */
+  private async eventForRemoval(
+    orgId: string,
+    eventId: string,
+    actor: { userId: string; isStaff: boolean },
+    action: 'delete' | 'hide',
+  ) {
     const event = await this.prisma.event.findFirst({
       where: { id: eventId, orgId },
-      select: { id: true, isPublished: true },
+      select: {
+        id: true,
+        isPublished: true,
+        hostId: true,
+        createdById: true,
+        /*
+          Seats sold and not refunded (EVT-50).
+
+          `quantity` rather than a row count, because the door list counts
+          people and the refusal names a number the organiser will check
+          against it. `refundedAt: null`, because a refunded ticket is
+          nobody's money any more — counting those meant an event cancelled
+          and fully refunded could still never be deleted.
+        */
+        tickets: { where: { refundedAt: null }, select: { quantity: true } },
+      },
     });
     if (!event) throw new NotFoundException('Event not found');
+
+    if (!canRemoveEvent(event, actor.userId, actor.isStaff)) {
+      throw new ForbiddenException(NOT_YOURS_TO_REMOVE);
+    }
+
+    const unrefundedTickets = event.tickets.reduce((n, t) => n + t.quantity, 0);
+    const problem = removalProblem({ unrefundedTickets }, action);
+    if (problem) throw new BadRequestException(problem);
+
+    return event;
+  }
+
+  async unpublish(
+    orgId: string,
+    eventId: string,
+    actor: { userId: string; isStaff: boolean },
+  ) {
+    await this.eventForRemoval(orgId, eventId, actor, 'hide');
 
     await this.prisma.event.update({
       where: { id: eventId },
@@ -2754,51 +2802,25 @@ export class EventsService {
    * Destroy an event (EVT-30).
    *
    * MaybeItsFate's calendar import brought across duplicates that were
-   * duplicated in Google, and there is nothing to keep about those. But a
-   * delete is the one action here that cannot be taken back, so it refuses
-   * anything somebody is expecting:
+   * duplicated in Google, and there is nothing to keep about those.
    *
-   * - a confirmed RSVP means a member has it in their diary;
-   * - a ticket means somebody paid.
+   * It used to refuse an event with a single RSVP on it, advising a cancel
+   * instead. Charley, 2026-11-03: "Allow for the deletion (or hiding if
+   * that's safer) by the admin or owner of future events that have an RSVP."
+   * He is right, and the old rule made the duplicate case unfixable: the
+   * moment one member RSVPs to the wrong copy, the wrong copy is permanent,
+   * and cancelling it leaves a cancelled event on the calendar announcing
+   * that an evening was called off which is in fact happening, in the other
+   * row.
    *
-   * Both want cancelling, which tells those people, rather than deleting,
-   * which does not. The refusal says which it is and how many, because
-   * "cannot delete" with no number is a dead end.
+   * Money still refuses, and now refuses hiding too. See `event-removal.ts`.
    */
-  async deleteEvent(orgId: string, eventId: string) {
-    const event = await this.prisma.event.findFirst({
-      where: { id: eventId, orgId },
-      select: {
-        id: true,
-        _count: {
-          select: {
-            rsvps: { where: { status: { in: ['CONFIRMED', 'WAITLISTED'] } } },
-          },
-        },
-        // Seats rather than purchases (EVT-47): the refusal names a number
-        // the organiser can check against the door list, and the door list
-        // counts people.
-        tickets: { select: { quantity: true } },
-      },
-    });
-    if (!event) throw new NotFoundException('Event not found');
-
-    const { rsvps } = event._count;
-    const tickets = event.tickets.reduce((n, t) => n + t.quantity, 0);
-
-    if (tickets > 0) {
-      throw new BadRequestException(
-        `${tickets} ${tickets === 1 ? 'ticket has' : 'tickets have'} been sold for this event, so it cannot be deleted. ` +
-          'Cancel it instead — that tells the people who bought them.',
-      );
-    }
-
-    if (rsvps > 0) {
-      throw new BadRequestException(
-        `${rsvps} ${rsvps === 1 ? 'member is' : 'members are'} expecting this event, so it cannot be deleted. ` +
-          'Cancel it instead, or hide it if it was never meant to be there.',
-      );
-    }
+  async deleteEvent(
+    orgId: string,
+    eventId: string,
+    actor: { userId: string; isStaff: boolean },
+  ) {
+    await this.eventForRemoval(orgId, eventId, actor, 'delete');
 
     await this.prisma.event.delete({ where: { id: eventId } });
 

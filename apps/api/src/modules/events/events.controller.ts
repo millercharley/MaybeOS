@@ -730,38 +730,51 @@ export class EventsController {
   /**
    * Take it off the members' lists, keeping everything about it (EVT-30).
    *
-   * Organisers only. Publishing is open to a host, because it is their own
-   * event going live; un-publishing somebody else's is a moderation decision.
+   * Not `@Roles`: the answer is not a role (EVT-50). Charley: "Allow for the
+   * deletion (or hiding if that's safer) by the admin or owner" — so an
+   * organiser may, and so may the host and whoever created it, which no role
+   * expresses. The service decides, and refuses while tickets are unrefunded.
    */
   @Post('orgs/:orgId/events/:eventId/unpublish')
-  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
-  @Roles('ADMIN', 'STAFF')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Hide an event from members without deleting it' })
   async unpublish(
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.eventsService.unpublish(orgId, eventId);
+    return this.eventsService.unpublish(orgId, eventId, {
+      userId: user.userId,
+      isStaff: isStaff(user, orgId),
+    });
   }
 
   /**
-   * Destroy it (EVT-30).
+   * Destroy it (EVT-30, EVT-50).
    *
-   * ADMIN only, and not STAFF: this is the one action on an event that cannot
-   * be undone. The service refuses anything with a ticket sold or a member
-   * expecting it, which want cancelling instead.
+   * This is the one action on an event that cannot be undone, and it was
+   * ADMIN only. Charley: "Allow for the deletion… by the admin or owner" —
+   * so the guard is in the service, where the answer can be "an organiser,
+   * the host, or whoever created it" rather than a role. A member deleting
+   * their own event is clearing up after themselves.
+   *
+   * The service refuses while any ticket is sold and unrefunded. An RSVP no
+   * longer refuses anything.
    */
   @Delete('orgs/:orgId/events/:eventId')
-  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
-  @Roles('ADMIN')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete an event outright' })
   async deleteEvent(
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @Param('eventId', ParseUUIDPipe) eventId: string,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.eventsService.deleteEvent(orgId, eventId);
+    return this.eventsService.deleteEvent(orgId, eventId, {
+      userId: user.userId,
+      isStaff: isStaff(user, orgId),
+    });
   }
 
   /**

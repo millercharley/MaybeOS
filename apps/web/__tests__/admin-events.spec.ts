@@ -90,12 +90,19 @@ describe('what an organiser can do to an event', () => {
     expect(page).toMatch(/This cannot be undone/);
   });
 
-  it('says what to do instead when somebody is expecting it', () => {
-    expect(page).toMatch(/hide or cancel it instead/);
+  it('says how many people are losing it, since nothing stops the delete now', () => {
+    /*
+      This asserted the words "hide or cancel it instead", which was the old
+      refusal written out as advice: an RSVP stopped a delete outright
+      (EVT-50). It no longer does, so the count is the only warning there
+      is, and it has to say that nobody will be told.
+    */
+    expect(page).toMatch(/will not be told/);
+    expect(page).not.toMatch(/hide or cancel it instead/);
   });
 
   it('shows the API’s refusal rather than a generic failure', () => {
-    // The refusal names how many people are expecting it, which is the whole
+    // The refusal names how many tickets are unrefunded, which is the whole
     // value of it.
     expect(page).toMatch(/err instanceof Error \? err\.message : 'Could not delete that event'/);
   });

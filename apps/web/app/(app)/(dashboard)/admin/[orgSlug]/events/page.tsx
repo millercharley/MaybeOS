@@ -565,9 +565,24 @@ export default function EventsPage() {
                   }}
                   className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3"
                 >
+                  {/*
+                    What is being destroyed, rather than advice that is no
+                    longer true (EVT-50). This read "If anyone is expecting
+                    it, hide or cancel it instead", which was the old refusal
+                    written out as guidance — an RSVP stopped a delete
+                    outright. It no longer does, so the number is the only
+                    warning there is, and it has to be a number.
+                  */}
                   <p className="text-xs text-red-900">
-                    Delete “{event.title}” for good? This cannot be undone. If anyone is
-                    expecting it, hide or cancel it instead.
+                    Delete “{event.title}” for good? This cannot be undone.
+                    {rsvpCount > 0 && (
+                      <>
+                        {' '}
+                        {rsvpCount} {rsvpCount === 1 ? 'person has' : 'people have'} this in
+                        their diary and will not be told — cancel it instead if they should
+                        be.
+                      </>
+                    )}
                   </p>
                   {/* The refusal, where the person who caused it is looking.
                       It stays above the buttons so Delete it is still there

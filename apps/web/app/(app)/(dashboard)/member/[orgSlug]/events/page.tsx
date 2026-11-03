@@ -175,6 +175,46 @@ export default function MyEventsPage() {
     }
   }
 
+  /*
+    Hiding and deleting your own event (EVT-50).
+
+    Charley: "Allow for the deletion (or hiding if that's safer) by the admin
+    or owner of future events that have an RSVP." Both were organiser-only
+    routes with no button on this side at all, so a member who made a
+    duplicate had to ask somebody to clear it up.
+
+    The API refuses either while tickets are sold and unrefunded, and says so
+    in a sentence naming the number — which is why the failure goes to the
+    page's own error line rather than being swallowed.
+  */
+  async function hide(eventId: string) {
+    if (!token || !orgId) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.events.unpublish(orgId, eventId, token);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not hide that');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(eventId: string) {
+    if (!token || !orgId) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.events.remove(orgId, eventId, token);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete that');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function publish(eventId: string) {
     if (!token || !orgId) return;
     setBusy(true);
@@ -326,6 +366,8 @@ export default function MyEventsPage() {
               events={shownEvents}
               onCancel={cancelEvent}
               onPublish={publish}
+              onHide={hide}
+              onDelete={remove}
               // Nothing useful is left to change about an evening that has
               // happened, which is what the past list has always assumed.
               onEdit={tab === 'past' ? undefined : setEditing}
@@ -363,6 +405,8 @@ function Section({
   onCancel,
   onPublish,
   onEdit,
+  onHide,
+  onDelete,
   busy,
   muted = false,
   sharingOn = false,
@@ -377,6 +421,10 @@ function Section({
   events: HostedEvent[];
   onCancel: (id: string) => void;
   onPublish: (id: string) => void;
+  /** Take it off the members' lists, keeping it (EVT-50). */
+  onHide?: (id: string) => void;
+  /** Destroy it. The one action here that cannot be taken back. */
+  onDelete?: (id: string) => void;
   /** Absent on past events, which there is nothing useful left to change. */
   onEdit?: (event: HostedEvent) => void;
   busy: boolean;
@@ -395,6 +443,8 @@ function Section({
             onCancel={onCancel}
             onPublish={onPublish}
             onEdit={onEdit}
+            onHide={onHide}
+            onDelete={onDelete}
             busy={busy}
             sharingOn={sharingOn}
           />
@@ -410,6 +460,8 @@ function EventRow({
   onCancel,
   onPublish,
   onEdit,
+  onHide,
+  onDelete,
   busy,
   sharingOn = false,
 }: {
@@ -417,6 +469,8 @@ function EventRow({
   onCancel: (id: string) => void;
   onPublish: (id: string) => void;
   onEdit?: (event: HostedEvent) => void;
+  onHide?: (id: string) => void;
+  onDelete?: (id: string) => void;
   busy: boolean;
   sharingOn?: boolean;
 }) {
@@ -425,6 +479,8 @@ function EventRow({
   const orgSlug = useParams()?.orgSlug as string;
   const orgId = useAuthStore((st) => st.currentOrgId);
   const [confirming, setConfirming] = useState(false);
+  /** Separate from cancelling: these are different acts with different costs. */
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
   const [sharing, setSharing] = useState(false);
   const token = useAuthStore((st) => st.token);
@@ -524,6 +580,25 @@ function EventRow({
               {SHARE_LABEL}
             </button>
           )}
+          {/*
+            Take it off the members' lists without destroying it (EVT-50).
+
+            Offered before Delete and on published events only, because it is
+            the reversible one: a duplicate hidden can be un-hidden, and a
+            duplicate deleted cannot. The API refuses either while tickets
+            are unrefunded.
+          */}
+          {onHide && event.isPublished && !confirming && !confirmingDelete && (
+            <button
+              type="button"
+              onClick={() => onHide(event.id)}
+              className="text-gray-500 hover:text-gray-900"
+              disabled={busy}
+            >
+              Hide
+            </button>
+          )}
+
           {confirming ? (
             <>
               <button
@@ -542,14 +617,51 @@ function EventRow({
                 Keep it
               </button>
             </>
+          ) : confirmingDelete ? (
+            <>
+              {/* Says what is being destroyed, and offers the kinder thing.
+                  An RSVP no longer refuses a delete, so the number is the
+                  only warning there is. */}
+              <span className="text-gray-600">
+                {event.rsvpCount
+                  ? `${event.rsvpCount} ${event.rsvpCount === 1 ? 'person is' : 'people are'} expecting this. Delete anyway?`
+                  : 'Delete for good?'}
+              </span>
+              <button
+                type="button"
+                onClick={() => onDelete?.(event.id)}
+                className="font-semibold text-red-600 hover:underline"
+                disabled={busy}
+              >
+                Yes, delete
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(false)}
+                className="text-gray-500 hover:underline"
+              >
+                Keep it
+              </button>
+            </>
           ) : (
-            <button
-              type="button"
-              onClick={() => setConfirming(true)}
-              className="text-gray-500 hover:text-red-600"
-            >
-              Cancel event
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setConfirming(true)}
+                className="text-gray-500 hover:text-red-600"
+              >
+                Cancel event
+              </button>
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(true)}
+                  className="text-gray-500 hover:text-red-600"
+                >
+                  Delete
+                </button>
+              )}
+            </>
           )}
         </div>
       )}
