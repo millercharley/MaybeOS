@@ -4672,6 +4672,18 @@ export interface PublishBookingEventData {
   // (EVT-21). Nothing ever set it — publishing from a booking does not offer
   // ticketing — so it is removed rather than added: a type is a claim about
   // the API, and this one was false.
+  //
+  // The rest below are the opposite case: the form collected them, the page
+  // dropped them on the way out, and the DTO now takes them. `imageFocusY`
+  // above was the same false claim as `priceCents` until that was fixed.
+  /** The kinds of gathering. Absent means the reservation's own. */
+  tags?: string[];
+  hasCost?: boolean;
+  suggestedCents?: number;
+  maturityLevel?: MaturityLevel;
+  waitlistEnabled?: boolean;
+  /** Who else is running it (EVT-36). */
+  coHostIds?: string[];
 }
 
 /** Whether a co-op can take money for tickets yet (D-013, Stripe Connect). */
@@ -4903,6 +4915,26 @@ export interface Booking {
    * silently get undefined.
    */
   room?: Pick<Room, 'id' | 'name'> & { locationId?: string | null };
+
+  /*
+    What the member said the reservation was for (SPC-21).
+
+    Charley, 2026-11-03: "All data already confirmed in my room reservation
+    should sync to the new event form." It could not: the server has always
+    carried these onto the event (EVT-17), but the form that publishes the
+    booking never saw them, so it opened on its own defaults and sent those
+    instead — a PUBLIC reservation published as MEMBERS_ONLY, because
+    MEMBERS_ONLY is what an empty event form holds.
+
+    Optional because the per-room list does not select them and because every
+    booking made before these questions existed answered none.
+  */
+  description?: string | null;
+  visibility?: 'PUBLIC' | 'MEMBERS_ONLY' | 'PRIVATE';
+  expectedAttendance?: number | null;
+  hasCost?: boolean;
+  categories?: string[];
+  maturityLevel?: MaturityLevel;
 }
 
 export interface CreateBookingData {

@@ -1,5 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { MaturityLevel } from '@prisma/client';
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
   IsEnum,
@@ -7,8 +9,10 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
   Matches,
+  Min,
 } from 'class-validator';
 import { IMAGE_URL_PATTERN, IMAGE_URL_MESSAGE } from './create-event.dto';
 
@@ -102,4 +106,80 @@ export class PublishBookingEventDto {
   @IsArray()
   @IsUUID('4', { each: true })
   bookingIds?: string[];
+
+  /*
+    Everything below was collected by the form and thrown away by the request
+    (EVT-17 the other way round).
+
+    The booking answers these questions when the room is booked, and
+    `createFromBooking` has always carried its answers onto the event. What it
+    could not carry was a *change* made while publishing: the form shows the
+    kinds, the maturity rating, whether it costs and a waitlist switch, and
+    this DTO took none of them, so editing one on the way out did nothing. The
+    kinds were the worst of it — `category` was accepted and `tags` was not,
+    so changing the gathering kind rewrote the singular field and left the
+    plural one holding the booking's, and the two readers of them disagreed.
+
+    Absent still means "the booking's answer", which is why each is optional
+    rather than defaulted here.
+  */
+
+  @ApiPropertyOptional({ type: [String], description: "Defaults to the booking's own kinds." })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
+
+  @ApiPropertyOptional({ description: "Defaults to the booking's answer." })
+  @IsOptional()
+  @IsBoolean()
+  hasCost?: boolean;
+
+  /** What they suggest at the door, in cents (EVT-34). */
+  @ApiPropertyOptional({ example: 1000 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1000000)
+  suggestedCents?: number;
+
+  /** Who it is suitable for (SPC-22). Defaults to the booking's answer. */
+  @ApiPropertyOptional({ enum: MaturityLevel })
+  @IsOptional()
+  @IsEnum(MaturityLevel)
+  maturityLevel?: MaturityLevel;
+
+  @ApiPropertyOptional({ description: 'Keep a waitlist once the capacity is reached.' })
+  @IsOptional()
+  @IsBoolean()
+  waitlistEnabled?: boolean;
+
+  /**
+   * Which band of the picture to keep when it is cropped (EVT-43).
+   *
+   * The web client has declared this on its own request type since the focus
+   * slider shipped, and it was never on this DTO — so sending it would have
+   * failed the whole request on the whitelist rather than the field. Nothing
+   * sent it, so nothing broke; the form is about to.
+   */
+  @ApiPropertyOptional({ minimum: 0, maximum: 100, example: 25 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  imageFocusY?: number;
+
+  /**
+   * Who else is running it (EVT-36).
+   *
+   * Charley, 2026-11-03: "As a member, I want to add a co-host to an event."
+   * This is the other form a member reaches one through — publishing the room
+   * they have booked — and it has to be able to carry the answer.
+   */
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsUUID('4', { each: true })
+  coHostIds?: string[];
 }

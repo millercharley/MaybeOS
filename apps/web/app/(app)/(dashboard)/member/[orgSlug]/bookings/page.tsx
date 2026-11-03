@@ -93,9 +93,29 @@ export default function MemberBookingsPage() {
           imageUrl: values.imageUrl ?? undefined,
           imageCredit: values.imageCredit ?? undefined,
           imageCreditUrl: values.imageCreditUrl ?? undefined,
+          imageFocusY: values.imageFocusY,
           // Any *other* rooms the picker added. The booking being published
           // from is attached by the route itself (SPC-31).
           bookingIds: values.bookingIds,
+          /*
+            The rest of what the form asked.
+
+            Every one of these was on screen and thrown away here. The
+            gathering kinds were the sharpest: `category` went and `tags` did
+            not, so changing the kind while publishing moved one field and
+            left the other holding the reservation's, and the readers of them
+            disagreed about what the event was.
+          */
+          tags: values.tags,
+          hasCost: values.hasCost,
+          // `?? undefined`: the shared form type allows null here and the DTO
+          // takes an int or nothing, and a null would fail the whole request
+          // on `@IsInt()` rather than the one field.
+          suggestedCents: values.suggestedCents ?? undefined,
+          maturityLevel: values.maturityLevel,
+          waitlistEnabled: values.waitlistEnabled,
+          // Who else is running it (EVT-36), now that a member can say.
+          coHostIds: values.coHostIds,
         },
         token,
       );
@@ -476,6 +496,29 @@ export default function MemberBookingsPage() {
                       startTime: b.startTime,
                       endTime: b.endTime,
                       /*
+                        Everything the reservation already answered (SPC-21).
+
+                        Charley: "All data already confirmed in my room
+                        reservation should sync to the new event form." It did
+                        not. The form opened on its own defaults and sent
+                        them, so the one that mattered most went backwards:
+                        visibility is always sent, and an empty event form
+                        holds MEMBERS_ONLY — so a reservation the member had
+                        marked PUBLIC was published to members only, quietly,
+                        on a form that never showed them the question's
+                        previous answer.
+
+                        `capacity` from the member's own estimate, which is
+                        what the server prefers too: they know who they
+                        invited, and the room's number is an upper bound.
+                      */
+                      description: b.description ?? undefined,
+                      visibility: b.visibility,
+                      capacity: b.expectedAttendance ?? undefined,
+                      hasCost: b.hasCost,
+                      tags: b.categories,
+                      maturityLevel: b.maturityLevel,
+                      /*
                         The room is already answered (SPC-31).
 
                         Publishing from a booking means the room is the one
@@ -504,6 +547,7 @@ export default function MemberBookingsPage() {
                     onCancel={() => setPublishingId(null)}
                     orgId={orgId ?? undefined}
                     token={token ?? undefined}
+                    viewerId={user?.id}
                   />
                 </div>
               )}
