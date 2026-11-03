@@ -587,13 +587,19 @@ export class EventsController {
   @UseGuards(JwtAuthGuard, OrgMembershipGuard)
   @ApiBearerAuth()
   @ApiQuery({ name: 'q', required: false, description: 'Search their event titles' })
+  @ApiQuery({
+    name: 'exclude',
+    required: false,
+    description: 'The event being edited, which is never offered as its own source.',
+  })
   @ApiOperation({ summary: 'Events the member hosts or co-hosts, one per title' })
   listReusableEvents(
     @Param('orgId', ParseUUIDPipe) orgId: string,
     @CurrentUser() user: RequestUser,
     @Query('q') q?: string,
+    @Query('exclude') exclude?: string,
   ) {
-    return this.eventsService.listReusableEvents(orgId, user.userId, q);
+    return this.eventsService.listReusableEvents(orgId, user.userId, q, exclude);
   }
 
   /**

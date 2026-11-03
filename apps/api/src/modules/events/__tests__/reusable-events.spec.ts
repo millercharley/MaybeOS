@@ -12,10 +12,16 @@ import { CARRIED_FIELDS, mostRecentPerTitle } from '../reusable-events';
  */
 
 const on = (iso: string) => new Date(iso);
-const event = (id: string, title: string, iso: string) => ({
+
+/**
+ * `edited` defaults to the start date only so that the older tests below read
+ * the same way they did; what the rule actually turns on is `updatedAt`.
+ */
+const event = (id: string, title: string, iso: string, edited = iso) => ({
   id,
   title,
   startTime: on(iso),
+  updatedAt: on(edited),
 });
 
 describe('one row per title', () => {
@@ -27,7 +33,7 @@ describe('one row per title', () => {
     expect(mostRecentPerTitle(club)).toHaveLength(1);
   });
 
-  it('keeps the most recent of them', () => {
+  it('keeps the one last written to', () => {
     const picked = mostRecentPerTitle([
       event('old', 'Board Games Club', '2025-01-27T19:00:00Z'),
       event('newest', 'Board Games Club', '2028-10-29T19:00:00Z'),
@@ -35,6 +41,51 @@ describe('one row per title', () => {
     ]);
 
     expect(picked.map((e) => e.id)).toEqual(['newest']);
+  });
+
+  /*
+    Charley: "All migrated events will need editing. I can imagine the member
+    editing one event, then using the clone option to pre-fill the fields,
+    image, etc. for each additional cloned event."
+
+    This is the case the rule exists for, and the one that broke it. Ordering
+    by `startTime` meant the single option offered for a title was its
+    latest-dated instance — which, part way through editing 46 of them, is
+    still the untouched import.
+  */
+  it('offers the one the member just edited, not the one dated latest', () => {
+    const picked = mostRecentPerTitle([
+      // Still exactly as the calendar import left it, and furthest out.
+      event('imported-2028', 'Board Games Club', '2028-10-29T19:00:00Z', '2026-10-02T20:00:00Z'),
+      // The one they have just written a real description on.
+      event('just-edited', 'Board Games Club', '2026-11-10T19:00:00Z', '2026-11-03T16:00:00Z'),
+    ]);
+
+    expect(picked.map((e) => e.id)).toEqual(['just-edited']);
+  });
+
+  it('keeps spreading the good one as they work through the series', () => {
+    // Having copied onto the 17th and saved, that becomes the source for the
+    // 24th — same content, newest edit.
+    const picked = mostRecentPerTitle([
+      event('imported', 'Board Games Club', '2028-10-29T19:00:00Z', '2026-10-02T20:00:00Z'),
+      event('first-edited', 'Board Games Club', '2026-11-10T19:00:00Z', '2026-11-03T16:00:00Z'),
+      event('second-edited', 'Board Games Club', '2026-11-17T19:00:00Z', '2026-11-03T16:05:00Z'),
+    ]);
+
+    expect(picked.map((e) => e.id)).toEqual(['second-edited']);
+  });
+
+  it('does not care which is latest-dated when nothing has been edited yet', () => {
+    // Fresh from the import every instance is identical, so any of them is
+    // the right answer; what matters is that there is exactly one.
+    const sameImport = '2026-10-02T20:00:00Z';
+    const picked = mostRecentPerTitle([
+      event('a', 'Board Games Club', '2026-11-10T19:00:00Z', sameImport),
+      event('b', 'Board Games Club', '2028-10-29T19:00:00Z', sameImport),
+    ]);
+
+    expect(picked).toHaveLength(1);
   });
 
   it('does not assume the input was sorted', () => {
@@ -49,6 +100,15 @@ describe('one row per title', () => {
     expect(picked.map((e) => e.id)).toEqual(['newest']);
   });
 
+  it('puts the one worked on most recently at the top of the list', () => {
+    const picked = mostRecentPerTitle([
+      event('yoga', 'Hatha Yoga', '2025-11-14T19:00:00Z', '2026-10-02T20:00:00Z'),
+      event('games', 'Board Games Club', '2026-11-10T19:00:00Z', '2026-11-03T16:00:00Z'),
+    ]);
+
+    expect(picked.map((e) => e.title)).toEqual(['Board Games Club', 'Hatha Yoga']);
+  });
+
   it('keeps separate titles apart', () => {
     const picked = mostRecentPerTitle([
       event('a', 'Board Games Club', '2026-11-10T19:00:00Z'),
@@ -58,7 +118,7 @@ describe('one row per title', () => {
     expect(picked).toHaveLength(2);
   });
 
-  it('puts the newest title first', () => {
+  it('puts the most recently touched title first', () => {
     const picked = mostRecentPerTitle([
       event('a', 'Board Games Club', '2026-11-10T19:00:00Z'),
       event('b', 'Improv Club', '2027-05-07T19:00:00Z'),
@@ -101,6 +161,7 @@ describe('what counts as the same title', () => {
       event('a', 'board games club', '2025-11-10T19:00:00Z'),
       event('b', 'Board Games Club', '2027-01-10T19:00:00Z'),
     ]);
+
 
     expect(picked.title).toBe('Board Games Club');
   });

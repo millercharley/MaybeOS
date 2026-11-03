@@ -46,7 +46,7 @@ describe('finding the event to copy', () => {
   it('shows the date each title last ran, with the year', () => {
     // Two similar names are told apart by when they ran, and these are years
     // apart by nature — "14 Oct" says nothing (SPC-23).
-    expect(picker).toMatch(/last on \{lastRan/);
+    expect(picker).toMatch(/\{lastRan\(event\.startTime\)\}/);
     expect(picker).toMatch(/year: 'numeric'/);
   });
 });
@@ -56,17 +56,74 @@ describe('where the option appears', () => {
     expect(form).toMatch(/<ReuseEvent/);
   });
 
-  it('is not offered while editing an event', () => {
-    /*
-      Editing is correcting this one. A control that silently replaced its
-      description with another event's would be a trap on the screen somebody
-      opened to fix a typo.
-    */
-    expect(form).toMatch(/\{!initial\?\.id && orgId && token && \(/);
+  /*
+    Charley: "it's actually important to offer the ability to clone the info
+    while in the Edit mode for an event. The use case is for events that were
+    migrated into a community from a calendar. All migrated events will need
+    editing. I can imagine the member editing one event, then using the clone
+    option to pre-fill the fields, image, etc. for each additional cloned
+    event."
+
+    It was held back from the edit form on the grounds that a control
+    replacing a description would be a trap. Overruled, and rightly: it is
+    two deliberate clicks deep, it writes nothing, and without it the 767
+    events MaybeItsFate imported are 767 descriptions typed from scratch.
+  */
+  it('is offered while editing too, which is where a migration is fixed', () => {
+    expect(form).toMatch(/\{orgId && token && \(/);
+    expect(form).not.toMatch(/\{!initial\?\.id && orgId && token/);
+  });
+
+  it('tells the picker which mode it is in', () => {
+    expect(form).toMatch(/editing=\{Boolean\(initial\?\.id\)\}/);
+  });
+
+  it('never offers the event being edited as its own source', () => {
+    // Filling a form from the event it is already showing changes nothing,
+    // and an option that does nothing reads as a broken one.
+    expect(form).toMatch(/excludeId=\{initial\?\.id\}/);
+    expect(picker).toMatch(/excludeId,/);
+  });
+
+  it('promises nothing is written until the member saves', () => {
+    expect(picker).toMatch(/Nothing is written until you save/);
+  });
+
+  it('calls itself something different when filling in an existing event', () => {
+    expect(picker).toMatch(/Fill these in from another event/);
+    expect(picker).toMatch(/Start from a previous event/);
   });
 
   it('says afterwards which event it came from', () => {
     expect(form).toMatch(/Filled in from/);
+  });
+});
+
+/**
+ * Which of 46 identically-titled events is offered (EVT-48).
+ *
+ * The migration workflow decides this. Ordered by `startTime`, the single
+ * option for "Board Games Club" was its latest-dated instance — which, part
+ * way through editing 46 of them, is still the untouched import. The member
+ * would copy the junk they were replacing, forty-five times.
+ */
+describe('which one it offers', () => {
+  it('picks the one last written to, not the one dated latest', () => {
+    const rule = readFileSync(
+      join(__dirname, '..', '..', 'api', 'src', 'modules', 'events', 'reusable-events.ts'),
+      'utf8',
+    );
+
+    expect(rule).toMatch(/event\.updatedAt > existing\.updatedAt/);
+    expect(rule).not.toMatch(/event\.startTime > existing\.startTime/);
+  });
+
+  it('shows when it was last edited, so the member can see which one it is', () => {
+    expect(picker).toMatch(/edited \{timeAgo\(event\.updatedAt\)\}/);
+  });
+
+  it('still shows its date, so two similar names can be told apart', () => {
+    expect(picker).toMatch(/lastRan\(event\.startTime\)/);
   });
 });
 
@@ -128,9 +185,10 @@ describe('what it fills in', () => {
 });
 
 describe('the client', () => {
-  it('has a route that takes the search text', () => {
+  it('has a route that takes the search text and the event to leave out', () => {
     expect(api).toMatch(/events\/reusable/);
-    expect(api).toMatch(/encodeURIComponent\(q\)/);
+    expect(api).toMatch(/params\.set\('q', q\)/);
+    expect(api).toMatch(/params\.set\('exclude', excludeId\)/);
   });
 
   it('declares no address on a reused event', () => {

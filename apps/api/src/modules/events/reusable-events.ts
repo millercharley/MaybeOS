@@ -31,6 +31,8 @@ export interface ReusableCandidate {
   id: string;
   title: string;
   startTime: Date;
+  /** When it was last written to, which is what "most recent" turns on. */
+  updatedAt: Date;
 }
 
 /** `"  Board Games Club "` and `"board games club"` are the same event. */
@@ -39,11 +41,25 @@ const key = (title: string) => title.trim().toLowerCase();
 /**
  * The most recent event of each title, newest first.
  *
- * "Most recent" is the latest `startTime`, not the latest one that has already
- * happened: a weekly class running into 2028 has no past occurrence that is
- * more current than its future ones, and every date of one series carries the
- * same description anyway. Where two titles genuinely differ — last year's
- * blurb and this year's — the later date is the one worth copying.
+ * **"Most recent" is the one last written to, not the one with the latest
+ * date.** This was `startTime`, and it quietly broke the job this feature
+ * exists for.
+ *
+ * Charley: "All migrated events will need editing. I can imagine the member
+ * editing one event, then using the clone option to pre-fill the fields,
+ * image, etc. for each additional cloned event."
+ *
+ * Forty-six Board Games Clubs arrive from a calendar import with the same
+ * title and the same empty description, running to 2028. The member writes a
+ * real description on the one in November, saves, opens the next one — and by
+ * `startTime` the single option they are offered is the 2028 instance, which
+ * still carries the unedited import. They would copy the junk they are trying
+ * to replace, forty-five times.
+ *
+ * By `updatedAt`, the option is whichever one they last worked on, so the
+ * good version spreads. Before anybody has edited anything the instances are
+ * identical and the choice does not matter; the moment one of them is better,
+ * it is the one offered.
  *
  * The input is expected newest-first, which is how the query asks for it; this
  * does not assume it, because a sort order is a thing a later edit can change
@@ -54,12 +70,12 @@ export function mostRecentPerTitle<T extends ReusableCandidate>(events: T[]): T[
 
   for (const event of events) {
     const existing = best.get(key(event.title));
-    if (!existing || event.startTime > existing.startTime) {
+    if (!existing || event.updatedAt > existing.updatedAt) {
       best.set(key(event.title), event);
     }
   }
 
-  return [...best.values()].sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
+  return [...best.values()].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
 }
 
 /**

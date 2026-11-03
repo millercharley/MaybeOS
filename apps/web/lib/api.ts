@@ -1780,11 +1780,18 @@ class ApiClient {
      * Theirs to host or co-host, one row per title, newest first. `q`
      * searches the titles.
      */
-    reusable: (orgId: string, token: string, q?: string) =>
-      this.request<ReusableEvent[]>(
-        `/orgs/${orgId}/events/reusable${q ? `?q=${encodeURIComponent(q)}` : ''}`,
+    reusable: (orgId: string, token: string, q?: string, excludeId?: string) => {
+      const params = new URLSearchParams();
+      if (q) params.set('q', q);
+      // The event being edited is never offered as its own source (EVT-48).
+      if (excludeId) params.set('exclude', excludeId);
+      const query = params.toString();
+
+      return this.request<ReusableEvent[]>(
+        `/orgs/${orgId}/events/reusable${query ? `?${query}` : ''}`,
         { token },
-      ),
+      );
+    },
 
     /**
      * One member's events, grouped by what the co-op calls them (EVT-47).
@@ -4715,6 +4722,8 @@ export interface ReusableEvent {
   id: string;
   title: string;
   startTime: string;
+  /** When it was last written to — what "most recent" turns on (EVT-48). */
+  updatedAt: string;
   description?: string | null;
   richDescription?: string | null;
   imageUrl?: string | null;

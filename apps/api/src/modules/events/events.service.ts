@@ -2496,7 +2496,12 @@ export class EventsService {
    * what an unfiltered picker is for; with one, the filter runs in the
    * database first and the cap stops mattering.
    */
-  async listReusableEvents(orgId: string, userId: string, q?: string) {
+  async listReusableEvents(
+    orgId: string,
+    userId: string,
+    q?: string,
+    excludeId?: string,
+  ) {
     const search = (q ?? '').trim();
 
     const events = await this.prisma.event.findMany({
@@ -2506,13 +2511,21 @@ export class EventsService {
         // Title only. This is a search for an event somebody already ran, and
         // they are looking for it by what it is called.
         ...(search ? { title: { contains: search, mode: 'insensitive' } } : {}),
+        // Never the event being edited (EVT-48). Filling a form from the
+        // event it is already showing changes nothing, and an option that
+        // does nothing reads as a broken one.
+        ...(excludeId ? { id: { not: excludeId } } : {}),
       },
-      orderBy: { startTime: 'desc' },
+      // Last written to, not latest dated: see `mostRecentPerTitle`. A member
+      // working through 46 migrated Board Games Clubs needs the one they just
+      // wrote, not the one in 2028 that still holds the import.
+      orderBy: { updatedAt: 'desc' },
       take: 400,
       select: {
         id: true,
         title: true,
         startTime: true,
+        updatedAt: true,
         // Everything the form asks except when and where (EVT-48). Listed
         // rather than spread so that a column added to `Event` has to be
         // thought about before it starts travelling onto new events.

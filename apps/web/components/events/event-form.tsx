@@ -402,25 +402,46 @@ export function EventForm({
       )}
 
       {/*
-        Start from one they already ran (EVT-48).
+        Start from one they already ran, or fill this one in from another
+        (EVT-48).
 
-        Only when making something new. Editing an event is correcting this
-        one, and a control that silently replaced its description with
-        another event's would be a trap on the screen somebody opened to fix
-        a typo.
+        Held back from the edit form at first, on the grounds that editing is
+        correcting *this* event and a control that replaced its description
+        would be a trap. Charley overruled it, with the case that makes this
+        feature earn its keep:
 
-        Shown on the publish-from-a-booking form too, where it composes
-        rather than collides: this copies everything except the date and the
-        room, which are the two things that booking is supplying.
+          "it's actually important to offer the ability to clone the info
+          while in the Edit mode for an event. The use case is for events that
+          were migrated into a community from a calendar. All migrated events
+          will need editing. I can imagine the member editing one event, then
+          using the clone option to pre-fill the fields, image, etc. for each
+          additional cloned event. Also, using the clone feature does NOT
+          create the event, it only pre-fills fields."
+
+        He is right, and the trap was overstated: it is two deliberate clicks
+        deep, it writes nothing, and every field it touches is visible and
+        editable before the member saves. Without it, the 767 events
+        MaybeItsFate imported are 767 descriptions typed from scratch.
+
+        Shown on the publish-from-a-booking form too, where it composes rather
+        than collides: it copies everything except the date and the room,
+        which are the two things that booking is supplying.
       */}
-      {!initial?.id && orgId && token && (
-        <ReuseEvent orgId={orgId} token={token} onPick={fillFrom} />
+      {orgId && token && (
+        <ReuseEvent
+          orgId={orgId}
+          token={token}
+          onPick={fillFrom}
+          editing={Boolean(initial?.id)}
+          excludeId={initial?.id}
+        />
       )}
 
       {reusedFrom && (
         <p className="text-sm text-gray-600">
           Filled in from <span className="font-medium">{reusedFrom}</span>. Change anything
-          you like — the date and the room are still yours to set.
+          you like — the date and the room are still{' '}
+          {initial?.id ? 'this event’s own' : 'yours to set'}.
         </p>
       )}
 

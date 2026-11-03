@@ -258,7 +258,8 @@ describe('EventsService — transferring events to a new host', () => {
    * read one person's events out of `event.findMany`.
    */
   describe('events a member can reuse', () => {
-    const reusable = (q?: string) => service.listReusableEvents(ORG, FROM, q);
+    const reusable = (q?: string, exclude?: string) =>
+      service.listReusableEvents(ORG, FROM, q, exclude);
     const query = () => prisma.event.findMany.mock.calls[0][0];
 
     it('finds the ones they host and the ones they co-host', () => {
@@ -290,18 +291,63 @@ describe('EventsService — transferring events to a new host', () => {
       expect(query().where.title).toBeUndefined();
     });
 
-    it('takes the newest first, since one per title keeps the most recent', async () => {
+    it('takes the last written to first, not the latest dated', async () => {
+      /*
+        Charley: "All migrated events will need editing. I can imagine the
+        member editing one event, then using the clone option to pre-fill the
+        fields… for each additional cloned event."
+
+        By `startTime` the one option offered for a title was its
+        latest-dated instance, which part way through editing 46 of them is
+        still the untouched import — so they would copy the junk they are
+        replacing, forty-five times.
+      */
       await reusable();
 
-      expect(query().orderBy).toEqual({ startTime: 'desc' });
+      expect(query().orderBy).toEqual({ updatedAt: 'desc' });
+    });
+
+    it('reads the edit time, which is what the collapse turns on', async () => {
+      await reusable();
+
+      expect(query().select.updatedAt).toBe(true);
+    });
+
+    it('never offers the event being edited as its own source', async () => {
+      // Filling a form from the event it is already showing changes nothing,
+      // and an option that does nothing reads as a broken one.
+      await reusable(undefined, 'evt-being-edited');
+
+      expect(query().where.id).toEqual({ not: 'evt-being-edited' });
+    });
+
+    it('asks for no exclusion when a new event is being made', async () => {
+      await reusable();
+
+      expect(query().where.id).toBeUndefined();
     });
 
     it('collapses the dates of one event into a single option', async () => {
       // 46 Board Games Clubs are one thing the co-op runs.
       prisma.event.findMany.mockResolvedValue([
-        { id: 'a', title: 'Board Games Club', startTime: new Date('2028-10-29T19:00:00Z') },
-        { id: 'b', title: 'Board Games Club', startTime: new Date('2025-01-27T19:00:00Z') },
-        { id: 'c', title: 'Improv Club', startTime: new Date('2027-05-07T19:00:00Z') },
+        {
+          id: 'a',
+          title: 'Board Games Club',
+          startTime: new Date('2028-10-29T19:00:00Z'),
+          updatedAt: new Date('2026-11-03T16:00:00Z'),
+        },
+        {
+          id: 'b',
+          title: 'Board Games Club',
+          startTime: new Date('2025-01-27T19:00:00Z'),
+          updatedAt: new Date('2026-10-02T20:00:00Z'),
+        },
+        {
+          id: 'c',
+          title: 'Improv Club',
+          startTime: new Date('2027-05-07T19:00:00Z'),
+          updatedAt: new Date('2026-10-02T20:00:00Z'),
+        },
       ]);
 
       const list = await reusable();

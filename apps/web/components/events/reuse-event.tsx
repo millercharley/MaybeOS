@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Copy, Loader2, Search } from 'lucide-react';
 import { api, type ReusableEvent } from '@/lib/api';
+import { timeAgo } from '@/lib/relative-time';
 
 /**
  * Start a new event from one you already ran (EVT-48).
@@ -18,17 +19,34 @@ import { api, type ReusableEvent } from '@/lib/api';
  * until somebody opens it, and typing narrows it.
  *
  * **One row per title**, decided on the server: Board Games Club is 46 events
- * and one thing the co-op runs. The date shown is when that title last ran, so
- * two similar names can be told apart.
+ * and one thing the co-op runs. The row shows that one's date, so two similar
+ * names can be told apart, and when it was last edited — which is how the
+ * server picks it, and the thing a member working through a migrated series
+ * most needs to see.
+ *
+ * **Offered while editing, too.** Charley: "it's actually important to offer
+ * the ability to clone the info while in the Edit mode for an event… All
+ * migrated events will need editing. I can imagine the member editing one
+ * event, then using the clone option to pre-fill the fields, image, etc. for
+ * each additional cloned event." The worry this was held back for — somebody
+ * opening an event to fix a typo and having its description replaced — does
+ * not survive the control being two deliberate clicks deep and saving
+ * nothing.
  */
 export function ReuseEvent({
   orgId,
   token,
   onPick,
+  editing = false,
+  excludeId,
 }: {
   orgId: string;
   token: string;
   onPick: (event: ReusableEvent) => void;
+  /** Changes what this is called and what it promises, not what it does. */
+  editing?: boolean;
+  /** The event being edited, which is never offered as its own source. */
+  excludeId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -48,7 +66,12 @@ export function ReuseEvent({
       setLoading(true);
       setError('');
       try {
-        const list = await api.events.reusable(orgId, token, query.trim() || undefined);
+        const list = await api.events.reusable(
+          orgId,
+          token,
+          query.trim() || undefined,
+          excludeId,
+        );
         // Only the newest search may write: a slow early request landing
         // after a later one would replace the right answer with a stale one.
         if (mine === latest.current) setResults(list);
@@ -62,7 +85,7 @@ export function ReuseEvent({
     }, 250);
 
     return () => clearTimeout(id);
-  }, [open, query, orgId, token]);
+  }, [open, query, orgId, token, excludeId]);
 
   const lastRan = (iso: string) =>
     new Date(iso).toLocaleDateString(undefined, {
@@ -81,7 +104,7 @@ export function ReuseEvent({
         className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline"
       >
         <Copy size={14} aria-hidden="true" />
-        Start from a previous event
+        {editing ? 'Fill these in from another event' : 'Start from a previous event'}
       </button>
     );
   }
@@ -103,7 +126,9 @@ export function ReuseEvent({
 
       <p className="mt-1 text-xs text-gray-500">
         Everything but the date and the room is copied in, and you can change any of it
-        before saving.
+        {editing
+          ? ' before saving. Nothing is written until you save this event.'
+          : ' before saving.'}
       </p>
 
       <div className="relative mt-2">
@@ -156,7 +181,7 @@ export function ReuseEvent({
                     {event.title}
                   </span>
                   <span className="block text-xs text-gray-500">
-                    last on {lastRan(event.startTime)}
+                    {lastRan(event.startTime)} · edited {timeAgo(event.updatedAt)}
                   </span>
                 </span>
                 <span className="shrink-0 text-xs font-medium text-brand-600">Use this</span>
