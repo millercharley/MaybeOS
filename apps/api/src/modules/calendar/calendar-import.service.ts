@@ -777,22 +777,53 @@ export class CalendarImportService {
           endTime: entry.end,
           canceledAt: null,
           /*
-            Only a matched member, and only ever as a fill.
+            The host is not written here at all (CAL-14).
 
-            This read `...(host.hostId || host.hostEmail ? host : {})`, which
-            spreads `hostId: null` whenever the organiser is not a member —
-            so a re-import would have silently un-hosted every event an
-            organiser had assigned by hand, including the twelve Charley and
-            I had just matched to Bryn and Esker. The comment said it must
-            not wipe a host; the code wiped it.
+            This line said "only ever as a fill" and was not one. It read
+            `...(host.hostId ? { hostId: host.hostId, ... } : {})`, which
+            overwrites: every pass, for every entry whose organiser matches a
+            member, whatever anybody had set by hand.
 
-            An unmatched organiser is still recorded, but only on the way in:
-            the create branch above. There is no safe way to fill a blank
-            name from an upsert without also being able to clear a real one.
+            Charley: "I switched the ownership of several events, and then now
+            I see them listed with me as the owner / host again. Is a sync with
+            the calendar reverting the owner / host?" It was. He moved 115
+            events to their real hosts at 18:14, and the 19:00 and 19:15
+            scheduler ticks put 57 of them back.
+
+            And it always chose him, necessarily. Google names the *calendar*
+            as the organiser of anything typed on a shared one, so `personFor`
+            falls through to the creator (CAL-07) — the person at the keyboard
+            when the co-op's calendar was filled in. The importer's answer to
+            "who runs this?" is therefore permanently "whoever typed it",
+            which is exactly the fact the transfer tool exists to correct.
+
+            An upsert cannot say "set this only if it is empty", so the fill
+            is a second statement below, conditioned on there being no host.
           */
-          ...(host.hostId ? { hostId: host.hostId, hostEmail: null, hostName: null } : {}),
         },
       });
+
+        /*
+          Fill a host in, never move one (CAL-14).
+
+          `updateMany` with `hostId: null` in the *where*, so the database
+          decides: an event somebody has assigned does not match, and no race
+          between the scheduler and an organiser pressing Transfer can lose
+          the organiser's answer. Only when a member was matched — an
+          unmatched organiser is recorded on the way in, by the create branch
+          above, and there is no safe way to fill a blank name from an upsert
+          without also being able to clear a real one.
+        */
+        if (host.hostId) {
+          await this.prisma.event.updateMany({
+            where: {
+              orgId: org.id,
+              googleEventId: entry.googleEventId,
+              hostId: null,
+            },
+            data: { hostId: host.hostId, hostEmail: null, hostName: null },
+          });
+        }
 
         written += 1;
       } catch (error) {

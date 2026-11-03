@@ -63,6 +63,8 @@ function build(overrides: Record<string, unknown> = {}) {
     },
     event: {
       upsert: jest.fn().mockResolvedValue({}),
+      // Filling a host in where there is none (CAL-14).
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
       // Which of the candidate slugs are already taken (CAL-04). None, here.
       findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue(null),
@@ -438,5 +440,103 @@ describe('an entry that will not go in', () => {
 
     expect(events.note).toMatch(/could not be imported/);
     expect(events.note).toContain('Board Game Night');
+  });
+});
+
+/**
+ * A sync must not decide who runs an event (CAL-14).
+ *
+ * Charley: "I switched the ownership of several events, and then now I see
+ * them listed with me as the owner / host again. Is a sync with the calendar
+ * reverting the owner / host?"
+ *
+ * It was. He moved 115 events to their real hosts at 18:14; the scheduler's
+ * 19:00 and 19:15 ticks put 57 of them back. The update branch read
+ * `...(host.hostId ? { hostId: host.hostId, ... } : {})` under a comment
+ * saying "only ever as a fill", which is not what that does — it overwrites,
+ * every pass, for every entry whose organiser matches a member.
+ *
+ * And it always chose him, necessarily: Google names the *calendar* as the
+ * organiser of anything typed on a shared one, so `personFor` falls through
+ * to the creator (CAL-07) — whoever was at the keyboard when the co-op's
+ * calendar was filled in. The importer's answer to "who runs this?" is
+ * permanently "whoever typed it", which is the fact the transfer tool exists
+ * to correct.
+ */
+describe('who the importer says runs an event', () => {
+  const updateBranch = (prisma: any) =>
+    prisma.event.upsert.mock.calls[0][0].update;
+
+  it('never writes a host in the update branch', async () => {
+    const { service, prisma } = build();
+
+    await service.run('org-1', { dryRun: false });
+
+    expect(updateBranch(prisma)).not.toHaveProperty('hostId');
+    expect(updateBranch(prisma)).not.toHaveProperty('hostEmail');
+    expect(updateBranch(prisma)).not.toHaveProperty('hostName');
+  });
+
+  it('still follows the calendar for the things the calendar owns', async () => {
+    // Title and times are Google's; everything the co-op has added here —
+    // a picture, tags, a longer description, a host — is not.
+    const { service, prisma } = build();
+
+    await service.run('org-1', { dryRun: false });
+
+    expect(updateBranch(prisma)).toMatchObject({
+      title: 'Board Game Night',
+      canceledAt: null,
+    });
+  });
+
+  it('fills a host in only where the event has none', async () => {
+    /*
+      `hostId: null` in the *where*, so the database decides. An event
+      somebody has assigned does not match, and no race between the scheduler
+      and an organiser pressing Transfer can lose the organiser's answer.
+    */
+    const { service, prisma } = build();
+
+    await service.run('org-1', { dryRun: false });
+
+    expect(prisma.event.updateMany).toHaveBeenCalledWith({
+      where: { orgId: 'org-1', googleEventId: 'e1', hostId: null },
+      data: { hostId: 'user-1', hostEmail: null, hostName: null },
+    });
+  });
+
+  it('scopes that fill to the co-op and to the one entry', async () => {
+    const { service, prisma } = build();
+
+    await service.run('org-1', { dryRun: false });
+
+    for (const call of prisma.event.updateMany.mock.calls) {
+      expect(call[0].where.orgId).toBe('org-1');
+      expect(call[0].where.googleEventId).toBeTruthy();
+    }
+  });
+
+  it('does not try to fill when the organiser matches nobody', async () => {
+    // An unmatched organiser is recorded on the way in, by the create
+    // branch: there is no safe way to fill a blank name from an upsert
+    // without also being able to clear a real one.
+    const { service, prisma } = build();
+    prisma.userOrg.findMany.mockResolvedValue([]);
+
+    await service.run('org-1', { dryRun: false });
+
+    expect(prisma.event.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('still names a matched member on the way in', async () => {
+    const { service, prisma } = build();
+
+    await service.run('org-1', { dryRun: false });
+
+    expect(prisma.event.upsert.mock.calls[0][0].create).toMatchObject({
+      hostId: 'user-1',
+      hostEmail: null,
+    });
   });
 });
