@@ -216,7 +216,15 @@ export class EventsService {
         capacity:
           dto.capacity ?? booking.expectedAttendance ?? booking.room.capacity ?? undefined,
         category: dto.category ?? booking.categories[0],
-        tags: booking.categories,
+        // `dto.tags` was not accepted here while `dto.category` was, so a
+        // member who changed the kind on the publish form moved the singular
+        // field and left this one holding the booking's.
+        tags: dto.tags ?? booking.categories,
+        waitlistEnabled: dto.waitlistEnabled,
+        suggestedCents: dto.suggestedCents,
+        // Who else is running it (EVT-36). `create` reads this from the same
+        // DTO shape, and refuses anybody who is not a member of the co-op.
+        coHostIds: dto.coHostIds,
         /*
           Any other rooms the form picked (SPC-31).
 
@@ -228,15 +236,19 @@ export class EventsService {
         imageUrl: dto.imageUrl,
         imageCredit: dto.imageCredit,
         imageCreditUrl: dto.imageCreditUrl,
+        imageFocusY: dto.imageFocusY,
       } as CreateEventDto,
       userId,
       {
         bookingId: booking.id,
         publish: dto.publish ?? true,
-        hasCost: booking.hasCost,
+        // The booking's answer unless the form sent a different one. Both of
+        // these are shown on the publish form and were read-only in effect:
+        // whatever the member chose there, the booking's answer won.
+        hasCost: dto.hasCost ?? booking.hasCost,
         // Carried like every other booking answer (EVT-17): a 21+ booking
         // published to the public must not arrive there saying nothing.
-        maturityLevel: booking.maturityLevel,
+        maturityLevel: dto.maturityLevel ?? booking.maturityLevel,
       },
     );
   }
@@ -253,6 +265,19 @@ export class EventsService {
     } = {},
   ) {
     const slug = toSlug(dto.title, dto.startTime);
+
+    /*
+      Who may be named a co-host, before anything is written.
+
+      Before the write rather than after: a refused co-host must not leave a
+      half-made event behind for somebody to find and wonder about. The host
+      is filtered out first for the same reason the nested write below does
+      it — "hosted by Ada, with Ada".
+    */
+    const wantedCoHosts = [...new Set(dto.coHostIds ?? [])].filter(
+      (id) => id !== (dto.hostId ?? userId),
+    );
+    await this.requireCoHostsAreMembers(orgId, wantedCoHosts);
 
     // Ensure slug uniqueness within the org
     const existing = await this.prisma.event.findUnique({
@@ -308,13 +333,12 @@ export class EventsService {
         // What they suggest at the door (EVT-34). Only meaningful alongside
         // `hasCost`, and optional even then.
         suggestedCents: dto.suggestedCents ?? null,
-        // Everybody else running it, named on the same form (EVT-36).
-        ...(dto.coHostIds?.length
+        // Everybody else running it, named on the same form (EVT-36). The
+        // list checked above, not the raw one off the request.
+        ...(wantedCoHosts.length
           ? {
               coHosts: {
-                create: [...new Set(dto.coHostIds)]
-                  .filter((id) => id !== (dto.hostId ?? userId))
-                  .map((id) => ({ userId: id, addedById: userId })),
+                create: wantedCoHosts.map((id) => ({ userId: id, addedById: userId })),
               },
             }
           : {}),
@@ -2291,6 +2315,39 @@ export class EventsService {
    * The host is never a co-host of their own event, and nobody who is not a
    * member of this co-op can be either.
    */
+  /**
+   * The ones of `userIds` who belong to this co-op, refusing if any does not.
+   *
+   * Pulled out of `setCoHosts` because `create` wrote its co-hosts inline and
+   * therefore checked nothing: a nested `coHosts: { create: ... }` takes any
+   * user id that exists. A co-host can edit an event and see who is coming
+   * (`canEditEvent`), so that was a way to hand somebody from another co-op
+   * rights inside this one — the SEC-04 family. It was only reachable by an
+   * organiser while the form sent `coHostIds` for organisers alone; members
+   * send it now.
+   */
+  private async requireCoHostsAreMembers(
+    orgId: string,
+    userIds: string[],
+  ): Promise<Set<string>> {
+    if (userIds.length === 0) return new Set();
+
+    const members = await this.prisma.userOrg.findMany({
+      where: { orgId, userId: { in: userIds } },
+      select: { userId: true },
+    });
+    const allowed = new Set(members.map((m) => m.userId));
+
+    const missing = userIds.filter((id) => !allowed.has(id));
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `${missing.length === 1 ? 'Somebody' : 'Some of the people'} you added is not a member of this co-op.`,
+      );
+    }
+
+    return allowed;
+  }
+
   private async setCoHosts(
     orgId: string,
     eventId: string,
@@ -2299,21 +2356,7 @@ export class EventsService {
     addedById: string,
   ) {
     const unique = [...new Set(wanted)].filter((id) => id !== hostId);
-
-    const members = unique.length
-      ? await this.prisma.userOrg.findMany({
-          where: { orgId, userId: { in: unique } },
-          select: { userId: true },
-        })
-      : [];
-    const allowed = new Set(members.map((m) => m.userId));
-
-    const missing = unique.filter((id) => !allowed.has(id));
-    if (missing.length > 0) {
-      throw new BadRequestException(
-        `${missing.length === 1 ? 'Somebody' : 'Some of the people'} you added is not a member of this co-op.`,
-      );
-    }
+    const allowed = await this.requireCoHostsAreMembers(orgId, unique);
 
     await this.prisma.$transaction([
       this.prisma.eventCoHost.deleteMany({

@@ -31,6 +31,8 @@ export default function MyEventsPage() {
   const orgSlug = useParams()?.orgSlug as string;
   const token = useAuthStore((s) => s.token);
   const orgId = useAuthStore((s) => s.currentOrgId);
+  /** Who is looking, so the co-host picker does not offer them their own event. */
+  const viewerId = useAuthStore((s) => s.user?.id);
 
   const [events, setEvents] = useState<HostedEvent[]>([]);
   // The form quotes real fees, so it needs the co-op's plan and whether
@@ -285,6 +287,7 @@ export default function MyEventsPage() {
             requireRoom={Boolean(org?.requireEventRoom)}
             orgId={orgId ?? undefined}
             token={token ?? undefined}
+            viewerId={viewerId}
           />
         </section>
       )}

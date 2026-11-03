@@ -145,12 +145,45 @@ describe('co-hosts on the form', () => {
     expect(form).toMatch(/current\.filter\(\(c\) => c\.id !== co\.id\)/);
   });
 
-  it('does not offer the host or anybody already added', () => {
-    expect(form).toMatch(/exclude=\{\[\.\.\.\(hostId \? \[hostId\] : \[\]\), \.\.\.coHosts\.map/);
+  it('does not offer the host, the viewer, or anybody already added', () => {
+    expect(form).toMatch(/\.\.\.\(hostId \? \[hostId\] : \[\]\)/);
+    expect(form).toMatch(/\.\.\.coHosts\.map\(\(c\) => c\.id\)/);
+    // The member form leaves `hostId` empty — they are the host by virtue of
+    // making it — so without this the picker offered them themselves and the
+    // save came back "They are already the host of this event."
+    expect(form).toMatch(/\.\.\.\(viewerId && !hostId \? \[viewerId\] : \[\]\)/);
   });
 
   it('sends the whole list, so removing somebody is a save', () => {
     expect(form).toMatch(/coHostIds: coHosts\.map\(\(c\) => c\.id\)/);
+  });
+
+  /*
+    Charley, 2026-11-03: "As a member, I want to add a co-host to an event."
+
+    They could not. The control sat inside the block gated on `hosts` — the
+    roster an organiser picks a host from, deliberately not passed on the
+    member form because a member always hosts what they make — so naming a
+    co-host went with it, and `coHostIds` was dropped from the submission on
+    the same condition.
+  */
+  it('offers co-hosts to a member, who is given no host roster', () => {
+    const coHostBlock = form.slice(form.indexOf('Anyone else running it?'));
+
+    // The section opens on `orgId`, not on `hosts`.
+    expect(form).toMatch(/\{orgId && \(\n\s*<div className=\{hosts \?/);
+    expect(coHostBlock).toMatch(/Search for a co-host…/);
+  });
+
+  it('sends them on a member\'s own event too', () => {
+    expect(form).toMatch(/\.\.\.\(orgId \? \{ coHostIds: coHosts\.map/);
+    expect(form).not.toMatch(/\.\.\.\(hosts \? \{ coHostIds/);
+  });
+
+  it('still asks only an organiser who is running it', () => {
+    // Handing an event to somebody else stays an organiser's control; being
+    // asked to help run one is not the power to give it away.
+    expect(form).toMatch(/\{hosts && orgId && \(/);
   });
 
   it('starts from whoever is already on the event', () => {

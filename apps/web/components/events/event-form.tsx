@@ -102,6 +102,7 @@ export function EventForm({
   canSellTickets = false,
   requireRoom = false,
   hosts,
+  viewerId,
   orgId,
   token,
 }: {
@@ -127,6 +128,12 @@ export function EventForm({
    * appear rather than appearing and being refused.
    */
   hosts?: { id: string; name: string }[];
+  /**
+   * Who is filling the form in, so the co-host picker does not offer them
+   * their own event. Only needed where `hosts` is absent — the member form,
+   * where the viewer is the host and `hostId` is therefore empty.
+   */
+  viewerId?: string;
   /**
    * Needed to offer a picture (EVT-22): uploading goes to this co-op's
    * folder, and searching Unsplash goes through this server's key. Omit them
@@ -322,8 +329,11 @@ export function EventForm({
       maturityLevel,
       priceCents,
       ...(hosts && hostId ? { hostId } : {}),
-      // The whole list, so removing somebody is a save (EVT-36).
-      ...(hosts ? { coHostIds: coHosts.map((c) => c.id) } : {}),
+      // The whole list, so removing somebody is a save (EVT-36). Keyed on
+      // `orgId`, which is what decides whether the control was on screen —
+      // it was `hosts`, so a member's co-hosts were collected by the form and
+      // silently dropped here.
+      ...(orgId ? { coHostIds: coHosts.map((c) => c.id) } : {}),
       // Likewise the rooms (SPC-27).
       ...(orgId ? { bookingIds: rooms.map((r) => r.id) } : {}),
       // Cleared when a reservation is attached: that already says which
@@ -490,54 +500,80 @@ export function EventForm({
           <p className="mt-1 text-xs text-gray-500">
             They get the post-event follow-up and can edit the event themselves.
           </p>
+        </div>
+      )}
 
-          {/* Co-hosts, on the same form (EVT-36). They were only on the
-              event's own page, so naming them while making an event meant
-              saving it and going to find it. */}
-          <div className="mt-4 border-t border-gray-100 pt-4">
-            <span className="mb-1 block text-sm font-medium text-gray-900">
-              Anyone else running it?
-            </span>
+      {/*
+        Anyone else running it (EVT-36).
 
-            {coHosts.length > 0 && (
-              <ul className="mb-2 flex flex-wrap gap-2">
-                {coHosts.map((co) => (
-                  <li
-                    key={co.id}
-                    className="inline-flex items-center gap-2 rounded-full border border-gray-200 py-1 pl-3 pr-2 text-sm"
+        Charley, 2026-11-03: "As a member, I want to add a co-host to an
+        event." They could not. This sat inside the block above, which is
+        gated on `hosts` — the roster an organiser picks a host from, and
+        deliberately not passed on the member form, because a member always
+        hosts what they make. Naming a co-host went with it, so the one person
+        who most needs help running their own evening was the one person who
+        could not ask for it, and `coHostIds` was dropped from the submission
+        for the same reason.
+
+        Nothing on the server had to change: `canManageHosts` has always
+        allowed the host and the creator, which on a member's own event is
+        them.
+      */}
+      {orgId && (
+        <div className={hosts ? 'border-t border-gray-100 pt-4' : undefined}>
+          <span className="mb-1 block text-sm font-medium text-gray-900">
+            Anyone else running it?
+          </span>
+
+          {coHosts.length > 0 && (
+            <ul className="mb-2 flex flex-wrap gap-2">
+              {coHosts.map((co) => (
+                <li
+                  key={co.id}
+                  className="inline-flex items-center gap-2 rounded-full border border-gray-200 py-1 pl-3 pr-2 text-sm"
+                >
+                  {co.name}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${co.name}`}
+                    onClick={() => setCoHosts((current) => current.filter((c) => c.id !== co.id))}
+                    className="text-gray-400 hover:text-red-700"
                   >
-                    {co.name}
-                    <button
-                      type="button"
-                      aria-label={`Remove ${co.name}`}
-                      onClick={() => setCoHosts((current) => current.filter((c) => c.id !== co.id))}
-                      className="text-gray-400 hover:text-red-700"
-                    >
-                      ×
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
 
-            <MemberPicker
-              orgId={orgId}
-              placeholder="Search for a co-host…"
-              exclude={[...(hostId ? [hostId] : []), ...coHosts.map((c) => c.id)]}
-              onPick={(member) =>
-                setCoHosts((current) =>
-                  current.some((c) => c.id === member.user.id)
-                    ? current
-                    : [...current, { id: member.user.id, name: member.user.name ?? 'Member' }],
-                )
-              }
-            />
+          <MemberPicker
+            orgId={orgId}
+            placeholder="Search for a co-host…"
+            /*
+              Never the host, and never the member looking at the form. On
+              the member form `hostId` is empty — they are the host by
+              virtue of making it — so without `viewerId` the picker offered
+              them themselves, and the server would then refuse the save
+              with "They are already the host of this event."
+            */
+            exclude={[
+              ...(hostId ? [hostId] : []),
+              ...(viewerId && !hostId ? [viewerId] : []),
+              ...coHosts.map((c) => c.id),
+            ]}
+            onPick={(member) =>
+              setCoHosts((current) =>
+                current.some((c) => c.id === member.user.id)
+                  ? current
+                  : [...current, { id: member.user.id, name: member.user.name ?? 'Member' }],
+              )
+            }
+          />
 
-            <p className="mt-1 text-xs text-gray-500">
-              They can edit the event and see who is coming, but not hand it to somebody
-              else.
-            </p>
-          </div>
+          <p className="mt-1 text-xs text-gray-500">
+            They can edit the event and see who is coming, but not hand it to somebody
+            else.
+          </p>
         </div>
       )}
 

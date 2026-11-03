@@ -52,6 +52,7 @@ describe('EventsService — member events', () => {
     expectedAttendance: null,
     hasCost: false,
     categories: [],
+    maturityLevel: 'ALL_AGES',
     ...over,
   });
 
@@ -66,6 +67,8 @@ describe('EventsService — member events', () => {
         update: jest.fn().mockResolvedValue({ id: 'event-1' }),
       },
       booking: { findFirst: jest.fn() },
+      // The co-op's roster, which a named co-host is checked against.
+      userOrg: { findMany: jest.fn().mockResolvedValue([]) },
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -153,6 +156,149 @@ describe('EventsService — member events', () => {
       await service.createFromBooking(ORG, 'booking-1', MEMBER, false, {});
 
       expect(prisma.event.create.mock.calls[0][0].data.capacity).toBe(8);
+    });
+
+    /*
+      Charley, 2026-11-03: "All data already confirmed in my room reservation
+      should sync to the new event form."
+
+      The inheritance tests above are the half that worked. This is the half
+      that did not: the form shows these questions with the reservation's
+      answers in them now, so what it sends back has to be able to win — a
+      member who corrects the maturity rating on the way out was previously
+      overruled by the booking, silently, by a DTO that did not accept the
+      field.
+    */
+    describe('and what the publish form sends instead', () => {
+      it('lets the kinds be changed, moving both fields together', async () => {
+        // `category` was accepted here and `tags` was not, so changing the
+        // kind rewrote one and left the other holding the booking's.
+        prisma.booking.findFirst.mockResolvedValue(
+          booking({ categories: ['Social'] }),
+        );
+
+        await service.createFromBooking(ORG, 'booking-1', MEMBER, false, {
+          tags: ['Conversation'],
+          category: 'Conversation',
+        });
+
+        const data = prisma.event.create.mock.calls[0][0].data;
+        expect(data.tags).toEqual(['Conversation']);
+        expect(data.category).toBe('Conversation');
+      });
+
+      it('lets the maturity rating be corrected', async () => {
+        prisma.booking.findFirst.mockResolvedValue(
+          booking({ maturityLevel: 'ALL_AGES' }),
+        );
+
+        await service.createFromBooking(ORG, 'booking-1', MEMBER, false, {
+          maturityLevel: 'AGES_18_PLUS' as never,
+        });
+
+        expect(prisma.event.create.mock.calls[0][0].data.maturityLevel).toBe('AGES_18_PLUS');
+      });
+
+      it('lets whether it costs be corrected', async () => {
+        prisma.booking.findFirst.mockResolvedValue(booking({ hasCost: false }));
+
+        await service.createFromBooking(ORG, 'booking-1', MEMBER, false, {
+          hasCost: true,
+        });
+
+        expect(prisma.event.create.mock.calls[0][0].data.hasCost).toBe(true);
+      });
+
+      it('still falls back to the booking for anything it does not send', async () => {
+        // Absent means "the reservation's answer", which is what keeps a
+        // member who changes nothing from losing what they already said.
+        prisma.booking.findFirst.mockResolvedValue(
+          booking({ maturityLevel: 'AGES_21_PLUS', hasCost: true, categories: ['Music'] }),
+        );
+
+        await service.createFromBooking(ORG, 'booking-1', MEMBER, false, {});
+
+        expect(prisma.event.create.mock.calls[0][0].data).toMatchObject({
+          maturityLevel: 'AGES_21_PLUS',
+          hasCost: true,
+          tags: ['Music'],
+        });
+      });
+    });
+
+    /*
+      Who may be named a co-host, on the way in (EVT-36).
+
+      `create` wrote its co-hosts with a nested `coHosts: { create: ... }`,
+      which takes any user id that exists — it checked nothing, while
+      `setCoHosts` on the update path has always checked the roster. A
+      co-host can edit an event and see who is coming (`canEditEvent`), so
+      that was a way to give somebody from another co-op rights inside this
+      one: the SEC-04 family. It was reachable only by an organiser while the
+      form sent `coHostIds` for organisers alone, and members send it now.
+    */
+    describe('naming a co-host while creating', () => {
+      const EVENT = {
+        title: 'Repair Café',
+        startTime: '2027-04-05T14:00:00Z',
+        endTime: '2027-04-05T16:00:00Z',
+      };
+
+      it('refuses somebody who is not in the co-op, and writes nothing', async () => {
+        prisma.userOrg.findMany.mockResolvedValue([]);
+
+        await expect(
+          service.create(ORG, { ...EVENT, coHostIds: ['outsider'] } as never, MEMBER),
+        ).rejects.toBeInstanceOf(BadRequestException);
+
+        // Before the write, not after: a refused co-host must not leave a
+        // half-made event behind for somebody to find.
+        expect(prisma.event.create).not.toHaveBeenCalled();
+      });
+
+      it('accepts a member of the co-op', async () => {
+        prisma.userOrg.findMany.mockResolvedValue([{ userId: 'friend' }]);
+
+        await service.create(ORG, { ...EVENT, coHostIds: ['friend'] } as never, MEMBER);
+
+        expect(prisma.event.create.mock.calls[0][0].data.coHosts).toEqual({
+          create: [{ userId: 'friend', addedById: MEMBER }],
+        });
+      });
+
+      it('does not make the host a co-host of their own event', async () => {
+        prisma.userOrg.findMany.mockResolvedValue([{ userId: 'friend' }]);
+
+        await service.create(
+          ORG,
+          { ...EVENT, coHostIds: [MEMBER, 'friend'] } as never,
+          MEMBER,
+        );
+
+        // "hosted by Ada, with Ada". Filtered before the roster check too, so
+        // the creator is never looked up as somebody they added.
+        expect(prisma.event.create.mock.calls[0][0].data.coHosts.create).toEqual([
+          { userId: 'friend', addedById: MEMBER },
+        ]);
+      });
+
+      it('asks the roster nothing when nobody was named', async () => {
+        await service.create(ORG, EVENT as never, MEMBER);
+
+        expect(prisma.userOrg.findMany).not.toHaveBeenCalled();
+      });
+
+      it('scopes the roster lookup to this co-op', async () => {
+        // The whole point. An unscoped lookup would find the outsider and
+        // let them in.
+        prisma.userOrg.findMany.mockResolvedValue([{ userId: 'friend' }]);
+
+        await service.create(ORG, { ...EVENT, coHostIds: ['friend'] } as never, MEMBER);
+
+        expect(prisma.userOrg.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { orgId: ORG, userId: { in: ['friend'] } } }),
+        );
+      });
     });
 
     it('publishes it live, because a draft nobody can share is a dead end', async () => {
