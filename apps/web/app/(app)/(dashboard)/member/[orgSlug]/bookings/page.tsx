@@ -7,32 +7,10 @@ import Link from 'next/link';
 import { Loader2, AlertCircle, CheckCircle2, Copy, DoorOpen, CalendarClock, Megaphone, X } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Booking, ApiError } from '@/lib/api';
+import { bookingWhen as when } from '@/lib/booking-when';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
 import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 import { PageHeader } from '@/components/layout/page-header';
-
-/**
- * Times are shown in the reader's own timezone, unlike the booking emails,
- * which still send raw UTC (SPC-08). Doing it correctly here at least means
- * the app itself isn't lying about when a room is booked.
- */
-const fmt = new Intl.DateTimeFormat(undefined, {
-  weekday: 'short',
-  day: 'numeric',
-  month: 'short',
-  hour: 'numeric',
-  minute: '2-digit',
-});
-
-function when(startISO: string, endISO: string): string {
-  const start = new Date(startISO);
-  const end = new Date(endISO);
-  const endTime = new Intl.DateTimeFormat(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(end);
-  return `${fmt.format(start)} – ${endTime}`;
-}
 
 /** datetime-local wants "YYYY-MM-DDTHH:mm" in *local* time, not an ISO string. */
 function toLocalInput(iso: string): string {
@@ -254,7 +232,16 @@ export default function MemberBookingsPage() {
   }
 
   const live = (bookings ?? []).filter((b) => b.status === 'PENDING' || b.status === 'APPROVED');
-  const past = (bookings ?? []).filter((b) => b.status !== 'PENDING' && b.status !== 'APPROVED');
+  /*
+    Split by status, not by time — which is why this is no longer called
+    `past`. The server has already answered "upcoming or past"; what is left
+    to separate is a room you still hold from one you do not, and a booking
+    cancelled for next Tuesday is not a past booking. Under the Upcoming tab
+    these sat beneath a heading reading "Past & canceled".
+  */
+  const calledOff = (bookings ?? []).filter(
+    (b) => b.status !== 'PENDING' && b.status !== 'APPROVED',
+  );
 
   return (
     <div>
@@ -525,11 +512,11 @@ export default function MemberBookingsPage() {
         })}
       </div>
 
-      {past.length > 0 && (
+      {calledOff.length > 0 && (
         <>
-          <h2 className="mt-10 font-display text-lg">Past &amp; canceled</h2>
+          <h2 className="mt-10 font-display text-lg">Canceled &amp; not confirmed</h2>
           <div className="mt-3 grid gap-2">
-            {past.map((b) => {
+            {calledOff.map((b) => {
               const s = STATUS[b.status] ?? STATUS.CANCELED;
               return (
                 <div key={b.id} className="card opacity-70">

@@ -74,6 +74,33 @@ describe('what can be done to a booking', () => {
   });
 });
 
+describe('which year a reservation is in', () => {
+  /*
+    Charley, reading his own upcoming list: "I see Room reservations inside My
+    Bookings that have already past (ones in October for example) listed under
+    the upcoming tab." They had not passed — they were October *2028*, from
+    recurring series the import materialised years out, and the row said only
+    "Sat, 14 Oct".
+  */
+  it('formats the date through the helper that knows about years', () => {
+    expect(page).toMatch(/from '@\/lib\/booking-when'/);
+  });
+
+  it('does not format dates itself any more', () => {
+    // A second formatter on this page is how the year goes missing again.
+    expect(page).not.toMatch(/new Intl\.DateTimeFormat/);
+  });
+});
+
+describe('what is canceled is not what is past', () => {
+  it('does not head a list of canceled bookings with the word Past', () => {
+    // Under Upcoming, this section holds bookings called off for dates that
+    // have not arrived yet.
+    expect(page).not.toMatch(/Past &amp; canceled/);
+    expect(page).toMatch(/Canceled &amp; not confirmed/);
+  });
+});
+
 describe('the dashboard panel goes somewhere', () => {
   it('links each row to the bookings page', () => {
     // It was a dead list: dates with no way to reach what they described.
