@@ -177,11 +177,21 @@ export class EventsService {
   ) {
     const booking = await this.prisma.booking.findFirst({
       where: { id: bookingId, room: { orgId } },
-      include: { room: true, publishedEvent: { select: { id: true } }, event: { select: { id: true } } },
+      include: {
+        room: true,
+        publishedEvent: { select: { id: true } },
+        event: { select: { id: true } },
+        // Everybody else who may manage it (SPC-37).
+        coHosts: { select: { userId: true } },
+      },
     });
     if (!booking) throw new NotFoundException('Booking not found');
 
-    if (booking.userId !== userId && !isStaff) {
+    // Theirs, or one they were added to (SPC-37). Publishing a reservation as
+    // an event is managing the reservation, and a co-host manages it.
+    const theirs =
+      booking.userId === userId || booking.coHosts.some((c) => c.userId === userId);
+    if (!theirs && !isStaff) {
       throw new ForbiddenException('That booking is not yours');
     }
     // Either link counts: the old one-to-one and the new `eventId` (SPC-26)
@@ -2168,6 +2178,14 @@ export class EventsService {
                 {
                   OR: [
                     { isCoopHold: false, userId: { in: who.userIds } },
+                    // Reservations they were added to rather than made
+                    // (SPC-37). The refusal this list exists to avoid says
+                    // "Add them as a co-host first"; this is that advice
+                    // taking effect.
+                    {
+                      isCoopHold: false,
+                      coHosts: { some: { userId: { in: who.userIds } } },
+                    },
                     ...claimable,
                   ],
                 },
@@ -2232,7 +2250,15 @@ export class EventsService {
     const bookings = unique.length
       ? await this.prisma.booking.findMany({
           where: { id: { in: unique }, room: { orgId } },
-          select: { id: true, eventId: true, isCoopHold: true, status: true, userId: true },
+          select: {
+            id: true,
+            eventId: true,
+            isCoopHold: true,
+            status: true,
+            userId: true,
+            // Who else may manage it (SPC-37), which is part of whose it is.
+            coHosts: { select: { userId: true } },
+          },
         })
       : [];
 
@@ -2241,7 +2267,11 @@ export class EventsService {
     }
 
     for (const booking of bookings) {
-      const problem = attachProblem(booking, eventId, who);
+      const problem = attachProblem(
+        { ...booking, coHostIds: booking.coHosts.map((c) => c.userId) },
+        eventId,
+        who,
+      );
       if (problem) throw new BadRequestException(problem);
     }
 

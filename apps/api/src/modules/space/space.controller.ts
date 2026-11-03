@@ -27,6 +27,7 @@ import { OpeningHoursDto } from './dto/opening-hours.dto';
 import { ClosureDto } from './dto/closure.dto';
 import { ListBookingsQueryDto } from './dto/list-bookings.dto';
 import { RoomImageDto } from './dto/room-image.dto';
+import { BookingCoHostDto } from './dto/booking-co-host.dto';
 import { viewerFor } from '../../common/access/contact-visibility';
 
 
@@ -398,6 +399,41 @@ export class SpaceController {
       user.userId,
       isStaff(user, orgId),
     );
+  }
+
+  /**
+   * Who else may manage this reservation (SPC-37).
+   *
+   * Not `@Roles`: the answer is not a role. Whoever booked the room may say,
+   * and an organiser may, and the service decides — the same shape the
+   * event's host and co-host routes use.
+   */
+  @Post('bookings/:bookingId/co-hosts')
+  @ApiOperation({ summary: 'Add somebody who may manage this reservation' })
+  addBookingCoHost(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('bookingId', ParseUUIDPipe) bookingId: string,
+    @Body() dto: BookingCoHostDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.spaceService.addBookingCoHost(orgId, bookingId, dto.userId, {
+      userId: user.userId,
+      isStaff: isStaff(user, orgId),
+    });
+  }
+
+  @Delete('bookings/:bookingId/co-hosts/:userId')
+  @ApiOperation({ summary: 'Take somebody off this reservation' })
+  removeBookingCoHost(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('bookingId', ParseUUIDPipe) bookingId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.spaceService.removeBookingCoHost(orgId, bookingId, userId, {
+      userId: user.userId,
+      isStaff: isStaff(user, orgId),
+    });
   }
 
   @Get('my-bookings')

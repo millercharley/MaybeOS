@@ -8,6 +8,7 @@ import { Loader2, AlertCircle, CheckCircle2, Copy, DoorOpen, CalendarClock, Mega
 import { useAuthStore } from '@/lib/auth-store';
 import { api, Booking, ApiError } from '@/lib/api';
 import { bookingWhen as when } from '@/lib/booking-when';
+import { BookingCoHosts } from '@/components/rooms/booking-co-hosts';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
 import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 import { PageHeader } from '@/components/layout/page-header';
@@ -345,6 +346,20 @@ export default function MemberBookingsPage() {
                       {when(b.startTime, b.endTime)}
                     </span>
                   </p>
+
+                  {/* Who else may manage it (SPC-37). On the row rather than
+                      behind a click: the useful half says whether somebody
+                      else is on this, and a reservation two people run looked
+                      exactly like one person's. */}
+                  {orgId && token && (
+                    <BookingCoHosts
+                      orgId={orgId}
+                      token={token}
+                      booking={b}
+                      viewerId={user?.id}
+                      onChange={load}
+                    />
+                  )}
                 </div>
 
                 {movingId !== b.id && publishingId !== b.id && (

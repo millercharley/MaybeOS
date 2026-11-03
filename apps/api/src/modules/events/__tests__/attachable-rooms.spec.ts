@@ -170,8 +170,28 @@ describe('EventsService — reservations an event may claim', () => {
       prisma.user.findUnique.mockResolvedValue({ name: '  ' });
 
       const { where } = await queried();
-      expect(where.AND[0].OR).toHaveLength(1);
-      expect(where.AND[0].OR[0].userId).toBeDefined();
+
+      // Asserted by what the clause is, not by how many there are: the
+      // co-host clause joined this list in SPC-37, and counting made that a
+      // failure rather than a feature.
+      expect(where.AND[0].OR.find((c: { title?: unknown }) => c.title)).toBeUndefined();
+      expect(where.AND[0].OR.find((c: { userId?: unknown }) => c.userId)).toBeDefined();
+    });
+
+    /** Reservations they were added to rather than made (SPC-37). */
+    it('offers the ones they co-host, which is what the refusal told them to do', () => {
+      // `attachProblem` has always refused with "Add them as a co-host
+      // first", advice that worked in one direction only until a reservation
+      // could have co-hosts.
+      const coHosted = async () => {
+        const { where } = await queried();
+        return where.AND[0].OR.find((c: { coHosts?: unknown }) => c.coHosts);
+      };
+
+      return expect(coHosted()).resolves.toMatchObject({
+        isCoopHold: false,
+        coHosts: { some: { userId: { in: expect.arrayContaining(['u-me']) } } },
+      });
     });
 
     it('is not asked for at all when an organiser is looking', async () => {

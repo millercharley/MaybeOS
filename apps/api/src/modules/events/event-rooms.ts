@@ -49,6 +49,15 @@ export function attachProblem(
     isCoopHold: boolean;
     status: string;
     userId: string;
+    /**
+     * Everybody else who may manage the reservation (SPC-37).
+     *
+     * The refusal below has always said "Add them as a co-host first", which
+     * until co-hosts existed on a reservation you could only do to the event.
+     * Now it is true in both directions: a reservation the host co-hosts
+     * belongs to somebody running this event, so the event may claim it.
+     */
+    coHostIds?: string[];
   },
   eventId: string,
   who: AttachableWho,
@@ -62,7 +71,8 @@ export function attachProblem(
   if (booking.status === 'CANCELED' || booking.status === 'REJECTED') {
     return `That reservation is ${booking.status.toLowerCase()}, so the room is not held.`;
   }
-  if (!who.anyone && !who.userIds.includes(booking.userId)) {
+  const theirs = [booking.userId, ...(booking.coHostIds ?? [])];
+  if (!who.anyone && !theirs.some((id) => who.userIds.includes(id))) {
     return 'That reservation belongs to somebody who is not running this event. Add them as a co-host first.';
   }
 

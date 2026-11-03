@@ -13,6 +13,14 @@ import {
   quotaProblem,
   quotaWindow,
 } from './booking-limits';
+import {
+  bookingCoHostProblem,
+  canChangeBooking,
+  canManageBookingCoHosts,
+  COOP_HOLD_CANNOT_BE_SHARED,
+  NOT_YOURS_TO_SHARE,
+  NOT_YOUR_BOOKING,
+} from './booking-co-hosts';
 import { ContactViewer } from '../../common/access/contact-visibility';
 import { EmailService } from '../email/email.service';
 import { EventsService } from '../events/events.service';
@@ -1033,6 +1041,8 @@ export class SpaceService {
         room: {
           include: { availabilityRules: true, org: { select: { timezone: true } } },
         },
+        // Everybody else who may manage it (SPC-37).
+        coHosts: { select: { userId: true } },
       },
     });
 
@@ -1040,9 +1050,23 @@ export class SpaceService {
       throw new NotFoundException('Booking not found');
     }
 
-    // Members may act on their own bookings; staff and admins on any in the org.
-    if (booking.userId !== userId && !isStaff) {
-      throw new ForbiddenException('This is not your booking');
+    /*
+      Members may act on their own reservations, and on the ones they have
+      been added to (SPC-37); staff and admins on any in the org.
+
+      The co-host half is new. The rule it replaces was `booking.userId !==
+      userId`, which is why the member who books the Attic every Tuesday was
+      the only person who could move it even when two of them ran the
+      evening.
+    */
+    if (
+      !canChangeBooking(
+        { userId: booking.userId, coHostIds: booking.coHosts.map((c) => c.userId) },
+        userId,
+        isStaff,
+      )
+    ) {
+      throw new ForbiddenException(NOT_YOUR_BOOKING);
     }
 
     return booking;
@@ -1338,7 +1362,13 @@ export class SpaceService {
 
     return this.prisma.booking.findMany({
       where: {
-        userId,
+        /*
+          Theirs, or one they were added to (SPC-37).
+
+          The second half is most of the point of a co-host: two people run
+          the evening and only one of them could see the room was held.
+        */
+        OR: [{ userId }, { coHosts: { some: { userId } } }],
         room: { orgId },
         isCoopHold: false,
         // On `endTime`, not `startTime`: a booking you are in the middle of
@@ -1348,11 +1378,106 @@ export class SpaceService {
       },
       include: {
         room: { select: { id: true, name: true, locationId: true } },
+        /*
+          Who else is on it, and whose it is when it is not theirs.
+
+          Named rather than counted: a row reading "with 1 other" in a list of
+          your own reservations is a question, not an answer. The owner's name
+          only — no address, which is the rule the room calendar follows too.
+        */
+        coHosts: {
+          select: { userId: true, user: { select: { id: true, name: true } } },
+        },
+        user: { select: { id: true, name: true } },
       },
       // Soonest first when looking ahead; most recent first when looking
       // back. Both are "nearest to now".
       orderBy: { startTime: when === 'past' ? 'desc' : 'asc' },
     });
+  }
+
+  /**
+   * Who else may manage a reservation (SPC-37).
+   *
+   * Charley: "As a member, I want to add a co-host to a room reservation."
+   *
+   * Whoever booked the room decides, or an organiser. A co-host deliberately
+   * cannot: the person who asked for help stays the person who can un-ask,
+   * which is the same line `host-control.ts` draws on an event.
+   */
+  private async loadBookingForSharing(
+    orgId: string,
+    bookingId: string,
+    actorId: string,
+    isStaff: boolean,
+  ) {
+    const booking = await this.prisma.booking.findFirst({
+      // Through the room's org, so the org in the URL is actually checked
+      // against the booking's own — the hole `loadBookingForActor` documents.
+      where: { id: bookingId, room: { orgId } },
+      select: {
+        id: true,
+        userId: true,
+        isCoopHold: true,
+        coHosts: { select: { userId: true } },
+      },
+    });
+    if (!booking) throw new NotFoundException('Booking not found');
+
+    const view = { userId: booking.userId, coHostIds: booking.coHosts.map((c) => c.userId) };
+    if (!canManageBookingCoHosts(view, actorId, isStaff)) {
+      throw new ForbiddenException(NOT_YOURS_TO_SHARE);
+    }
+
+    // A hold the co-op made is nobody's reservation (SPC-23), so there is no
+    // "us" to add anybody to.
+    if (booking.isCoopHold) {
+      throw new BadRequestException(COOP_HOLD_CANNOT_BE_SHARED);
+    }
+
+    return { booking, view };
+  }
+
+  async addBookingCoHost(
+    orgId: string,
+    bookingId: string,
+    userId: string,
+    actor: { userId: string; isStaff: boolean },
+  ) {
+    const { view } = await this.loadBookingForSharing(
+      orgId, bookingId, actor.userId, actor.isStaff,
+    );
+
+    const membership = await this.prisma.userOrg.findUnique({
+      where: { userId_orgId: { userId, orgId } },
+      select: { userId: true },
+    });
+    if (!membership) {
+      throw new BadRequestException('That person is not a member of this co-op.');
+    }
+
+    const problem = bookingCoHostProblem(view, userId);
+    if (problem) throw new BadRequestException(problem);
+
+    await this.prisma.bookingCoHost.create({
+      data: { bookingId, userId, addedById: actor.userId },
+    });
+
+    return { added: true };
+  }
+
+  /** Take somebody off. Silent when they were not on it. */
+  async removeBookingCoHost(
+    orgId: string,
+    bookingId: string,
+    userId: string,
+    actor: { userId: string; isStaff: boolean },
+  ) {
+    await this.loadBookingForSharing(orgId, bookingId, actor.userId, actor.isStaff);
+
+    await this.prisma.bookingCoHost.deleteMany({ where: { bookingId, userId } });
+
+    return { removed: true };
   }
 
   /**

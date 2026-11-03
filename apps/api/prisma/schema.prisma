@@ -472,6 +472,7 @@ model User {
   hostedEvents     Event[]                 @relation("HostedEvents")
   createdEvents    Event[]                 @relation("CreatedEvents")
   coHostedEvents   EventCoHost[]
+  coHostedBookings BookingCoHost[]
   tickets          Ticket[]
 
   expensesCreated       Expense[]              @relation("ExpenseCreator")
@@ -1479,6 +1480,8 @@ model Booking {
   /// one still has readers.
   publishedEvent Event?
   briefings      HostBriefingNotice[]
+  /// Everybody else who may manage it (SPC-37).
+  coHosts        BookingCoHost[]
 
   @@index([roomId, startTime, endTime])
   @@index([userId])
@@ -1489,6 +1492,36 @@ model Booking {
   /// Somebody's own bookings, without the co-op's holds (SPC-23).
   @@index([userId, isCoopHold])
   @@map("bookings")
+}
+
+/// Somebody else who may manage a room reservation (SPC-37).
+///
+/// An event has had co-hosts since EVT-32 and the reservation holding its room
+/// has not, so the member who books the Attic every Tuesday was the only
+/// person who could move it and the only person it appeared to — two people
+/// run the evening and one of them cannot see the room is held.
+///
+/// A co-host may do what the owner may do except decide who else is on it,
+/// which is the line `host-control.ts` draws for events. It is also what makes
+/// `attachProblem`'s advice true in both directions: an event may only claim
+/// reservations belonging to the people running it, and its refusal has always
+/// read "Add them as a co-host first."
+model BookingCoHost {
+  id        String   @id @default(uuid())
+  bookingId String
+  userId    String
+  /// Whoever added them. Null if that account is gone.
+  addedById String?
+  createdAt DateTime @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// One person cannot be on the same reservation twice.
+  @@unique([bookingId, userId])
+  /// The reservations somebody has been added to, for their My Bookings.
+  @@index([userId])
+  @@map("booking_co_hosts")
 }
 
 // ─── CommonsOS: Social & Governance ──────────────────────────

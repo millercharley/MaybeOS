@@ -45,6 +45,9 @@ describe('EventsService — member events', () => {
     endTime: new Date('2027-04-05T16:00:00Z'),
     room: { id: 'room-1', capacity: 30 },
     event: null,
+    // Everybody else who may manage it (SPC-37); nobody, unless a test says
+    // so. Always present on the real query, which includes them.
+    coHosts: [],
     // What the booking form asks (SPC-21). An event published from a booking
     // inherits these rather than asking again (EVT-17).
     description: null,

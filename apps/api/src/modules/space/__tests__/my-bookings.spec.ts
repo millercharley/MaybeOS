@@ -68,6 +68,30 @@ describe('a member’s own bookings', () => {
     await service.listUserBookings('u-1', 'org-1', 'past');
 
     expect(where().room).toEqual({ orgId: 'org-1' });
-    expect(where().userId).toBe('u-1');
+  });
+
+  /** Reservations they were added to rather than made (SPC-37). */
+  describe('whose reservations it shows', () => {
+    it('shows their own', async () => {
+      await service.listUserBookings('u-1', 'org-1');
+
+      expect(where().OR).toContainEqual({ userId: 'u-1' });
+    });
+
+    it('also shows the ones they co-host, which is most of the point', async () => {
+      // Two people run the evening and only one of them could see the room
+      // was held.
+      await service.listUserBookings('u-1', 'org-1');
+
+      expect(where().OR).toContainEqual({ coHosts: { some: { userId: 'u-1' } } });
+    });
+
+    it('still leaves out the co-op’s own holds', async () => {
+      // 3,017 of them, filed under one account (SPC-23). A hold blocks the
+      // room without being anybody's booking, co-host or not.
+      await service.listUserBookings('u-1', 'org-1');
+
+      expect(where().isCoopHold).toBe(false);
+    });
   });
 });

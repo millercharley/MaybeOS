@@ -2186,6 +2186,25 @@ class ApiClient {
      * Holds the co-op imported from its own Google calendar are never here —
      * MaybeItsFate's import filed all 3,017 under one person.
      */
+    /**
+     * Add somebody who may manage a reservation (SPC-37).
+     *
+     * Whoever booked the room decides, or an organiser. A co-host cannot: the
+     * person who asked for help stays the person who can un-ask.
+     */
+    addCoHost: (orgId: string, bookingId: string, userId: string, token: string) =>
+      this.request<{ added: boolean }>(`/orgs/${orgId}/bookings/${bookingId}/co-hosts`, {
+        method: 'POST',
+        body: JSON.stringify({ userId }),
+        token,
+      }),
+
+    removeCoHost: (orgId: string, bookingId: string, userId: string, token: string) =>
+      this.request<{ removed: boolean }>(
+        `/orgs/${orgId}/bookings/${bookingId}/co-hosts/${userId}`,
+        { method: 'DELETE', token },
+      ),
+
     myBookings: (orgId: string, token: string, when: 'upcoming' | 'past' = 'upcoming') =>
       this.request<Booking[]>(`/orgs/${orgId}/my-bookings?when=${when}`, { token }),
 
@@ -4994,6 +5013,16 @@ export interface Booking {
   hasCost?: boolean;
   categories?: string[];
   maturityLevel?: MaturityLevel;
+
+  /*
+    Who else may manage it, and whose it is (SPC-37).
+
+    Named rather than counted: "with 1 other" in a list of your own
+    reservations is a question, not an answer. No addresses — the same rule
+    the room calendar follows.
+  */
+  coHosts?: { userId: string; user: { id: string; name?: string | null } }[];
+  user?: { id: string; name?: string | null };
 }
 
 export interface CreateBookingData {
