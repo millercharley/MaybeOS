@@ -575,6 +575,28 @@ export class EventsController {
   }
 
   /**
+   * Events this member could start a new one from (EVT-48).
+   *
+   * Above the `:eventId` routes, like my-events: Nest matches in order, so
+   * `events/reusable` would be read as an event id and fail its UUID pipe.
+   *
+   * Any member, not only organisers — the list is their own events, and the
+   * service scopes it to them.
+   */
+  @Get('orgs/:orgId/events/reusable')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiQuery({ name: 'q', required: false, description: 'Search their event titles' })
+  @ApiOperation({ summary: 'Events the member hosts or co-hosts, one per title' })
+  listReusableEvents(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @CurrentUser() user: RequestUser,
+    @Query('q') q?: string,
+  ) {
+    return this.eventsService.listReusableEvents(orgId, user.userId, q);
+  }
+
+  /**
    * What one member's events look like, grouped (EVT-47).
    *
    * Above the `:eventId` routes for the same reason as my-events: Nest

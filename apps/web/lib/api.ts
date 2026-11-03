@@ -1775,6 +1775,18 @@ class ApiClient {
       this.request<HostedEvent[]>(`/orgs/${orgId}/events/my-events`, { token }),
 
     /**
+     * Events the member could start a new one from (EVT-48).
+     *
+     * Theirs to host or co-host, one row per title, newest first. `q`
+     * searches the titles.
+     */
+    reusable: (orgId: string, token: string, q?: string) =>
+      this.request<ReusableEvent[]>(
+        `/orgs/${orgId}/events/reusable${q ? `?q=${encodeURIComponent(q)}` : ''}`,
+        { token },
+      ),
+
+    /**
      * One member's events, grouped by what the co-op calls them (EVT-47).
      *
      * Organisers only. A list of somebody else's drafts and their whole
@@ -4692,6 +4704,38 @@ export interface CreateEventData {
  * Publishing an event from a room booking (EVT-05). Everything is optional —
  * the booking already answers when, where, and what the member called it.
  */
+/**
+ * An event offered as the starting point for a new one (EVT-48).
+ *
+ * Everything the form asks except **when** and **where** — the two answers
+ * that are never the same twice. `startTime` is here to say when it last ran,
+ * not to be copied onto the new one.
+ */
+export interface ReusableEvent {
+  id: string;
+  title: string;
+  startTime: string;
+  description?: string | null;
+  richDescription?: string | null;
+  imageUrl?: string | null;
+  imageCredit?: string | null;
+  imageCreditUrl?: string | null;
+  imageFocusY?: number | null;
+  visibility?: 'PUBLIC' | 'MEMBERS_ONLY' | 'PRIVATE';
+  capacity?: number | null;
+  waitlistEnabled?: boolean;
+  priceCents?: number | null;
+  currency?: string | null;
+  category?: string | null;
+  tags?: string[];
+  hasCost?: boolean;
+  suggestedCents?: number | null;
+  maturityLevel?: MaturityLevel;
+  timezone?: string | null;
+  /** Who else ran it. Names, never addresses. */
+  coHosts?: { userId: string; user: { name?: string | null } }[];
+}
+
 /**
  * What one member's events look like, for handing them over (EVT-47).
  *

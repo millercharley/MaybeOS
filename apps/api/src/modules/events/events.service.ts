@@ -18,6 +18,7 @@ import { RsvpDto } from './dto/rsvp.dto';
 import { canEditEvent, canManageHosts, coHostProblem, NOT_YOURS, NOT_YOUR_EVENT } from './host-control';
 import { attachProblem, whoseRoomsCount } from './event-rooms';
 import { groupOwnedEvents, transferProblem } from './host-transfer';
+import { mostRecentPerTitle } from './reusable-events';
 import { describeRecurrence, horizonFrom, occurrencesOf } from './recurrence';
 import { RepeatEventDto } from './dto/repeat-event.dto';
 import { CloneEventDto } from './dto/clone-event.dto';
@@ -2471,6 +2472,76 @@ export class EventsService {
     });
 
     return { hostId: newHostId, wasCoHost: event.coHosts.some((c) => c.userId === newHostId) };
+  }
+
+  /**
+   * Events this member could start a new one from (EVT-48).
+   *
+   * Charley: "provide an option to reuse a previous event to pre-fill the
+   * event information… Provide a text-based search to find any event they
+   * were a host or co-host."
+   *
+   * Hosted **or** co-hosted, which is the same pair `listHostedEvents` uses
+   * for My Events: somebody who helped run a workshop knows what the
+   * description said.
+   *
+   * One row per title, so 46 Board Games Clubs are one option. The dedupe
+   * happens here rather than in SQL because Prisma's `distinct` does not
+   * reliably reach Postgres, and a `take` applied before the collapse would
+   * return twenty rows of one evening.
+   *
+   * Which means the window has to be capped somewhere, and it is capped at
+   * the most recent 400 events rather than the whole history: Charley hosts
+   * 767. Without a search that shows the titles he has run lately, which is
+   * what an unfiltered picker is for; with one, the filter runs in the
+   * database first and the cap stops mattering.
+   */
+  async listReusableEvents(orgId: string, userId: string, q?: string) {
+    const search = (q ?? '').trim();
+
+    const events = await this.prisma.event.findMany({
+      where: {
+        orgId,
+        OR: [{ hostId: userId }, { coHosts: { some: { userId } } }],
+        // Title only. This is a search for an event somebody already ran, and
+        // they are looking for it by what it is called.
+        ...(search ? { title: { contains: search, mode: 'insensitive' } } : {}),
+      },
+      orderBy: { startTime: 'desc' },
+      take: 400,
+      select: {
+        id: true,
+        title: true,
+        startTime: true,
+        // Everything the form asks except when and where (EVT-48). Listed
+        // rather than spread so that a column added to `Event` has to be
+        // thought about before it starts travelling onto new events.
+        description: true,
+        richDescription: true,
+        imageUrl: true,
+        imageCredit: true,
+        imageCreditUrl: true,
+        imageFocusY: true,
+        visibility: true,
+        capacity: true,
+        waitlistEnabled: true,
+        priceCents: true,
+        currency: true,
+        category: true,
+        tags: true,
+        hasCost: true,
+        suggestedCents: true,
+        maturityLevel: true,
+        timezone: true,
+        // Who else ran it. Carried as names so the form can show them without
+        // a second lookup, and never as addresses.
+        coHosts: { select: { userId: true, user: { select: { name: true } } } },
+      },
+    });
+
+    // Twenty titles is a picker; two hundred is a list nobody reads. A member
+    // who cannot see what they want types two more letters.
+    return mostRecentPerTitle(events).slice(0, 20);
   }
 
   /**

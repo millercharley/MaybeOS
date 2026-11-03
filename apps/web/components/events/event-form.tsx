@@ -3,13 +3,14 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Globe, Lock, Users } from 'lucide-react';
 import { EventImagePicker, EventImageValue } from '@/components/events/event-image-picker';
-import { CreateEventData, api } from '@/lib/api';
+import { CreateEventData, api, type ReusableEvent } from '@/lib/api';
 import { PLATFORM_FEE_CENTS } from '@/lib/fees';
 import { GATHERING_KINDS } from '@/components/rooms/booking-details';
 import { EventArtFocus } from '@/components/events/event-art-focus';
 import { DEFAULT_FOCUS_Y } from '@/lib/image-focus';
 import { MemberPicker } from '@/components/member/member-picker';
 import { RoomPicker } from '@/components/events/room-picker';
+import { ReuseEvent } from '@/components/events/reuse-event';
 import { MATURITY_LEVELS, type MaturityLevel } from '@/lib/maturity';
 
 /**
@@ -268,6 +269,53 @@ export function EventForm({
 
   const [localError, setLocalError] = useState('');
 
+  /**
+   * Fill the form in from an event they already ran (EVT-48).
+   *
+   * Everything the form asks except **when** and **where**: a copy of last
+   * month's date is a mistake somebody has to notice, and a room is
+   * exclusive, so two evenings cannot share one reservation. `startTime`,
+   * `endTime`, the room picker and the reservation list are left exactly as
+   * they were — which, on the form that publishes a booking, is the room and
+   * date that booking already supplied.
+   *
+   * Every field is set, including the empty ones. Copying only the filled
+   * ones would leave whatever the member had typed before they reached for
+   * this, and half of one event mixed with half of another is worse than
+   * either.
+   *
+   * The host is not copied. They host what they make (EVT-04), and this list
+   * includes events they only co-hosted — so copying it would quietly make
+   * somebody else's event again. The co-hosts are, because the same pair
+   * usually runs the same evening.
+   */
+  const [reusedFrom, setReusedFrom] = useState<string | null>(null);
+
+  function fillFrom(event: ReusableEvent) {
+    setTitle(event.title);
+    setDescription(event.description ?? '');
+    setImage({
+      imageUrl: event.imageUrl ?? '',
+      imageCredit: event.imageCredit ?? '',
+      imageCreditUrl: event.imageCreditUrl ?? '',
+    });
+    setFocusY(event.imageFocusY ?? DEFAULT_FOCUS_Y);
+    setVisibility(event.visibility ?? 'MEMBERS_ONLY');
+    setCapacity(event.capacity?.toString() ?? '');
+    setWaitlist(event.waitlistEnabled ?? false);
+    setTicketed(Boolean(event.priceCents));
+    setPrice(event.priceCents ? (event.priceCents / 100).toFixed(2) : '');
+    setKinds(event.tags?.length ? event.tags : event.category ? [event.category] : []);
+    setHasCost(event.hasCost ?? false);
+    setSuggested(event.suggestedCents ? (event.suggestedCents / 100).toFixed(0) : '');
+    setMaturityLevel(event.maturityLevel ?? 'ALL_AGES');
+    setCoHosts(
+      (event.coHosts ?? []).map((c) => ({ id: c.userId, name: c.user.name ?? 'Member' })),
+    );
+    setReusedFrom(event.title);
+    setLocalError('');
+  }
+
   function submit(e: FormEvent, publish: boolean) {
     e.preventDefault();
     setLocalError('');
@@ -350,6 +398,29 @@ export function EventForm({
       {shown && (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
           {shown}
+        </p>
+      )}
+
+      {/*
+        Start from one they already ran (EVT-48).
+
+        Only when making something new. Editing an event is correcting this
+        one, and a control that silently replaced its description with
+        another event's would be a trap on the screen somebody opened to fix
+        a typo.
+
+        Shown on the publish-from-a-booking form too, where it composes
+        rather than collides: this copies everything except the date and the
+        room, which are the two things that booking is supplying.
+      */}
+      {!initial?.id && orgId && token && (
+        <ReuseEvent orgId={orgId} token={token} onPick={fillFrom} />
+      )}
+
+      {reusedFrom && (
+        <p className="text-sm text-gray-600">
+          Filled in from <span className="font-medium">{reusedFrom}</span>. Change anything
+          you like — the date and the room are still yours to set.
         </p>
       )}
 

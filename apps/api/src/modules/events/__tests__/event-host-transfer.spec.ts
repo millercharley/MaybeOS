@@ -251,6 +251,93 @@ describe('EventsService — transferring events to a new host', () => {
     });
   });
 
+  /**
+   * Starting a new event from one they already ran (EVT-48).
+   *
+   * Lives in this file because it shares the harness, not the feature: both
+   * read one person's events out of `event.findMany`.
+   */
+  describe('events a member can reuse', () => {
+    const reusable = (q?: string) => service.listReusableEvents(ORG, FROM, q);
+    const query = () => prisma.event.findMany.mock.calls[0][0];
+
+    it('finds the ones they host and the ones they co-host', () => {
+      // The same pair My Events uses: somebody who helped run a workshop
+      // knows what the description said.
+      return reusable().then(() => {
+        expect(query().where.OR).toEqual([
+          { hostId: FROM },
+          { coHosts: { some: { userId: FROM } } },
+        ]);
+      });
+    });
+
+    it('stays inside this co-op', async () => {
+      await reusable();
+
+      expect(query().where.orgId).toBe(ORG);
+    });
+
+    it('searches the title, and only when there is something to search for', async () => {
+      await reusable('  board  ');
+
+      expect(query().where.title).toEqual({ contains: 'board', mode: 'insensitive' });
+    });
+
+    it('asks for no filter when the box is empty', async () => {
+      await reusable('   ');
+
+      expect(query().where.title).toBeUndefined();
+    });
+
+    it('takes the newest first, since one per title keeps the most recent', async () => {
+      await reusable();
+
+      expect(query().orderBy).toEqual({ startTime: 'desc' });
+    });
+
+    it('collapses the dates of one event into a single option', async () => {
+      // 46 Board Games Clubs are one thing the co-op runs.
+      prisma.event.findMany.mockResolvedValue([
+        { id: 'a', title: 'Board Games Club', startTime: new Date('2028-10-29T19:00:00Z') },
+        { id: 'b', title: 'Board Games Club', startTime: new Date('2025-01-27T19:00:00Z') },
+        { id: 'c', title: 'Improv Club', startTime: new Date('2027-05-07T19:00:00Z') },
+      ]);
+
+      const list = await reusable();
+
+      expect(list.map((e) => e.id)).toEqual(['a', 'c']);
+    });
+
+    it('asks for a window rather than the whole history', async () => {
+      // Charley hosts 767. The collapse happens here, so a `take` smaller
+      // than the window would return twenty rows of one evening.
+      await reusable();
+
+      expect(query().take).toBe(400);
+    });
+
+    it('never selects an address', async () => {
+      // Co-hosts travel as names so the form can show them. The rule the
+      // room calendar and the member card both follow.
+      await reusable();
+
+      expect(JSON.stringify(query().select)).not.toMatch(/email/);
+    });
+
+    it('does not offer when it was or where it was', async () => {
+      // `startTime` is selected to show when it last ran, and `endTime`,
+      // `roomId` and `locationId` are not selected at all — they are the two
+      // answers that are never the same twice.
+      await reusable();
+
+      expect(query().select.endTime).toBeUndefined();
+      expect(query().select.roomId).toBeUndefined();
+      expect(query().select.locationId).toBeUndefined();
+      expect(query().select.hostId).toBeUndefined();
+    });
+  });
+
   describe('what an admin is shown before deciding', () => {
     it('groups one person’s events by what the co-op calls them', async () => {
       prisma.event.findMany.mockResolvedValue([
