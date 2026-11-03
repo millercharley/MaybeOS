@@ -17,10 +17,12 @@ import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
 import { canEditEvent, canManageHosts, coHostProblem, NOT_YOURS, NOT_YOUR_EVENT } from './host-control';
 import { attachProblem, whoseRoomsCount } from './event-rooms';
+import { groupOwnedEvents, transferProblem } from './host-transfer';
 import { describeRecurrence, horizonFrom, occurrencesOf } from './recurrence';
 import { RepeatEventDto } from './dto/repeat-event.dto';
 import { CloneEventDto } from './dto/clone-event.dto';
 import { PublishBookingEventDto } from './dto/publish-booking-event.dto';
+import { TransferEventsDto } from './dto/transfer-events.dto';
 import { ConnectService } from '../stripe/connect.service';
 import ical, { ICalCalendarMethod } from 'ical-generator';
 import { PUBLIC_EVENT_SELECT } from './event-view';
@@ -2439,6 +2441,142 @@ export class EventsService {
     });
 
     return { hostId: newHostId, wasCoHost: event.coHosts.some((c) => c.userId === newHostId) };
+  }
+
+  /**
+   * What one person's events look like, grouped by what the co-op calls them
+   * (EVT-47).
+   *
+   * Charley: "I have a lot of events in MaybeItsFate that are still owned by
+   * me (c@maybeitsfate.com) that I want to remove from My Events."
+   *
+   * 769 of them. They are his because the calendar import creates what it
+   * finds under the account whose calendar it read — the same reason 3,017
+   * room reservations arrived as his (SPC-23) — and `setHost` moves one at a
+   * time.
+   *
+   * Drafts and past dates included, both on purpose. The ask is that the real
+   * member "see all of this recurring event listed under their My Events", and
+   * `listHostedEvents` shows a host their own history with `isPast` beside it:
+   * handing over this autumn and keeping the last two years would give them
+   * half a series.
+   */
+  async listOwnedEvents(orgId: string, userId: string) {
+    const events = await this.prisma.event.findMany({
+      // Through the org, so naming somebody else's user id proves nothing
+      // about events outside the co-op in the URL.
+      where: { orgId, hostId: userId },
+      select: {
+        id: true,
+        title: true,
+        hostId: true,
+        startTime: true,
+        endTime: true,
+        // Why an event will be refused, read here rather than discovered at
+        // write time (EVT-15).
+        payout: { select: { hostUserId: true } },
+      },
+      orderBy: { startTime: 'asc' },
+    });
+
+    return { total: events.length, groups: groupOwnedEvents(events) };
+  }
+
+  /**
+   * Hand a batch of events to a new host (EVT-47).
+   *
+   * Organisers only — the controller says so — and the same act as `setHost`
+   * repeated, including the two things that go with it: the new host stops
+   * being a co-host of their own event, and an imported event's `hostName`
+   * is superseded by naming a real member (CAL-03).
+   *
+   * `dryRun` first, like every other bulk thing here. What it reports is what
+   * the write would do, from the same rule, so a preview cannot promise
+   * something the write then refuses.
+   *
+   * **Room reservations are deliberately not touched.** The bookings holding
+   * the rooms for these evenings are the importing account's too, and moving
+   * them would move charges, quotas and the co-op's own holds (`isCoopHold`),
+   * which belong to nobody by design. A member who needs to manage the room
+   * is added to the reservation instead (SPC-37).
+   */
+  async transferHost(orgId: string, dto: TransferEventsDto, actorId: string) {
+    if (dto.fromUserId === dto.toUserId) {
+      throw new BadRequestException('Those are the same person.');
+    }
+    await this.requireMember(orgId, dto.toUserId);
+
+    const wanted = [...new Set(dto.eventIds)];
+    const events = await this.prisma.event.findMany({
+      // Scoped by org *and* by the host the caller said these belong to. The
+      // second half is what stops a mistyped list moving an event that was
+      // never the one on screen.
+      where: { id: { in: wanted }, orgId, hostId: dto.fromUserId },
+      select: {
+        id: true,
+        title: true,
+        hostId: true,
+        payout: { select: { hostUserId: true } },
+      },
+    });
+
+    const found = new Set(events.map((e) => e.id));
+    const refused = wanted
+      .filter((id) => !found.has(id))
+      .map((id) => ({
+        id,
+        reason: 'That event is not one of theirs any more, or is not in this co-op.',
+      }));
+
+    const movable: string[] = [];
+    for (const event of events) {
+      const problem = transferProblem(event, dto.toUserId);
+      if (problem) refused.push({ id: event.id, reason: problem });
+      else movable.push(event.id);
+    }
+
+    if (dto.dryRun) {
+      return { dryRun: true, moved: movable.length, movedIds: movable, refused };
+    }
+
+    if (movable.length > 0) {
+      await this.prisma.$transaction([
+        // They cannot co-host what they now host: the line would read
+        // "hosted by Ada, with Ada".
+        this.prisma.eventCoHost.deleteMany({
+          where: { eventId: { in: movable }, userId: dto.toUserId },
+        }),
+        this.prisma.event.updateMany({
+          where: { id: { in: movable } },
+          data: {
+            hostId: dto.toUserId,
+            // Naming a real member supersedes the imported organiser (CAL-03).
+            // Null on all 769 of these, and set on other imports.
+            hostEmail: null,
+            hostName: null,
+          },
+        }),
+      ]);
+
+      await this.prisma.auditLog.create({
+        data: {
+          orgId,
+          actorId,
+          action: 'event.host_transferred',
+          entityType: 'Event',
+          // The batch, not one row per event: what happened was one decision.
+          entityId: movable[0],
+          metadata: {
+            fromUserId: dto.fromUserId,
+            toUserId: dto.toUserId,
+            count: movable.length,
+            eventIds: movable,
+          },
+        },
+      });
+    }
+
+    return { dryRun: false, moved: movable.length, movedIds: movable, refused };
   }
 
   /** Somebody else running it alongside the host (EVT-32). */

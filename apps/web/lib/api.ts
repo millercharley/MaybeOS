@@ -1774,6 +1774,33 @@ class ApiClient {
     myEvents: (orgId: string, token: string) =>
       this.request<HostedEvent[]>(`/orgs/${orgId}/events/my-events`, { token }),
 
+    /**
+     * One member's events, grouped by what the co-op calls them (EVT-47).
+     *
+     * Organisers only. A list of somebody else's drafts and their whole
+     * history is an administrative view of a member.
+     */
+    ownedBy: (orgId: string, userId: string, token: string) =>
+      this.request<OwnedEvents>(`/orgs/${orgId}/events/owned-by/${userId}`, { token }),
+
+    /** Hand a batch of events to a new host (EVT-47). */
+    transferHost: (
+      orgId: string,
+      data: {
+        fromUserId: string;
+        toUserId: string;
+        eventIds: string[];
+        /** Report what would happen and write nothing. */
+        dryRun?: boolean;
+      },
+      token: string,
+    ) =>
+      this.request<EventTransferResult>(`/orgs/${orgId}/events/transfer-host`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+        token,
+      }),
+
     /** Turn a confirmed booking into an event (EVT-05). */
     publishFromBooking: (
       orgId: string,
@@ -4646,6 +4673,38 @@ export interface CreateEventData {
  * Publishing an event from a room booking (EVT-05). Everything is optional —
  * the booking already answers when, where, and what the member called it.
  */
+/**
+ * What one member's events look like, for handing them over (EVT-47).
+ *
+ * Grouped by title rather than by `parentEventId` or the Google recurrence
+ * id: the first only exists for series MaybeOS itself repeated, the second is
+ * missing from most of an import, and "Ecstatic Dance ~ 1st Sundays" is what
+ * the co-op calls the thing one member runs.
+ */
+export interface OwnedEventGroup {
+  title: string;
+  total: number;
+  upcoming: number;
+  firstStart: string;
+  lastStart: string;
+  /** Every id, so the transfer names events rather than re-running a search. */
+  eventIds: string[];
+  /** The ones that would be refused, with the reason, before anything is sent. */
+  blocked: { id: string; reason: string }[];
+}
+
+export interface OwnedEvents {
+  total: number;
+  groups: OwnedEventGroup[];
+}
+
+export interface EventTransferResult {
+  dryRun: boolean;
+  moved: number;
+  movedIds: string[];
+  refused: { id: string; reason: string }[];
+}
+
 export interface PublishBookingEventData {
   title?: string;
   description?: string;

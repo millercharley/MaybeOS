@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Users, Clock, Eye, EyeOff, X, Lock, Pencil, Trash2, Ticket, UserCircle, Share2 } from 'lucide-react';
+import { Plus, Users, Clock, Eye, EyeOff, X, Lock, Pencil, Trash2, Ticket, UserCircle, Share2, UserCog } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
 import { useAuthStore } from '@/lib/auth-store';
 import { adminEventWindow, hostLine, ticketLine } from '@/lib/event-list';
@@ -12,6 +12,7 @@ import { api, Event } from '@/lib/api';
 import { toUpdatePayload } from '@/lib/events';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
 import { ShareEventDialog } from '@/components/events/share-event-dialog';
+import { TransferEvents } from '@/components/events/transfer-events';
 import { SHARE_LABEL, shareability, shouldOfferAfterPublish } from '@/lib/event-sharing';
 import { PageHeader } from '@/components/layout/page-header';
 import { useReveal } from '@/hooks/use-reveal';
@@ -41,6 +42,13 @@ export default function EventsPage() {
    */
   const [sharing, setSharing] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  /**
+   * Handing a batch of events to the member who actually runs them (EVT-47).
+   *
+   * Behind a button rather than always on screen: most of the time this page
+   * is for programming events, and this is for sorting out a migration.
+   */
+  const [transferring, setTransferring] = useState(false);
   // The event being edited, or null. Editing did not exist at all: the only
   // route off this page was the door list, so an event created with the wrong
   // date, price or visibility could never be corrected — only cancelled.
@@ -268,16 +276,37 @@ export default function EventsPage() {
         />{/* This button has had no handler since the page was built (EVT-07),
             so organisers — the people most likely to be programming events —
             were the only ones who could not make one. */}
-        {!creating && (
-          <button
-            onClick={() => setCreating(true)}
-            className="btn-primary inline-flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            Create Event
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {!transferring && (
+            <button
+              onClick={() => setTransferring(true)}
+              className="btn-secondary inline-flex items-center gap-2"
+            >
+              <UserCog className="h-4 w-4" />
+              Transfer events
+            </button>
+          )}
+          {!creating && (
+            <button
+              onClick={() => setCreating(true)}
+              className="btn-primary inline-flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Create Event
+            </button>
+          )}
+        </div>
       </div>
+
+      {transferring && orgId && token && (
+        <TransferEvents
+          orgId={orgId}
+          token={token}
+          // The host column on the list below has just changed.
+          onDone={refetch}
+          onClose={() => setTransferring(false)}
+        />
+      )}
 
       {(creating || editing) && (
         <section ref={eventFormRef} tabIndex={-1} className="card focus:outline-none">

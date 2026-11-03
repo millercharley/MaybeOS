@@ -32,6 +32,7 @@ import { CloneEventDto } from './dto/clone-event.dto';
 import { ListEventsQueryDto } from './dto/list-events.dto';
 import { WalkInDto } from './dto/walk-in.dto';
 import { PublishBookingEventDto } from './dto/publish-booking-event.dto';
+import { TransferEventsDto } from './dto/transfer-events.dto';
 import {
   UploadEventImageDto,
   UnsplashSearchDto,
@@ -571,6 +572,49 @@ export class EventsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.eventsService.listHostedEvents(orgId, user.userId);
+  }
+
+  /**
+   * What one member's events look like, grouped (EVT-47).
+   *
+   * Above the `:eventId` routes for the same reason as my-events: Nest
+   * matches in order, and `events/owned-by` would otherwise be read as an
+   * event id and fail its UUID pipe.
+   *
+   * Organisers only. This is a list of somebody else's drafts and their whole
+   * history, which is an administrative view of a member rather than
+   * something a member asks about another member.
+   */
+  @Get('orgs/:orgId/events/owned-by/:userId')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "One member's events, grouped by what they are called" })
+  listOwnedEvents(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+  ) {
+    return this.eventsService.listOwnedEvents(orgId, userId);
+  }
+
+  /**
+   * Hand a batch of them to a new host (EVT-47).
+   *
+   * ADMIN and STAFF, unlike `setHost` below, which is open to the host and
+   * the creator as well: moving somebody else's events in bulk is running the
+   * co-op's calendar, not correcting your own event.
+   */
+  @Post('orgs/:orgId/events/transfer-host')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Hand a batch of events to a new host' })
+  transferHost(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Body() dto: TransferEventsDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.eventsService.transferHost(orgId, dto, user.userId);
   }
 
   @Get('orgs/:orgId/events/:eventId/summary')
