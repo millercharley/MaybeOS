@@ -2822,7 +2822,78 @@ export class EventsService {
   ) {
     await this.eventForRemoval(orgId, eventId, actor, 'delete');
 
-    await this.prisma.event.delete({ where: { id: eventId } });
+    /*
+      What the event was, read before it stops existing (EVT-51).
+
+      A separate query from the one that decides whether it may go, so that
+      the rule's own read stays about the rule — it deliberately does not
+      count RSVPs any more, and folding a count back into it would make that
+      hard to see.
+
+      Charley's event vanished during a session and there was nothing
+      anywhere to say so: transfers could be replayed from their audit rows,
+      and the one action that genuinely cannot be undone logged nothing at
+      all. Now that deleting is open to any host rather than an admin, and
+      no longer refuses on an RSVP, this row is the only record that will
+      remain.
+    */
+    const gone = await this.prisma.event.findFirst({
+      // Through the org, like every other read here (SEC-04). The check above
+      // has already resolved it, so this cannot miss — but a lookup by bare
+      // id is the shape the guard refuses, and being right by context is how
+      // that family of bugs keeps coming back.
+      where: { id: eventId, orgId },
+      select: {
+        title: true,
+        slug: true,
+        startTime: true,
+        endTime: true,
+        visibility: true,
+        isPublished: true,
+        hostId: true,
+        createdById: true,
+        googleEventId: true,
+        bookingId: true,
+        // Numbers, never the people. Who had RSVPed is theirs, and a log is
+        // the wrong place to keep a copy of it.
+        _count: { select: { rsvps: true, tickets: true, attendance: true } },
+        // Recorded as a fact, not an address. An unmatched organiser's email
+        // is kept to match them if they rejoin (CAL-03) and is never
+        // displayed; copying it into a log would be a second home for it.
+        hostEmail: true,
+      },
+    });
+
+    await this.prisma.$transaction([
+      this.prisma.auditLog.create({
+        data: {
+          orgId,
+          actorId: actor.userId,
+          action: 'event.deleted',
+          entityType: 'Event',
+          entityId: eventId,
+          metadata: {
+            title: gone?.title ?? null,
+            slug: gone?.slug ?? null,
+            startTime: gone?.startTime?.toISOString() ?? null,
+            endTime: gone?.endTime?.toISOString() ?? null,
+            visibility: gone?.visibility ?? null,
+            wasPublished: gone?.isPublished ?? null,
+            hostId: gone?.hostId ?? null,
+            createdById: gone?.createdById ?? null,
+            /** So a re-import can be recognised as bringing it back. */
+            googleEventId: gone?.googleEventId ?? null,
+            /** The reservation it was published from, which outlives it. */
+            bookingId: gone?.bookingId ?? null,
+            rsvpCount: gone?._count.rsvps ?? 0,
+            ticketCount: gone?._count.tickets ?? 0,
+            attendanceCount: gone?._count.attendance ?? 0,
+            hadUnmatchedHost: Boolean(gone?.hostEmail),
+          },
+        },
+      }),
+      this.prisma.event.delete({ where: { id: eventId } }),
+    ]);
 
     return { deleted: true };
   }

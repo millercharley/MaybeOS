@@ -52,13 +52,39 @@ describe('hiding and deleting', () => {
     tickets: Array.from({ length: counts.tickets ?? 0 }, () => ({ quantity: 1 })),
   });
 
+  const snapshot = (over: Record<string, unknown> = {}) => ({
+    title: 'Improv Club',
+    slug: 'improv-club',
+    startTime: new Date('2026-11-06T23:00:00Z'),
+    endTime: new Date('2026-11-07T00:30:00Z'),
+    visibility: 'PUBLIC',
+    isPublished: true,
+    hostId: OWNER,
+    createdById: OWNER,
+    googleEventId: 'g-1',
+    bookingId: null,
+    hostEmail: null,
+    _count: { rsvps: 6, tickets: 0, attendance: 0 },
+    ...over,
+  });
+
   beforeEach(async () => {
     prisma = {
       event: {
-        findFirst: jest.fn().mockResolvedValue(found()),
+        /*
+          Two reads, told apart by what they ask for: the rule's read wants
+          the unrefunded tickets, and the delete's snapshot wants the counts
+          it is about to lose (EVT-51). Both go through `findFirst`, because
+          both resolve the event through its org (SEC-04).
+        */
+        findFirst: jest.fn(async (args: any) =>
+          args?.select?._count ? snapshot() : found(),
+        ),
         update: jest.fn().mockResolvedValue({}),
         delete: jest.fn().mockResolvedValue({}),
       },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
+      $transaction: jest.fn().mockResolvedValue([]),
     };
 
     const module = await Test.createTestingModule({
@@ -250,5 +276,167 @@ describe('what the routes require', () => {
   it('passes the caller to both, so the service can decide', () => {
     expect(route("@Post('orgs/:orgId/events/:eventId/unpublish')")).toMatch(/@CurrentUser\(\)/);
     expect(route("@Delete('orgs/:orgId/events/:eventId')")).toMatch(/@CurrentUser\(\)/);
+  });
+});
+
+/**
+ * What is left behind when an event is destroyed (EVT-51).
+ *
+ * An event vanished mid-session and there was nothing anywhere to say so.
+ * Transfers could be replayed from their audit rows; the one action that
+ * genuinely cannot be undone logged nothing at all. It matters more now that
+ * deleting is open to any host rather than an admin alone, and no longer
+ * refuses on an RSVP.
+ */
+describe('the record a delete leaves', () => {
+  let service: EventsService;
+  let prisma: any;
+
+  const organiser = { userId: 'an-admin', isStaff: true };
+
+  const snapshot = (over: Record<string, unknown> = {}) => ({
+    title: 'Improv Club',
+    slug: 'improv-club',
+    startTime: new Date('2026-11-06T23:00:00Z'),
+    endTime: new Date('2026-11-07T00:30:00Z'),
+    visibility: 'PUBLIC',
+    isPublished: true,
+    hostId: 'the-host',
+    createdById: 'the-host',
+    googleEventId: 'g-1',
+    bookingId: 'b-1',
+    hostEmail: null,
+    _count: { rsvps: 6, tickets: 0, attendance: 0 },
+    ...over,
+  });
+
+  beforeEach(() => {
+    prisma = {
+      event: {
+        findFirst: jest.fn(async (args: any) =>
+          args?.select?._count
+            ? snapshot()
+            : {
+                id: 'e-1',
+                isPublished: true,
+                hostId: 'the-host',
+                createdById: 'the-host',
+                tickets: [],
+              },
+        ),
+        delete: jest.fn().mockResolvedValue({}),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      auditLog: { create: jest.fn().mockResolvedValue({}) },
+      $transaction: jest.fn().mockResolvedValue([]),
+    };
+    service = new (EventsService as any)(prisma) as EventsService;
+  });
+
+  const written = () => prisma.auditLog.create.mock.calls[0][0].data;
+
+  it('writes one, naming who did it', async () => {
+    await service.deleteEvent('org-1', 'e-1', organiser);
+
+    expect(written()).toMatchObject({
+      orgId: 'org-1',
+      actorId: 'an-admin',
+      action: 'event.deleted',
+      entityType: 'Event',
+      entityId: 'e-1',
+    });
+  });
+
+  it('keeps what the event was, since the row will not be there to ask', async () => {
+    await service.deleteEvent('org-1', 'e-1', organiser);
+
+    expect(written().metadata).toMatchObject({
+      title: 'Improv Club',
+      startTime: '2026-11-06T23:00:00.000Z',
+      visibility: 'PUBLIC',
+      wasPublished: true,
+      hostId: 'the-host',
+    });
+  });
+
+  it('counts who loses it, which is the warning nothing else gives now', async () => {
+    await service.deleteEvent('org-1', 'e-1', organiser);
+
+    expect(written().metadata).toMatchObject({ rsvpCount: 6, attendanceCount: 0 });
+  });
+
+  it('keeps the Google id, so a re-import can be recognised', async () => {
+    // The importer upserts on it. Without this there is no way to tell a
+    // returning event from a new one.
+    await service.deleteEvent('org-1', 'e-1', organiser);
+
+    expect(written().metadata.googleEventId).toBe('g-1');
+  });
+
+  it('keeps the reservation id, which outlives the event', async () => {
+    await service.deleteEvent('org-1', 'e-1', organiser);
+
+    expect(written().metadata.bookingId).toBe('b-1');
+  });
+
+  it('records nobody’s name or address', async () => {
+    /*
+      Numbers, never the people: who had RSVPed is theirs. And an unmatched
+      organiser's address is kept to match them if they rejoin (CAL-03) and
+      is never displayed — copying it into a log would be a second home for
+      it, so the log says only that there was one.
+    */
+    prisma.event.findFirst.mockImplementation(async (args: any) =>
+      args?.select?._count
+        ? snapshot({ hostEmail: 'someone@example.net' })
+        : { id: 'e-1', isPublished: true, hostId: 'the-host', createdById: 'the-host', tickets: [] },
+    );
+
+    await service.deleteEvent('org-1', 'e-1', organiser);
+
+    const json = JSON.stringify(written().metadata);
+    expect(json).not.toMatch(/@/);
+    expect(written().metadata.hadUnmatchedHost).toBe(true);
+  });
+
+  it('says so when there was no unmatched host', async () => {
+    await service.deleteEvent('org-1', 'e-1', organiser);
+
+    expect(written().metadata.hadUnmatchedHost).toBe(false);
+  });
+
+  it('writes the row and the delete together, or neither', async () => {
+    /*
+      One transaction. A log of a delete that did not happen is a lie, and a
+      delete with no log is the hole this closes — there is no ordering of
+      two separate statements that avoids both.
+    */
+    await service.deleteEvent('org-1', 'e-1', organiser);
+
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction.mock.calls[0][0]).toHaveLength(2);
+  });
+
+  it('reads the event before destroying it, not after', async () => {
+    await service.deleteEvent('org-1', 'e-1', organiser);
+
+    // The snapshot read is the second `findFirst`: the rule's read is first.
+    const readAt = prisma.event.findFirst.mock.invocationCallOrder[1];
+    const wroteAt = prisma.$transaction.mock.invocationCallOrder[0];
+    expect(readAt).toBeLessThan(wroteAt);
+  });
+
+  it('writes nothing when the delete was refused', async () => {
+    prisma.event.findFirst.mockImplementation(async () => ({
+      id: 'e-1',
+      isPublished: true,
+      hostId: 'the-host',
+      createdById: 'the-host',
+      tickets: [{ quantity: 2 }],
+    }));
+
+    await expect(service.deleteEvent('org-1', 'e-1', organiser)).rejects.toThrow();
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
