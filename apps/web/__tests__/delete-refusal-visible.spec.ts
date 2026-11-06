@@ -1,6 +1,4 @@
-import { stripComments } from './helpers/source-scan';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readSource } from './helpers/source-scan';
 
 /**
  * The refusal reaches the person who caused it (EVT-53).
@@ -25,11 +23,10 @@ import { join } from 'node:path';
  * that the message has somewhere to land next to the control that triggered
  * it.
  */
-const read = (...parts: string[]) =>
-  readFileSync(join(__dirname, '..', ...parts), 'utf8')
-    // Comments blanked, line breaks kept: these files now *describe* the bug
-    // in prose, and a scan that matched prose would pass on documentation
-    // stripComments(alone.);
+// Comments blanked, line breaks kept: these files now *describe* the bug
+// in prose, and a scan that matched prose would pass on documentation
+// alone.
+const read = (...parts: string[]) => readSource(__dirname, '..', ...parts);
 
 const slice = (src: string, from: string, length: number) => {
   const at = src.indexOf(from);

@@ -1,6 +1,4 @@
-import { stripComments } from '../../../common/testing/source-scan';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readSource } from '../../../common/testing/source-scan';
 import { EventsService } from '../events.service';
 
 /**
@@ -168,12 +166,11 @@ describe('EventsService.getMemberEventBySlug', () => {
 });
 
 describe('the by-slug route is scoped to the org in its path', () => {
-  const read = (file: string) =>
-    readFileSync(join(__dirname, '..', file), 'utf8')
-      // Comments stripped before scanning: this file's own prose names every
-      // guard it is checking for, and a scan that matches a comment proves
-      // nothing. Line breaks are preserved so a failure still points at a
-      // stripComments(line.);
+  // Comments stripped before scanning: this file's own prose names every
+  // guard it is checking for, and a scan that matches a comment proves
+  // nothing. Line breaks are preserved so a failure still points at a
+  // line.
+  const read = (file: string) => readSource(__dirname, '..', file);
 
   const CONTROLLER = read('events.controller.ts');
   const SERVICE = read('events.service.ts');

@@ -1,4 +1,4 @@
-import { stripComments } from '../../../common/testing/source-scan';
+import { readSource } from '../../../common/testing/source-scan';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -21,10 +21,9 @@ import { join } from 'node:path';
  * the Google event carries the booking id. The import keeps the secondary
  * job it was always for — noticing what somebody reserved in Google direct.
  */
-const read = (...p: string[]) =>
-  readFileSync(join(__dirname, '..', ...p), 'utf8')
-    // Comments blanked, line breaks kept: both files now explain this at
-    // length, and a scan matching prose proves stripComments(nothing.);
+// Comments blanked, line breaks kept: both files now explain this at
+// length, and a scan matching prose proves nothing.
+const read = (...p: string[]) => readSource(__dirname, '..', ...p);
 
 const IMPORT = read('calendar-import.service.ts');
 const CALENDAR = read('calendar.service.ts');
