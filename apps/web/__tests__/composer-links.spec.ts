@@ -66,12 +66,12 @@ describe('the selection the prompt takes away', () => {
   );
 
   it('is saved before the prompt opens', () => {
-    const addLink = /function addLink\(\)[\s\S]*?\n  }/.exec(source)![0];
+    const addLink = /function addLink\(\)[\s\S]*?\n {2}}/.exec(source)![0];
     expect(addLink.indexOf('cloneRange()')).toBeLessThan(addLink.indexOf('window.prompt'));
   });
 
   it('is put back before the command runs', () => {
-    const addLink = /function addLink\(\)[\s\S]*?\n  }/.exec(source)![0];
+    const addLink = /function addLink\(\)[\s\S]*?\n {2}}/.exec(source)![0];
     expect(addLink.indexOf('addRange(saved)')).toBeLessThan(addLink.indexOf('execCommand'));
   });
 

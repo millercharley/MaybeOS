@@ -1,5 +1,5 @@
 import { stripComments } from './helpers/source-scan';
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 
 /**
@@ -63,7 +63,6 @@ describe('the image optimizer', () => {
    * is a decision worth making deliberately rather than by wildcard.
    */
   it('nothing needs a remote host yet', () => {
-    const { readdirSync, statSync } = require('fs') as typeof import('fs');
     const offenders: string[] = [];
 
     const walk = (dir: string) => {

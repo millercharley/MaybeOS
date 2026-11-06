@@ -192,7 +192,7 @@ export function when(start: string | Date, end: string | Date | null | undefined
   const clock = (value: Date) =>
     new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone })
       .format(value)
-      .replace(/[\s  ]*([AaPp])\.?[Mm]\.?$/, (_m, half: string) => half.toLowerCase() + 'm');
+      .replace(/[\s\u202f\u00a0]*([AaPp])\.?[Mm]\.?$/, (_m, half: string) => half.toLowerCase() + 'm');
 
   const from = `${day(d)} · ${clock(d)}`;
   if (!end) return from;

@@ -52,7 +52,7 @@ function env(props) {
       base64Encode: bytes => Buffer.from(bytes.map(b => b & 255)).toString('base64'),
       computeDigest: (alg, v) => [...crypto.createHash('sha256').update(v, 'utf8').digest()].map(b => b > 127 ? b - 256 : b),
       base64EncodeWebSafe: bytes => Buffer.from(bytes.map(b => b & 255)).toString('base64url'),
-      formatDate: (date, tz, fmt) => `formatted(${date.toISOString()})`,
+      formatDate: (date, _tz, _fmt) => `formatted(${date.toISOString()})`,
     },
     UrlFetchApp: {
       fetch: (url, opts) => {

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { cancelledId, toEntry } from '../calendar-import';
 
 /**
@@ -49,10 +51,7 @@ describe('reading a deletion', () => {
 });
 
 describe('the request that asks for them', () => {
-  const source = require('fs').readFileSync(
-    require('path').join(__dirname, '..', 'calendar-import.service.ts'),
-    'utf8',
-  );
+  const source = readFileSync(join(__dirname, '..', 'calendar-import.service.ts'), 'utf8');
 
   it('asks Google for deleted rows on every read there is', () => {
     /*

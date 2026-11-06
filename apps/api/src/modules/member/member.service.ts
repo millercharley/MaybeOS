@@ -663,7 +663,7 @@ export class MemberService {
           member.stripeSubscriptionId,
           member.stripeDuesAccountId,
         );
-      } catch (error) {
+      } catch {
         // Deliberately fatal. Removing them anyway would charge somebody for
         // a co-op they have left, and lose the only record of which
         // subscription to stop.

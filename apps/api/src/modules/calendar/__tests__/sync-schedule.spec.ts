@@ -6,6 +6,9 @@ import {
   nextToSync,
   type SyncState,
 } from '../sync-schedule';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { nextCursor } from '../import-cursor';
 
 /**
  * The calendar keeping itself true (CAL-13).
@@ -144,11 +147,7 @@ describe('what a failure writes down', () => {
 });
 
 describe('a chunk always moves', () => {
-  const { nextCursor } = require('../import-cursor');
-  const source = require('fs').readFileSync(
-    require('path').join(__dirname, '..', 'calendar-import.service.ts'),
-    'utf8',
-  );
+  const source = readFileSync(join(__dirname, '..', 'calendar-import.service.ts'), 'utf8');
 
   it('returns the very same cursor when a chunk handled nothing', () => {
     /*
@@ -171,6 +170,6 @@ describe('a chunk always moves', () => {
     // the cursor always advances. One entry a tick is slow; none is stuck.
     const checks = source.match(/if \(index > 0 && outOfTime\(\)\) break;/g) ?? [];
     expect(checks.length).toBe(2); // events and bookings
-    expect(source).not.toMatch(/\n      if \(outOfTime\(\)\) break;/);
+    expect(source).not.toMatch(/\n {6}if \(outOfTime\(\)\) break;/);
   });
 });

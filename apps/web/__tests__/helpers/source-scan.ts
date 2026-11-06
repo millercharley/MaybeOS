@@ -29,6 +29,9 @@
  * its newlines, so offsets and line numbers still line up with the file on
  * disk.
  */
+
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 export function stripComments(source: string): string {
   const out = source.split('');
   let i = 0;
@@ -78,9 +81,5 @@ export function stripComments(source: string): string {
 
 /** A source file with its comments blanked, ready to assert against. */
 export function readSource(...pathParts: string[]): string {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { readFileSync } = require('node:fs') as typeof import('node:fs');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { join } = require('node:path') as typeof import('node:path');
   return stripComments(readFileSync(join(...pathParts), 'utf8'));
 }

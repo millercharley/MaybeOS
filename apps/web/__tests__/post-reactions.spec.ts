@@ -1,4 +1,6 @@
 import { stripComments } from './helpers/source-scan';
+import { REACTIONS, looksLikeEmoji } from '@/lib/reactions';
+import { EMOJI_LIBRARY } from '@/lib/emoji-library';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
@@ -122,9 +124,6 @@ describe('the emoji picker', () => {
     // A picker that hides 👍 behind a search makes the ordinary case worse to
     // make the rare one possible. So: the quick six are the first row, in the
     // order the API lists them, and everything else is below.
-    const { REACTIONS } = require('@/lib/reactions');
-    const { EMOJI_LIBRARY } = require('@/lib/emoji-library');
-
     expect(EMOJI_LIBRARY[0].emoji.slice(0, 6).map((e: { emoji: string }) => e.emoji)).toEqual([
       ...REACTIONS,
     ]);
@@ -152,8 +151,6 @@ describe('the rule the picker applies', () => {
       Two copies on purpose — the API's is the one that decides — so they are
       tested against the same cases to stop them drifting apart.
     */
-    const { looksLikeEmoji } = require('@/lib/reactions');
-
     expect(looksLikeEmoji('🔥')).toBe(true);
     expect(looksLikeEmoji('👨‍👩‍👧‍👦')).toBe(true);
     expect(looksLikeEmoji('🇬🇧')).toBe(true);

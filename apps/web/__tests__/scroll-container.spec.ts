@@ -113,7 +113,7 @@ describe('landing on the newest message', () => {
   });
 
   it('scrolls the pane itself when the pane is the one scrolling', () => {
-    const outer = build('<div><div id="pane" style="overflow-y: auto"></div></div>');
+    build('<div><div id="pane" style="overflow-y: auto"></div></div>');
     const pane = document.getElementById('pane')!;
     size(pane, 350, 3800);
 

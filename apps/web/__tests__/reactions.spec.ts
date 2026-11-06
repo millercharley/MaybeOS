@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { REACTIONS, reactionLabel, toggled, type ReactionGroup } from '@/lib/reactions';
 
 /**
@@ -77,8 +79,8 @@ describe('the emoji on offer', () => {
   it('matches the list the API enforces', () => {
     // Two copies, one on each side of the wire. If they drift, a member
     // presses an emoji the server refuses.
-    const api = require('fs').readFileSync(
-      require('path').join(__dirname, '../../api/src/modules/commons/reactions.ts'),
+    const api = readFileSync(
+      join(__dirname, '../../api/src/modules/commons/reactions.ts'),
       'utf8',
     );
     for (const emoji of REACTIONS) expect(api).toContain(emoji);

@@ -9,7 +9,6 @@ import {
   Body,
   Query,
   Param,
-  Header,
   UseGuards,
   Res,
 } from '@nestjs/common';

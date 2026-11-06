@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { MemberService } from '../member.service';
@@ -118,10 +119,7 @@ describe('welcoming a new member', () => {
   it('is off until somebody turns it on, which is what makes that true', () => {
     // The column defaults to false in the schema; this is the assertion that
     // a future "sensible default" change has to argue with.
-    const schema = require('fs').readFileSync(
-      `${__dirname}/../../../../prisma/schema.prisma`,
-      'utf8',
-    );
+    const schema = readFileSync(`${__dirname}/../../../../prisma/schema.prisma`, 'utf8');
 
     expect(schema).toMatch(/welcomeEmailEnabled\s+Boolean\s+@default\(false\)/);
   });
@@ -162,7 +160,7 @@ describe('welcoming a new member', () => {
  * because the courtesy looks right everywhere else.
  */
 describe('a roster arriving is not 364 arrivals', () => {
-  const source = require('fs').readFileSync(`${__dirname}/../member.service.ts`, 'utf8');
+  const source = readFileSync(`${__dirname}/../member.service.ts`, 'utf8');
 
   /** The body of `importMembers`, up to the next method. */
   const importer = (() => {

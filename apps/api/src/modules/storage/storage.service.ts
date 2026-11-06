@@ -349,7 +349,7 @@ export class StorageService {
    * the key would serve the previous photo from cache and, worse, would make
    * a failed upload replace a good picture with nothing.
    */
-  async uploadAvatar(userId: string, body: Buffer, mimeType: string): Promise<string> {
+  async uploadAvatar(userId: string, body: Buffer, _mimeType: string): Promise<string> {
     if (!this.isConfigured) {
       throw new ServiceUnavailableException(
         'Photo uploads are not configured on this server (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).',

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { useAuthStore } from '@/lib/auth-store';
 import { ApiError, ApiNetworkError } from '@/lib/api';
 
@@ -73,9 +75,6 @@ describe('endSessionIfRejected', () => {
  * being ignored.
  */
 describe('the background pollers', () => {
-  const { readFileSync } = require('fs') as typeof import('fs');
-  const { join } = require('path') as typeof import('path');
-
   const read = (...p: string[]) => readFileSync(join(__dirname, '..', ...p), 'utf8');
 
   it.each([

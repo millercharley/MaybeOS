@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { nameKey, unambiguousNames } from '../past-host';
 
 /**
@@ -66,10 +68,7 @@ describe('which names identify somebody', () => {
 });
 
 describe('what the importer does with it', () => {
-  const src = require('fs').readFileSync(
-    require('path').join(__dirname, '..', 'calendar-import.service.ts'),
-    'utf8',
-  );
+  const src = readFileSync(join(__dirname, '..', 'calendar-import.service.ts'), 'utf8');
   const writeBookings = src.slice(src.indexOf('private async writeBookings'));
 
   it('prefers the guest line, which is the stronger signal', () => {

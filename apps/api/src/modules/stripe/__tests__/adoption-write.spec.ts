@@ -46,7 +46,6 @@ describe('adopting existing subscriptions', () => {
     ...over,
   });
 
-  const mapping = [{ priceId: 'price_ten', tierId: TIER }];
   const asMap = { price_ten: TIER };
 
   function build(subs: unknown[], memberships: unknown[] = []) {

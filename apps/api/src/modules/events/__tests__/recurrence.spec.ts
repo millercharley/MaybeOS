@@ -1,4 +1,4 @@
-import { describeRecurrence, MAX_OCCURRENCES, occurrencesOf } from '../recurrence';
+import { describeRecurrence, occurrencesOf } from '../recurrence';
 
 /**
  * Repeating an event (EVT-37).

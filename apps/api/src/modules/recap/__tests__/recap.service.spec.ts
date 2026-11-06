@@ -154,7 +154,6 @@ describe('what it counts', () => {
   });
 
   it('leaves out an impact measure too few people answered', async () => {
-    const { recap } = build();
     const { impact } = build();
     impact.getSignals.mockResolvedValue({
       categories: [

@@ -64,6 +64,9 @@ describe('building the From header', () => {
     ])('removes %s', (_why, name) => {
       const header = fromHeader('noreply@maybeos.org', name);
 
+      // The null byte is the point: a header may not carry one, so the
+      // assertion has to name it.
+      // eslint-disable-next-line no-control-regex
       expect(header).not.toMatch(/[\r\n\u0000]/);
       expect(header).toBe('"Evil Bcc: attacker@example.com" <noreply@maybeos.org>');
     });

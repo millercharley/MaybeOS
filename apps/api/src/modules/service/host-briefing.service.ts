@@ -2,7 +2,6 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { PrismaService } from '../../config/prisma.service';
 import { EmailService } from '../email/email.service';
 import { dueAt, isDue, missedItsMoment, type BriefingRule } from './briefing-schedule';
-import { zonedParts } from '../space/availability/zoned-time';
 import { HostDutyDto, HostBriefingDto } from './dto/host-duty.dto';
 
 export type Phase = 'BEFORE' | 'DURING' | 'AFTER';

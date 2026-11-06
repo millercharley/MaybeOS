@@ -57,6 +57,19 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-require-imports': 'off',
       'no-undef': 'off',
+
+      // The same underscore convention the TypeScript blocks below use, so a
+      // parameter kept only to match an API's signature — an Apps Script stub
+      // taking `(date, _tz, _fmt)` — reads the same everywhere.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
     },
   },
 

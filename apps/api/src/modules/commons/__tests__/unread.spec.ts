@@ -61,10 +61,6 @@ function matchRows(rows: Row[], where: Where): Row[] {
   });
 }
 
-function countRows(rows: Row[], where: Where): number {
-  return matchRows(rows, where).length;
-}
-
 /** What `post.groupBy({ by: ['channelId'], _count: { _all: true } })` returns. */
 function groupRows(rows: Row[], where: Where) {
   const tally = new Map<string, number>();

@@ -10,7 +10,6 @@ import {
   simpleItemHtml,
   money,
   onAccent,
-  rfc822,
   rowBlock,
   rssFeed,
   when,
@@ -37,10 +36,6 @@ import {
  * cosmetic bug — it is a campaign that will not send.
  */
 const NOW = new Date('2026-11-02T13:00:00.000Z');
-
-/** The same digest the feed takes, for the one test that needs to predict it. */
-const createHashOf = (text: string) =>
-  require('node:crypto').createHash('sha256').update(text).digest('hex').slice(0, 16);
 
 const EVENT: EmbedEvent = {
   title: 'Figure drawing',
@@ -305,7 +300,6 @@ describe('a feed stays parseable whatever a member typed', () => {
 
   it('survives an event whose description contains one', () => {
     const xml = feed([{ ...EVENT, description: 'Tricky ]]> copy' }]);
-    expect(() => require('fast-xml-parser')).toBeDefined();
     // Nothing after the first section may be outside a CDATA or a tag.
     expect(xml).not.toMatch(/\]\]>[^<]*[a-z]+ copy/);
   });

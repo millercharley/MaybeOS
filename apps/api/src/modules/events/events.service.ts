@@ -1662,7 +1662,9 @@ export class EventsService {
     dto: RepeatEventDto,
     actor: { userId: string; isStaff: boolean },
   ) {
-    const source = await this.loadEventForActor(orgId, eventId, actor.userId, actor.isStaff);
+    // Throws unless the actor may act on this event; the event itself is
+    // re-read below with the relations this needs.
+    await this.loadEventForActor(orgId, eventId, actor.userId, actor.isStaff);
 
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },

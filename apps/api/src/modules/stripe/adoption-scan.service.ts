@@ -17,7 +17,6 @@ import {
   summarize,
   describeStripeFailure,
   PriceToTier,
-  TierSnapshot as Tier,
 } from './adoption-scan';
 import { membershipStatusFor } from './subscription-status';
 

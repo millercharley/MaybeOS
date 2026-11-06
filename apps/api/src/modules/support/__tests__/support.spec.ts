@@ -4,6 +4,8 @@ import { SupportService } from '../support.service';
 import { SupportController } from '../support.controller';
 import { PrismaService } from '../../../config/prisma.service';
 import { StorageService } from '../../storage/storage.service';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { SUPPORT_ARTICLES } from '../support-articles';
 
 /**
@@ -230,10 +232,7 @@ describe('SupportController', () => {
       organisers this is written for, which is why the guard sits on the write
       routes one at a time.
     */
-    const source = require('fs').readFileSync(
-      require('path').join(__dirname, '..', 'support.controller.ts'),
-      'utf8',
-    );
+    const source = readFileSync(join(__dirname, '..', 'support.controller.ts'), 'utf8');
     const header = source.slice(0, source.indexOf('export class'));
 
     expect(header).toContain('@UseGuards(JwtAuthGuard)');
@@ -241,10 +240,7 @@ describe('SupportController', () => {
   });
 
   it('guards every write with the platform admin check', () => {
-    const source = require('fs').readFileSync(
-      require('path').join(__dirname, '..', 'support.controller.ts'),
-      'utf8',
-    );
+    const source = readFileSync(join(__dirname, '..', 'support.controller.ts'), 'utf8');
 
     for (const route of ['@Post(', '@Patch(', '@Delete(']) {
       let from = source.indexOf(route);
