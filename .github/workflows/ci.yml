@@ -21,12 +21,17 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Named for what it does. It was `lint-and-build` and ran no lint: `npm run
-  # lint` reports 57 errors on the existing code, so putting it in here would
-  # go red on a backlog rather than on anything this job is checking. That
-  # backlog is worth clearing on its own, and then this gets a lint step and
-  # its old name back.
-  build-and-test:
+  # Named for what it does. This was `lint-and-build` and ran no lint, because
+  # `npm run lint` reported 57 errors on the existing code and the step would
+  # have gone red on that backlog rather than on anything the job checks. The
+  # backlog is cleared, so the lint step is here — under a name that admits the
+  # job runs the tests too, which `lint-and-build` never did.
+  #
+  # Errors fail the build and warnings do not, which is the split
+  # `eslint.config.mjs` sets out: a rule that fires on the existing style is a
+  # warning, a rule that has actually hidden a defect here is an error. The 59
+  # warnings are visible in the log without being a gate.
+  lint-build-and-test:
     runs-on: ubuntu-latest
 
     services:
@@ -68,6 +73,12 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # Ahead of the database work on purpose: lint needs nothing but
+      # node_modules, so a lint failure should not wait on Postgres and a
+      # migration chain to be told.
+      - name: Lint
+        run: npm run lint
 
       - name: Generate Prisma client
         run: cd apps/api && npx prisma generate
