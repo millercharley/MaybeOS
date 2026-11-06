@@ -260,6 +260,16 @@ export class OrgService {
         mission: true,
         description: true,
         allowPublicJoin: true,
+        /*
+          So the embed can format a price without guessing (PUB-01).
+
+          The events feed publishes `currency` per event and the embed's event
+          card passes it to the formatter; the three membership call sites
+          beside it had nothing to pass and said `'usd'`. This is the same
+          answer from the same kind of column, one level up — dues are one
+          currency per co-op, not one per tier.
+        */
+        currency: true,
         tiers: {
           where: { isActive: true },
           orderBy: { sortOrder: 'asc' },

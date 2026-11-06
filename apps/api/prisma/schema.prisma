@@ -45,6 +45,24 @@ model Organization {
   customDomain String? @unique
   timezone     String  @default("America/New_York")
 
+  /// The money this co-op names its own prices in. ISO 4217, lowercase, as
+  /// Stripe expects it — the same shape and the same default as
+  /// `Event.currency`, so a renderer handed either does not have to know
+  /// which one it got.
+  ///
+  /// On the co-op rather than on each tier: an event can be priced in
+  /// whatever the ticket is sold in, but a co-op collects its dues in one
+  /// currency, and a tier list where two cards disagree is a bug in every
+  /// reading of it.
+  ///
+  /// **Read by the surfaces that render dues, not yet by the ones that charge
+  /// them.** Dues checkout still names `'usd'` inline in several places in
+  /// `stripe.service.ts` (the monthly price, the pay-what-you-can inline
+  /// price, the org fee line, the joining fee, the reprice). So this column
+  /// off `'usd'` would show a visitor one currency and bill them another;
+  /// moving it is the second half of this work, not a setting to flip.
+  currency     String  @default("usd")
+
   /// What an hour of a member's service is worth to this co-op, in cents
   /// (SRV-02). Null, and null by default, which is the honest state.
   ///

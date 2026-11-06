@@ -591,7 +591,7 @@
   // A tier card (PUB-01). Same textContent-only rule as the event row, for the
   // same reason: a tier name and its benefits are text a co-op typed, and this
   // runs on their domain.
-  var card = function (tier, canJoin) {
+  var card = function (tier, canJoin, currency) {
     var el = document.createElement('div');
     el.className = 'tier';
 
@@ -619,11 +619,11 @@
       if (tier.minPrice) {
         var from = document.createElement('span');
         from.className = 'tier-per';
-        from.textContent = ' from ' + money(tier.minPrice, 'usd');
+        from.textContent = ' from ' + money(tier.minPrice, currency);
         price.appendChild(from);
       }
     } else if (tier.priceMonthly > 0) {
-      price.textContent = money(tier.priceMonthly, 'usd');
+      price.textContent = money(tier.priceMonthly, currency);
       var per = document.createElement('span');
       per.className = 'tier-per';
       per.textContent = '/month';
@@ -644,7 +644,7 @@
     if (tier.initiationFeeCents > 0) {
       var joining = document.createElement('div');
       joining.className = 'tier-joining';
-      joining.textContent = '+ ' + money(tier.initiationFeeCents, 'usd') + ' once, to join';
+      joining.textContent = '+ ' + money(tier.initiationFeeCents, currency) + ' once, to join';
       el.appendChild(joining);
     }
 
@@ -927,6 +927,18 @@
   var renderMembership = function (data) {
     var tiers = data.tiers || [];
 
+    /*
+      The co-op's own currency, where the three tier prices used to say 'usd'.
+
+      Defaulted here rather than at each call site, and defaulted at all for a
+      reason this file has to care about more than most: a co-op pasted this
+      tag on their website months ago and has not touched it since, so this
+      copy of the script must keep working against a feed that predates the
+      field. An omitted currency is dollars, which is what it rendered before
+      the feed could say otherwise.
+    */
+    var currency = data.currency || 'usd';
+
     // Context before prices (PUB-03). Drawn even when there are no tiers yet,
     // because "here is the place, membership is coming" is still an answer.
     header(data);
@@ -942,7 +954,7 @@
     var grid = document.createElement('div');
     grid.className = 'tiers';
     tiers.forEach(function (tier) {
-      grid.appendChild(card(tier, !!data.allowPublicJoin));
+      grid.appendChild(card(tier, !!data.allowPublicJoin, currency));
     });
     wrap.appendChild(grid);
 

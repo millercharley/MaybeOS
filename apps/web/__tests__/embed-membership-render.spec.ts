@@ -12,6 +12,7 @@
  */
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { stripComments } from './helpers/source-scan';
 
 const SOURCE = readFileSync(join(process.cwd(), 'public', 'embed.js'), 'utf8');
 
@@ -78,6 +79,83 @@ describe('the membership embed', () => {
     expect(cards[0].textContent).toContain('$19.50');
     expect(cards[0].textContent).toContain('Reserve rooms');
     expect(cards[1].textContent).toContain('Free');
+  });
+
+  it('prices the tiers in the co-op’s own currency', async () => {
+    /*
+      PUB-01. `money()` is Intl.NumberFormat and honours whatever currency it
+      is handed, but the three membership call sites handed it a hardcoded
+      'usd' while the event card beside them passed `event.currency`. Nothing
+      looked wrong because MaybeItsFate bills in dollars — which is exactly
+      the kind of bug that ships to the first co-op that does not.
+
+      The symbol rather than the whole string: the formatter is given the
+      *visitor's* locale on purpose, so the grouping and the symbol's side
+      are theirs and are not this file's to assert.
+    */
+    const { shadow } = render(
+      { 'data-org': 'lumiere', 'data-show': 'membership' },
+      { ...MEMBERSHIP, currency: 'eur' },
+    );
+    await settle();
+
+    const price = shadow().querySelectorAll('.tier')[0].textContent!;
+    expect(price).toContain('€');
+    expect(price).not.toContain('$');
+  });
+
+  it('still reads dollars as dollars when the feed says so', async () => {
+    const { shadow } = render(
+      { 'data-org': 'sunrise', 'data-show': 'membership' },
+      { ...MEMBERSHIP, currency: 'usd' },
+    );
+    await settle();
+
+    expect(shadow().querySelectorAll('.tier')[0].textContent).toContain('$19.50');
+  });
+
+  it('reads a feed that predates the currency field as dollars', async () => {
+    /*
+      The reason this fallback exists rather than trusting the payload: a
+      co-op pasted this tag on their website months ago and has not touched
+      it since. A newer script against an older feed must keep rendering what
+      it rendered yesterday, and every feed before this change meant dollars.
+
+      MEMBERSHIP deliberately carries no `currency`, so this is that payload.
+    */
+    const { shadow } = render({ 'data-org': 'sunrise', 'data-show': 'membership' }, MEMBERSHIP);
+    await settle();
+
+    expect(shadow().querySelectorAll('.tier')[0].textContent).toContain('$19.50');
+  });
+
+  it('prices a joining fee and a pay-what-you-can floor in that currency too', async () => {
+    // Three call sites, not one: the monthly price, the PWYC floor (PAY-10's
+    // "from") and the joining fee. All three said 'usd'.
+    const { shadow } = render(
+      { 'data-org': 'lumiere', 'data-show': 'membership' },
+      {
+        ...MEMBERSHIP,
+        currency: 'gbp',
+        tiers: [
+          {
+            id: 'pwyc',
+            name: 'Supporter',
+            isPayWhatYouCan: true,
+            minPrice: 500,
+            priceMonthly: 0,
+            initiationFeeCents: 2500,
+            benefits: [],
+          },
+        ],
+      },
+    );
+    await settle();
+
+    const text = shadow().querySelectorAll('.tier')[0].textContent!;
+    expect(text).toContain('£5.00');
+    expect(text).toContain('£25.00');
+    expect(text).not.toContain('$');
   });
 
   it('sends each Join button to that tier on the join page, in a new tab', async () => {
@@ -234,6 +312,24 @@ describe('the membership embed', () => {
     await settle();
 
     expect(shadow().textContent).toContain('unavailable');
+  });
+});
+
+describe('every price in the embed', () => {
+  it('is formatted in a currency the feed supplied, never a literal', async () => {
+    /*
+      The guard, rather than one more rendering test: this file had two
+      top-level `money` declarations, the second of which ignored its
+      currency argument and won every call, so the three membership sites
+      passing 'usd' were invisible for as long as that shadowing lasted.
+
+      A fourth call site added next year will not have this conversation
+      attached to it. A literal where the currency goes fails here instead.
+    */
+    const scanned = stripComments(SOURCE);
+
+    expect(scanned).toContain('money(tier.priceMonthly, currency)');
+    expect(scanned).not.toMatch(/money\([^)]*['"]/);
   });
 });
 

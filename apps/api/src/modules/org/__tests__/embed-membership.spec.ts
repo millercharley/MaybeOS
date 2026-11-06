@@ -32,6 +32,7 @@ describe('OrgService — the membership embed', () => {
           name: 'Sunrise',
           slug: 'sunrise',
           allowPublicJoin: true,
+          currency: 'usd',
           tiers: [{ id: 't1', name: 'Sustainer' }],
         }),
       },
@@ -68,6 +69,10 @@ describe('OrgService — the membership embed', () => {
 
     expect(Object.keys(selection()).sort()).toEqual([
       'allowPublicJoin',
+      // What the embed formats the tier prices in (PUB-01). Published for the
+      // same reason the events feed publishes it per event: the renderer has
+      // no other way to know, and the one it assumed was a dollar sign.
+      'currency',
       // Shown above the cards as the sentence about the place (PUB-03).
       'description',
       // Only to count against; stripped from what is returned.
@@ -108,6 +113,27 @@ describe('OrgService — the membership embed', () => {
     expect(selection().tiers.orderBy).toEqual({ sortOrder: 'asc' });
   });
 
+  it('publishes the currency its prices are named in', async () => {
+    /*
+      The embed renders tier prices through Intl.NumberFormat and used to pass
+      a hardcoded 'usd' at all three membership call sites, while the event
+      card beside them passed the event's own currency. A co-op that does not
+      bill in dollars was going to be handed a dollar sign by a view with no
+      way to know better.
+    */
+    prisma.organization.findUnique.mockResolvedValue({
+      name: 'Studio Lumière',
+      slug: 'lumiere',
+      allowPublicJoin: true,
+      currency: 'eur',
+      tiers: [{ id: 't1', name: 'Sociétaire' }],
+    });
+
+    const result = await service.embedMembership('lumiere');
+
+    expect(result.currency).toBe('eur');
+  });
+
   it('404s for a slug that is not a co-op', async () => {
     prisma.organization.findUnique.mockResolvedValue(null);
 
@@ -139,6 +165,7 @@ describe('OrgService — what the month counts', () => {
           mission: null,
           description: null,
           allowPublicJoin: true,
+          currency: 'usd',
           tiers: [],
         }),
       },
