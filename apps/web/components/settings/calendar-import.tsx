@@ -52,6 +52,8 @@ export function CalendarImport({ org }: { org: Org }) {
   /** What the unattended sync has been doing without anybody asking (CAL-13). */
   const [sync, setSync] = useState<{
     syncedAt: string | null;
+    /** No pass has finished in hours (CAL-15). */
+    stale?: boolean;
     inFlight: boolean;
     error: string | null;
     automatic: boolean;
@@ -257,7 +259,7 @@ export function CalendarImport({ org }: { org: Org }) {
       {sync?.automatic && (
         <div
           className={`rounded-lg p-3 text-sm ${
-            sync.error ? 'bg-amber-50 text-amber-900' : 'bg-gray-50 text-gray-600'
+            sync.error || sync.stale ? 'bg-amber-50 text-amber-900' : 'bg-gray-50 text-gray-600'
           }`}
         >
           {sync.error ? (
@@ -265,6 +267,25 @@ export function CalendarImport({ org }: { org: Org }) {
               <strong>The automatic sync is failing.</strong> Google said:{' '}
               {sync.error}. Reconnecting the room that holds the Google account, on the
               Rooms page, is usually what fixes it.
+            </>
+          ) : sync.stale ? (
+            /*
+              The sync has not got all the way round in hours, and has not
+              said why (CAL-15).
+
+              This box had one way to report trouble — `error` — and that is
+              written by an `organization.update`. For five days the sync was
+              failing on an `organization.update` against a column the
+              database did not have (OPS-42), so the field stayed null and
+              this read "Last synced itself 06/11/2026" in calm grey while
+              every tick failed. A date going quietly stale is the symptom
+              nothing was watching for.
+            */
+            <>
+              <strong>The automatic sync has stopped finishing.</strong> The last
+              complete pass was {new Date(sync.syncedAt as string).toLocaleString()}, and
+              one should finish every few hours. Nothing new from your calendars has
+              arrived since then.
             </>
           ) : sync.syncedAt ? (
             <>

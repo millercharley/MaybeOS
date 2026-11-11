@@ -14,7 +14,13 @@ import {
 import { guestFrom } from './booking-guest';
 import { slugCandidates } from './event-slug';
 import { budget, nextCursor, startOf, type ImportCursor } from './import-cursor';
-import { SYNC_MONTHS_BACK, afterChunk, afterFailure, nextToSync } from './sync-schedule';
+import {
+  SYNC_MONTHS_BACK,
+  afterChunk,
+  afterFailure,
+  nextToSync,
+  syncIsStale,
+} from './sync-schedule';
 import { ImportedEntry, cancelledId, importWindow, toEntry } from './calendar-import';
 
 /** A year back is the default; two years ahead is the ceiling (see `importWindow`). */
@@ -182,6 +188,14 @@ export class CalendarImportService {
     inFlight: boolean;
     error: string | null;
     automatic: boolean;
+    /**
+     * No pass has finished in hours (CAL-15).
+     *
+     * A second way for the screen to say something is wrong, reached without
+     * the database having agreed to write anything — which is what `error`
+     * needs, and what it could not get for five days (OPS-42).
+     */
+    stale: boolean;
   }> {
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
@@ -200,6 +214,7 @@ export class CalendarImportService {
       inFlight: org.calendarSyncCursor != null,
       error: org.calendarSyncError,
       automatic: connected > 0,
+      stale: syncIsStale(org.calendarSyncedAt, new Date()),
     };
   }
 
@@ -286,8 +301,25 @@ export class CalendarImportService {
           where: { id: due.orgId },
           data: afterFailure(reason) as Prisma.OrganizationUpdateInput,
         })
-        // Writing down the failure must not itself fail the task.
-        .catch(() => {});
+        /*
+          Writing down the failure must not itself fail the task — but it must
+          not disappear either (CAL-15).
+
+          This was `.catch(() => {})`, and the silence cost five days. The
+          sync was failing on an `organization.update` against a column the
+          database did not have (OPS-42), so the `organization.update` that
+          records the failure failed too, every time, and the screen went on
+          saying "Last synced itself 06/11/2026" in calm grey. A diagnostic
+          that shares the fault it reports needs to say so out loud when it
+          cannot land.
+        */
+        .catch((writeError: Error) =>
+          this.logger.error(
+            `Calendar sync failed for org ${due.orgId} and the failure could not ` +
+              `be recorded — the screen will not show it. Sync said: ${reason}. ` +
+              `Recording it said: ${writeError.message}`,
+          ),
+        );
 
       return { orgId: due.orgId, events: 0, bookings: 0, released: 0, finished: false, error: reason };
     }

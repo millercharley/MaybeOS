@@ -455,6 +455,15 @@ class ApiClient {
         inFlight: boolean;
         error: string | null;
         automatic: boolean;
+        /**
+         * No pass has finished in hours (CAL-15).
+         *
+         * The second way the screen can say something is wrong. `error` needs
+         * the database to accept a write, and for five days it would not —
+         * the sync was failing on an `organization.update`, so the
+         * `organization.update` that records the failure failed too (OPS-42).
+         */
+        stale: boolean;
       }>(`/orgs/${orgId}/calendar/import/status`, { token }),
 
     /** Null clears it, which stops the import producing events at all. */

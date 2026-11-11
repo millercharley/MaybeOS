@@ -4,6 +4,7 @@ import {
   afterChunk,
   afterFailure,
   nextToSync,
+  syncIsStale,
   type SyncState,
 } from '../sync-schedule';
 import { readFileSync } from 'node:fs';
@@ -171,5 +172,45 @@ describe('a chunk always moves', () => {
     const checks = source.match(/if \(index > 0 && outOfTime\(\)\) break;/g) ?? [];
     expect(checks.length).toBe(2); // events and bookings
     expect(source).not.toMatch(/\n {6}if \(outOfTime\(\)\) break;/);
+  });
+});
+
+/**
+ * When the screen should say the sync has stopped working (CAL-15).
+ *
+ * `calendarSyncError` was the only way it could, and that field is written by
+ * an `organization.update` — the very call the sync was failing on for five
+ * days (OPS-42). The diagnostic shared the fault it was meant to report, so
+ * the screen showed "Last synced itself 06/11/2026" in calm grey while every
+ * tick failed.
+ */
+describe('syncIsStale', () => {
+  const NOW = new Date('2026-11-11T20:00:00Z');
+  const hoursAgo = (n: number) => new Date(NOW.getTime() - n * 60 * 60 * 1000);
+
+  it('is not stale an hour after a pass finished', () => {
+    expect(syncIsStale(hoursAgo(1), NOW)).toBe(false);
+  });
+
+  it('is not stale while a long pass is still within the window', () => {
+    // A pass runs over many ticks; hours is normal and minutes would cry wolf.
+    expect(syncIsStale(hoursAgo(5), NOW)).toBe(false);
+  });
+
+  it('is stale once it has been six hours', () => {
+    expect(syncIsStale(hoursAgo(6), NOW)).toBe(true);
+  });
+
+  it('is emphatically stale after the five days this actually went unseen', () => {
+    expect(syncIsStale(new Date('2026-11-06T19:15:32Z'), NOW)).toBe(true);
+  });
+
+  it('says nothing about a co-op whose first pass has never finished', () => {
+    // That is new, not broken, and `inFlight` already says so.
+    expect(syncIsStale(null, NOW)).toBe(false);
+  });
+
+  it('takes the threshold as an argument, so the rule can be read in a test', () => {
+    expect(syncIsStale(hoursAgo(2), NOW, 60 * 60 * 1000)).toBe(true);
   });
 });

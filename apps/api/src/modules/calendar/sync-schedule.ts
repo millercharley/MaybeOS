@@ -110,6 +110,44 @@ export function afterChunk(
  * `syncedAt` is left alone: nothing finished, and moving it would hide a
  * co-op whose sync has been failing all week behind "synced recently".
  */
+/**
+ * How long a sync may go without finishing before the screen should worry
+ * (CAL-15).
+ *
+ * A pass runs over many ticks — MaybeItsFate is nine calendars, about
+ * forty-eight entries a tick — so hours is normal and minutes would cry wolf.
+ * Six is comfortably more than a pass plus the idle hour after it, and far
+ * less than the five days this went unnoticed for.
+ */
+export const SYNC_STALE_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Whether the automatic sync has stopped getting all the way round (CAL-15).
+ *
+ * The screen had one way to say something was wrong: `calendarSyncError`,
+ * written by `afterFailure`. For five days that field stayed null while the
+ * sync failed every fifteen minutes, because the write that records the
+ * failure is an `organization.update` — and what the sync was failing on was
+ * an `organization.update` against a column the database did not have
+ * (OPS-42). The diagnostic shared the fault it was meant to report.
+ *
+ * So the screen needs an answer it can reach without the database having
+ * agreed to write anything: how long it has been since a pass finished. That
+ * is a fact already stored, by the last run that worked.
+ *
+ * A co-op whose first pass has never finished is not stale — it is new, and
+ * `inFlight` already says so.
+ */
+export function syncIsStale(
+  syncedAt: Date | null,
+  now: Date,
+  staleAfterMs: number = SYNC_STALE_MS,
+): boolean {
+  if (syncedAt === null) return false;
+
+  return now.getTime() - syncedAt.getTime() >= staleAfterMs;
+}
+
 export function afterFailure(reason: string): {
   calendarSyncCursor: null;
   calendarSyncError: string;

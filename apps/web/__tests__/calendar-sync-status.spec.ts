@@ -54,3 +54,43 @@ describe('the import panel', () => {
     expect(panel).toMatch(/how you stop waiting/);
   });
 });
+
+/**
+ * A sync that has stopped finishing, and has not said why (CAL-15).
+ *
+ * This box had one way to report trouble: `error`, written by an
+ * `organization.update`. For five days the sync was failing on an
+ * `organization.update` against a column the database did not have (OPS-42),
+ * so the field stayed null, the box stayed grey, and it read "Last synced
+ * itself 06/11/2026" while every tick failed. 589 Sentry warnings and nothing
+ * on the screen.
+ */
+describe('when the sync has gone quiet', () => {
+  const panel = readFileSync(
+    join(__dirname, '..', 'components', 'settings', 'calendar-import.tsx'),
+    'utf8',
+  );
+
+  it('turns the box amber on staleness, not only on a recorded error', () => {
+    expect(panel).toMatch(/sync\.error \|\| sync\.stale \? 'bg-amber-50/);
+  });
+
+  it('says it has stopped finishing, and when it last did', () => {
+    expect(panel).toMatch(/The automatic sync has stopped finishing/);
+    expect(panel).toMatch(/last\s*\n?\s*complete pass was/);
+  });
+
+  it('says what that costs, since the date alone did not land', () => {
+    expect(panel).toMatch(/Nothing new from your calendars has/);
+  });
+
+  it('still prefers the recorded reason when there is one', () => {
+    // Google's own message is more useful than "it stopped".
+    expect(panel.indexOf('sync.error ? (')).toBeLessThan(panel.indexOf('sync.stale ? ('));
+  });
+
+  it('keeps the calm line for a sync that is simply working', () => {
+    expect(panel).toMatch(/Last synced itself/);
+    expect(panel).toMatch(/working through the rest now/);
+  });
+});
