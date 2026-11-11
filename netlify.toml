@@ -13,7 +13,17 @@
 
   # Prisma's generated client and its native query engine live at the
   # monorepo root (node_modules/.prisma), not under apps/api.
-  included_files = ["node_modules/.prisma/client/**"]
+  #
+  # The migrations are here for the drift check (OPS-42), which compares the
+  # directory names against `_prisma_migrations` every fifteen minutes.
+  # Deploys do not run migrations — they are applied by hand through the
+  # Supabase connector — so nothing else would notice a schema the code is
+  # ahead of. 444 KB of SQL on a 68 MB function, and the check fails loudly
+  # rather than passing quietly if this entry is ever dropped.
+  included_files = [
+    "node_modules/.prisma/client/**",
+    "apps/api/prisma/migrations/**",
+  ]
 
   external_node_modules = [
     # Real dependencies that must not be inlined: native binaries, or

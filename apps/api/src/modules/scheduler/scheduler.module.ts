@@ -11,6 +11,7 @@ import { RecapModule } from '../recap/recap.module';
 import { CalendarModule } from '../calendar/calendar.module';
 import { TicketPassModule } from '../events/ticket-pass.module';
 import { SchedulerService } from './scheduler.service';
+import { MigrationDriftService } from '../health/migration-drift.service';
 
 /**
  * Deliberately has no controller. Scheduled work is reached through the
@@ -34,7 +35,9 @@ import { SchedulerService } from './scheduler.service';
     // webhook could not send, this sweeps up.
     TicketPassModule,
   ],
-  providers: [PrismaService, SchedulerService],
+  // Not the whole HealthModule: this needs the one service, and importing
+  // a module of health indicators into the scheduler would couple them.
+  providers: [PrismaService, SchedulerService, MigrationDriftService],
   exports: [SchedulerService],
 })
 export class SchedulerModule {}

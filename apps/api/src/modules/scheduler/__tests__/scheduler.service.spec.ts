@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { SchedulerService } from '../scheduler.service';
 import { TicketPassService } from '../../events/ticket-pass.service';
+import { MigrationDriftService } from '../../health/migration-drift.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { CommonsService } from '../../commons/commons.service';
 import { ReportService } from '../../impact/report.service';
@@ -25,6 +26,8 @@ describe('SchedulerService', () => {
   let service: SchedulerService;
   let prisma: jest.Mocked<PrismaService>;
   let commons: jest.Mocked<CommonsService>;
+  /** Whether the database has the migrations this build expects (OPS-42). */
+  let migrations: { check: jest.Mock };
 
   const NOW = new Date('2026-08-11T12:00:00Z');
 
@@ -83,6 +86,12 @@ describe('SchedulerService', () => {
           provide: TicketPassService,
           useValue: { sweep: jest.fn().mockResolvedValue({ sent: 0, failed: 0 }) },
         },
+        // OPS-42. On a healthy tick the database is in step and this says so;
+        // these suites assert nothing about it.
+        {
+          provide: MigrationDriftService,
+          useValue: { check: jest.fn().mockResolvedValue({ missing: [], unknown: [] }) },
+        },
         // DOR-01. The door pass is reconciliation, so it does nothing at all
         // unless a co-op has switched door access on and named a sheet.
         {
@@ -117,7 +126,19 @@ describe('SchedulerService', () => {
     service = module.get<SchedulerService>(SchedulerService);
     prisma = module.get(PrismaService);
     commons = module.get(CommonsService);
+    migrations = module.get(MigrationDriftService);
   });
+
+  /*
+    Tasks are found by name, not by index.
+
+    They were read as `tasks[0]` and `tasks[1]`, which made every assertion
+    here depend on the order of a list that is expected to grow — adding the
+    migration check at the top broke five tests that had nothing to do with
+    it (OPS-42).
+  */
+  const task = (result: { tasks: { task: string }[] }, name: string) =>
+    result.tasks.find((t) => t.task === name) as never;
 
   describe('close-due-proposals', () => {
     it('only selects OPEN proposals with a deadline at or before now', async () => {
@@ -144,7 +165,7 @@ describe('SchedulerService', () => {
       // naming it, rather than through an unscoped call (CMN-07).
       expect(commons.closeProposal).toHaveBeenCalledWith('org-a', 'p1');
       expect(commons.closeProposal).toHaveBeenCalledWith('org-b', 'p2');
-      expect(result.tasks[0]).toMatchObject({ processed: 2, failed: 0 });
+      expect(task(result, 'close-due-proposals')).toMatchObject({ processed: 2, failed: 0 });
     });
 
     it('keeps going when one proposal fails, and reports it', async () => {
@@ -162,8 +183,8 @@ describe('SchedulerService', () => {
 
       // The two healthy rows must still have been closed.
       expect(commons.closeProposal).toHaveBeenCalledWith('org-a', 'p3');
-      expect(result.tasks[0]).toMatchObject({ processed: 2, failed: 1 });
-      expect(result.tasks[0].errors[0]).toContain('boom');
+      expect(task(result, 'close-due-proposals')).toMatchObject({ processed: 2, failed: 1 });
+      expect(task(result, 'close-due-proposals').errors[0]).toContain('boom');
     });
 
     it('does not strand the survey task when the proposal query itself fails', async () => {
@@ -175,9 +196,9 @@ describe('SchedulerService', () => {
       // The run reports the failure rather than throwing, and the surveys
       // still get closed — otherwise the two tasks would be coupled purely
       // by their order in the list.
-      expect(result.tasks[0]).toMatchObject({ processed: 0, failed: 1 });
-      expect(result.tasks[0].errors[0]).toContain('connection lost');
-      expect(result.tasks[1]).toMatchObject({ processed: 3, failed: 0 });
+      expect(task(result, 'close-due-proposals')).toMatchObject({ processed: 0, failed: 1 });
+      expect(task(result, 'close-due-proposals').errors[0]).toContain('connection lost');
+      expect(task(result, 'close-due-surveys')).toMatchObject({ processed: 3, failed: 0 });
     });
   });
 
@@ -196,7 +217,7 @@ describe('SchedulerService', () => {
 
       const result = await service.runDueTasks(NOW);
 
-      expect(result.tasks[1]).toMatchObject({
+      expect(task(result, 'close-due-surveys')).toMatchObject({
         task: 'close-due-surveys',
         processed: 4,
         failed: 0,
@@ -204,10 +225,95 @@ describe('SchedulerService', () => {
     });
   });
 
+  /**
+   * Does the database have the migrations this build expects (OPS-42)?
+   *
+   * `20261106120000_org_currency` was committed on 6 November and applied to
+   * development only. Production spent five days failing every query that
+   * touched an organisation — 43 ticket checkouts — and nothing said so.
+   */
+  describe('check-migration-drift', () => {
+    const drift = (over: Partial<{ missing: string[]; unknown: string[] }> = {}) =>
+      ({ missing: [], unknown: [], ...over });
+
+    it('runs before anything that would fail because of it', async () => {
+      // Otherwise the tasks below fail one by one with errors about columns
+      // and the real answer is buried under them.
+      const result = await service.runDueTasks(NOW);
+
+      expect(result.tasks[0].task).toBe('check-migration-drift');
+    });
+
+    it('passes quietly when the database is in step', async () => {
+      const result = await service.runDueTasks(NOW);
+
+      expect(task(result, 'check-migration-drift')).toMatchObject({ failed: 0, errors: [] });
+    });
+
+    it('fails the task when a migration has not been applied', async () => {
+      migrations.check.mockResolvedValue(
+        drift({ missing: ['20261106120000_org_currency'] }),
+      );
+
+      const result = await service.runDueTasks(NOW);
+      const reported = task(result, 'check-migration-drift') as unknown as {
+        failed: number;
+        errors: string[];
+      };
+
+      expect(reported.failed).toBe(1);
+      expect(reported.errors[0]).toContain('20261106120000_org_currency');
+    });
+
+    it('counts every drifted migration, so the report carries the names', async () => {
+      migrations.check.mockResolvedValue(drift({ missing: ['a', 'b'], unknown: ['c'] }));
+
+      const result = await service.runDueTasks(NOW);
+
+      expect(task(result, 'check-migration-drift')).toMatchObject({ failed: 3 });
+    });
+
+    it('fails when it cannot answer, rather than reporting nothing missing', async () => {
+      /*
+        The property that matters most. A check that silently passes when it
+        cannot read the migrations is worse than no check: it is a reason to
+        stop looking.
+      */
+      migrations.check.mockRejectedValue(
+        new Error('Cannot find the migrations directory'),
+      );
+
+      const result = await service.runDueTasks(NOW);
+      const reported = task(result, 'check-migration-drift') as unknown as {
+        failed: number;
+        errors: string[];
+      };
+
+      expect(reported.failed).toBe(1);
+      expect(reported.errors[0]).toMatch(/Cannot find the migrations directory/);
+    });
+
+    it('does not stop the other tasks when it fails', async () => {
+      // A drifted schema is exactly when the rest of the run still matters.
+      migrations.check.mockResolvedValue(drift({ missing: ['a'] }));
+      prisma.survey.updateMany.mockResolvedValue({ count: 2 } as never);
+
+      const result = await service.runDueTasks(NOW);
+
+      expect(task(result, 'close-due-surveys')).toMatchObject({ processed: 2, failed: 0 });
+    });
+  });
+
   it('reports nothing to do when nothing is due', async () => {
     const result = await service.runDueTasks(NOW);
 
-    expect(result.tasks.every((t) => t.processed === 0 && t.failed === 0)).toBe(true);
+    // The migration check is excluded: on a healthy tick it has done its one
+    // piece of work, which is confirming the database is in step (OPS-42).
+    expect(
+      result.tasks
+        .filter((t) => t.task !== 'check-migration-drift')
+        .every((t) => t.processed === 0 && t.failed === 0),
+    ).toBe(true);
     expect(commons.closeProposal).not.toHaveBeenCalled();
   });
 });
@@ -244,6 +350,10 @@ describe('SchedulerService — compose-pending-reports', () => {
         SchedulerService,
         { provide: CalendarImportService, useValue: { runScheduled: jest.fn().mockResolvedValue({ orgId: null, events: 0, bookings: 0, released: 0, finished: true }) } },
         { provide: TicketPassService, useValue: { sweep: jest.fn().mockResolvedValue({ sent: 0, failed: 0 }) } },
+        {
+          provide: MigrationDriftService,
+          useValue: { check: jest.fn().mockResolvedValue({ missing: [], unknown: [] }) },
+        },
         { provide: PrismaService, useValue: prisma },
         { provide: CommonsService, useValue: { closeProposal: jest.fn() } },
         { provide: ReportService, useValue: reports },

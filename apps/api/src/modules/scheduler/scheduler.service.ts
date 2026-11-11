@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
+import { MigrationDriftService } from '../health/migration-drift.service';
+import { describeDrift, isClean } from '../health/migration-drift';
 import { CommonsService } from '../commons/commons.service';
 import { ReportService } from '../impact/report.service';
 import { BuddyService } from '../belonging/buddy.service';
@@ -62,6 +64,8 @@ export class SchedulerService {
     private readonly rota: ServiceService,
     private readonly calendars: CalendarImportService,
     private readonly ticketPasses: TicketPassService,
+    /** Whether the database has the migrations this build expects (OPS-42). */
+    private readonly migrations: MigrationDriftService,
   ) {}
 
   async runDueTasks(now: Date = new Date()): Promise<RunResult> {
@@ -73,6 +77,17 @@ export class SchedulerService {
     // an accident waiting to be debugged at 2am.
     const tasks: TaskResult[] = [];
     for (const task of [
+      /*
+        First, and on purpose (OPS-42).
+
+        If the database is missing a migration this build expects, the tasks
+        below will fail one by one with errors about columns, and the real
+        answer will be buried under them. This names it once, at the top.
+
+        It is also the cheapest task here — one directory read and one query
+        — so running it every fifteen minutes costs nothing worth saving.
+      */
+      { name: 'check-migration-drift', run: () => this.checkMigrationDrift() },
       { name: 'close-due-proposals', run: () => this.closeDueProposals(now) },
       { name: 'close-due-surveys', run: () => this.closeDueSurveys(now) },
       { name: 'release-expired-booking-holds', run: () => this.releaseExpiredHolds(now) },
@@ -135,6 +150,47 @@ export class SchedulerService {
    * is no longer on Free (PAY-09). Reconciliation, like the door codes: it
    * catches an upgrade however it arrived, and it is idempotent.
    */
+  /**
+   * Does this database have the migrations this code was built against
+   * (OPS-42)?
+   *
+   * `20261106120000_org_currency` was committed on 6 November and applied to
+   * the development database only. Production spent five days failing every
+   * query that touched an organisation — 43 ticket checkouts, 42 public event
+   * pages — and nothing said so. Charley found it by pressing Buy ticket.
+   *
+   * Reported as a failed task rather than a log line, because a failed task
+   * is what reaches Sentry: that is the channel this outage was eventually
+   * found in, a week late, by reading it for something else.
+   */
+  private async checkMigrationDrift(): Promise<TaskResult> {
+    try {
+      const drift = await this.migrations.check();
+
+      if (isClean(drift)) {
+        return { task: 'check-migration-drift', processed: 1, failed: 0, errors: [] };
+      }
+
+      return {
+        task: 'check-migration-drift',
+        processed: 1,
+        // One per migration, so the names are in the report rather than only
+        // in the sentence.
+        failed: drift.missing.length + drift.unknown.length,
+        errors: [describeDrift(drift)],
+      };
+    } catch (error) {
+      // Including "I could not find the migrations to compare", which must
+      // never read as "nothing is missing".
+      return {
+        task: 'check-migration-drift',
+        processed: 0,
+        failed: 1,
+        errors: [(error as Error).message],
+      };
+    }
+  }
+
   private async removeDuesFees(): Promise<TaskResult> {
     try {
       const { removed, failed } = await this.stripe.removeDuesFeesAfterUpgrade();
