@@ -37,6 +37,22 @@ export function checklistIsWorthShowing(state: ChecklistCounts | null): boolean 
 }
 
 /**
+ * Whether to say "that's everything, welcome in" (ONB-03).
+ *
+ * The complement of the row, not a second opinion about it: a checklist is
+ * either still work, or a moment, or gone, and exactly one of those is true
+ * at a time. They are written next to each other here so the next person to
+ * change one is looking at the other while they do it.
+ *
+ * Everything else that could switch it off is already in `state` being null
+ * — the co-op runs no checklist, has no steps, or this member has read the
+ * congratulation and the server has recorded it.
+ */
+export function welcomeIsDue(state: ChecklistCounts | null): boolean {
+  return Boolean(state?.allDone);
+}
+
+/**
  * The number on the badge.
  *
  * Floored at zero rather than trusted. `completed` and `total` are counted

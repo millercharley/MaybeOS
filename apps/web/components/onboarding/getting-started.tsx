@@ -1,14 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { clsx } from 'clsx';
 import { Check, ChevronDown, Sparkles } from 'lucide-react';
 import { UnreadBadge } from '@/components/layout/unread-badge';
-import { api, MUTATION_EVENT, OnboardingState } from '@/lib/api';
+import { api } from '@/lib/api';
 import { checklistIsWorthShowing, stepsStillToDo } from '@/lib/onboarding-checklist';
 import { useAuthStore } from '@/lib/auth-store';
+import { useOnboarding } from '@/contexts/onboarding-context';
 
 /**
  * The getting-started checklist, as a row in the nav (ONB-01, ONB-02).
@@ -49,9 +49,13 @@ import { useAuthStore } from '@/lib/auth-store';
 export function GettingStarted() {
   const token = useAuthStore((s) => s.token);
   const orgId = useAuthStore((s) => s.currentOrgId);
-  const pathname = usePathname();
+  /*
+    One fetch for the whole signed-in app (ONB-03). This column is mounted
+    twice — fixed and drawer — and the dashboard wants the same answer to
+    decide whether to say welcome in.
+  */
+  const { state, ready, settle } = useOnboarding();
 
-  const [state, setState] = useState<OnboardingState | null>(null);
   const [busy, setBusy] = useState(false);
   /*
     Shut until asked for (ONB-02), and shut again every time the drawer is
@@ -61,94 +65,28 @@ export function GettingStarted() {
     the checklist keeps it open while they work through it.
   */
   const [open, setOpen] = useState(false);
-  // Nothing is drawn until the first answer is in. A checklist that appears a
-  // beat after the nav paints makes the whole column jump.
-  const [ready, setReady] = useState(false);
 
-  const load = useCallback(async () => {
-    if (!token || !orgId) {
-      setReady(true);
-      return;
-    }
-    try {
-      setState(await api.onboarding.mine(orgId, token));
-    } catch {
-      // A checklist is not worth an error message in the navigation. If it
-      // cannot load, the nav is simply the nav.
-      setState(null);
-    } finally {
-      setReady(true);
-    }
-  }, [token, orgId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  /**
-   * Re-read on navigation, and after anything is saved.
-   *
-   * Every built-in step is derived from what the member has actually done, so
-   * the moment they finish their profile or say hello in the Commons the tick
-   * is already true on the server — it has just not been asked for.
-   *
-   * Navigation alone is not enough, and the case that proves it is the obvious
-   * one: a member follows "Do it now" to their profile, fills it in, saves,
-   * and stays on the page. The step they were sent to do is done and the
-   * checklist still says it is not. So this also listens for the api client's
-   * mutation announcement, which fires after any successful non-GET request —
-   * one hook covering every save in the product rather than a callback wired
-   * into each page a step can point at.
-   *
-   * Debounced, because a save is often several requests in a row: a profile
-   * write and a membership write land together, and two reads of the same
-   * checklist is one wasted.
-   */
-  const seenPath = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (!ready) return;
-
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const refresh = () => {
-      clearTimeout(timer);
-      timer = setTimeout(load, 400);
-    };
-
-    // Only when the address actually changed. This effect also re-runs when
-    // `ready` flips, and firing then would ask for the same checklist the
-    // mount already fetched — two requests for one page.
-    if (seenPath.current !== null && seenPath.current !== pathname) refresh();
-    seenPath.current = pathname ?? null;
-
-    window.addEventListener(MUTATION_EVENT, refresh);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener(MUTATION_EVENT, refresh);
-    };
-    // `load` is stable per token/org; pathname is the other trigger.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, ready]);
-
-  if (!ready || !state) return null;
-
-  if (!checklistIsWorthShowing(state)) return null;
-
-  const { steps, completed, total, activeStepId } = state;
-  const percent = Math.round((completed / total) * 100);
-  const remaining = stepsStillToDo(state);
-
+  /** Only a CUSTOM step is ticked by hand; everything else is derived. */
   async function tick(stepId: string) {
     if (!token || !orgId || busy) return;
     setBusy(true);
     try {
-      setState(await api.onboarding.complete(orgId, stepId, token));
+      settle(await api.onboarding.complete(orgId, stepId, token));
     } catch {
-      // Same reasoning as above — and the next navigation re-reads anyway.
+      // Not worth an error message in the navigation, and the next
+      // navigation re-reads anyway.
     } finally {
       setBusy(false);
     }
   }
+
+  // Nothing until the first answer is in, or the column jumps a beat after
+  // it paints.
+  if (!ready || !state || !checklistIsWorthShowing(state)) return null;
+
+  const { steps, completed, total, activeStepId } = state;
+  const percent = Math.round((completed / total) * 100);
+  const remaining = stepsStillToDo(state);
 
   return (
     <section aria-label="Getting started" className="space-y-1">

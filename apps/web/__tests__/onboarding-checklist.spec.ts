@@ -1,6 +1,7 @@
 import {
   checklistIsWorthShowing,
   stepsStillToDo,
+  welcomeIsDue,
   type ChecklistCounts,
 } from '@/lib/onboarding-checklist';
 
@@ -61,5 +62,41 @@ describe('the number on the badge', () => {
     // ticked it leaves `completed` the larger of the two for a moment. A
     // negative number in a red pill is a bug report from a member.
     expect(stepsStillToDo(counts({ completed: 6, total: 5 }))).toBe(0);
+  });
+});
+
+describe('the welcome-in acknowledgement', () => {
+  it('is due once the last box is ticked', () => {
+    expect(welcomeIsDue(counts({ completed: 5, allDone: true }))).toBe(true);
+  });
+
+  it('is not due while there is work left', () => {
+    expect(welcomeIsDue(counts())).toBe(false);
+  });
+
+  it('is not due for a co-op with no checklist, or a member who has read it', () => {
+    // Both arrive as null: the API answers null once `onboardingDismissedAt`
+    // is set, which is what keeps this to once per member for good without a
+    // second flag anywhere to fall out of step.
+    expect(welcomeIsDue(null)).toBe(false);
+  });
+
+  it('is never due at the same time as the row', () => {
+    // The two are complements, not two opinions. A state that showed both
+    // would put a checklist in the nav and a congratulation on the dashboard
+    // on the same screen.
+    const states: Array<ChecklistCounts | null> = [
+      null,
+      counts({ completed: 0, total: 0 }),
+      counts({ completed: 0, total: 5 }),
+      counts({ completed: 4, total: 5 }),
+      counts({ completed: 5, total: 5, allDone: true }),
+      counts({ completed: 6, total: 5, allDone: true }),
+      counts({ completed: 0, total: 0, allDone: true }),
+    ];
+
+    for (const state of states) {
+      expect(checklistIsWorthShowing(state) && welcomeIsDue(state)).toBe(false);
+    }
   });
 });

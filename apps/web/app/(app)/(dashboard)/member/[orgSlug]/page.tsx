@@ -22,6 +22,7 @@ import { api } from '@/lib/api';
 import { Panel } from '@/components/layout/panel';
 import { MemberSpotlight } from '@/components/member/member-spotlight';
 import { DoorCodeCard } from '@/components/member/door-code-card';
+import { WelcomeIn } from '@/components/onboarding/welcome-in';
 import { InterestPrompt } from '@/components/member/interest-prompt';
 import { ServingToday } from '@/components/service/serving-today';
 import { WelcomeCard } from '@/components/live/welcome-card';
@@ -194,7 +195,11 @@ export default function MemberPortalPage() {
         Draws nothing when this co-op has no door, so it costs the other
         co-ops on MaybeOS nothing.
       */}
-      <div className="mb-6 empty:mb-0">
+      <div className="mb-6 space-y-4 empty:mb-0">
+        {/* Said once, on the page a member is most likely to be on when the
+            last step lands (ONB-03). Above the door code because it is a
+            moment rather than a tool, and it is only ever here once. */}
+        <WelcomeIn />
         <DoorCodeCard orgSlug={orgSlug} />
       </div>
 

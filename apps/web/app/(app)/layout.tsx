@@ -14,6 +14,7 @@ import { OrgMark } from '@/components/layout/org-mark';
 import { PortalProvider, usePortal } from '@/contexts/portal-context';
 import { MemberCardProvider } from '@/contexts/member-card-context';
 import { UnreadProvider } from '@/contexts/unread-context';
+import { OnboardingProvider } from '@/contexts/onboarding-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { brandStyle, brandTheme } from '@/lib/brand';
 
@@ -69,7 +70,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             sidebar is rendered twice — fixed column and mobile drawer — and a
             fetch inside it would be two requests a minute for one answer. */}
         <UnreadProvider>
-          <AppShell>{children}</AppShell>
+          {/* The getting-started checklist, fetched once (ONB-03). The
+              sidebar is mounted twice and the dashboard wants the same
+              answer; unconditional for the same reason as the two above. */}
+          <OnboardingProvider>
+            <AppShell>{children}</AppShell>
+          </OnboardingProvider>
         </UnreadProvider>
       </MemberCardProvider>
     </PortalProvider>
