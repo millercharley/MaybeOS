@@ -8,6 +8,8 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { PasswordOffer } from '@/components/member/password-offer';
 import { RequiredReadingGate } from '@/components/belonging/required-reading-gate';
 import { CommandPalette, OPEN_SEARCH_EVENT } from '@/components/layout/command-palette';
+import { NavCoach } from '@/components/onboarding/nav-coach';
+import { readCoach, setCoach, reachedMembership, type CoachStep } from '@/lib/nav-coach';
 import { OrgMark } from '@/components/layout/org-mark';
 import { PortalProvider, usePortal } from '@/contexts/portal-context';
 import { MemberCardProvider } from '@/contexts/member-card-context';
@@ -91,6 +93,44 @@ function AppShell({ children }: { children: React.ReactNode }) {
     setNavOpen(false);
   }, [pathname]);
 
+  /*
+    The first-run tour, for a member who has only ever seen MaybeOS on a phone
+    (NAV-05). Two beats: point at the hamburger, then light up the section
+    their own things are in.
+
+    Read in an effect rather than during render, like the password offer
+    above it: localStorage does not exist on the server, and reading it while
+    rendering makes the first client paint disagree with the server's markup.
+    So the shell draws with no tour and the tour appears a frame later, which
+    is the right way round — a hint that flickers is better than a shell that
+    rehydrates wrong.
+
+    `done` until proven otherwise, so a signed-out visitor on a public event
+    page is never shown a tour of a product they are not in.
+  */
+  const [coach, setCoachStep] = useState<CoachStep>('done');
+  useEffect(() => {
+    if (signedIn) setCoachStep(readCoach());
+  }, [signedIn]);
+
+  const advanceCoach = (step: CoachStep) => {
+    setCoachStep(step);
+    setCoach(step);
+  };
+
+  /*
+    Arriving anywhere inside My membership ends the tour — it has done what it
+    was for, whether or not the member got there by following it. The
+    dashboard at `/member/<slug>` does not count: that is where the tour
+    begins.
+  */
+  useEffect(() => {
+    if (coach !== 'done' && reachedMembership(pathname)) advanceCoach('done');
+    // `advanceCoach` is recreated each render and would re-run this; the
+    // address and the step are the whole of what this depends on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, coach]);
+
   const onPortal = pathname?.startsWith('/portal') ?? false;
   const onMember = pathname?.startsWith('/member') ?? false;
 
@@ -144,6 +184,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
             <Sidebar
               orgSlug={onPortal ? urlSlug : undefined}
               orgName={onPortal ? portalOrg?.name : undefined}
+              coachMembership={coach === 'membership'}
             />
           </div>
         </div>
@@ -151,14 +192,34 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col lg:pl-64">
         <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-gray-200 bg-white px-4 sm:px-6 lg:px-8">
-          <button
-            type="button"
-            onClick={() => setNavOpen(true)}
-            aria-label="Open navigation"
-            className="-ml-1 rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 lg:hidden"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
+          {/* `relative` so the first-run tip can hang off the icon it is
+              about (NAV-05). */}
+          <div className="relative lg:hidden">
+            <button
+              type="button"
+              onClick={() => {
+                setNavOpen(true);
+                // Opening it by any route is the first beat accomplished —
+                // a member who already knows where the menu is should not be
+                // told where the menu is.
+                if (coach === 'menu') advanceCoach('membership');
+              }}
+              aria-label="Open navigation"
+              className="-ml-1 rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+
+            {signedIn && coach === 'menu' && !navOpen && (
+              <NavCoach
+                onOpen={() => {
+                  setNavOpen(true);
+                  advanceCoach('membership');
+                }}
+                onDismiss={() => advanceCoach('done')}
+              />
+            )}
+          </div>
 
           <Breadcrumb
             pathname={pathname}

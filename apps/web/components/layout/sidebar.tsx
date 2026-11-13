@@ -34,7 +34,11 @@ import { sectionUnread, unreadFor, unreadKeyFor } from '@/lib/unread';
  * co-op's public page should get links to *that* co-op rather than being
  * silently navigated back to their own.
  */
-export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: string } = {}) {
+export function Sidebar({
+  orgSlug,
+  orgName,
+  coachMembership = false,
+}: { orgSlug?: string; orgName?: string; coachMembership?: boolean } = {}) {
   const pathname = usePathname();
   const unread = useUnread();
   const router = useRouter();
@@ -83,11 +87,25 @@ export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: stri
   // dashboard whose href roots the whole area does not claim every page in it.
   const activeHref = activeNavHref(sections, pathname);
   const routeSection = openSectionLabel(sections, pathname);
-  const isOpen = (label: string) => opened.by[label] ?? label === routeSection;
+  /*
+    Open because the route says so — or because this is a member's first time
+    on a phone and we are pointing at the section (NAV-05).
+
+    The coached section is only *defaulted* open. A member who shuts it has
+    shut it: `opened.by` is checked first, so the hint never fights the hand.
+  */
+  const coachedLabel = coachMembership
+    ? (sections.find((candidate) => candidate.id === 'membership')?.label ?? null)
+    : null;
+  const isOpen = (label: string) =>
+    opened.by[label] ?? (label === routeSection || label === coachedLabel);
   const toggle = (label: string) =>
     setOpened((current) => ({
       path: current.path,
-      by: { ...current.by, [label]: !(current.by[label] ?? label === routeSection) },
+      by: {
+        ...current.by,
+        [label]: !(current.by[label] ?? (label === routeSection || label === coachedLabel)),
+      },
     }));
 
   // Only worth a control when there is somewhere to switch to.
@@ -158,6 +176,9 @@ export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: stri
           // to collapse it into, and one link is not a section.
           const open = section.label ? isOpen(section.label) : true;
           const id = `nav-section-${index}`;
+          // The second beat of the first-run tour (NAV-05): this is the
+          // section holding the reader's own things, door code included.
+          const coached = coachMembership && section.id === 'membership';
 
           return (
             <div
@@ -170,7 +191,12 @@ export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: stri
                   onClick={() => toggle(section.label!)}
                   aria-expanded={open}
                   aria-controls={id}
-                  className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wider text-paper-deep/60 transition-colors hover:bg-white/5 hover:text-paper-deep"
+                  className={clsx(
+                    'flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-xs font-semibold uppercase tracking-wider transition-colors hover:bg-white/5 hover:text-paper-deep',
+                    coached
+                      ? 'bg-white/10 text-paper ring-1 ring-brand-500'
+                      : 'text-paper-deep/60',
+                  )}
                 >
                   <span className="min-w-0 flex-1 truncate">{section.label}</span>
                   {/* A collapsed section unmounts its links, so a badge on
@@ -194,6 +220,15 @@ export function Sidebar({ orgSlug, orgName }: { orgSlug?: string; orgName?: stri
                     )}
                   />
                 </button>
+              )}
+
+              {/* Says what is behind the word (NAV-05). "My membership" is a
+                  category, not an answer; a member looking for a door code
+                  has no reason to read it as the place to look. */}
+              {coached && (
+                <p className="px-3 pb-1 text-xs normal-case text-paper-deep/80">
+                  Your profile, events, bookings and door code.
+                </p>
               )}
 
               {/* Unmounted rather than hidden, so a collapsed section's links

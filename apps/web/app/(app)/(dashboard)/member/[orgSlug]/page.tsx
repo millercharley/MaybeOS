@@ -21,6 +21,7 @@ import { useApi } from '@/hooks/use-api';
 import { api } from '@/lib/api';
 import { Panel } from '@/components/layout/panel';
 import { MemberSpotlight } from '@/components/member/member-spotlight';
+import { DoorCodeCard } from '@/components/member/door-code-card';
 import { InterestPrompt } from '@/components/member/interest-prompt';
 import { ServingToday } from '@/components/service/serving-today';
 import { WelcomeCard } from '@/components/live/welcome-card';
@@ -180,6 +181,22 @@ export default function MemberPortalPage() {
           />
         </div>
       )}
+
+      {/*
+        Above the fold, on purpose (DOR-07).
+
+        Everything below this is in a three-column grid, and on a phone that
+        grid is one column: Quick Links and My Membership stack underneath
+        four panels of events, RSVPs and bookings. A door code reachable by
+        scrolling past today's programme is the problem this was meant to
+        solve, one screen further down.
+
+        Draws nothing when this co-op has no door, so it costs the other
+        co-ops on MaybeOS nothing.
+      */}
+      <div className="mb-6 empty:mb-0">
+        <DoorCodeCard orgSlug={orgSlug} />
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

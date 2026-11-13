@@ -514,14 +514,41 @@ export class DoorService {
    * A member's own code, for their profile. Null when they may not open the
    * door, so a cancelled member is not shown a code that no longer works.
    */
-  async pinFor(orgId: string, userId: string): Promise<{ doorPin: string | null }> {
-    const membership = await this.prisma.userOrg.findFirst({
-      where: { orgId, userId },
-      select: { doorPin: true, role: true, subscriptionStatus: true },
-    });
+  async pinFor(
+    orgId: string,
+    userId: string,
+  ): Promise<{ doorPin: string | null; doorUrl: string | null }> {
+    const [membership, org] = await Promise.all([
+      this.prisma.userOrg.findFirst({
+        where: { orgId, userId },
+        select: { doorPin: true, role: true, subscriptionStatus: true },
+      }),
+      this.prisma.organization.findUnique({
+        where: { id: orgId },
+        select: { doorAccessEnabled: true, doorScriptUrl: true },
+      }),
+    ]);
     if (!membership) throw new NotFoundException('Member not found in this organization');
 
-    return { doorPin: hasDoorAccess(membership) ? membership.doorPin : null };
+    const doorPin = hasDoorAccess(membership) ? membership.doorPin : null;
+
+    /*
+      Where to use it, not only what it is (DOR-07).
+
+      MaybeOS issued the code and then said nothing about the door it opens.
+      The link lived on a sticker by the handle and in an email somebody sent
+      once, so a member standing outside had the answer to half the question
+      on their phone and had to remember the other half. That gap is also how
+      the co-op ran for weeks on two parallel door systems without noticing:
+      nothing in the product connected a code to the page that reads it.
+
+      Withheld unless the code is withheld too. A door link handed to somebody
+      with no code is an invitation to be turned away at the step after it.
+    */
+    const doorUrl =
+      doorPin && org?.doorAccessEnabled ? canonicalDoorScriptUrl(org.doorScriptUrl ?? '') : null;
+
+    return { doorPin, doorUrl };
   }
 
   /**

@@ -158,6 +158,83 @@ describe('DoorService', () => {
     service = module.get(DoorService);
   });
 
+  /**
+   * What a member is handed when they ask for their own code (DOR-07).
+   *
+   * The code on its own was half an answer: MaybeOS issued it and said
+   * nothing about the door it opens, so the link lived on a sticker by the
+   * handle. The link travels with the code now — and is withheld under
+   * exactly the conditions the code is, because a door link given to
+   * somebody with no code is an invitation to be turned away one step later.
+   */
+  describe('a member reading their own code', () => {
+    it('comes with the page that reads it', async () => {
+      prisma.userOrg.findFirst.mockResolvedValue(member());
+      prisma.organization.findUnique.mockResolvedValue(org());
+
+      expect(await service.pinFor(ORG, 'u1')).toEqual({ doorPin: 'ABCDE', doorUrl: URL });
+    });
+
+    it('is shown to a member who is behind on dues but not cancelled', async () => {
+      prisma.userOrg.findFirst.mockResolvedValue(
+        member({ subscriptionStatus: 'PAST_DUE' }),
+      );
+      prisma.organization.findUnique.mockResolvedValue(org());
+
+      expect(await service.pinFor(ORG, 'u1')).toEqual({ doorPin: 'ABCDE', doorUrl: URL });
+    });
+
+    it('withholds the link along with the code from someone cancelled', async () => {
+      prisma.userOrg.findFirst.mockResolvedValue(
+        member({ subscriptionStatus: 'CANCELED' }),
+      );
+      prisma.organization.findUnique.mockResolvedValue(org());
+
+      expect(await service.pinFor(ORG, 'u1')).toEqual({ doorPin: null, doorUrl: null });
+    });
+
+    it('withholds the link when the co-op has switched the door off', async () => {
+      // The code is still on the membership and the sheet still has the row,
+      // but the co-op has stopped running a door. Pointing a member at it
+      // would be pointing them at a page that will refuse them.
+      prisma.userOrg.findFirst.mockResolvedValue(member());
+      prisma.organization.findUnique.mockResolvedValue(org({ doorAccessEnabled: false }));
+
+      expect(await service.pinFor(ORG, 'u1')).toEqual({ doorPin: 'ABCDE', doorUrl: null });
+    });
+
+    it('gives no link when the co-op has never set one up', async () => {
+      prisma.userOrg.findFirst.mockResolvedValue(member());
+      prisma.organization.findUnique.mockResolvedValue(org({ doorScriptUrl: null }));
+
+      expect(await service.pinFor(ORG, 'u1')).toEqual({ doorPin: 'ABCDE', doorUrl: null });
+    });
+
+    it('hands over the canonical address, not whatever was pasted in', async () => {
+      // A `/u/1` crept in from an admin's second signed-in Google account and
+      // served nobody but them (DOR-05). Stored rows from before the address
+      // was normalised on save are still out there, and this is the one place
+      // the address is handed to 463 people at once.
+      prisma.userOrg.findFirst.mockResolvedValue(member());
+      prisma.organization.findUnique.mockResolvedValue(
+        org({ doorScriptUrl: URL.replace('/macros/s/', '/macros/u/1/s/') }),
+      );
+
+      const { doorUrl } = await service.pinFor(ORG, 'u1');
+      expect(doorUrl).toBe(URL);
+      expect(doorUrl).not.toContain('/u/1');
+    });
+
+    it('gives no link when the stored address is not an Apps Script one', async () => {
+      prisma.userOrg.findFirst.mockResolvedValue(member());
+      prisma.organization.findUnique.mockResolvedValue(
+        org({ doorScriptUrl: 'https://example.com/door' }),
+      );
+
+      expect((await service.pinFor(ORG, 'u1')).doorUrl).toBeNull();
+    });
+  });
+
   describe('issuing codes', () => {
     it('only to members who may open the door', async () => {
       prisma.userOrg.findMany.mockResolvedValue([{ id: 'm1' }, { id: 'm2' }]);
@@ -447,18 +524,6 @@ describe('DoorService', () => {
 
     const totals = await service.runDue();
     expect(totals.synced).toBe(1);
-  });
-
-  describe('a member’s own code', () => {
-    it('is hidden once they are cancelled, since it no longer opens the door', async () => {
-      prisma.userOrg.findFirst.mockResolvedValue({ doorPin: 'ABCDE', role: 'MEMBER', subscriptionStatus: 'CANCELED' });
-      expect(await service.pinFor(ORG, 'u1')).toEqual({ doorPin: null });
-    });
-
-    it('is shown to a member in good standing', async () => {
-      prisma.userOrg.findFirst.mockResolvedValue({ doorPin: 'ABCDE', role: 'MEMBER', subscriptionStatus: 'PAST_DUE' });
-      expect(await service.pinFor(ORG, 'u1')).toEqual({ doorPin: 'ABCDE' });
-    });
   });
 
   it('replacing a code queues a rewrite of the sheet and a fresh email', async () => {

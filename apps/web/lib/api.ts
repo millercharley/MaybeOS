@@ -1199,7 +1199,10 @@ class ApiClient {
    */
   door = {
     myPin: (orgId: string, token: string) =>
-      this.request<{ doorPin: string | null }>(`/orgs/${orgId}/door/pin`, { token }),
+      this.request<{ doorPin: string | null; doorUrl: string | null }>(
+        `/orgs/${orgId}/door/pin`,
+        { token },
+      ),
 
     /** The door script's address, and whether a secret is set. Never the secret. */
     setup: (orgId: string, token: string) =>
