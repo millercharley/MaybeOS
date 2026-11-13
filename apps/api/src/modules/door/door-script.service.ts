@@ -61,6 +61,37 @@ export class DoorScriptService {
     timeoutMs?: number,
   ): Promise<{ added: number; updated: number; unchanged: number; rejected: number }> {
     const reply = await this.send(url, secret, { action: 'upsert', members }, timeoutMs);
+
+    /*
+      An answer that counts nothing is not an answer (DOR-03).
+
+      Every count was read with `?? 0`, so a script that does not implement
+      `upsert` — an older deployment, which is what a co-op has until somebody
+      does Deploy → Manage deployments → New version — replied with none of
+      these fields, every count became zero, `rejected` was zero too, and the
+      sync looked perfect. MaybeItsFate ran that way with 463 members' codes
+      recorded as delivered to a sheet that had never heard of them, and every
+      member denied at the door.
+
+      Zero added and zero updated is normal on a quiet pass; a reply that
+      acknowledges no field at all is not. The difference is whether the
+      script spoke this protocol, so that is what gets checked.
+    */
+    const acknowledged =
+      reply.added !== undefined ||
+      reply.updated !== undefined ||
+      reply.unchanged !== undefined ||
+      reply.rejected !== undefined;
+
+    if (!acknowledged) {
+      throw new ServiceUnavailableException(
+        'The door script accepted the request but did not say what it did with it. ' +
+          'That is what an older deployment does: open Apps Script, paste the current ' +
+          'Code.gs and Index.html, then Deploy → Manage deployments → pencil → ' +
+          'Version: New version. The web app address does not change.',
+      );
+    }
+
     return {
       added: reply.added ?? 0,
       updated: reply.updated ?? 0,

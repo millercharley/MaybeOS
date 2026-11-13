@@ -330,7 +330,20 @@ export class DoorService {
         Math.max(0, stopBy - Date.now()),
       );
       if (result.rejected > 0) {
-        this.logger.warn(`Door sheet refused ${result.rejected} row(s) for org ${org.id}`);
+        /*
+          Rows the sheet refused are not rows that were written (DOR-03).
+
+          This logged and then recorded the whole batch as synced anyway, so
+          `door_sheet_entries` — the only record of what the sheet is believed
+          to hold — said delivered for codes that were turned away. The batch
+          is left unmarked instead, which keeps those members in `changed` and
+          retries them on the next pass rather than quietly giving up on them.
+        */
+        this.logger.warn(
+          `Door sheet refused ${result.rejected} of ${batch.length} row(s) for org ` +
+            `${org.id}; leaving the batch unsynced so the next pass retries it`,
+        );
+        continue;
       }
 
       const now = new Date();
