@@ -110,7 +110,19 @@ export function DoorAccess({ org, onSaved }: { org: Org; onSaved: () => void }) 
         */
         (remaining
           ? ` ${remaining} ${remaining === 1 ? 'row' : 'rows'} still to go — press Sync now again, or leave it and the next quarter-hour will pick it up.`
-          : '')
+          : /*
+              Finished has to be said (DOR-06).
+
+              Saying nothing was the signal, and it is not one. Sync now is a
+              full resend, so it always reports the hundred rows it just sent
+              — it reads identically on the press that finishes the job and
+              on the five presses after it. Charley pressed it six times
+              against an unchanging "sent 100 rows to the sheet", with every
+              row already in step from the third press on, because the only
+              thing marking the difference was a clause that had quietly
+              stopped appearing.
+            */
+            ' Every member is now in step with the sheet; there is nothing left to send.')
       );
     });
 
