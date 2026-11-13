@@ -74,6 +74,40 @@ export function splitEvents<T>(
 }
 
 /**
+ * The same two tabs, for a list of *series* rather than a list of dates
+ * (EVT-49, EVT-52).
+ *
+ * The sweep that made `splitEvents` a single function missed the one screen
+ * that needed it most, and missed it for a reason worth writing down: the
+ * host-transfer list is rows of series, not rows of events, so neither the
+ * rule nor the guard that enforces it recognised the screen as a place where
+ * events are listed. It was 287 rows with eight live ones somewhere in them.
+ *
+ * A series is upcoming when any single date of it still is — the one with an
+ * evening ahead of it is the one where getting the host right still changes
+ * something, even if the other forty-five are history.
+ *
+ * Order is kept as given for what is coming, because the server has already
+ * sorted those by what matters. The past is turned newest-first, like every
+ * other past list in the product: a series that ended last month is a better
+ * guess at what somebody is looking for than one that ended in 2024.
+ */
+export function splitSeries<T extends { upcoming: number; lastStart: string }>(
+  series: T[],
+): { upcoming: T[]; past: T[] } {
+  const upcoming: T[] = [];
+  const past: T[] = [];
+
+  for (const one of series) {
+    (one.upcoming > 0 ? upcoming : past).push(one);
+  }
+
+  past.sort((a, b) => b.lastStart.localeCompare(a.lastStart));
+
+  return { upcoming, past };
+}
+
+/**
  * Narrow a list by what somebody typed.
  *
  * Case-insensitive, and across whichever fields the caller says are worth

@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, ArrowRight, CheckCircle2, Loader2, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertCircle, ArrowRight, CheckCircle2, Loader2, Search, X } from 'lucide-react';
 import { api, ApiError, type Member, type OwnedEventGroup } from '@/lib/api';
 import { MemberPicker } from '@/components/member/member-picker';
+import { emptyNote, searchEvents, splitSeries, type EventTab } from '@/lib/event-tabs';
 
 /**
  * Handing somebody's events to the member who actually runs them (EVT-47).
@@ -50,6 +51,21 @@ export function TransferEvents({
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
+  /*
+    Two tabs and a search box (EVT-52), for the same reason every other event
+    list in the product has them (EVT-49) — and this is the screen that needed
+    them most. MaybeItsFate's list is 287 series, of which eight have a date
+    still to come. Those eight are the entire live problem: a member who
+    cannot edit next Tuesday's event. The other 279 ended, some in 2024, and
+    were sharing one scroll with them.
+
+    The standing sweep missed this screen because it lists series rather than
+    events, so neither the rule nor the guard that enforces it recognised it
+    as a place where events are listed.
+  */
+  const [tab, setTab] = useState<EventTab>('upcoming');
+  const [find, setFind] = useState('');
+
   const load = useCallback(async () => {
     if (!from) return;
     setLoading(true);
@@ -66,6 +82,17 @@ export function TransferEvents({
   useEffect(() => {
     load();
   }, [load]);
+
+  /*
+    Split first, then search inside the tab. The other way round would let a
+    search on the Finished tab quietly answer with something that is still to
+    come, which is the one thing the tabs exist to stop.
+  */
+  const split = useMemo(() => splitSeries(owned?.groups ?? []), [owned]);
+  const shown = useMemo(
+    () => searchEvents(split[tab], find, (group) => [group.title]),
+    [split, tab, find],
+  );
 
   async function hand(group: OwnedEventGroup, to: Member) {
     if (!from) return;
@@ -192,12 +219,60 @@ export function TransferEvents({
             <>
               <p className="text-sm text-gray-700">
                 {owned.total} {owned.total === 1 ? 'event' : 'events'} across{' '}
-                {owned.groups.length} {owned.groups.length === 1 ? 'series' : 'series'}. The ones
-                with evenings still to come are first.
+                {owned.groups.length} {owned.groups.length === 1 ? 'series' : 'series'}.
               </p>
 
+              {/* Coming up first and selected, because that is where a wrong
+                  host still costs somebody something. */}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <div className="flex rounded-lg bg-gray-100 p-0.5" role="tablist">
+                  {(['upcoming', 'past'] as const).map((which) => (
+                    <button
+                      key={which}
+                      type="button"
+                      role="tab"
+                      aria-selected={tab === which}
+                      onClick={() => {
+                        setTab(which);
+                        setOpen(null);
+                      }}
+                      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                        tab === which
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-500 hover:text-gray-900'
+                      }`}
+                    >
+                      {which === 'upcoming' ? 'Still to come' : 'Finished'}
+                      <span className="ml-1.5 tabular-nums text-xs text-gray-400">
+                        {split[which].length}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                <label className="relative min-w-0 flex-1">
+                  <Search
+                    className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+                    aria-hidden="true"
+                  />
+                  <input
+                    value={find}
+                    onChange={(e) => setFind(e.target.value)}
+                    placeholder="Search these series…"
+                    aria-label="Search series"
+                    className="input w-full pl-8 text-sm"
+                  />
+                </label>
+              </div>
+
+              {shown.length === 0 && (
+                <p className="mt-4 text-sm text-gray-500">
+                  {emptyNote(tab, find.trim().length > 0)}
+                </p>
+              )}
+
               <ul className="mt-3 divide-y divide-gray-100">
-                {owned.groups.map((group) => (
+                {shown.map((group) => (
                   <li key={group.title} className="py-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">

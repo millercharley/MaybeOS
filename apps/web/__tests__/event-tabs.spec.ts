@@ -1,4 +1,4 @@
-import { emptyNote, hasEnded, searchEvents, splitEvents } from '@/lib/event-tabs';
+import { emptyNote, hasEnded, searchEvents, splitEvents, splitSeries } from '@/lib/event-tabs';
 
 /**
  * Past events behind their own tab (EVT-49).
@@ -136,5 +136,76 @@ describe('what an empty list says', () => {
   it('blames the search when there is one', () => {
     expect(emptyNote('past', true)).toMatch(/matches/);
     expect(emptyNote('upcoming', true)).toMatch(/matches/);
+  });
+});
+
+describe('the same two tabs over series rather than dates', () => {
+  /**
+   * The host-transfer screen (EVT-52). MaybeItsFate's list is 287 series of
+   * which eight have a date still to come, and those eight are the whole live
+   * problem: a member who cannot edit next Tuesday's event. The other 279
+   * ended, some in 2024, and were sharing one scroll with them.
+   */
+  const series = (title: string, upcoming: number, lastStart: string) => ({
+    title,
+    upcoming,
+    lastStart,
+  });
+
+  it('calls a series upcoming when any single date of it still is', () => {
+    // Forty-six Board Games Clubs, twenty-four of them ahead. Forty-five
+    // being history does not make the series history.
+    const { upcoming, past } = splitSeries([
+      series('Board Games Club', 24, '2028-10-29'),
+      series('Writing Club', 0, '2025-10-20'),
+    ]);
+
+    expect(upcoming.map((s) => s.title)).toEqual(['Board Games Club']);
+    expect(past.map((s) => s.title)).toEqual(['Writing Club']);
+  });
+
+  it('leaves what is coming in the order it was given', () => {
+    // The server already sorted these by what is still to come and then by
+    // size. Re-sorting here would throw that away.
+    const { upcoming } = splitSeries([
+      series('Potluck', 24, '2028-10-15'),
+      series('Game Night', 23, '2028-10-10'),
+      series('Art Improv', 1, '2026-12-20'),
+    ]);
+
+    expect(upcoming.map((s) => s.title)).toEqual(['Potluck', 'Game Night', 'Art Improv']);
+  });
+
+  it('turns the finished list newest-first', () => {
+    // A series that ended last month is a better guess at what somebody is
+    // looking for than one that ended two years ago.
+    const { past } = splitSeries([
+      series('MELT Restore Class', 0, '2025-01-30'),
+      series('Sewcial Hour', 0, '2026-05-19'),
+      series('Tea Time', 0, '2025-03-28'),
+    ]);
+
+    expect(past.map((s) => s.title)).toEqual([
+      'Sewcial Hour',
+      'Tea Time',
+      'MELT Restore Class',
+    ]);
+  });
+
+  it('puts every series in exactly one of the two lists', () => {
+    const all = [
+      series('a', 2, '2028-01-01'),
+      series('b', 0, '2025-01-01'),
+      series('c', 1, '2027-01-01'),
+      series('d', 0, '2024-01-01'),
+    ];
+    const { upcoming, past } = splitSeries(all);
+
+    expect(upcoming.length + past.length).toBe(all.length);
+    expect(new Set([...upcoming, ...past]).size).toBe(all.length);
+  });
+
+  it('handles an empty list without inventing a tab', () => {
+    expect(splitSeries([])).toEqual({ upcoming: [], past: [] });
   });
 });
