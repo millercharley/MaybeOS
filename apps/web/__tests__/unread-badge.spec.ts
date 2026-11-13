@@ -47,6 +47,16 @@ describe('what the bubble says', () => {
     expect(badgeDescription(1, 'commons')).toBe('1 unread post');
   });
 
+  it('counts getting-started steps without mangling the plural', () => {
+    // The noun used to be pluralised by adding an "s" to the end of the
+    // phrase, which would have made this "1 step still to dos" (ONB-02). The
+    // visible pill is a numeral either way, so the bug would have lived only
+    // in what a screen reader said, where nobody writing the code would meet
+    // it.
+    expect(badgeDescription(3, 'tasks')).toBe('3 steps still to do');
+    expect(badgeDescription(1, 'tasks')).toBe('1 step still to do');
+  });
+
   it('says the real number out loud even when the pill is capped', () => {
     expect(badgeDescription(427, 'messages')).toContain('427');
   });

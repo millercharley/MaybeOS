@@ -15,7 +15,16 @@
 export const BADGE_MAX = 99;
 
 /** Which nav items carry a count. */
-export type UnreadKey = 'messages' | 'commons';
+/**
+ * What a red bubble in the nav can be counting.
+ *
+ * `tasks` is the getting-started checklist (ONB-02), which is not unread
+ * anything — it is work still to do. It shares this type because it shares
+ * the badge: a member reading the nav is being told "there are three of
+ * something here", and the product should not have two different-looking
+ * ways of saying that.
+ */
+export type UnreadKey = 'messages' | 'commons' | 'tasks';
 
 export interface UnreadCounts {
   messages: number;
@@ -119,9 +128,24 @@ export function badgeLabel(count: number): string {
  * here, in words, including the ones above the cap.
  */
 export function badgeDescription(count: number, what: UnreadKey): string {
-  const thing = what === 'messages' ? 'unread message' : 'unread post';
-  return `${count} ${thing}${count === 1 ? '' : 's'}`;
+  const [one, many] = BADGE_NOUNS[what];
+  return `${count} ${count === 1 ? one : many}`;
 }
+
+/*
+  Spelled out both ways rather than built by adding an "s".
+
+  The noun used to be pluralised by suffix, which works for "unread message"
+  and stops working the moment a phrase has its tail somewhere other than the
+  end: "step still to do" would have become "step still to dos". Any later
+  key with a preposition in it would have hit the same wall silently, in a
+  string only a screen-reader user ever hears.
+*/
+const BADGE_NOUNS: Record<UnreadKey, [singular: string, plural: string]> = {
+  messages: ['unread message', 'unread messages'],
+  commons: ['unread post', 'unread posts'],
+  tasks: ['step still to do', 'steps still to do'],
+};
 
 /** Whether to draw anything at all. Zero is not a badge, it is a clean slate. */
 export function hasUnread(count: number | undefined): boolean {

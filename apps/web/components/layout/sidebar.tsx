@@ -265,6 +265,19 @@ export function Sidebar({
                       </Link>
                     );
                   })}
+
+                  {/* Directly under Dashboard (Charley, 2026-11-13), in the
+                      hoisted one-item section at the top — the only
+                      unlabelled one, which is how it is recognised here
+                      without the nav having to know about checklists.
+
+                      It was a panel pinned above the account footer; on a
+                      phone that is a fifth of the screen spent on homework
+                      before the member has chosen to look at it (ONB-02).
+                      It renders nothing when the co-op has not switched the
+                      checklist on, has written no steps, or this member has
+                      finished them. */}
+                  {signedIn && !section.label && <GettingStarted />}
                 </div>
               )}
             </div>
@@ -276,13 +289,6 @@ export function Sidebar({
             everything above this is somewhere you can go without leaving. */}
         {signedIn && <OrgLinks isAdmin={isAdmin} />}
       </nav>
-
-      {/* Between the nav and the account footer, deliberately outside the
-          scrolling area (ONB-01). An organiser's navigation is twenty links,
-          and a checklist that scrolls away with them is one somebody meets
-          once. It renders nothing at all when the co-op has not switched it
-          on, has no steps, or this member has already finished with it. */}
-      {signedIn && <GettingStarted />}
 
       <div className="shrink-0 border-t border-white/15 p-4">
         {signedIn ? (
