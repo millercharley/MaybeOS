@@ -6,7 +6,10 @@ import { PrismaService } from '../../config/prisma.service';
 import { EmailService } from '../email/email.service';
 import { seal, unseal } from '../../common/secret-box';
 import { DoorScriptService } from './door-script.service';
-import { DoorSheetMember, isDoorScriptUrl } from './door-script';
+import {
+  DoorSheetMember,
+  canonicalDoorScriptUrl,
+} from './door-script';
 import { DOOR_ACCESS_WHERE, hasDoorAccess } from './door-access-rule';
 import { generateDoorPin } from './door-pin';
 
@@ -561,8 +564,21 @@ export class DoorService {
    */
   async setScriptUrl(orgId: string, url: string | null): Promise<{ scriptUrl: string | null }> {
     const org = await this.loadOrg(orgId);
-    const next = url?.trim() || null;
-    if (next && !isDoorScriptUrl(next)) {
+    const given = url?.trim() || null;
+
+    /*
+      Whatever shape it was copied in (DOR-02).
+
+      `/macros/u/1/s/…` is what the browser gives an organiser with more than
+      one Google account signed in, and it names *the reader's* second
+      account, so it works for whoever copied it and nobody else.
+      `/a/macros/<domain>/s/…` resolves only for somebody signed into the
+      Workspace domain, which a member at the door generally is not. Both are
+      the same deployment as the plain form; only the plain form works for
+      everyone, so that is what gets stored.
+    */
+    const next = given === null ? null : canonicalDoorScriptUrl(given);
+    if (given !== null && next === null) {
       throw new BadRequestException(
         'Paste the web app address from Apps Script: https://script.google.com/macros/s/…/exec',
       );

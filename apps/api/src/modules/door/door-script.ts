@@ -56,6 +56,48 @@ export function isDoorScriptUrl(value: string): boolean {
 }
 
 /**
+ * The deployment id, however the address was copied.
+ *
+ * Apps Script hands out the same web app under three shapes, and only one of
+ * them works for everybody:
+ *
+ *   https://script.google.com/macros/s/<id>/exec                 the real one
+ *   https://script.google.com/macros/u/1/s/<id>/exec             browser copy
+ *   https://script.google.com/a/macros/<domain>/s/<id>/exec      Workspace copy
+ *
+ * Paul Mercer, who built the door hardware and the first sheet, on the second
+ * one: "The first link doesn't work because of the /u/1 in the address. It is
+ * specifying a file in another open google account, multiple open accounts
+ * are indexed 0,1,2 etc. just remove them from the link and it should work."
+ *
+ * He is right, and it is worse than a broken link: `/u/1` means *whoever is
+ * second in the reader's own account switcher*, so the same address opens a
+ * different account for every person who clicks it, and works for the person
+ * who copied it. That is the shape the browser gives you when more than one
+ * Google account is signed in — which is to say, the shape an organiser is
+ * most likely to paste.
+ *
+ * The `/a/macros/<domain>/` form is the Workspace-scoped one: it resolves
+ * only for somebody signed into that domain, so a member at the door with a
+ * personal Google account, or no account, gets a sign-in wall instead of a
+ * keypad.
+ *
+ * So MaybeOS takes any of the three and keeps the one that works. It used to
+ * accept the Workspace form as given and refuse the `/u/N/` one outright,
+ * which turned the most likely paste into an error message.
+ */
+export function canonicalDoorScriptUrl(value: string): string | null {
+  const trimmed = value.trim();
+
+  const match = trimmed.match(
+    /^https:\/\/script\.google\.com\/(?:a\/macros\/[a-z0-9.-]+|macros)(?:\/u\/\d+)?\/s\/([A-Za-z0-9_-]{20,200})\/exec$/,
+  );
+  if (!match) return null;
+
+  return `https://script.google.com/macros/s/${match[1]}/exec`;
+}
+
+/**
  * Where Apps Script sends the response. A POST to `/exec` answers with a 302
  * to this host, and the response body is fetched from there.
  */
