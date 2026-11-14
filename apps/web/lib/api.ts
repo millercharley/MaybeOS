@@ -548,6 +548,38 @@ class ApiClient {
         body: JSON.stringify({ email }),
       }),
 
+    /**
+     * Ask for a link to set a new password (AUTH-09).
+     *
+     * Answers the same for an address with an account and one without, so
+     * there is nothing here for the caller to branch on — and nothing the
+     * screen could say that would reveal which it was.
+     */
+    requestPasswordReset: (email: string) =>
+      this.request<{ message: string }>('/auth/password-reset', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      }),
+
+    /** Whether the emailed link is still good, before asking for a password. */
+    checkPasswordReset: (token: string) =>
+      this.request<{ usable: boolean }>(
+        `/auth/password-reset/check?token=${encodeURIComponent(token)}`,
+      ),
+
+    /**
+     * Redeem the link and set the password (AUTH-09).
+     *
+     * The token travels in the body, not the path: `safePath` reduces a path
+     * to a route label for Sentry, and a credential in a path segment is one
+     * normalisation rule away from being published in an issue title.
+     */
+    resetPassword: (token: string, newPassword: string) =>
+      this.request<{ reset: boolean; created: boolean }>('/auth/password-reset/confirm', {
+        method: 'POST',
+        body: JSON.stringify({ token, newPassword }),
+      }),
+
     verifyMagicLink: (token: string) =>
       this.request<{ accessToken: string }>(`/auth/magic-link/verify?token=${token}`),
 

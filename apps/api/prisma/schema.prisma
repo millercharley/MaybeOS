@@ -456,6 +456,15 @@ model User {
   emailVerified   Boolean    @default(false)
   magicLinkToken  String?
   magicLinkExpiry DateTime?
+  /// A pending password reset, as a sha256 of the token (AUTH-09).
+  ///
+  /// Its own pair rather than reusing the magic-link columns: a token issued
+  /// to sign in must not be redeemable at the set-a-password form, and asking
+  /// for a sign-in link must not silently cancel a reset somebody is halfway
+  /// through. See `password-reset.ts` for why this one is hashed and the
+  /// magic-link token is not.
+  passwordResetToken  String?
+  passwordResetExpiry DateTime?
   lastLoginAt     DateTime?
   /// Set when somebody leaves MaybeOS's forum (FRM-01).
   ///

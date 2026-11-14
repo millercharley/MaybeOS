@@ -111,12 +111,38 @@ function LoginForm() {
 
         {!magicLinkMode && (
           <div>
-            <label
-              htmlFor="password"
-              className="mb-1 block text-sm font-medium text-gray-700"
-            >
-              Password
-            </label>
+            <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                Password
+              </label>
+
+              {/*
+                Forgetting a password is answered here, next to the field
+                (AUTH-09).
+
+                Until now the only answer was "Send Magic Link", which does
+                work — and tells somebody who knows they have a password to go
+                and do something else instead. The address they have already
+                typed is carried over, so the next screen is one button rather
+                than a form.
+
+                A button rather than a link because it has to read the live
+                value of the field; it routes to the same place a link would,
+                so middle-click is the only thing lost and nobody
+                middle-clicks this.
+              */}
+              <button
+                type="button"
+                onClick={() =>
+                  router.push(
+                    `/reset-password${email ? `?email=${encodeURIComponent(email)}` : ''}`,
+                  )
+                }
+                className="text-sm font-medium text-blue-600 hover:text-blue-500"
+              >
+                Forgot your password?
+              </button>
+            </div>
             <input
               id="password"
               type="password"

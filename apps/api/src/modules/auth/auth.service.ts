@@ -11,6 +11,14 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { normalizeEmail } from '../../common/email-address';
+import {
+  RESET_WINDOW_MINUTES,
+  hashResetToken,
+  newResetToken,
+  passwordResetUrl,
+  resetIsLive,
+  resetTokenMatches,
+} from './password-reset';
 import { PrismaService } from '../../config/prisma.service';
 import { EmailService } from '../email/email.service';
 import { StorageService } from '../storage/storage.service';
@@ -430,9 +438,14 @@ export class AuthService {
         passwordHash: await bcrypt.hash(newPassword, 10),
         // Any outstanding magic-link token is invalidated too: if the reason
         // for changing a password is that somebody else may have it, leaving
-        // them another way in defeats the point.
+        // them another way in defeats the point. A pending password *reset*
+        // goes with it for exactly the same reason (AUTH-09) — an unredeemed
+        // reset email is a third way in, and the member who just set a
+        // password did not ask to leave one open.
         magicLinkToken: null,
         magicLinkExpiry: null,
+        passwordResetToken: null,
+        passwordResetExpiry: null,
       },
     });
 
@@ -450,6 +463,162 @@ export class AuthService {
     }
 
     return { changed: true, created: creating };
+  }
+
+  /**
+   * Somebody forgot their password (AUTH-09).
+   *
+   * Mints a reset token, writes down only its hash, and emails the link. The
+   * token is returned to nobody — not to the controller, not in a log line.
+   *
+   * **An unknown address is answered identically and silently**, which is the
+   * same rule `sendMagicLink` keeps and for the same reason: an endpoint that
+   * behaves differently for a member and a stranger is a way to ask MaybeOS
+   * who its members are, and a co-op's roster is exactly what not to publish.
+   * That includes the error path — the send is caught here rather than left
+   * to the email module, because a thrown template would answer 500 for a
+   * real address and 200 for an unknown one, which is an enumeration oracle
+   * built out of a stack trace. `sendMagicLink` learned that one already.
+   *
+   * **A member with no password at all may still use this.** 433 of
+   * MaybeItsFate's members have none (AUTH-04), and "reset" is the word they
+   * will look for whether or not there is something to replace. They get the
+   * same email and the form creates their first password.
+   */
+  async requestPasswordReset(email: string): Promise<void> {
+    // One spelling (AUTH-07). The most consequential of the three to get
+    // wrong: a member asking with a capital would match nobody, and this
+    // reports nothing either way, so they could ask all afternoon.
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalizeEmail(email) },
+      select: { id: true, email: true },
+    });
+    if (!user) return;
+
+    const { token, tokenHash, expiresAt } = newResetToken();
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordResetToken: tokenHash, passwordResetExpiry: expiresAt },
+    });
+
+    try {
+      await this.email.sendPasswordReset(user.email, {
+        link: passwordResetUrl(this.configService.get<string>('WEB_URL'), token),
+        minutes: RESET_WINDOW_MINUTES,
+      });
+    } catch (err) {
+      // Logged without the token or the link. A log line is a place a
+      // credential outlives the hour it was meant to.
+      this.logger.error(
+        `Password reset stored but not sent for user ${user.id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  /**
+   * Whether a reset link is still good, so the form can say so before asking
+   * somebody to think of a password (AUTH-09).
+   *
+   * Answers a boolean and nothing else. It needs the token to ask, so it
+   * tells a holder only what redeeming would tell them anyway — and it saves
+   * a member typing a new password twice into a form that was always going to
+   * refuse it.
+   */
+  async passwordResetIsUsable(token: string): Promise<boolean> {
+    if (!token) return false;
+    const user = await this.findLiveReset(token);
+    return Boolean(user);
+  }
+
+  /**
+   * Redeem a reset token and set the password (AUTH-09).
+   *
+   * The lookup is by hash, so the stored value is never compared to anything
+   * a caller sent — and `resetTokenMatches` re-checks it in constant time
+   * rather than trusting the index probe alone.
+   *
+   * Everything is cleared on the way out: the reset token because it is
+   * single-use, and the magic-link token because a reset is what somebody
+   * does when they think another person has their account. Leaving that one
+   * live would leave the other person a way back in.
+   */
+  async resetPassword(token: string, newPassword: string) {
+    const user = await this.findLiveReset(token);
+
+    // One message for a forged token, a used one and an expired one. Telling
+    // them apart tells a guesser which half of the problem to work on.
+    if (!user) {
+      throw new UnauthorizedException(
+        'That link has expired or has already been used. Ask for a new one.',
+      );
+    }
+
+    const creating = !user.passwordHash;
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash: await bcrypt.hash(newPassword, 10),
+        passwordResetToken: null,
+        passwordResetExpiry: null,
+        magicLinkToken: null,
+        magicLinkExpiry: null,
+        /*
+          Redeeming a link sent to the address proves the address, which is
+          the same thing `validateMagicLink` concludes from the same evidence.
+        */
+        emailVerified: true,
+      },
+    });
+
+    /*
+      Told, not asked — the same best-effort notice `changePassword` sends.
+      The password is already set, and failing the request now would leave the
+      member believing it was not. It matters more here than there: if this
+      reset was not them, this email is how the owner of the account finds
+      out.
+    */
+    if (user.email) {
+      await this.email
+        .sendPasswordSet(user.email, { name: user.name ?? null, created: creating })
+        .catch((error) =>
+          this.logger.warn(`Could not send the password notice: ${(error as Error).message}`),
+        );
+    }
+
+    return { reset: true, created: creating };
+  }
+
+  /**
+   * The row a live reset token belongs to, or null.
+   *
+   * Shared by the check and the redemption so the two cannot disagree about
+   * what "usable" means — a form that says a link is fine and a redemption
+   * that refuses it is worse than either answer alone.
+   */
+  private async findLiveReset(token: string) {
+    const hash = hashResetToken(token);
+
+    const user = await this.prisma.user.findFirst({
+      where: { passwordResetToken: hash },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        passwordHash: true,
+        passwordResetToken: true,
+        passwordResetExpiry: true,
+      },
+    });
+
+    if (!user?.passwordResetToken) return null;
+    if (!resetIsLive(user.passwordResetExpiry)) return null;
+    if (!resetTokenMatches(token, user.passwordResetToken)) return null;
+
+    return user;
   }
 
   /**

@@ -36,6 +36,29 @@ const EXPECTED = [
   // Stripe signs its webhooks; the signature is the authentication.
   'POST /stripe/webhooks',
 
+  /*
+    Resetting a forgotten password (AUTH-09).
+
+    Public by definition: every one of these is reached by somebody who
+    cannot sign in, which is the whole premise. What keeps them safe is not a
+    guard but what they answer.
+
+      POST /auth/password-reset          one sentence for every address, so
+                                         it cannot be asked who has an
+                                         account. 3 per minute.
+      GET  /auth/password-reset/check    a bare boolean, and it needs the
+                                         token to ask — so it tells a holder
+                                         only what redeeming would.
+      POST /auth/password-reset/confirm  needs 32 random bytes that were
+                                         emailed to the address that owns the
+                                         account, and returns no session.
+
+    `password-reset-routes.spec.ts` pins each of those answers.
+  */
+  'POST /auth/password-reset',
+  'GET /auth/password-reset/check',
+  'POST /auth/password-reset/confirm',
+
   // A token in the URL is the authorisation: 32 random bytes, single use.
   'GET /buddy/:token',
   // Stopping Radar email from the link in one (RDR-01). HMAC-signed, and it

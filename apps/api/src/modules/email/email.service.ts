@@ -194,6 +194,7 @@ export interface ProviderBounce {
 export interface EmailJobData {
   type:
     | 'magic-link'
+    | 'password-reset'
     | 'password-set'
     | 'event-reminder'
     | 'renewal-reminder'
@@ -509,6 +510,18 @@ export class EmailService {
 
   async sendMagicLink(to: string | Addresses, link: string) {
     await this.send({ type: 'magic-link', to, data: { link } });
+  }
+
+  /**
+   * Somebody asked to set a new password (AUTH-09).
+   *
+   * Transactional beyond question — it is the reply to something a person did
+   * ten seconds ago — so it stays on the stream sign-in links use rather than
+   * the broadcast one (EML-04). A reset that lands in a bulk queue behind
+   * four hundred announcements is a reset that has already failed.
+   */
+  async sendPasswordReset(to: string | Addresses, data: { link: string; minutes: number }) {
+    await this.send({ type: 'password-reset', to, data });
   }
 
   /**
@@ -1175,6 +1188,21 @@ export class EmailService {
           `,
         };
       }
+
+      case 'password-reset':
+        return {
+          subject: 'Set a new password',
+          htmlBody: `
+            <h1>Set a new password</h1>
+            <p>Somebody asked to set a new password for this MaybeOS account. Use the button below — the link works once, and expires in ${
+              Number(data.minutes) || 60
+            } minutes.</p>
+            <p><a href="${escapeHtml(
+              data.link,
+            )}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:#fff;border-radius:6px;text-decoration:none;">Set a new password</a></p>
+            <p><strong>If this was not you</strong>, you can ignore this email and nothing changes — your current password still works and nobody has been given access. This link is the only thing that was sent, and it was sent only to this address.</p>
+          `,
+        };
 
       case 'magic-link':
         return {

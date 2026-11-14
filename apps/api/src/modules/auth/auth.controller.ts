@@ -15,6 +15,9 @@ import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { MagicLinkDto } from './dto/magic-link.dto';
+import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { RESET_REQUESTED_MESSAGE } from './password-reset';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -60,6 +63,58 @@ export class AuthController {
   async verifyMagicLink(@Query('token') token: string) {
     const user = await this.authService.validateMagicLink(token);
     return this.authService.login(user as any);
+  }
+
+  /**
+   * "I forgot my password" (AUTH-09).
+   *
+   * Three per minute, the same as a magic link, and for the same reason: this
+   * endpoint causes mail to be sent to an address the caller chose, so an
+   * unthrottled version is a way to use MaybeOS to pester somebody.
+   *
+   * One answer for every address. The service sends nothing for an unknown
+   * one and swallows a send failure rather than letting it become a 500, so
+   * there is no shape of response that says whether an account exists.
+   */
+  @Post('password-reset')
+  @Throttle({ short: { limit: 3, ttl: 60000 } })
+  @ApiOperation({ summary: 'Ask for a link to set a new password' })
+  async requestPasswordReset(@Body() dto: RequestPasswordResetDto) {
+    await this.authService.requestPasswordReset(dto.email);
+    return { message: RESET_REQUESTED_MESSAGE };
+  }
+
+  /**
+   * Whether the emailed link is still good, before the form asks for a
+   * password (AUTH-09).
+   *
+   * Public because the whole point is that nobody is signed in yet, and
+   * harmless because it needs the token to ask: a holder learns only what
+   * redeeming it would have told them. What it buys is a member not typing a
+   * new password twice into a form that was always going to refuse it.
+   */
+  @Get('password-reset/check')
+  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  @ApiOperation({ summary: 'Whether a password-reset link can still be used' })
+  @ApiQuery({ name: 'token', required: true, description: 'Token from the emailed link' })
+  async checkPasswordReset(@Query('token') token: string) {
+    return { usable: await this.authService.passwordResetIsUsable(token ?? '') };
+  }
+
+  /**
+   * Set the new password (AUTH-09).
+   *
+   * No session is returned on purpose. Somebody who has just set a password
+   * should prove they know it, and the form sends them to sign in with it —
+   * which also means a leaked reset link cannot be turned into a session
+   * without the attacker choosing a password the owner would then notice
+   * failing. The `password-set` notice goes out either way.
+   */
+  @Post('password-reset/confirm')
+  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  @ApiOperation({ summary: 'Redeem a password-reset link and set the password' })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto.token, dto.newPassword);
   }
 
   @UseGuards(JwtAuthGuard)
