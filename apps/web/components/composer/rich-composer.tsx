@@ -6,6 +6,7 @@ import {
   AtSign, Hash,
 } from 'lucide-react';
 import { sanitizeWikiHtml } from '@/lib/wiki-html';
+import { normalizePastedHtml } from '@/lib/paste-html';
 import { isBlankBody, linkHtml } from '@/lib/rich-text';
 import { ATTACHMENT_ACCEPT, ATTACHMENT_MAX_BYTES, formatBytes, isImage } from '@/lib/attachments';
 import { COMPOSER_EMOJI } from '@/lib/emoji';
@@ -445,12 +446,37 @@ export function RichComposer({
           }
         }}
         onPaste={(e) => {
-          // Paste as text. Pasting from a word processor otherwise carries in
-          // fonts, colours and background shading that the sanitiser strips
-          // unevenly, so what lands rarely looks like what was copied.
+          /*
+            Paste keeps its formatting (CMP-01).
+
+            This used to insert `text/plain` and throw the rest away, with a
+            comment explaining that a word processor carries in fonts, colours
+            and shading "that the sanitiser strips unevenly, so what lands
+            rarely looks like what was copied". The observation was right; the
+            conclusion was too strong. An admin pasting a written announcement
+            lost every link and every bold word in it, and then emailed that to
+            four hundred and fifty-seven people.
+
+            `normalizePastedHtml` turns the presentation those editors emit
+            back into meaning — Google Docs' `font-weight:700` spans into
+            `<strong>`, Outlook's per-line `<div>`s into paragraphs — and
+            sanitises the result against the same allowlist as everything else
+            here. See `lib/paste-html.ts` for what each editor actually sends.
+
+            Plain text is still the fallback, for a clipboard with no HTML in
+            it and for one whose HTML had nothing left after cleaning. "Paste
+            and match style" delivers only `text/plain`, so pasting *without*
+            formatting keeps working on its own.
+          */
           e.preventDefault();
-          const text = e.clipboardData.getData('text/plain');
-                document.execCommand('insertText', false, text);
+
+          const html = normalizePastedHtml(e.clipboardData.getData('text/html'));
+          if (html) {
+            document.execCommand('insertHTML', false, html);
+          } else {
+            document.execCommand('insertText', false, e.clipboardData.getData('text/plain'));
+          }
+
           publish();
         }}
         className="min-h-[var(--composer-min)] w-full px-3 py-2 text-sm text-gray-900 outline-none empty:before:text-gray-400 empty:before:content-[attr(data-placeholder)]"
