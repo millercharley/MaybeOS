@@ -105,19 +105,79 @@ function withoutComments(src: string): string {
   return stripComments(src);
 }
 
-function unguardedRoutes(): string[] {
+interface ControllerClass {
+  /** This class's own decorator run — where its guard and prefix live. */
+  decorators: string;
+  /** Its own body, ending where the next class's decorators begin. */
+  body: string;
+}
+
+/**
+ * Every controller class in a file, each with its own decorators and body.
+ *
+ * **A file is not one class, and reading it as one hid routes.** Both lookups
+ * here used to be non-global `exec` calls over the whole file, so the guard
+ * and the `@Controller` prefix were taken from the *first* class and applied
+ * to every route in the file. Because a guarded class makes the method loop
+ * `continue`, a guarded first class silently excluded every route in a second
+ * class from the audit — not mislabelled, absent. `unguardedRoutes()` would
+ * not list them, `toEqual(EXPECTED)` would pass, and a public route added to
+ * a second class would never be mentioned by the one test whose whole job is
+ * to mention it.
+ *
+ * It failed in the dangerous direction. Guarded first, unguarded second is
+ * silent; the reverse is a false positive, which is noisy and safe.
+ *
+ * `social.controller.ts` already has exactly this shape —
+ * `SocialAdminController` and `EventShareController` — and both happen to
+ * carry class-level guards, so nothing was ever exposed. That is luck, not
+ * design: two routes sat outside the audit's view, and the day one of them
+ * lost its guard this file would have said nothing. The test below removes
+ * that guard from the real source to prove it now speaks up.
+ */
+function classesIn(src: string): ControllerClass[] {
+  // Global, so every class is found rather than only the first.
+  const pattern = /((?:@[\w.]+\((?:[^()]|\([^()]*\))*\)\s*)*)export class/gs;
+
+  const heads: Array<{ at: number; decorators: string; after: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(src))) {
+    heads.push({
+      at: match.index,
+      decorators: match[1],
+      after: match.index + match[0].length,
+    });
+  }
+
+  return heads.map((head, i) => ({
+    decorators: head.decorators,
+    // Up to the next class's decorators, not its `export class`, or the
+    // neighbour's `@Controller` would land in this class's body.
+    body: src.slice(head.after, heads[i + 1]?.at ?? src.length),
+  }));
+}
+
+/**
+ * The unguarded routes in one controller file's source.
+ *
+ * Takes source rather than a path so the parser can be tested directly. The
+ * bug above survived because nothing exercised this logic on a shape it got
+ * wrong; a function that only reads the filesystem can only be checked
+ * against whatever the filesystem happens to contain today.
+ */
+export function routesIn(source: string): string[] {
+  const src = withoutComments(source);
   const found: string[] = [];
-  for (const file of controllers(join(__dirname, '..', '..'))) {
-    const src = withoutComments(readFileSync(file, 'utf8'));
-    const classDecorators = /((?:@[\w.]+\((?:[^()]|\([^()]*\))*\)\s*)*)export class/s.exec(src);
-    const classGuarded = classDecorators ? classDecorators[1].includes('UseGuards') : false;
-    const controller = /@Controller\('?([^')]*)'?\)/.exec(src);
+
+  for (const klass of classesIn(src)) {
+    const classGuarded = klass.decorators.includes('UseGuards');
+    const controller = /@Controller\('?([^')]*)'?\)/.exec(klass.decorators);
     const prefix = (controller?.[1] ?? '').replace(/'/g, '');
 
     const methods =
       /((?:[ \t]*@[\w.]+\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)[ \t]*\n\s*)+)(?:async[ \t]+)?[A-Za-z_]\w*\s*\(/g;
     let match: RegExpExecArray | null;
-    while ((match = methods.exec(src))) {
+    while ((match = methods.exec(klass.body))) {
       const block = match[1];
       const http = /@(Get|Post|Patch|Put|Delete)\(([^)]*)\)/.exec(block);
       if (!http) continue;
@@ -126,7 +186,14 @@ function unguardedRoutes(): string[] {
       found.push(`${http[1].toUpperCase()} /${[prefix, path].filter(Boolean).join('/')}`);
     }
   }
-  return found.sort();
+
+  return found;
+}
+
+function unguardedRoutes(): string[] {
+  return controllers(join(__dirname, '..', '..'))
+    .flatMap((file) => routesIn(readFileSync(file, 'utf8')))
+    .sort();
 }
 
 describe('routes that answer without a session', () => {
@@ -143,5 +210,91 @@ describe('routes that answer without a session', () => {
     // customer and subscription ids. It was unauthenticated until SEC-13, and
     // confirmed leaking on production before the guard went on.
     expect(unguardedRoutes()).not.toContain('GET /orgs/:orgId');
+  });
+});
+
+/**
+ * The hole the index had until 2026-11-13.
+ *
+ * A guard that cannot see part of the codebase reports clean on the thing it
+ * was built to catch, which is worse than having no guard: the empty list
+ * reads as an assurance. These exercise the parser on the shape it got wrong
+ * rather than on whatever happens to be on disk.
+ */
+describe('a file holding more than one controller class', () => {
+  const GUARDED_FIRST = `
+@Controller('orgs/:orgId/admin')
+@UseGuards(JwtAuthGuard, OrgMembershipGuard)
+export class AdminThing {
+  @Get()
+  read() {}
+}
+
+@Controller('public/thing')
+export class PublicThing {
+  @Get(':id')
+  open() {}
+}
+`;
+
+  it('finds an unguarded route in the second class', () => {
+    // The whole bug in one assertion: this used to be [].
+    expect(routesIn(GUARDED_FIRST)).toEqual(['GET /public/thing/:id']);
+  });
+
+  it('does not file it under the first class’s prefix', () => {
+    expect(routesIn(GUARDED_FIRST)).not.toContain('GET /orgs/:orgId/admin/:id');
+  });
+
+  it('still keeps a guarded class quiet', () => {
+    expect(routesIn(GUARDED_FIRST)).not.toContain('GET /orgs/:orgId/admin');
+  });
+
+  /** The reverse order was never broken, and must not become so. */
+  it('reads an unguarded first class and a guarded second', () => {
+    const unguardedFirst = `
+@Controller('public/thing')
+export class PublicThing {
+  @Get(':id')
+  open() {}
+}
+
+@Controller('orgs/:orgId/admin')
+@UseGuards(JwtAuthGuard)
+export class AdminThing {
+  @Get()
+  read() {}
+}
+`;
+    expect(routesIn(unguardedFirst)).toEqual(['GET /public/thing/:id']);
+  });
+
+  /**
+   * And the same thing proved against the real file that has this shape.
+   *
+   * `social.controller.ts` answers with an empty list either way, because both
+   * its classes are guarded — so an assertion on the file as it stands cannot
+   * tell a parser that looked from one that stopped early. Removing the second
+   * class's guard from the source is what distinguishes them: before this fix
+   * the answer stayed empty, which is precisely the silence worth preventing.
+   */
+  it('would speak up if the second class in social.controller.ts lost its guard', () => {
+    const file = join(__dirname, '..', '..', 'social', 'social.controller.ts');
+    const src = readFileSync(file, 'utf8');
+
+    expect(routesIn(src)).toEqual([]);
+
+    const exposed = src.replace(
+      "@Controller('orgs/:orgId/events/:eventId/social')\n@UseGuards(JwtAuthGuard, OrgMembershipGuard)",
+      "@Controller('orgs/:orgId/events/:eventId/social')",
+    );
+    // If the decorators are ever reformatted this replace stops matching, and
+    // the test would otherwise pass by asserting nothing.
+    expect(exposed).not.toBe(src);
+
+    expect(routesIn(exposed)).toEqual([
+      'GET /orgs/:orgId/events/:eventId/social',
+      'POST /orgs/:orgId/events/:eventId/social',
+    ]);
   });
 });
