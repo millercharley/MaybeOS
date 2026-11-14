@@ -1,0 +1,30 @@
+-- AUTH-07, second half: one spelling of an email address, enforced.
+--
+-- `users.email` carries Prisma's own `users_email_key`, which is unique and
+-- case-sensitive — so `Member@example.net` and `member@example.net` were two
+-- people, and the index said that was fine. A member of MaybeItsFate typed
+-- their own address with a capital, was not recognised, was offered a co-op of
+-- their own instead, and took it: two accounts, two passwords, and a duplicate
+-- of their own community.
+--
+-- The code fix normalised every lookup (register, sign-in, magic link). The
+-- first migration lowercased the stored rows it safely could. Neither of those
+-- stops a row arriving through a path nobody normalised yet; only the database
+-- can promise that, and this is the promise.
+--
+-- It waited three weeks on one outstanding collision, exactly as
+-- `20261020170000_auth07_email_case` said it would: the earlier migration
+-- deliberately left colliding pairs alone, because lowercasing an address
+-- whose lowercase form already belongs to somebody else either violates the
+-- index or quietly merges two people, and that is a person's decision rather
+-- than a migration's. Charley resolved it on 2026-11-14 — the abandoned
+-- account (created, used for nineteen minutes, never returned to) and its
+-- empty duplicate co-op were deleted, with the rows captured first; the real
+-- account, 163 bookings and an active membership, was untouched.
+--
+-- Added as a raw functional index because `lower(email)` cannot be expressed
+-- in schema.prisma. `prisma migrate dev` against a shadow database may
+-- therefore report it as drift and offer to drop it. Do not let it: the
+-- case-sensitive `users_email_key` is not a substitute, and dropping this puts
+-- the product back where a capital letter makes a second person.
+CREATE UNIQUE INDEX "users_email_lower_key" ON "users" (lower("email"));
