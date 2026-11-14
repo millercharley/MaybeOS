@@ -37,7 +37,7 @@ a new entry, not a rewrite.
 
 ---
 
-<!-- New entries go ABOVE this line, newest at top. Do not modify entries above. -->
+<!-- New entries go BELOW this line, newest at top. Never modify an existing entry. -->
 
 ### D-046 — A request made from a page nobody is looking at is not a reported failure
 
