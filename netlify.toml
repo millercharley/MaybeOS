@@ -20,6 +20,31 @@
   # Supabase connector — so nothing else would notice a schema the code is
   # ahead of. 444 KB of SQL on a 68 MB function, and the check fails loudly
   # rather than passing quietly if this entry is ever dropped.
+  #
+  # **Apply a migration in the same hour you push it, or do not apply it
+  # yet.** Because a deploy does not run migrations, applying by hand and
+  # pushing are two separate acts, and the drift check compares the directory
+  # names *on the deployed function* against the rows in the database. Either
+  # one without the other is drift, and both directions alert:
+  #
+  #   pushed, not applied   the code expects columns that are not there, and
+  #                         every query touching them fails. The loud one.
+  #   applied, not pushed   nothing is broken — the columns sit unused — but
+  #                         the check cannot tell that from the case above,
+  #                         so it alerts every fifteen minutes until the push
+  #                         lands.
+  #
+  # The second is how this note got written. On 2026-11-14 the AUTH-07
+  # migration was applied at 04:20 while pushes were on hold and the code
+  # reached production at 16:07, and `check-migration-drift` fired 48 times
+  # in between. Nothing was wrong for a single member; the alert was correct
+  # and nobody was listening, which is the state this whole mechanism exists
+  # to prevent.
+  #
+  # So: if pushes are held, hold the migration too. If a migration must go
+  # first — a destructive one resolving data before the code that depends on
+  # it — expect the alerts and say so, rather than leaving the next person to
+  # find 48 of them and go looking for a fault that is not there.
   included_files = [
     "node_modules/.prisma/client/**",
     "apps/api/prisma/migrations/**",
