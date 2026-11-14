@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   MIN_PASSWORD_LENGTH,
   RESET_REQUESTED_MESSAGE,
@@ -171,10 +173,8 @@ describe('how long a password has to be', () => {
     // The web app keeps its own copy so three screens can read one number;
     // read here so the two cannot drift. The API is the authority — the
     // browser is the side that can be skipped.
-    const web = require('fs').readFileSync(
-      require('path').join(
-        __dirname, '..', '..', '..', '..', '..', 'web', 'lib', 'password-rules.ts',
-      ),
+    const web = readFileSync(
+      join(__dirname, '..', '..', '..', '..', '..', 'web', 'lib', 'password-rules.ts'),
       'utf8',
     );
     const found = /export const MIN_PASSWORD = (\d+);/.exec(web);
