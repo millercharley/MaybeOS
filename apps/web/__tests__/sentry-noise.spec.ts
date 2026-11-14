@@ -84,15 +84,64 @@ describe('a poll nobody is waiting for', () => {
 
   const api = strip(readFileSync(join(__dirname, '..', 'lib', 'api.ts'), 'utf8'));
   const context = strip(readFileSync(join(__dirname, '..', 'contexts', 'unread-context.tsx'), 'utf8'));
+  const panel = strip(readFileSync(join(__dirname, '..', 'components', 'live', 'happening-now.tsx'), 'utf8'));
 
-  it('does not report that it could not reach the API', () => {
+  /*
+    Sliced to the block between the throw site and the capture, so the rule
+    is read where it is enforced rather than anywhere in a 6,400-line file.
+  */
+  const suppression = () => {
+    const caught = api.slice(api.indexOf('const err = new ApiNetworkError'));
+    const end = caught.indexOf('Sentry.captureException');
+    expect(end).toBeGreaterThan(-1);
+    return caught.slice(0, end);
+  };
+
+  it('does not report a poll that could not reach the API', () => {
     // One account produced 104 of the 122 reports on this route: a tab left
     // open, and every lid-close aborting whatever was in flight.
-    const caught = api.slice(api.indexOf('const err = new ApiNetworkError'));
-    const block = caught.slice(0, caught.indexOf('Sentry.captureException'));
+    expect(suppression()).toMatch(/background \|\|/);
+    expect(suppression()).toMatch(/throw err;/);
+  });
 
-    expect(block).toMatch(/if \(background\)/);
-    expect(block).toMatch(/throw err;/);
+  /*
+    And does not report a request whose page is already gone (OPS-43).
+
+    This is the other half, and the larger one: 94% of the fifteen
+    `api-unreachable` issues came from a phone, arriving four-in-a-second as
+    one page load's parallel requests all died together. Asserted as the call,
+    not the vocabulary — `worthReporting` being imported proves nothing if the
+    `if` no longer consults it.
+  */
+  it('does not report a request whose page is hidden or leaving', () => {
+    expect(suppression()).toMatch(/!worthReporting\(page\)/);
+    expect(api).toMatch(/const page = readPageState\(\)/);
+  });
+
+  /** The listener has to be attached before `pagehide` can fire. */
+  it('starts watching the page lifecycle at import, not on first failure', () => {
+    const attach = api.indexOf('watchPageLifecycle()');
+    expect(attach).toBeGreaterThan(-1);
+    // Above the class, i.e. at module scope rather than inside `request`.
+    expect(attach).toBeLessThan(api.indexOf('class ApiClient'));
+  });
+
+  /**
+   * The issue title has to name the endpoint.
+   *
+   * Fifteen issues titled "Can't reach MaybeOS right now" is a list nobody
+   * can triage, which is how these sat on the work queue for a month.
+   */
+  it('captures an error whose message carries the route', () => {
+    expect(api).toMatch(/captureException\(new ApiUnreachable\(method, route, cause\)/);
+    expect(api).toMatch(/super\(`API unreachable: \$\{method\} \$\{route\}`\)/);
+    // And the member still gets the sentence written for them.
+    expect(api).toContain("super(\"Can't reach MaybeOS right now.");
+  });
+
+  /** The fingerprint must not move, or every existing issue splits in two. */
+  it('keeps one issue per endpoint, under the fingerprint it already had', () => {
+    expect(api).toMatch(/setFingerprint\(\['api-unreachable', method, route\]\)/);
   });
 
   it('still reports a 5xx, however the request was made', () => {
@@ -134,6 +183,28 @@ describe('a poll nobody is waiting for', () => {
       accident that stops being true when a parameter is added.
     */
     expect(context).not.toMatch(/setInterval\(load,/);
+  });
+
+  /*
+    `HappeningNow` is the other live thing in the app, and it kept the timer
+    the badge's was replaced for (OPS-43): `setInterval(load, 60_000)`, no
+    `background`, no visibility check, running on in a tab behind seven others
+    for the rest of the afternoon. Both now go through `usePoll`.
+  */
+  describe('the other poller', () => {
+    it('does not run a bare interval', () => {
+      expect(panel).not.toContain('setInterval');
+    });
+
+    it('polls through the shared timer, which skips hidden tabs', () => {
+      expect(panel).toMatch(/usePoll\(load, \{ everyMs: 60_000, enabled: Boolean\(orgId && token\) \}\)/);
+    });
+
+    /** A tick is a background request; the first load is not. */
+    it('marks its ticks as background and nothing else', () => {
+      expect(panel).toMatch(/const load = useCallback\(async \(background = false\)/);
+      expect(panel).toMatch(/happeningNow\(orgId, token, background\)/);
+    });
   });
 });
 

@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import Link from 'next/link';
 import { CalendarClock, DoorOpen, Users } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth-store';
+import { usePoll } from '@/hooks/use-poll';
 import { api } from '@/lib/api';
 import type { HappeningNow as HappeningNowData } from '@/lib/api';
 
@@ -71,10 +72,19 @@ export function HappeningNow({ orgId, orgSlug }: { orgId: string; orgSlug: strin
   const token = useAuthStore((s) => s.token);
   const [data, setData] = useState<HappeningNowData | null>(null);
 
-  const load = useCallback(async () => {
+  /**
+   * `background` is true only for the ticks of the timer (OPS-09, OPS-43).
+   *
+   * Not for the first load: somebody has just opened the dashboard and is
+   * waiting to see whether anyone is in the building. A tick that failed
+   * because the tab was asleep is not worth a Sentry issue, and this panel
+   * produced them on fourteen endpoints' worth of issues before anyone
+   * noticed it was still on the pre-CMN-29 timer.
+   */
+  const load = useCallback(async (background = false) => {
     if (!orgId || !token) return;
     try {
-      setData(await api.dashboard.happeningNow(orgId, token));
+      setData(await api.dashboard.happeningNow(orgId, token, background));
     } catch (err) {
       /*
         A refusal is not a hiccup (OPS-37).
@@ -93,16 +103,17 @@ export function HappeningNow({ orgId, orgSlug }: { orgId: string; orgSlug: strin
     }
   }, [orgId, token]);
 
-  useEffect(() => {
-    // No timer without a session. `load` already refuses to fetch, but a
-    // timer that exists only to do nothing is one somebody has to reason
-    // about later (OPS-37).
-    if (!orgId || !token) return;
+  /*
+    No timer without a session. `load` already refuses to fetch, but a timer
+    that exists only to do nothing is one somebody has to reason about later
+    (OPS-37).
 
-    load();
-    const timer = setInterval(load, 60_000);
-    return () => clearInterval(timer);
-  }, [load, orgId, token]);
+    The timer itself is `usePoll` rather than the `setInterval(load, 60_000)`
+    this had, which kept asking every minute for as long as the tab existed —
+    hidden behind seven others, phone in a pocket, all afternoon. The badge's
+    poller was rebuilt for exactly that (CMN-29) and this one was missed.
+  */
+  usePoll(load, { everyMs: 60_000, enabled: Boolean(orgId && token) });
 
   if (!data) return null;
 

@@ -63,10 +63,18 @@ export function scrubUrl(url: string): string {
  * strings below are ambient noise — a user switching tabs, walking out of
  * wifi, an ad blocker — and they flood a project if left in. But "the API is
  * unreachable" is precisely the failure OPS-07 exists to catch, so the API
- * client deliberately re-wraps those in ApiNetworkError with a message shaped
- * like `API unreachable: POST /auth/login`, which matches nothing here and is
- * always reported. Do not add a generic /fetch/i pattern to this list — it
+ * client deliberately captures those as `ApiUnreachable`, whose message is
+ * shaped `API unreachable: POST /auth/login` — matching nothing here, and
+ * always reported. Do not add a generic /fetch/i pattern to this list; it
  * would swallow that signal too.
+ *
+ * This paragraph described a message the code did not have (OPS-43). The
+ * client threw `ApiNetworkError`, whose message is the sentence a member
+ * reads on screen, and captured that — so fifteen endpoints produced fifteen
+ * identically titled issues and the carve-out was safe by accident rather
+ * than by the rule written here. The code now matches the paragraph. If the
+ * two ever disagree again, the comment is the one to trust: a route in the
+ * title is the whole reason an issue list is readable.
  */
 const IGNORED_ERRORS = [
   // The user navigated away or lost connectivity mid-request.

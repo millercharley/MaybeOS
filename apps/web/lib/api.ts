@@ -3,8 +3,19 @@ import type { ReactionGroup } from '@/lib/reactions';
 import type { MaturityLevel } from './maturity';
 import type { GrantKind } from './ledger';
 import * as Sentry from '@sentry/nextjs';
+import { readPageState, watchPageLifecycle, whyNotReported, worthReporting } from './page-state';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+/*
+  Started here, at import, rather than from a component (OPS-43).
+
+  The `pagehide` listener has to exist before `pagehide` fires, and the module
+  that decides whether to report a failure is the one that should be watching
+  for the reason not to. It is idempotent and a no-op without a `window`, so
+  importing this file on the server costs nothing.
+*/
+watchPageLifecycle();
 
 /**
  * Absolute URL for an API path, for links the browser follows rather than
@@ -135,42 +146,63 @@ class ApiClient {
       const err = new ApiNetworkError(method, route, cause);
 
       /*
-        A poll that could not reach the API is not news (OPS-09).
+        Nobody was waiting for this one (OPS-09, OPS-43).
 
-        The unread badge asks every sixty seconds from every open tab. A
-        laptop lid closing, a wifi handover, a tab suspended in the
-        background — each aborts whatever was in flight, and each was filed
-        as an error. One account produced 104 of the 122 reports on this
-        route; the member never saw anything, because the badge keeps its
-        last value and the next tick fixes it.
+        Two ways that happens, and they were found a year apart by the same
+        kind of reading.
 
-        This does not give up the signal OPS-07 exists for. An API that is
-        genuinely unreachable fails the member's *next* real request too —
-        a page load, a post, a booking — and that one is reported, with
-        somebody actually waiting on it. What is dropped here is the
-        per-minute echo of a fact a foreground request states better.
+        **A poll.** The unread badge asks every sixty seconds from every open
+        tab. A laptop lid closing, a wifi handover, a tab suspended in the
+        background — each aborts whatever was in flight, and each was filed as
+        an error. One account produced 104 of the 122 reports on that route;
+        the member never saw anything, because the badge keeps its last value
+        and the next tick fixes it.
 
-        Only the network leg. A 5xx below is a defect in our own server and
-        is reported however it was asked for.
+        **A page on its way out.** The rest of it. A member opens MaybeOS on a
+        phone, the page fires its nine parallel requests, and then the phone
+        locks or they switch apps — and every request in flight dies at once,
+        filing one issue each. That is what the fifteen `api-unreachable`
+        issues turned out to be: 94% from a phone, arriving in clumps of four
+        in the same second from one member, with the browser reporting
+        `TypeError: Load failed` — a request it abandoned, not a response it
+        got. See `page-state.ts` for the reading.
+
+        Neither gives up the signal OPS-07 exists for. An API that is
+        genuinely unreachable fails a request made on a page somebody is
+        looking at, and that one is reported. What is dropped here is the echo
+        of a fact a foreground request states better.
+
+        Only the network leg. A 5xx below is a defect in our own server and is
+        reported however it was asked for.
       */
-      if (background) {
+      const page = readPageState();
+      if (background || !worthReporting(page)) {
         Sentry.addBreadcrumb({
           category: 'api',
           type: 'http',
           level: 'warning',
-          message: `${method} ${route} → unreachable (background)`,
-          data: { method, route, background: true },
+          message: `${method} ${route} → unreachable (${background ? 'background' : whyNotReported(page)})`,
+          data: { method, route, background: Boolean(background), ...page },
         });
         throw err;
       }
 
-      Sentry.captureException(err, (scope) => {
+      /*
+        Reported as its own error, titled for whoever is reading Sentry
+        (OPS-43).
+
+        `ApiNetworkError`'s message is written for members — "Can't reach
+        MaybeOS right now" — so every endpoint produced an identically titled
+        issue and the list could not be scanned without opening each one. The
+        route lives in the message now, which is what `sentry.shared.ts` has
+        always claimed it did.
+
+        The fingerprint is unchanged, so this does not start a new set of
+        issues: the existing ones keep collecting, and their titles gain the
+        route from here on. The member still gets `err`, thrown below.
+      */
+      Sentry.captureException(new ApiUnreachable(method, route, cause), (scope) => {
         scope.setLevel('error');
-        // ApiNetworkError's message is written for members, so it reads the
-        // same for every endpoint and makes a poor issue title on its own.
-        // The fingerprint still keeps one issue per endpoint; naming the
-        // transaction puts the route back into the issue list, where it can
-        // be scanned.
         scope.setTransactionName(`${method} ${route}`);
         scope.setTags({ 'api.method': method, 'api.route': route });
         scope.setFingerprint(['api-unreachable', method, route]);
@@ -3240,8 +3272,13 @@ class ApiClient {
     memberStats: (orgId: string, token: string) =>
       this.request<MemberStats>(`/orgs/${orgId}/member-stats`, { token }),
 
-    happeningNow: (orgId: string, token: string) =>
-      this.request<HappeningNow>(`/orgs/${orgId}/happening-now`, { token }),
+    /**
+     * `background` for the ticks of the panel's timer, like `unread` above
+     * (OPS-09). The first load has somebody watching the screen; a tick at
+     * 14:03 in a tab behind seven others does not.
+     */
+    happeningNow: (orgId: string, token: string, background = false) =>
+      this.request<HappeningNow>(`/orgs/${orgId}/happening-now`, { token, background }),
 
     recentJoins: (orgId: string, token: string) =>
       this.request<RecentJoins>(`/orgs/${orgId}/recent-joins`, { token }),
@@ -3575,6 +3612,32 @@ export class ApiNetworkError extends Error {
   ) {
     super("Can't reach MaybeOS right now. Check your connection and try again.");
     this.name = 'ApiNetworkError';
+  }
+}
+
+/**
+ * The same failure, addressed to whoever is reading Sentry (OPS-43).
+ *
+ * Two audiences, two sentences. `ApiNetworkError` above is what a member sees
+ * on the screen, so it says what they can do about it and never names a
+ * route. That message then became the title of fifteen Sentry issues, all
+ * identical, which is how "fifteen member reads fail the same way" sat on the
+ * work queue for a month without anyone being able to tell them apart.
+ *
+ * This one is thrown at nobody. It exists to be captured, and its message is
+ * the shape `sentry.shared.ts` describes when it explains why the bare
+ * `'Failed to fetch'` and `'Load failed'` filters do not swallow a genuinely
+ * unreachable API: `API unreachable: GET /orgs/:org/unread`. The route has
+ * already been through `safePath`, so no credential can reach it.
+ */
+class ApiUnreachable extends Error {
+  constructor(
+    public method: string,
+    public route: string,
+    public cause?: unknown,
+  ) {
+    super(`API unreachable: ${method} ${route}`);
+    this.name = 'ApiUnreachable';
   }
 }
 
