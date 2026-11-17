@@ -276,6 +276,15 @@ export class EventsService {
       publish?: boolean;
       hasCost?: boolean;
       maturityLevel?: CreateEventDto['maturityLevel'];
+      /**
+       * The teaching offering this is a session of (TCH-01).
+       *
+       * In the options bag rather than the DTO, for the same reason
+       * `bookingId` is: it is set by a caller inside the API, never by a
+       * browser. A member cannot attach their event to somebody else's
+       * offering by adding a field to a request.
+       */
+      offeringId?: string;
     } = {},
   ) {
     const slug = toSlug(dto.title, dto.startTime);
@@ -326,6 +335,8 @@ export class EventsService {
         // would otherwise have no claim on it afterwards.
         createdById: userId,
         bookingId: options.bookingId,
+        // Which offering this is a session of, when it is one (TCH-01).
+        offeringId: options.offeringId,
         // The same reservation in the shape that can hold more than one
         // (SPC-26): an event's rooms are the bookings pointing at it.
         ...(options.bookingId

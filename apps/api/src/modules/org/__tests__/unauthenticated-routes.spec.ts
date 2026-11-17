@@ -95,6 +95,23 @@ const EXPECTED = [
   // reason it is public: it is fetched with no session.
   'GET /embed/:orgSlug/email.html',
 
+  /*
+    What a co-op teaches, for somebody with no account (TCH-01).
+
+    Public for the same reason the events embed is: a visitor reading a
+    co-op's website has no session and no way to hold one. What keeps them
+    safe is what they answer rather than a guard — `PUBLIC_OFFERING_SELECT`
+    carries the teacher's name and picture and nothing else about them, no
+    email, no id, no interest notes and no counts of who has asked. A
+    members-only offering is absent, and so is a draft.
+
+    The thing being published here is a *person*, which is the difference
+    from the events embed, so `public-offering-fields.spec.ts` pins the
+    allowlist and names the fields that must never appear.
+  */
+  'GET /public/teaching/:orgSlug',
+  'GET /embed/:orgSlug/teaching',
+
   // Joining and buying, for somebody who is not a member yet.
   'POST /orgs/:orgId/events/:eventId/rsvp/guest',
   'POST /orgs/:orgId/events/:eventId/tickets/checkout',

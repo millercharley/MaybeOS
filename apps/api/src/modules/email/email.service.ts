@@ -195,6 +195,7 @@ export interface EmailJobData {
   type:
     | 'magic-link'
     | 'password-reset'
+    | 'teaching-interest'
     | 'password-set'
     | 'event-reminder'
     | 'renewal-reminder'
@@ -510,6 +511,35 @@ export class EmailService {
 
   async sendMagicLink(to: string | Addresses, link: string) {
     await this.send({ type: 'magic-link', to, data: { link } });
+  }
+
+  /**
+   * Somebody put their hand up for what this member teaches (TCH-01).
+   *
+   * Transactional: a person addressed this teacher by name through the
+   * product, which is the same test `sendDirectMessage` passes. It stays on
+   * the stream sign-in links use rather than the broadcast one (EML-04) — an
+   * enquiry that lands behind four hundred announcements is an enquiry that
+   * has already failed.
+   *
+   * The learner's address is **not** in it. The teacher replies inside
+   * MaybeOS, which is the whole reason `OfferingInterest` exists rather than
+   * publishing contact details on a page.
+   */
+  async sendTeachingInterest(
+    to: string | Addresses,
+    data: {
+      teacherName: string | null;
+      learnerName: string;
+      offeringTitle: string;
+      orgName: string;
+      /** Where a reply goes, which every co-op-named send carries (EML-03). */
+      replyTo: string | null;
+      note: string | null;
+      url: string;
+    },
+  ) {
+    await this.send({ type: 'teaching-interest', to, data });
   }
 
   /**
@@ -1188,6 +1218,32 @@ export class EmailService {
           `,
         };
       }
+
+      case 'teaching-interest':
+        return {
+          subject: `${escapeHtml(data.learnerName)} is interested in ${escapeHtml(
+            data.offeringTitle,
+          )}`,
+          htmlBody: `
+            <h1>Somebody is interested</h1>
+            <p>${data.teacherName ? `Hello ${escapeHtml(data.teacherName)}, ` : ''}${escapeHtml(
+              data.learnerName,
+            )} put their hand up for <strong>${escapeHtml(
+              data.offeringTitle,
+            )}</strong> in ${escapeHtml(data.orgName)}.</p>
+            ${
+              data.note
+                ? `<p style="margin:16px 0;padding:12px 16px;border-left:3px solid #6366f1;color:#2d2a26;">${escapeHtml(
+                    data.note,
+                  )}</p>`
+                : ''
+            }
+            <p><a href="${escapeHtml(
+              data.url,
+            )}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:#fff;border-radius:6px;text-decoration:none;">See who has asked</a></p>
+            <p style="color:#6b665e;font-size:13px;">Reply to them from inside MaybeOS — we have not given them your email address, and we have not given you theirs.</p>
+          `,
+        };
 
       case 'password-reset':
         return {

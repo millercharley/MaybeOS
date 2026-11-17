@@ -165,6 +165,11 @@ model Organization {
   /// members shape or something the organisers do. Channels are open to the
   /// whole co-op either way — see `Channel.isPublic`, which nothing enforces.
   memberChannelsEnabled       Boolean           @default(false)
+  /// Whether members may broadcast what they teach (TCH-01). Off by default,
+  /// like every other thing a member can publish under the co-op's name: a
+  /// co-op decides for itself whether it is a place where people offer
+  /// workshops and lessons, and most have never been asked.
+  teachingEnabled             Boolean           @default(false)
   /// Whether this co-op issues door codes at all (DOR-01). Off by default:
   /// most co-ops have no door for MaybeOS to let anybody through.
   doorAccessEnabled           Boolean           @default(false)
@@ -395,6 +400,7 @@ model Organization {
   doorSheetEntries        DoorSheetEntry[]
   socialAccount           OrgSocialAccount?
   eventSocialPosts        EventSocialPost[]
+  offerings               Offering[]
 
   /// Backs the platform console's org list, which orders by signup date
   /// (PLT-01). Created by that migration but never declared here, so every
@@ -498,6 +504,13 @@ model User {
   collectionPages  CollectionPage[]
   hostedEvents     Event[]                 @relation("HostedEvents")
   createdEvents    Event[]                 @relation("CreatedEvents")
+  /// What this member teaches, and what they wrote up for somebody else
+  /// (TCH-01). Two relations for the same reason events have two: an
+  /// organiser may write an offering on a member's behalf and must keep
+  /// edit rights without becoming the teacher.
+  offeringsTaught  Offering[]              @relation("OfferingTeacher")
+  offeringsCreated Offering[]              @relation("OfferingCreator")
+  offeringInterest OfferingInterest[]
   coHostedEvents   EventCoHost[]
   coHostedBookings BookingCoHost[]
   tickets          Ticket[]
@@ -1124,6 +1137,15 @@ model Event {
 
   socialPosts EventSocialPost[]
 
+  /// The teaching offering this is a session of (TCH-01), when it is one.
+  ///
+  /// Null for every ordinary event, which is almost all of them. `SetNull`
+  /// rather than `Cascade` on purpose: deleting an offering must not delete
+  /// evenings people hold tickets to. The session survives as a plain event,
+  /// which is what it already was to everyone who booked it.
+  offeringId  String?
+  offering    Offering?    @relation(fields: [offeringId], references: [id], onDelete: SetNull)
+
   @@unique([orgId, slug])
   @@unique([orgId, googleEventId])
   @@index([orgId, startTime])
@@ -1131,6 +1153,135 @@ model Event {
   /// Finding the events somebody ran, the day they (re)join (CAL-03).
   @@index([orgId, hostEmail])
   @@map("events")
+}
+
+/// What somebody is offering to teach (TCH-01).
+///
+/// Charley, 2026-11-17: members should be able to broadcast something they
+/// plan to teach, or are willing to teach — a workshop, or an offer of
+/// private lessons. Until now a member who wanted to run one either asked an
+/// organiser to make them an event, or it happened off-platform and the co-op
+/// never learned it had been offered.
+///
+/// **The offering is the broadcast, not the date.** A workshop's dates are
+/// `Event` rows pointing back here, because `Event` already carries
+/// visibility, capacity, tickets, RSVPs, payouts, the calendar and the embed
+/// — all of it tested. A second model that scheduled and ticketed people
+/// would duplicate the most load-bearing module in the product and then drift
+/// from it. So "a scheduled workshop appears on the events calendar" needs no
+/// integration code at all: the sessions *are* events.
+///
+/// A private lesson has no dates and never creates one.
+model Offering {
+  id           String          @id @default(uuid())
+  orgId        String
+  org          Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  /// Who is teaching. Not the creator: an organiser may write one up on a
+  /// member's behalf, the same distinction `Event.hostId` and
+  /// `Event.createdById` draw (EVT-32).
+  teacherId    String
+  teacher      User            @relation("OfferingTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
+  createdById  String?
+  createdBy    User?           @relation("OfferingCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  kind         OfferingKind
+  title        String
+  /// `title` kebab-cased, unique per co-op, the same shape `Event.slug` uses
+  /// minus the date prefix — an offering is not pinned to one.
+  slug         String
+  /// One line for a card. The long version lives in `richDescription`.
+  summary      String?
+  description  String?
+  richDescription String?
+
+  imageUrl       String?
+  imageCredit    String?
+  imageCreditUrl String?
+  imageFocusY    Int           @default(50)
+
+  /// Who may see it, reusing the event enum rather than inventing a parallel
+  /// one that would drift.
+  ///
+  /// **Defaults to MEMBERS_ONLY, unlike `Event`, and deliberately.** An event
+  /// defaults to PUBLIC and the service passes the caller's choice straight
+  /// through, so an event made with no visibility is world-visible. That is a
+  /// fine default for a co-op publishing its own calendar and a poor one for
+  /// a member writing up what they teach: being on the open web should be a
+  /// thing somebody chose. A session inherits this explicitly rather than
+  /// relying on either default.
+  visibility   EventVisibility @default(MEMBERS_ONLY)
+
+  isPublished  Boolean         @default(false)
+  publishedAt  DateTime?
+  /// Set when the teacher stops taking anybody. Kept rather than deleted, so
+  /// the people who already signed up still have something to point at.
+  closedAt     DateTime?
+
+  payment      OfferingPayment @default(ARRANGE_DIRECTLY)
+  /// What it costs, in cents. Null means free, or "ask" — the same meaning
+  /// `Event.priceCents` carries, and the same reason it is not zero: Stripe
+  /// will not take a payment under fifty cents, so zero is not a price.
+  priceCents   Int?
+  /// What the teacher wants to say about money when MaybeOS is not taking it
+  /// — "sliding scale, $30-60", "first lesson free". Prose on purpose: a
+  /// number cannot express most of what teachers actually charge.
+  priceNote    String?
+  currency     String          @default("usd")
+
+  sessions     Event[]
+  interests    OfferingInterest[]
+
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@unique([orgId, slug])
+  @@index([orgId, visibility, isPublished])
+  @@index([orgId, teacherId])
+  @@map("offerings")
+}
+
+/// Somebody put their hand up (TCH-01).
+///
+/// One table for both cases, because they are the same event: a member who
+/// would come to a workshop that has no dates yet, and a learner asking about
+/// private lessons, are both somebody the teacher should know about. Two
+/// tables would be the same shape with different names.
+///
+/// The note is the learner's own words and is read by the teacher and the
+/// co-op's organisers. It is never published, and never reaches the embed.
+model OfferingInterest {
+  id         String   @id @default(uuid())
+  offeringId String
+  offering   Offering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note       String?
+  /// When the teacher marked it dealt with. Kept rather than deleted so a
+  /// teacher can see who they have already replied to.
+  handledAt  DateTime?
+  createdAt  DateTime @default(now())
+
+  /// Asking twice is asking once. A member who presses it again is
+  /// updating their note, not joining a queue a second time.
+  @@unique([offeringId, userId])
+  @@index([offeringId, createdAt])
+  @@map("offering_interests")
+}
+
+enum OfferingKind {
+  /// Has dates, or is gathering interest before it gets any.
+  WORKSHOP
+  /// A standing offer. Each learner arranges their own time with the teacher.
+  PRIVATE_LESSON
+}
+
+enum OfferingPayment {
+  /// Tickets or lessons are bought through MaybeOS. For a workshop this is
+  /// the existing event ticket flow, because a session is an event.
+  THROUGH_MAYBEOS
+  /// The teacher takes money their own way, or it is free. The only option
+  /// for a private lesson today (TCH-01 ships paid lessons second).
+  ARRANGE_DIRECTLY
 }
 
 enum RsvpStatus {

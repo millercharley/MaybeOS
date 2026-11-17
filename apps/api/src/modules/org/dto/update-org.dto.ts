@@ -45,6 +45,17 @@ export class UpdateOrgDto extends PartialType(CreateOrgDto) {
   memberChannelsEnabled?: boolean;
 
   /**
+   * Whether members may broadcast what they teach (TCH-01). Off by default,
+   * and declared here for the reason the two lines above give: the whitelist
+   * refuses the whole save on an undeclared field, so a toggle the settings
+   * form sends and this class omits would 400 every other setting with it.
+   */
+  @ApiPropertyOptional({ example: false, default: false })
+  @IsOptional()
+  @IsBoolean()
+  teachingEnabled?: boolean;
+
+  /**
    * Door access (DOR-01). Three fields rather than one, because issuing codes,
    * writing the sheet and telling members are three separate acts a
    * co-op turns on at different moments — Charley's first run was "fill the
