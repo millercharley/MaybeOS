@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { EventsService } from '../events.service';
 import { RadarService } from '../../radar/radar.service';
+import { ThreadPostService } from '../../commons/thread-post.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { ConnectService } from '../../stripe/connect.service';
 import { EmailService } from '../../email/email.service';
@@ -48,6 +49,8 @@ describe('EventsService — cancelling refunds tickets', () => {
         // Radar counts an RSVP toward the member's interests (RDR-01); these
         // suites assert nothing about what it learns.
         { provide: RadarService, useValue: { recordRsvp: jest.fn() } },
+        // Announcing into #Events is best-effort and not what these test (CMN-22).
+        { provide: ThreadPostService, useValue: { announceEvent: jest.fn().mockResolvedValue({ postId: null }) } },
       ],
     }).compile();
 

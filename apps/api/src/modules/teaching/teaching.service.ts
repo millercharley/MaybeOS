@@ -31,6 +31,7 @@ import {
   visibleTo,
 } from './offering-control';
 import { MEMBER_OFFERING_SELECT, PUBLIC_OFFERING_SELECT } from './offering-view';
+import { ThreadPostService } from '../commons/thread-post.service';
 
 /** Who is asking, and whether they run the co-op. Never a role (EVT-50). */
 export interface Actor {
@@ -56,6 +57,8 @@ export class TeachingService {
     private readonly events: EventsService,
     private readonly email: EmailService,
     private readonly config: ConfigService,
+    // A published offering gets a thread in #Teaching (CMN-22).
+    private readonly threads: ThreadPostService,
   ) {}
 
   /* ─── Guards the routes cannot express ─────────────────────── */
@@ -255,13 +258,33 @@ export class TeachingService {
 
       // Re-read so the caller gets the dates it just asked for, through the
       // same select every other read uses.
+      await this.announce(orgId, offering.id);
       return this.prisma.offering.findFirstOrThrow({
         where: { id: offering.id, orgId },
         select: MEMBER_OFFERING_SELECT,
       });
     }
 
+    await this.announce(orgId, offering.id);
     return offering;
+  }
+
+  /**
+   * Put it in #Teaching, so members can ask about it (CMN-22).
+   *
+   * Best-effort, and never allowed to fail a publish: a teacher who pressed
+   * Publish and got an error about a Commons channel would reasonably think
+   * their workshop had not gone up. Drafts and anything kept off the lists
+   * are refused inside `announceOffering`, which is the one place that
+   * decides.
+   */
+  private async announce(orgId: string, offeringId: string): Promise<void> {
+    await this.threads.announceOffering(orgId, offeringId).catch((err) => {
+      this.logger.warn(
+        `Offering ${offeringId} published but not announced: ` +
+          (err instanceof Error ? err.message : 'unknown error'),
+      );
+    });
   }
 
   async update(orgId: string, id: string, dto: UpdateOfferingDto, actor: Actor) {
@@ -343,6 +366,7 @@ export class TeachingService {
     */
     if (publishShouldCascade(offering.isPublished, dto.isPublished === true)) {
       await this.publishSessionsOf(orgId, id, actor);
+      await this.announce(orgId, id);
       return this.prisma.offering.findFirstOrThrow({
         where: { id, orgId },
         select: MEMBER_OFFERING_SELECT,

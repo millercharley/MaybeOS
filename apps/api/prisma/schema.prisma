@@ -1216,6 +1216,11 @@ model Offering {
   /// Set when the teacher stops taking anybody. Kept rather than deleted, so
   /// the people who already signed up still have something to point at.
   closedAt     DateTime?
+  /// The Commons post carrying this offering's conversation (CMN-22).
+  ///
+  /// Unique, like `events.postId`, and `SetNull` on delete: removing an
+  /// offering must not take a thread members have been talking in with it.
+  postId       String?   @unique
 
   payment      OfferingPayment @default(ARRANGE_DIRECTLY)
   /// What it costs, in cents. Null means free, or "ask" — the same meaning
@@ -1228,6 +1233,7 @@ model Offering {
   priceNote    String?
   currency     String          @default("usd")
 
+  post         Post?     @relation("OfferingThread", fields: [postId], references: [id], onDelete: SetNull)
   sessions     Event[]
   interests    OfferingInterest[]
 
@@ -1908,6 +1914,7 @@ model Post {
   reactions   Reaction[]
   attachments Attachment[]
   eventThread Event?       @relation("EventThread")
+  offeringThread Offering? @relation("OfferingThread")
   emailSends  PostEmailSend[]
 
   @@index([channelId, createdAt])

@@ -3,6 +3,7 @@ import { NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../config/prisma.service';
 import { EventsService } from '../events.service';
 import { RadarService } from '../../radar/radar.service';
+import { ThreadPostService } from '../../commons/thread-post.service';
 import { EmailService } from '../../email/email.service';
 import { ConfigService } from '@nestjs/config';
 import { CalendarService } from '../../calendar/calendar.service';
@@ -43,6 +44,8 @@ describe('EventsService.hostSummary', () => {
         EventsService,
         // Radar counts an RSVP toward the member's interests (RDR-01).
         { provide: RadarService, useValue: { recordRsvp: jest.fn() } },
+        // Announcing into #Events is best-effort and not what these test (CMN-22).
+        { provide: ThreadPostService, useValue: { announceEvent: jest.fn().mockResolvedValue({ postId: null }) } },
         { provide: PrismaService, useValue: prisma },
         { provide: EmailService, useValue: {} },
         { provide: ConfigService, useValue: { get: () => '' } },

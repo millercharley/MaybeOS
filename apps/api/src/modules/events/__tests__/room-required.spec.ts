@@ -5,6 +5,7 @@ import { EventsService } from '../events.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { EmailService } from '../../email/email.service';
 import { RadarService } from '../../radar/radar.service';
+import { ThreadPostService } from '../../commons/thread-post.service';
 import { ConnectService } from '../../stripe/connect.service';
 
 /**
@@ -42,6 +43,8 @@ describe('publishing an event at a co-op that asks where it is', () => {
       providers: [
         EventsService,
         { provide: RadarService, useValue: { recordRsvp: jest.fn() } },
+        // Announcing into #Events is best-effort and not what these test (CMN-22).
+        { provide: ThreadPostService, useValue: { announceEvent: jest.fn().mockResolvedValue({ postId: null }) } },
         { provide: ConnectService, useValue: {} },
         { provide: EmailService, useValue: { send: jest.fn() } },
         { provide: ConfigService, useValue: { get: jest.fn() } },

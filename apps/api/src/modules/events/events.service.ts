@@ -31,6 +31,8 @@ import { PUBLIC_EVENT_SELECT } from './event-view';
 import { priceTicket } from '../stripe/ticket-pricing';
 import { MaybeOsPlan } from '@prisma/client';
 import { escapeHtml } from '../../common/escape-html';
+import { ThreadPostService } from '../commons/thread-post.service';
+import { threadOwnerId } from '../commons/thread-policy';
 
 /* ───────────────────────────── helpers ───────────────────────────── */
 
@@ -153,6 +155,8 @@ export class EventsService {
     // An RSVP is the most honest thing a member ever says about what they
     // are interested in (RDR-01).
     private readonly radar: RadarService,
+    // Anything shared with members gets a thread in #Events (CMN-22).
+    private readonly threads: ThreadPostService,
   ) {}
 
   /* ─── Create ────────────────────────────────────────────────── */
@@ -400,6 +404,20 @@ export class EventsService {
         });
         throw error;
       }
+    }
+
+    /*
+      Created already live, so announce it now (CMN-22). After the room
+      check, because that check can put it straight back to a draft — and a
+      draft must not have announced itself on the way past.
+    */
+    if (created.isPublished) {
+      await this.threads.announceEvent(orgId, created.id).catch((err) => {
+        this.logger.warn(
+          `Created event ${created.id} but could not announce it: ` +
+            (err instanceof Error ? err.message : 'unknown error'),
+        );
+      });
     }
 
     return created;
@@ -747,6 +765,23 @@ export class EventsService {
         isPublished: true,
         publishedAt: new Date(),
       },
+    });
+
+    /*
+      Into #Events, so members can ask about it (CMN-22).
+
+      Best-effort and deliberately not awaited into the result: a Commons
+      write that failed must not make publishing look like it failed. The
+      member pressed Publish and the event is published.
+
+      Private events and the dates of a teaching offering are refused inside
+      `announceEvent`, not here — one place decides.
+    */
+    await this.threads.announceEvent(orgId, eventId).catch((err) => {
+      this.logger.warn(
+        `Published event ${eventId} but could not announce it: ` +
+          (err instanceof Error ? err.message : 'unknown error'),
+      );
     });
 
     return published;
@@ -1204,11 +1239,25 @@ export class EventsService {
   async eventThread(orgId: string, eventId: string): Promise<{ postId: string | null }> {
     const event = await this.prisma.event.findFirst({
       where: { id: eventId, orgId },
-      select: { postId: true },
+      select: { id: true, postId: true, parentEventId: true },
     });
     if (!event) throw new NotFoundException('Event not found');
 
-    return { postId: event.postId };
+    /*
+      A series shares one conversation, held by its root (CMN-22). Reading
+      only this row's own `postId` would show the second Tuesday of a
+      repeating workshop an empty thread while every question about it sat on
+      the first.
+    */
+    const ownerId = threadOwnerId(event);
+    if (ownerId === event.id) return { postId: event.postId };
+
+    const owner = await this.prisma.event.findFirst({
+      where: { id: ownerId, orgId },
+      select: { postId: true },
+    });
+
+    return { postId: event.postId ?? owner?.postId ?? null };
   }
 
   async ensureEventThread(orgId: string, eventId: string, authorId: string) {
