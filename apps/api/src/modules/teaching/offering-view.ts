@@ -124,6 +124,20 @@ export const MEMBER_OFFERING_SELECT = {
   */
   sessions: {
     ...PUBLIC_OFFERING_SELECT.sessions,
+    select: {
+      ...PUBLIC_OFFERING_SELECT.sessions.select,
+      /*
+        Whether this evening is on the co-op calendar (TCH-02).
+
+        A teacher's own screen is the only place this belongs. A date added
+        while the workshop was still a draft sits here unpublished, and once
+        the workshop is published it is also the only way to tell that one
+        date stayed behind because the co-op asks every event to name a room.
+        Absent from the public select, where an unpublished session is not
+        returned at all.
+      */
+      isPublished: true,
+    },
     orderBy: { startTime: 'asc' as const },
   },
   isPublished: true,

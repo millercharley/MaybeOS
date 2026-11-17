@@ -26,6 +26,8 @@ import {
   canSeeInterest,
   mayHaveSessions,
   offeringSlug,
+  publishShouldCascade,
+  sessionDraftProblem,
   visibleTo,
 } from './offering-control';
 import { MEMBER_OFFERING_SELECT, PUBLIC_OFFERING_SELECT } from './offering-view';
@@ -174,10 +176,26 @@ export class TeachingService {
     await this.requireEnabled(orgId);
     this.assertPaymentMakesSense(dto.kind, dto.payment);
 
+    /*
+      Every date read before anything is written (TCH-02).
+
+      A workshop half-created because its third date was backwards is a mess
+      somebody has to tidy by hand, and the teacher cannot tell which half
+      saved. `sessionDraftProblem` is pure, so this costs nothing.
+    */
+    const drafts = dto.sessions ?? [];
+    if (drafts.length > 0 && !mayHaveSessions(dto.kind as 'WORKSHOP' | 'PRIVATE_LESSON')) {
+      throw new BadRequestException(LESSONS_HAVE_NO_SESSIONS);
+    }
+    for (const draft of drafts) {
+      const problem = sessionDraftProblem(draft);
+      if (problem) throw new BadRequestException(problem);
+    }
+
     const teacherId = await this.resolveTeacher(orgId, actor, dto.teacherId);
     const slug = await this.uniqueSlug(orgId, dto.title);
 
-    return this.prisma.offering.create({
+    const offering = await this.prisma.offering.create({
       data: {
         orgId,
         teacherId,
@@ -206,6 +224,44 @@ export class TeachingService {
       },
       select: MEMBER_OFFERING_SELECT,
     });
+
+    /*
+      The dates, if the teacher knew them (TCH-02).
+
+      After the offering exists, because a session is an `Event` pointing back
+      at one — the same ordering as attaching a file to a post. Every date was
+      read before the offering was written, so the only thing that can fail
+      here is the database.
+
+      Each goes through `addSession`, not a second `events.create` call: that
+      method already decides visibility inheritance and publish state, and a
+      copy of those two decisions is exactly the kind of drift that puts a
+      members-only evening on the open web.
+    */
+    if (drafts.length > 0) {
+      for (const draft of drafts) {
+        await this.addSession(
+          orgId,
+          offering.id,
+          {
+            title: draft.title.trim(),
+            startTime: draft.startTime,
+            endTime: draft.endTime,
+            ...(draft.capacity != null ? { capacity: draft.capacity } : {}),
+          } as CreateEventDto,
+          actor,
+        );
+      }
+
+      // Re-read so the caller gets the dates it just asked for, through the
+      // same select every other read uses.
+      return this.prisma.offering.findFirstOrThrow({
+        where: { id: offering.id, orgId },
+        select: MEMBER_OFFERING_SELECT,
+      });
+    }
+
+    return offering;
   }
 
   async update(orgId: string, id: string, dto: UpdateOfferingDto, actor: Actor) {
@@ -237,7 +293,7 @@ export class TeachingService {
         ? undefined
         : await this.resolveTeacher(orgId, actor, dto.teacherId);
 
-    return this.prisma.offering.update({
+    const updated = await this.prisma.offering.update({
       where: { id },
       data: {
         ...(dto.kind !== undefined && { kind: dto.kind as any }),
@@ -273,6 +329,67 @@ export class TeachingService {
       },
       select: MEMBER_OFFERING_SELECT,
     });
+
+    /*
+      Publishing a workshop puts its dates on the calendar (TCH-02).
+
+      A workshop written up with its dates in the create form holds them
+      unpublished, so nothing reaches the co-op calendar while it is still a
+      draft. Without this, publishing would make the *workshop* visible and
+      leave every evening on it hidden — the teacher would see their dates on
+      their own page and nobody else would, which is the worst of both.
+
+      One direction only; `publishShouldCascade` holds the reasoning.
+    */
+    if (publishShouldCascade(offering.isPublished, dto.isPublished === true)) {
+      await this.publishSessionsOf(orgId, id, actor);
+      return this.prisma.offering.findFirstOrThrow({
+        where: { id, orgId },
+        select: MEMBER_OFFERING_SELECT,
+      });
+    }
+
+    return updated;
+  }
+
+  /**
+   * Put a workshop's unpublished dates on the calendar (TCH-02).
+   *
+   * **A date that cannot be published does not fail the publish.** Where a
+   * co-op asks every event to name a room (SPC-27), a session added from the
+   * short form has none, and `events.publish` refuses it — correctly. But the
+   * workshop itself is fine, and refusing the whole thing would leave a
+   * teacher unable to publish anything at all in those co-ops, with an error
+   * about a room they were never asked for.
+   *
+   * So each date is published on its own, the ones that cannot be are left
+   * as drafts, and the teacher's own screen shows which stayed behind. That
+   * is the prompt to go and book a room, rather than a wall.
+   */
+  private async publishSessionsOf(orgId: string, offeringId: string, actor: Actor) {
+    const waiting = await this.prisma.event.findMany({
+      where: { offeringId, orgId, isPublished: false, canceledAt: null },
+      select: { id: true },
+    });
+
+    for (const session of waiting) {
+      try {
+        await this.events.publish(orgId, session.id, {
+          userId: actor.userId,
+          isStaff: actor.isStaff,
+        });
+      } catch (err) {
+        /*
+          Logged rather than swallowed silently: a date staying behind is
+          visible to the teacher on their page, but an organiser reading the
+          logs should be able to see why.
+        */
+        this.logger.warn(
+          `Offering ${offeringId}: date ${session.id} stayed a draft — ` +
+            (err instanceof Error ? err.message : 'unknown reason'),
+        );
+      }
+    }
   }
 
   /**

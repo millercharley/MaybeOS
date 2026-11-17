@@ -162,3 +162,76 @@ export function offeringSlug(title: string): string {
 
 /** What an offering with an unusable title falls back to. */
 export const UNTITLED_SLUG = 'offering';
+
+/**
+ * A date typed into the create form, before anything exists to hang it on
+ * (TCH-02).
+ *
+ * Deliberately not `CreateEventDto`: that one carries forty fields an event
+ * can have, and this is three things a teacher knows while writing the
+ * workshop up. The session becomes a real event the moment the offering
+ * exists, and everything else about it is set afterwards on the event's own
+ * screen.
+ */
+export interface SessionDraft {
+  title: string;
+  startTime: string;
+  endTime: string;
+  capacity?: number | null;
+}
+
+/**
+ * What is wrong with a typed date, in a sentence a teacher can act on — or
+ * null when nothing is.
+ *
+ * Returned rather than thrown, and **checked for every date before any of
+ * them is saved**. Creating an offering and then discovering the third date
+ * is backwards leaves a half-made workshop that somebody has to tidy up;
+ * reading them all first means the only failure left is the database being
+ * down, which is not a failure a teacher can do anything about.
+ *
+ * Never blames the reader (DESIGN §8): it says which way round the dates
+ * went, not that the input was invalid.
+ */
+export function sessionDraftProblem(draft: SessionDraft): string | null {
+  if (!draft.title?.trim()) return 'Give the date a name, so people know which session it is.';
+
+  const start = new Date(draft.startTime);
+  const end = new Date(draft.endTime);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return 'That date did not read as a date. Pick it again.';
+  }
+  if (end <= start) return 'The finish needs to be after the start.';
+
+  /*
+    A capacity of zero is not "no limit", it is a room nobody can get into.
+    Left optional, because most workshops do not have one.
+  */
+  if (draft.capacity !== undefined && draft.capacity !== null && draft.capacity < 1) {
+    return 'A date with no seats cannot take anybody. Leave it blank for no limit.';
+  }
+
+  return null;
+}
+
+/**
+ * Whether publishing an offering should also publish the dates on it
+ * (TCH-02).
+ *
+ * **One direction only, and the asymmetry is the point.**
+ *
+ * Publishing adds visibility to dates the teacher already wrote and already
+ * meant — without this, a workshop drafted with its dates in the create form
+ * would go live with every evening still hidden, which is the bug this
+ * function exists to prevent.
+ *
+ * Unpublishing does not travel. By then an evening may hold RSVPs or sold
+ * tickets, and taking it off the calendar is a decision about other people's
+ * plans, not a side effect of a teacher tidying their own list. The events
+ * module reaches the same conclusion about detaching sessions, for the same
+ * reason.
+ */
+export function publishShouldCascade(was: boolean, now: boolean): boolean {
+  return now === true && was === false;
+}

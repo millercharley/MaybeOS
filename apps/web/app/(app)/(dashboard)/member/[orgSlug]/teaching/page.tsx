@@ -8,6 +8,7 @@ import { Panel } from '@/components/layout/panel';
 import { api, type Offering, type OfferingInput } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { OfferingForm } from '@/components/teaching/offering-form';
+import { AfterSave } from '@/components/teaching/after-save';
 import { priceLabel, scheduleLabel } from '@/lib/teaching';
 
 /**
@@ -33,6 +34,17 @@ export default function MyTeachingPage(props: { params: Promise<{ orgSlug: strin
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  /*
+    What to say next, and about which offering (TCH-02).
+
+    Held as the offering itself rather than an id, so the panel can speak
+    about the dates on it without a second read. Cleared on dismiss and
+    whenever the teacher starts writing something else — a prompt about the
+    last thing, sitting above the form for the next one, reads as a bug.
+  */
+  const [justSaved, setJustSaved] = useState<Offering | null>(null);
+  const [stage, setStage] = useState<'draft' | 'published'>('draft');
+
   const load = useCallback(async () => {
     if (!token || !orgId) return;
     try {
@@ -55,8 +67,16 @@ export default function MyTeachingPage(props: { params: Promise<{ orgSlug: strin
     try {
       if (editing) {
         await api.teaching.update(orgId, editing.id, body, token);
+        setJustSaved(null);
       } else {
-        await api.teaching.create(orgId, body, token);
+        const created = await api.teaching.create(orgId, body, token);
+        /*
+          Only for something new, and only while it is a draft. An edit does
+          not need telling what a draft is, and a member who ticked "publish
+          immediately" has already answered the question the panel asks.
+        */
+        setJustSaved(created.isPublished ? null : created);
+        setStage('draft');
       }
       setWriting(false);
       setEditing(null);
@@ -70,11 +90,30 @@ export default function MyTeachingPage(props: { params: Promise<{ orgSlug: strin
 
   async function setPublished(offering: Offering, isPublished: boolean) {
     if (!token || !orgId) return;
+    setBusy(true);
     try {
-      await api.teaching.update(orgId, offering.id, { isPublished } as OfferingInput, token);
+      const saved = await api.teaching.update(
+        orgId,
+        offering.id,
+        { isPublished } as OfferingInput,
+        token,
+      );
+      /*
+        Publishing is the moment worth saying something about: it is when the
+        dates reach the calendar, and when a room becomes the next thing.
+        Unpublishing is a teacher tidying up and needs no advice.
+      */
+      if (isPublished) {
+        setJustSaved(saved);
+        setStage('published');
+      } else {
+        setJustSaved(null);
+      }
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'That did not save.');
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -96,8 +135,17 @@ export default function MyTeachingPage(props: { params: Promise<{ orgSlug: strin
           title={editing ? 'Edit what you teach' : 'Offer to teach something'}
           description="A workshop has dates, or will have. Private lessons are arranged with each person."
         />
-        {/* A form is a prose measure, which §1 allows to be narrower. */}
-        <div className="max-w-3xl">
+        {/*
+          On a card, like every other word that is not the page headline
+          (DESIGN §2a). This was bare until TCH-02 added the date rows and
+          made it obvious: a co-op picks the colour behind this, and a
+          fieldset legend left loose on it is legible or not depending on a
+          choice made in a colour picker weeks earlier.
+
+          Still a prose measure, which §1 allows to be narrower than the
+          column.
+        */}
+        <div className="card max-w-3xl">
         <OfferingForm
           existing={editing ?? undefined}
           onSave={save}
@@ -123,7 +171,14 @@ export default function MyTeachingPage(props: { params: Promise<{ orgSlug: strin
         title="What you teach"
         description="Run a workshop, or offer private lessons. You decide who can see it."
         actions={
-          <button type="button" className="btn-primary" onClick={() => setWriting(true)}>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => {
+              setJustSaved(null);
+              setWriting(true);
+            }}
+          >
             <Plus className="mr-1.5 inline h-4 w-4" />
             Offer something
           </button>
@@ -134,6 +189,21 @@ export default function MyTeachingPage(props: { params: Promise<{ orgSlug: strin
         <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700" role="alert">
           {error}
         </div>
+      )}
+
+      {/*
+        What happens next, at the two moments it is worth saying (TCH-02).
+        Above the list, because it is about the thing that just changed.
+      */}
+      {justSaved && (
+        <AfterSave
+          offering={justSaved}
+          stage={stage}
+          orgSlug={orgSlug}
+          busy={busy}
+          onPublish={() => void setPublished(justSaved, true)}
+          onDismiss={() => setJustSaved(null)}
+        />
       )}
 
       {offerings === null ? (
@@ -150,7 +220,14 @@ export default function MyTeachingPage(props: { params: Promise<{ orgSlug: strin
             A workshop can go up before it has any dates — put it out there and see who is
             interested first.
           </p>
-          <button type="button" className="btn-secondary mt-4" onClick={() => setWriting(true)}>
+          <button
+            type="button"
+            className="btn-secondary mt-4"
+            onClick={() => {
+              setJustSaved(null);
+              setWriting(true);
+            }}
+          >
             Offer something
           </button>
         </div>

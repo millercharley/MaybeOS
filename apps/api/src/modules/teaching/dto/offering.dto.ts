@@ -1,14 +1,19 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
+  IsISO8601,
   IsOptional,
   IsString,
   MaxLength,
   Min,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 /*
   Declared here rather than imported from `@prisma/client` (EVT-05 does the
@@ -30,6 +35,44 @@ export enum OfferingVisibility {
   PUBLIC = 'PUBLIC',
   MEMBERS_ONLY = 'MEMBERS_ONLY',
   PRIVATE = 'PRIVATE',
+}
+
+/**
+ * A date a teacher knew about while writing the workshop up (TCH-02).
+ *
+ * Three fields, not forty. A session becomes a real `Event` the moment it is
+ * saved, and everything else an event can carry — the room, the image, the
+ * co-hosts, the ticket settings — is set afterwards on the event's own
+ * screen, which already has all of it. Repeating any of that here would be a
+ * second event form to keep in step with the first.
+ *
+ * **These arrive with a draft and are saved unpublished**, so nothing reaches
+ * the co-op calendar until the teacher publishes the offering.
+ */
+export class OfferingSessionDto {
+  @ApiProperty({ example: 'Week one: centring' })
+  @IsString()
+  @MaxLength(200)
+  title: string;
+
+  @ApiProperty({ example: '2026-12-01T18:00:00.000Z' })
+  @IsISO8601()
+  startTime: string;
+
+  @ApiProperty({ example: '2026-12-01T20:00:00.000Z' })
+  @IsISO8601()
+  endTime: string;
+
+  /**
+   * Null and undefined both mean "no limit", which is what most workshops
+   * want. One is the floor: a date with no seats is a locked door, not an
+   * open invitation.
+   */
+  @ApiPropertyOptional({ minimum: 1, nullable: true })
+  @ValidateIf((_o, value) => value !== null && value !== undefined)
+  @IsInt()
+  @Min(1)
+  capacity?: number | null;
 }
 
 export class CreateOfferingDto {
@@ -128,6 +171,25 @@ export class CreateOfferingDto {
   @IsOptional()
   @IsString()
   teacherId?: string;
+
+  /**
+   * The dates, when the teacher already knows them (TCH-02).
+   *
+   * Optional on purpose — Charley: a workshop may go up "if just gathering
+   * interest or sign ups". A workshop with no dates is a state the product
+   * has a name for, not a form somebody failed to finish.
+   *
+   * Capped because this is a create form, not an import. A teacher running a
+   * longer series adds the rest from the offering's own page, one at a time,
+   * which is where editing them lives anyway.
+   */
+  @ApiPropertyOptional({ type: [OfferingSessionDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(24, { message: 'Add up to 24 dates here, and the rest from the workshop afterwards.' })
+  @ValidateNested({ each: true })
+  @Type(() => OfferingSessionDto)
+  sessions?: OfferingSessionDto[];
 
   @ApiPropertyOptional({ description: 'Publish immediately rather than saving a draft' })
   @IsOptional()

@@ -3,8 +3,15 @@
 import { useState, FormEvent } from 'react';
 import { GraduationCap, Users } from 'lucide-react';
 import { RichComposer, composerValue } from '@/components/composer/rich-composer';
-import { MIN_PRICE_CENTS, priceFromInput, priceToInput } from '@/lib/teaching';
-import type { Offering, OfferingInput, OfferingKind, OfferingPayment } from '@/lib/api';
+import { DateRows } from '@/components/teaching/date-rows';
+import { MIN_PRICE_CENTS, dateRowProblem, priceFromInput, priceToInput } from '@/lib/teaching';
+import type {
+  Offering,
+  OfferingInput,
+  OfferingKind,
+  OfferingPayment,
+  OfferingSessionInput,
+} from '@/lib/api';
 
 /**
  * Writing up what you teach (TCH-01).
@@ -15,9 +22,16 @@ import type { Offering, OfferingInput, OfferingKind, OfferingPayment } from '@/l
  * for a schedule on something that has none is how a form teaches somebody
  * that the product does not understand what they are doing.
  *
- * Dates are *not* asked for here. A workshop's sessions are events, added one
- * at a time after the offering exists — which is the same shape as attaching
- * a file to a post: the parent has to exist before anything can point at it.
+ * **Dates are asked for here, and are optional** (TCH-02). A teacher who
+ * already knows when the workshop runs should not have to save it, find it
+ * again and add them one at a time. They are sent with the offering and
+ * saved unpublished, so nothing reaches the co-op calendar until the
+ * workshop is published.
+ *
+ * Only while writing a *new* one. Editing a date afterwards means editing an
+ * event — it may have RSVPs or sold tickets on it by then — and that belongs
+ * on the date's own screen rather than in a form that also renames the
+ * workshop.
  *
  * The description uses the same composer as everything else a member writes,
  * so pasting a formatted outline from a document keeps its bold and its links
@@ -44,7 +58,15 @@ export function OfferingForm({
   );
   const [price, setPrice] = useState(priceToInput(existing?.priceCents));
   const [priceNote, setPriceNote] = useState(existing?.priceNote ?? '');
+  const [dates, setDates] = useState<OfferingSessionInput[]>([]);
   const [error, setError] = useState('');
+
+  /*
+    Dates belong to writing a workshop up, not to editing one. By the time an
+    offering exists its dates are events that may hold RSVPs and tickets, and
+    a form that renames the workshop is the wrong place to move an evening.
+  */
+  const mayAddDates = kind === 'WORKSHOP' && !existing;
 
   /*
     Paid private lessons are the half of TCH-01 that is not built yet, so the
@@ -64,6 +86,21 @@ export function OfferingForm({
       return;
     }
 
+    /*
+      Every date read before anything is sent, and the message names which
+      one. The server checks the same things and is the authority — this is
+      here so a finish time typed before its start is caught while the
+      teacher is still looking at it.
+    */
+    const sending = mayAddDates ? dates : [];
+    for (const [index, row] of sending.entries()) {
+      const problem = dateRowProblem(row);
+      if (problem) {
+        setError(`Date ${index + 1}: ${problem}`);
+        return;
+      }
+    }
+
     await onSave({
       kind,
       title: title.trim(),
@@ -73,6 +110,22 @@ export function OfferingForm({
       payment: mayCharge ? payment : 'ARRANGE_DIRECTLY',
       priceCents: payment === 'THROUGH_MAYBEOS' && mayCharge && cents !== 'invalid' ? cents : null,
       priceNote: priceNote.trim() || undefined,
+      /*
+        Sent only when there are some. An empty array would be a different
+        statement from "no dates given", and the create path reads the
+        difference.
+      */
+      ...(sending.length > 0
+        ? {
+            sessions: sending.map((row) => ({
+              title: row.title.trim(),
+              // The boxes give local wall-clock time; the API takes an instant.
+              startTime: new Date(row.startTime).toISOString(),
+              endTime: new Date(row.endTime).toISOString(),
+              capacity: row.capacity ?? null,
+            })),
+          }
+        : {}),
     });
   }
 
@@ -139,6 +192,13 @@ export function OfferingForm({
           rows={6}
         />
       </div>
+
+      {/*
+        The dates, if they are known (TCH-02). After the description because
+        that is the order a teacher thinks in — what it is, then when it is —
+        and before the audience, which is the last decision.
+      */}
+      {mayAddDates && <DateRows rows={dates} onChange={setDates} />}
 
       {/* Who sees it. Members-only by default, and the copy says so. */}
       <label className="block">

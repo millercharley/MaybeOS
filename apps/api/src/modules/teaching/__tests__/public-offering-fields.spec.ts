@@ -95,6 +95,17 @@ describe('what reaches the open web', () => {
     expect(session).not.toHaveProperty('rsvps');
     expect(session).not.toHaveProperty('_count');
   });
+
+  /**
+   * The public read filters unpublished sessions out entirely rather than
+   * returning them with a flag, so the flag has no business being here
+   * (TCH-02). Asking for it would be a way to learn that a co-op has a
+   * workshop it has not announced yet.
+   */
+  it('does not say whether a session is on the calendar', () => {
+    const session = PUBLIC_OFFERING_SELECT.sessions.select as Record<string, unknown>;
+    expect(session).not.toHaveProperty('isPublished');
+  });
 });
 
 /**
@@ -124,6 +135,15 @@ describe('what a member sees that a stranger does not', () => {
   it('counts the interest without reading any of it', () => {
     expect(MEMBER_OFFERING_SELECT._count.select).toEqual({ interests: true });
     expect(MEMBER_OFFERING_SELECT).not.toHaveProperty('interests');
+  });
+
+  /**
+   * A teacher's own screen is the only place that can tell a date which is on
+   * the calendar from one still waiting for a room (TCH-02).
+   */
+  it('tells the teacher which of their dates are on the calendar', () => {
+    const session = MEMBER_OFFERING_SELECT.sessions.select as Record<string, unknown>;
+    expect(session).toHaveProperty('isPublished', true);
   });
 
   it('still never carries the teacher’s address', () => {

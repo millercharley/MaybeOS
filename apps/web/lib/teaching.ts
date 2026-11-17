@@ -98,3 +98,107 @@ export function actionLabel(offering: Offering): string {
 
   return "I'd come to this";
 }
+
+/**
+ * What to put in front of a teacher the moment their workshop goes live
+ * (TCH-02).
+ *
+ * Charley asked for this: after publishing, prompt them to reserve a room or
+ * get the workshop onto the events calendar. The second half needed
+ * rethinking rather than building, because **a workshop's dates are already
+ * events** — publishing the workshop publishes them, and they are on the
+ * calendar before any prompt could offer to put them there. So this confirms
+ * what just happened and offers the step that is genuinely still open.
+ *
+ * Returned as a list of names rather than rendered here: the words belong in
+ * the component, and a pure list is something a test can hold.
+ */
+export type PublishedStep = 'calendar' | 'private' | 'needs-room' | 'room';
+
+export interface PublishedShape {
+  visibility: 'PUBLIC' | 'MEMBERS_ONLY' | 'PRIVATE';
+  sessions?: Array<{ isPublished?: boolean; location?: { name: string } | null }>;
+}
+
+export function stepsAfterPublish(offering: PublishedShape): PublishedStep[] {
+  const sessions = offering.sessions ?? [];
+
+  /*
+    No dates, nothing to say. A workshop gathering interest first is a state
+    the product has a name for, and following it with advice about rooms and
+    calendars would be answering a question nobody asked.
+  */
+  if (sessions.length === 0) return [];
+
+  const steps: PublishedStep[] = [];
+
+  /*
+    Kept off the lists on purpose, so saying "it's on the calendar" would be
+    untrue. Said out loud rather than left silent: a teacher who picked
+    PRIVATE weeks ago and has now added dates should find out here, not by
+    wondering why nobody came.
+  */
+  steps.push(offering.visibility === 'PRIVATE' ? 'private' : 'calendar');
+
+  /*
+    A date that stayed a draft did so because this co-op asks every event to
+    name a room (SPC-27). That is the one thing standing between the date and
+    the calendar, so it outranks the optional nudge below.
+  */
+  const waiting = sessions.filter((session) => session.isPublished === false);
+  if (waiting.length > 0) {
+    steps.push('needs-room');
+    return steps;
+  }
+
+  // Offered only where it is still an open question.
+  if (sessions.some((session) => !session.location)) steps.push('room');
+
+  return steps;
+}
+
+/** How many of a workshop's dates are not on the calendar yet (TCH-02). */
+export function datesWaiting(offering: PublishedShape): number {
+  return (offering.sessions ?? []).filter((s) => s.isPublished === false).length;
+}
+
+/**
+ * What is wrong with a date typed into the create form (TCH-02).
+ *
+ * **The server is the authority**: `sessionDraftProblem` in
+ * `apps/api/src/modules/teaching/offering-control.ts` decides what is
+ * allowed, and nothing here can let a bad date through. This exists so the
+ * common mistake — finish before start — is caught while the teacher is
+ * still looking at the field, instead of after they press Create.
+ *
+ * The messages are deliberately the same words as the server's. The API does
+ * not import `@maybeos/shared` anywhere, and adding that dependency for one
+ * function would change what the Netlify function bundles, so the two copies
+ * live apart. `teaching-next-steps.spec.ts` reads the API file and fails if
+ * they stop matching, which is the cheapest honest way to hold it.
+ */
+export const DATE_PROBLEMS = {
+  noTitle: 'Give the date a name, so people know which session it is.',
+  unreadable: 'That date did not read as a date. Pick it again.',
+  backwards: 'The finish needs to be after the start.',
+  noSeats: 'A date with no seats cannot take anybody. Leave it blank for no limit.',
+} as const;
+
+export function dateRowProblem(row: {
+  title: string;
+  startTime: string;
+  endTime: string;
+  capacity?: number | null;
+}): string | null {
+  if (!row.title?.trim()) return DATE_PROBLEMS.noTitle;
+
+  const start = new Date(row.startTime);
+  const end = new Date(row.endTime);
+  if (!row.startTime || !row.endTime || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return DATE_PROBLEMS.unreadable;
+  }
+  if (end <= start) return DATE_PROBLEMS.backwards;
+  if (row.capacity != null && row.capacity < 1) return DATE_PROBLEMS.noSeats;
+
+  return null;
+}

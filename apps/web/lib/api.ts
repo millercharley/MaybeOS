@@ -6601,6 +6601,15 @@ export interface OfferingSession {
   capacity?: number | null;
   maturityLevel?: string;
   location?: { name: string } | null;
+  /**
+   * Whether this evening is on the co-op calendar (TCH-02).
+   *
+   * Only a teacher's own read carries it: a date added while the workshop was
+   * still a draft waits here, and after publishing it is how the page tells a
+   * date that went live from one held back because the co-op asks every event
+   * to name a room. The public read filters unpublished sessions out instead.
+   */
+  isPublished?: boolean;
 }
 
 /**
@@ -6652,6 +6661,20 @@ export interface OfferingInput {
   publish?: boolean;
   isPublished?: boolean;
   closed?: boolean;
+  /**
+   * Dates typed into the create form, when the teacher already knows them
+   * (TCH-02). Create only — the edit DTO refuses them, because dates are
+   * changed from the workshop's own page one at a time.
+   */
+  sessions?: OfferingSessionInput[];
+}
+
+/** One date, as the create form sends it (TCH-02). */
+export interface OfferingSessionInput {
+  title: string;
+  startTime: string;
+  endTime: string;
+  capacity?: number | null;
 }
 
 /** Somebody who put their hand up. The note is theirs, and private. */
