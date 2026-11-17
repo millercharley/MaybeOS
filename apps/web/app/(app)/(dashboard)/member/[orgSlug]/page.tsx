@@ -24,6 +24,7 @@ import { MemberSpotlight } from '@/components/member/member-spotlight';
 import { DoorCodeCard } from '@/components/member/door-code-card';
 import { WelcomeIn } from '@/components/onboarding/welcome-in';
 import { InterestPrompt } from '@/components/member/interest-prompt';
+import { TeachingShowcase } from '@/components/member/teaching-showcase';
 import { ServingToday } from '@/components/service/serving-today';
 import { WelcomeCard } from '@/components/live/welcome-card';
 import { eventWindow, happeningToday, whenLabel, startsIn } from '@/lib/event-list';
@@ -346,6 +347,18 @@ export default function MemberPortalPage() {
               </ul>
             )}
           </Panel>
+
+          {/*
+            What people here are teaching (TCH-03).
+
+            Under My Upcoming Events, because both answer "what could I go
+            to" and this is the one that turns up something a member did not
+            already know about. Above My Bookings, which is a record of what
+            they have already decided.
+
+            Renders nothing when the co-op does not run teaching.
+          */}
+          <TeachingShowcase orgSlug={orgSlug} enabled={org?.teachingEnabled} />
 
           <Panel title="My Bookings">
             <div className="space-y-3">

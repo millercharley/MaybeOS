@@ -202,3 +202,62 @@ export function dateRowProblem(row: {
 
   return null;
 }
+
+/**
+ * Which offerings a dashboard showcase should put in front of somebody
+ * (TCH-03).
+ *
+ * The list this is handed is the co-op's own — `listForOrg` — which
+ * deliberately carries more than a showcase should: an organiser sees every
+ * draft, and a teacher sees their own. Neither belongs on a panel whose job
+ * is "here is what people are teaching", so the filtering happens here
+ * rather than in the component, where it can be read and tested on its own.
+ *
+ * **A draft is excluded unless it says it is published.** `isPublished`
+ * missing means nobody told us, and a showcase that guesses "yes" publishes
+ * somebody's half-written workshop to the whole co-op. The same direction of
+ * failure `visibleTo(false)` picks on the server: when unsure, show less.
+ *
+ * Ranked by what is actually happening. A workshop with an evening next week
+ * is something a member can act on today; one gathering interest is an
+ * invitation to put a hand up, and sits behind it.
+ */
+export function showcaseOfferings(
+  offerings: Array<Offering>,
+  options: { now?: Date; limit?: number } = {},
+): Offering[] {
+  const now = options.now ?? new Date();
+  const limit = options.limit ?? 3;
+
+  const live = offerings.filter(
+    (offering) => offering.isPublished === true && !offering.closedAt,
+  );
+
+  /*
+    Measured from the end, not the start, so an evening that is under way is
+    still "next" rather than history — the same rule `hasEnded` holds for
+    events (EVT-49).
+  */
+  const nextAt = (offering: Offering): number | null => {
+    const upcoming = (offering.sessions ?? [])
+      .filter((session) => new Date(session.endTime).getTime() >= now.getTime())
+      .map((session) => new Date(session.startTime).getTime())
+      .filter((time) => !Number.isNaN(time));
+
+    return upcoming.length > 0 ? Math.min(...upcoming) : null;
+  };
+
+  return live
+    .map((offering, index) => ({ offering, index, next: nextAt(offering) }))
+    .sort((a, b) => {
+      if (a.next !== null && b.next !== null) return a.next - b.next;
+      if (a.next !== null) return -1;
+      if (b.next !== null) return 1;
+      // Neither has a date: keep the order the API gave, which is newest
+      // first. A stable tiebreak rather than none, so the panel does not
+      // reshuffle itself between renders.
+      return a.index - b.index;
+    })
+    .slice(0, limit)
+    .map((row) => row.offering);
+}
