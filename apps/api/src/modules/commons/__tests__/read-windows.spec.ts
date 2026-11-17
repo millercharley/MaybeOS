@@ -127,7 +127,18 @@ describe('the badge queries stay collapsed', () => {
     */
     const queries =
       body.match(/this\.prisma\.(post|comment)\.(count|groupBy|findMany|aggregate)\(/g) ?? [];
-    expect(queries).toHaveLength(2); // posts, comments — and that is all
+    /*
+      Three since CMN-22: posts, comments, and the one that asks which
+      announcement threads this member has a stake in.
+
+      That third one is the price of #Events and #Teaching not handing every
+      member a badge they cannot clear, and it is bounded the same way as the
+      other two — one query for the whole co-op, not one per channel or one
+      per thread. The number is written here so that a fourth has to be a
+      decision somebody makes on purpose.
+    */
+    expect(queries).toHaveLength(3);
+    expect(body).not.toMatch(/posts?\.map\(\s*\(\w+\)\s*=>\s*this\.prisma/);
 
     /*
       And the setup above them stays one batch. `channel` and `channelRead`

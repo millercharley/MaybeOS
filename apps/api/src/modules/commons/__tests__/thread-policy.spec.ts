@@ -1,7 +1,10 @@
 import {
   THREAD_CHANNELS,
+  excerptOf,
+  hasStakeInThread,
   shouldAnnounce,
   threadOwnerId,
+  whoHearsAboutReply,
   whyNotAnnounced,
   type Announceable,
 } from '../thread-policy';
@@ -103,5 +106,118 @@ describe('the two standard channels', () => {
       expect(channel.description.length).toBeGreaterThan(10);
       expect(channel.emoji).toBeTruthy();
     }
+  });
+});
+
+/**
+ * Who hears that somebody replied (CMN-22).
+ */
+describe('who hears about a reply', () => {
+  it('tells the host', () => {
+    expect(whoHearsAboutReply({ ownerId: 'maya', replierId: 'alex' })).toBe('maya');
+  });
+
+  /**
+   * The failure that is invisible in testing, because the developer is always
+   * the host, and obvious to everybody else the day it ships.
+   */
+  it('never emails somebody about their own reply', () => {
+    expect(whoHearsAboutReply({ ownerId: 'maya', replierId: 'maya' })).toBeNull();
+  });
+
+  it('has nobody to tell when nobody is running it', () => {
+    expect(whoHearsAboutReply({ ownerId: null, replierId: 'alex' })).toBeNull();
+    expect(whoHearsAboutReply({ ownerId: undefined, replierId: 'alex' })).toBeNull();
+  });
+});
+
+/**
+ * Whether a member's badge lights up for one of these threads (CMN-22).
+ *
+ * Charley: "For a non-host of an event or teaching session: only events that
+ * you RSVP'd and/or your messages that get replies should signal a new
+ * message alert."
+ */
+describe('whether a member has a stake', () => {
+  it('has none by default, which is the point', () => {
+    expect(hasStakeInThread({})).toBe(false);
+  });
+
+  it.each([
+    ['running it', { isOwner: true }],
+    ['going to it', { hasRsvp: true }],
+    ['asked about it', { registeredInterest: true }],
+    ['said something in it', { hasWritten: true }],
+  ])('has one for %s', (_why, stake) => {
+    expect(hasStakeInThread(stake)).toBe(true);
+  });
+
+  /**
+   * The whole reason this exists: every published event lands in #Events, so
+   * counting it like an ordinary channel gives every member a badge that
+   * never clears and none of them asked for.
+   */
+  it('gives a bystander nothing to clear', () => {
+    expect(
+      hasStakeInThread({
+        isOwner: false,
+        hasRsvp: false,
+        registeredInterest: false,
+        hasWritten: false,
+      }),
+    ).toBe(false);
+  });
+});
+
+/**
+ * A reply, shortened for an email (CMN-22). Comment bodies are HTML, and the
+ * email template escapes what it is handed.
+ */
+describe('the excerpt that goes in the email', () => {
+  it('takes the words out of the markup', () => {
+    expect(excerptOf('<p>Is there <strong>parking</strong>?</p>')).toBe('Is there parking?');
+  });
+
+  /** Two paragraphs must not run together into one word. */
+  it('keeps a gap where a block ended', () => {
+    expect(excerptOf('<p>First.</p><p>Second.</p>')).toBe('First. Second.');
+    expect(excerptOf('<p>Line one<br>Line two</p>')).toBe('Line one Line two');
+  });
+
+  it('turns entities back into characters', () => {
+    expect(excerptOf('<p>Tea &amp; cake &lt;3</p>')).toBe('Tea & cake <3');
+    expect(excerptOf('<p>Space&nbsp;here</p>')).toBe('Space here');
+  });
+
+  /**
+   * Left as HTML it would arrive as visible angle brackets; unescaped it
+   * would put a member's markup inside ours.
+   */
+  it('leaves no tags behind for the template to escape', () => {
+    expect(excerptOf('<p>a<script>alert(1)</script>b</p>')).not.toMatch(/[<>]/);
+  });
+
+  it('shortens a long one and says it did', () => {
+    const long = `<p>${'word '.repeat(200)}</p>`;
+    const out = excerptOf(long);
+
+    expect(out.length).toBeLessThanOrEqual(281);
+    expect(out.endsWith('…')).toBe(true);
+  });
+
+  it('leaves a short one exactly as it reads', () => {
+    expect(excerptOf('<p>Can I bring my kid?</p>')).toBe('Can I bring my kid?');
+  });
+
+  /** One enormous word is better cut bluntly than shown as nothing. */
+  it('cuts a single huge word rather than returning an ellipsis', () => {
+    const out = excerptOf(`<p>${'x'.repeat(400)}</p>`);
+
+    expect(out.length).toBeGreaterThan(100);
+    expect(out.endsWith('…')).toBe(true);
+  });
+
+  it('is unbothered by an empty body', () => {
+    expect(excerptOf('<p></p>')).toBe('');
   });
 });

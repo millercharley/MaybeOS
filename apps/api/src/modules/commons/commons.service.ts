@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
   ForbiddenException,
@@ -11,24 +12,32 @@ import { CreatePostDto } from './dto/create-post.dto';
 import { CreateProposalDto } from './dto/create-proposal.dto';
 import { CreateCollectionDto, UpdateCollectionDto } from './dto/create-collection.dto';
 import { CreatePageDto, UpdatePageDto } from './dto/page.dto';
-import { VoteChoice } from '@prisma/client';
+import { Prisma, VoteChoice } from '@prisma/client';
 import { UnreadCounts } from './dto/unread.dto';
 import { readWindows } from './read-windows';
 import { ThreadsService } from './threads.service';
 import { StorageService } from '../storage/storage.service';
 import { AuditService } from '../platform/audit.service';
 import { groupReactions, isAllowedReaction } from './reactions';
+import { EmailService } from '../email/email.service';
+import { ConfigService } from '@nestjs/config';
+import { THREAD_CHANNELS, excerptOf, whoHearsAboutReply } from './thread-policy';
 
 const AUTHOR_SELECT = { id: true, name: true, avatarUrl: true, avatarPath: true } as const;
 
 
 @Injectable()
 export class CommonsService {
+  private readonly logger = new Logger(CommonsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly threads: ThreadsService,
     private readonly storage: StorageService,
     private readonly audit: AuditService,
+    // Telling a host somebody asked about their event (CMN-22).
+    private readonly email: EmailService,
+    private readonly config: ConfigService,
   ) {}
 
   // ─── Org scoping (CMN-07) ───────────────────────────────────
@@ -736,9 +745,95 @@ export class CommonsService {
       }
     }
 
-    return this.prisma.comment.create({
+    const comment = await this.prisma.comment.create({
       data: { postId, authorId, body, parentId },
       include: { author: { select: AUTHOR_SELECT } },
+    });
+
+    /*
+      Best-effort, and never allowed to fail the comment (CMN-22). Somebody
+      who typed a question and saw an error would type it again; the mail
+      going astray is worth less than their words.
+    */
+    await this.tellTheHost(orgId, postId, comment).catch((err) => {
+      this.logger.warn(
+        `Comment ${comment.id} saved but the host was not told: ` +
+          (err instanceof Error ? err.message : 'unknown error'),
+      );
+    });
+
+    return comment;
+  }
+
+  /**
+   * Email whoever is running the thing this thread is about (CMN-22).
+   *
+   * Only threads that hang off an event or an offering have somebody to
+   * tell; an ordinary post in #General does not, and silently does nothing
+   * here.
+   */
+  private async tellTheHost(
+    orgId: string,
+    postId: string,
+    comment: { id: string; body: string; author: { name: string | null } },
+  ): Promise<void> {
+    const post = await this.prisma.post.findFirst({
+      where: { id: postId, channel: { orgId } },
+      select: {
+        channelId: true,
+        eventThread: { select: { title: true, hostId: true } },
+        offeringThread: { select: { title: true, teacherId: true } },
+      },
+    });
+
+    const subject = post?.eventThread
+      ? { title: post.eventThread.title, ownerId: post.eventThread.hostId, kind: 'event' }
+      : post?.offeringThread
+        ? {
+            title: post.offeringThread.title,
+            ownerId: post.offeringThread.teacherId,
+            kind: 'workshop',
+          }
+        : null;
+
+    if (!subject) return;
+
+    const authorId = (comment as unknown as { authorId?: string }).authorId;
+    const tellId = whoHearsAboutReply({
+      ownerId: subject.ownerId,
+      replierId: authorId ?? '',
+    });
+    if (!tellId) return;
+
+    const [host, org] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: tellId },
+        select: { email: true, name: true },
+      }),
+      this.prisma.organization.findUnique({
+        where: { id: orgId },
+        select: { name: true, slug: true, replyToEmail: true },
+      }),
+    ]);
+    if (!host?.email || !org) return;
+
+    const base = (this.config.get<string>('APP_URL') || this.config.get<string>('WEB_URL') || 'http://localhost:3000')
+      .split(',')[0]
+      .trim()
+      .replace(/\/+$/, '');
+
+    await this.email.sendThreadReply(host.email, {
+      hostName: host.name,
+      replierName: comment.author.name ?? 'Somebody',
+      subjectTitle: subject.title,
+      subjectKind: subject.kind,
+      orgName: org.name,
+      // Every co-op-named send carries one (EML-03).
+      replyTo: org.replyToEmail ?? null,
+      excerpt: excerptOf(comment.body),
+      // The channel, which `?channel=` already opens (MEM-18, CMN-11) —
+      // rather than a post deep-link this page does not have.
+      url: `${base}/portal/${org.slug}/commons?channel=${post!.channelId}`,
     });
   }
 
@@ -1342,7 +1437,7 @@ export class CommonsService {
     userId: string,
   ): Promise<{ total: number; channels: Record<string, number> }> {
     const [channels, reads, membership] = await Promise.all([
-      this.prisma.channel.findMany({ where: { orgId }, select: { id: true } }),
+      this.prisma.channel.findMany({ where: { orgId }, select: { id: true, slug: true } }),
       this.prisma.channelRead.findMany({
         where: { userId, channel: { orgId } },
         select: { channelId: true, lastReadAt: true },
@@ -1388,6 +1483,55 @@ export class CommonsService {
     );
 
     /*
+      #Events and #Teaching do not count like an ordinary channel (CMN-22).
+
+      Every published event and every published offering lands in one of
+      them, so counting them the usual way would hand every member a badge
+      that never clears and that none of them asked for — the same argument
+      CMN-25 made about counting a co-op's whole history, arriving from the
+      other direction.
+
+      Charley's rule: "For a non-host of an event or teaching session: only
+      events that you RSVP'd and/or your messages that get replies should
+      signal a new message alert."
+
+      So a *new* post in these channels signals to nobody — a brand-new event
+      cannot have an RSVP yet — and a *reply* signals only to somebody with a
+      reason to care. Every one of those reasons is already a row; nothing
+      new is stored to know it.
+    */
+    const announceIds = channels
+      .filter((c) => c.slug === THREAD_CHANNELS.events.slug || c.slug === THREAD_CHANNELS.teaching.slug)
+      .map((c) => c.id);
+    const announceSet = new Set(announceIds);
+
+    /*
+      One query, however many threads (CMN-25). Bounded by the two channels
+      rather than walked per post.
+    */
+    const staked =
+      announceIds.length === 0
+        ? []
+        : await this.prisma.post.findMany({
+            where: {
+              channelId: { in: announceIds },
+              OR: [
+                // Running it.
+                { eventThread: { hostId: userId } },
+                { eventThread: { coHosts: { some: { userId } } } },
+                { offeringThread: { teacherId: userId } },
+                // Going to it, or asked about it.
+                { eventThread: { rsvps: { some: { userId } } } },
+                { offeringThread: { interests: { some: { userId } } } },
+                // Said something in it, so a reply may be to them.
+                { comments: { some: { authorId: userId } } },
+              ],
+            },
+            select: { id: true },
+          });
+    const stakedIds = staked.map((p) => p.id);
+
+    /*
       Grouped by channel, not just totalled (CMN-27).
 
       Still two queries — `groupBy` costs the same round trip a `count` did,
@@ -1407,7 +1551,9 @@ export class CommonsService {
         where: {
           authorId: { not: userId },
           OR: windows.map((w) => ({
-            channelId: { in: w.ids },
+            // The announcement channels are left out entirely: a new event
+            // signals to nobody, because nobody can have a stake in it yet.
+            channelId: { in: w.ids.filter((id) => !announceSet.has(id)) },
             ...(w.after ? { createdAt: { gt: w.after } } : {}),
           })),
         },
@@ -1416,10 +1562,34 @@ export class CommonsService {
       this.prisma.comment.findMany({
         where: {
           authorId: { not: userId },
-          OR: windows.map((w) => ({
-            post: { channelId: { in: w.ids } },
-            ...(w.after ? { createdAt: { gt: w.after } } : {}),
-          })),
+          /*
+            Two clauses per window instead of one (CMN-22): ordinary channels
+            count everything after the cutoff, and the announcement channels
+            count only replies in threads this member has a stake in.
+
+            Written out rather than expressed as a NOT, because an empty
+            `stakedIds` has to mean "none of these count" — and `in: []`
+            says exactly that, where a negation would quietly flip to
+            "all of them".
+          */
+          OR: windows.flatMap((w) => {
+            const after = w.after ? { createdAt: { gt: w.after } } : {};
+            const ordinary = w.ids.filter((id) => !announceSet.has(id));
+            const announcing = w.ids.filter((id) => announceSet.has(id));
+
+            const clauses: Prisma.CommentWhereInput[] = [];
+            if (ordinary.length > 0) {
+              clauses.push({ post: { channelId: { in: ordinary } }, ...after });
+            }
+            if (announcing.length > 0) {
+              clauses.push({
+                post: { channelId: { in: announcing } },
+                postId: { in: stakedIds },
+                ...after,
+              });
+            }
+            return clauses;
+          }),
         },
         select: { post: { select: { channelId: true } } },
       }),

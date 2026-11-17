@@ -3,6 +3,8 @@ import { BadRequestException } from '@nestjs/common';
 import { CommonsService } from '../commons.service';
 import { StorageService } from '../../storage/storage.service';
 import { AuditService } from '../../platform/audit.service';
+import { EmailService } from '../../email/email.service';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../config/prisma.service';
 import { ThreadsService } from '../threads.service';
 
@@ -27,6 +29,10 @@ describe('CommonsService — channels', () => {
         CommonsService,
         { provide: StorageService, useValue: { deleteAttachment: jest.fn() } },
         { provide: AuditService, useValue: { record: jest.fn() } },
+        // Telling a host about a reply is best-effort and not what these
+        // test (CMN-22).
+        { provide: EmailService, useValue: { sendThreadReply: jest.fn() } },
+        { provide: ConfigService, useValue: { get: jest.fn(() => 'http://localhost:3000') } },
         // The badge counts threads now (CMN-16); these tests are about the
         // Commons half of it.
         {

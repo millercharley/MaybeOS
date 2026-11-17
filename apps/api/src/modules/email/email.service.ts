@@ -196,6 +196,7 @@ export interface EmailJobData {
     | 'magic-link'
     | 'password-reset'
     | 'teaching-interest'
+    | 'thread-reply'
     | 'password-set'
     | 'event-reminder'
     | 'renewal-reminder'
@@ -526,6 +527,39 @@ export class EmailService {
    * MaybeOS, which is the whole reason `OfferingInterest` exists rather than
    * publishing contact details on a page.
    */
+  /**
+   * Somebody replied in the thread for your event or your workshop (CMN-22).
+   *
+   * Charley: "The host of the event or the teaching workshop or private
+   * lesson should get an email when people reply to their event or teaching
+   * session."
+   *
+   * Only the host or teacher. Everybody else following the conversation is
+   * served by the Commons itself — emailing every participant on every reply
+   * is a mailing list nobody asked to join.
+   *
+   * The replier's words travel; the replier's address does not. They wrote
+   * it in a channel this person can already read, so quoting it tells them
+   * nothing new, and MaybeOS deliberately publishes neither party's address.
+   */
+  async sendThreadReply(
+    to: string | Addresses,
+    data: {
+      hostName: string | null;
+      replierName: string;
+      subjectTitle: string;
+      /** "event" or "workshop" — what the thread is about, in their words. */
+      subjectKind: string;
+      orgName: string;
+      /** Where a reply goes, which every co-op-named send carries (EML-03). */
+      replyTo: string | null;
+      excerpt: string;
+      url: string;
+    },
+  ) {
+    await this.send({ type: 'thread-reply', to, data });
+  }
+
   async sendTeachingInterest(
     to: string | Addresses,
     data: {
@@ -1218,6 +1252,30 @@ export class EmailService {
           `,
         };
       }
+
+      case 'thread-reply':
+        return {
+          subject: `${escapeHtml(data.replierName)} replied about ${escapeHtml(
+            data.subjectTitle,
+          )}`,
+          htmlBody: `
+            <h1>Somebody has a question</h1>
+            <p>${data.hostName ? `Hello ${escapeHtml(data.hostName)}, ` : ''}${escapeHtml(
+              data.replierName,
+            )} replied in the Commons about your ${escapeHtml(
+              String(data.subjectKind),
+            )}, <strong>${escapeHtml(data.subjectTitle)}</strong>, in ${escapeHtml(
+              data.orgName,
+            )}.</p>
+            <p style="margin:16px 0;padding:12px 16px;border-left:3px solid #6366f1;color:#2d2a26;">${escapeHtml(
+              data.excerpt,
+            )}</p>
+            <p><a href="${escapeHtml(
+              data.url,
+            )}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:#fff;border-radius:6px;text-decoration:none;">Read it and reply</a></p>
+            <p style="color:#6b665e;font-size:13px;">You are getting this because you are running it. Answering in the Commons lets everybody else with the same question read the answer.</p>
+          `,
+        };
 
       case 'teaching-interest':
         return {

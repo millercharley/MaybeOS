@@ -3,6 +3,8 @@ import { ValidationPipe, ForbiddenException, BadRequestException, NotFoundExcept
 import { CommonsService } from '../commons.service';
 import { StorageService } from '../../storage/storage.service';
 import { AuditService } from '../../platform/audit.service';
+import { EmailService } from '../../email/email.service';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../../config/prisma.service';
 import { CreateChannelDto } from '../dto/create-channel.dto';
 import { UpdateChannelDto } from '../dto/update-channel.dto';
@@ -49,6 +51,10 @@ describe('CommonsService — member channels, sections and invitations', () => {
           },
         },
         { provide: AuditService, useValue: { record: jest.fn() } },
+        // Telling a host about a reply is best-effort and not what these
+        // test (CMN-22).
+        { provide: EmailService, useValue: { sendThreadReply: jest.fn() } },
+        { provide: ConfigService, useValue: { get: jest.fn(() => 'http://localhost:3000') } },
         // The badge counts threads now (CMN-16); these tests are about the
         // Commons half of it.
         {

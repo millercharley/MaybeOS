@@ -4,6 +4,8 @@ import { ThreadsService } from '../threads.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import { AuditService } from '../../platform/audit.service';
+import { EmailService } from '../../email/email.service';
+import { ConfigService } from '@nestjs/config';
 
 /**
  * Taking something down (CMN-18).
@@ -52,6 +54,10 @@ describe('CommonsService — taking a post or comment down', () => {
         { provide: ThreadsService, useValue: {} },
         { provide: StorageService, useValue: storage },
         { provide: AuditService, useValue: audit },
+        // Telling a host about a reply is best-effort and not what these
+        // test (CMN-22).
+        { provide: EmailService, useValue: { sendThreadReply: jest.fn() } },
+        { provide: ConfigService, useValue: { get: jest.fn(() => 'http://localhost:3000') } },
       ],
     }).compile();
 

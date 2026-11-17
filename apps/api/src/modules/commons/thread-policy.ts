@@ -118,3 +118,114 @@ export function whyNotAnnounced(subject: Announceable): string | null {
 export function threadOwnerId(event: { id: string; parentEventId?: string | null }): string {
   return event.parentEventId ?? event.id;
 }
+
+/**
+ * Who is told that somebody replied (CMN-22).
+ *
+ * Charley: "The host of the event or the teaching workshop or private lesson
+ * should get an email when people reply to their event or teaching session."
+ *
+ * One person, and only when there is something to tell them. A host replying
+ * in their own thread must not be emailed about it — that is the failure
+ * this is a named function to prevent, because it is invisible in testing
+ * (the developer is always the host) and obvious to everybody else.
+ *
+ * Everyone else following the conversation is served by the Commons itself.
+ * Emailing every participant on every reply is a mailing list nobody asked
+ * to join, and Charley's rule for them is narrower still: a non-host hears
+ * about an event they RSVP'd to, or a reply to something they wrote.
+ */
+export function whoHearsAboutReply(thread: {
+  /** The event's host, or the offering's teacher. */
+  ownerId: string | null | undefined;
+  replierId: string;
+}): string | null {
+  if (!thread.ownerId) return null;
+  if (thread.ownerId === thread.replierId) return null;
+
+  return thread.ownerId;
+}
+
+/**
+ * Whether a member has a stake in one of these threads (CMN-22).
+ *
+ * Charley: "For a non-host of an event or teaching session: only events that
+ * you RSVP'd and/or your messages that get replies should signal a new
+ * message alert."
+ *
+ * #Events and #Teaching fill up on their own — every published event lands
+ * there — so counting them like an ordinary channel would give every member
+ * a badge that never clears and that none of them asked for. A badge nobody
+ * acts on is one people learn to ignore, which is the argument CMN-25
+ * already made about counting a co-op's whole history.
+ *
+ * So these two channels signal only to people with a reason to care. Every
+ * one of these is already a row somewhere — nothing new is stored to know
+ * it.
+ */
+export function hasStakeInThread(stake: {
+  /** Running it: the event's host or co-host, or the offering's teacher. */
+  isOwner?: boolean;
+  /** Said they are coming. */
+  hasRsvp?: boolean;
+  /** Put their hand up for a workshop or asked about lessons. */
+  registeredInterest?: boolean;
+  /** Already said something in this thread, so a reply may be to them. */
+  hasWritten?: boolean;
+}): boolean {
+  return Boolean(
+    stake.isOwner || stake.hasRsvp || stake.registeredInterest || stake.hasWritten,
+  );
+}
+
+/**
+ * Whether a brand-new announcement should signal to anybody.
+ *
+ * It should not, and this says so out loud rather than by omission. A new
+ * event cannot have an RSVP yet and a new workshop cannot have anybody
+ * interested, so by Charley's rule there is nobody with a stake in it — it
+ * appears in the channel for people who go looking, and nothing lights up.
+ *
+ * The replies are what signal.
+ */
+export const ANNOUNCEMENTS_SIGNAL_TO_NOBODY = true;
+
+/**
+ * A reply, short enough to put in an email (CMN-22).
+ *
+ * Comment bodies are HTML — members write them in the rich composer, so a
+ * reply can carry tags, links and pasted formatting (CMP-01). Dropped to
+ * plain text here because the email template escapes what it is given: left
+ * as HTML it would arrive as visible angle brackets, and unescaped it would
+ * put a member's markup inside ours.
+ *
+ * Truncated because the point is to say what was asked, not to reproduce the
+ * thread. The link goes to the Commons.
+ */
+export function excerptOf(html: string, limit = 280): string {
+  const text = html
+    // Block-level ends become spaces, so two paragraphs do not run together
+    // into one word.
+    .replace(/<\/(p|div|li|h[1-6]|blockquote)>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (text.length <= limit) return text;
+
+  /*
+    Cut at a word rather than mid-syllable, but only if there is a space
+    reasonably near the end — a single 400-character word is better cut
+    bluntly than shown as nothing.
+  */
+  const cut = text.slice(0, limit);
+  const lastSpace = cut.lastIndexOf(' ');
+  return `${(lastSpace > limit - 40 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+}
