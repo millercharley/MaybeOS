@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { GraduationCap, Loader2, Plus, Users } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
+import { Panel } from '@/components/layout/panel';
 import { api, type Offering, type OfferingInput } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
 import { OfferingForm } from '@/components/teaching/offering-form';
@@ -140,7 +141,7 @@ export default function MyTeachingPage(props: { params: Promise<{ orgSlug: strin
           <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
         </div>
       ) : mine.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center">
+        <div className="card p-8 text-center">
           <GraduationCap className="mx-auto h-8 w-8 text-gray-300" />
           <p className="mt-3 text-sm font-medium text-gray-900">
             You have not offered anything yet.
@@ -168,14 +169,14 @@ export default function MyTeachingPage(props: { params: Promise<{ orgSlug: strin
       )}
 
       {(offerings?.length ?? 0) > mine.length && (
-        <p className="text-sm text-gray-500">
+        <Panel>
           <Link
             href={`/portal/${orgSlug}/teaching`}
-            className="font-medium text-brand-600 hover:text-brand-700"
+            className="text-sm font-medium text-brand-600 hover:text-brand-700"
           >
-            See everything the co-op teaches →
+            See everything the co-op teaches &rarr;
           </Link>
-        </p>
+        </Panel>
       )}
     </div>
   );
@@ -195,7 +196,7 @@ function MineRow({
   const asked = offering._count?.interests ?? 0;
 
   return (
-    <li className="rounded-xl border border-gray-200 bg-white p-4">
+    <li className="card">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">

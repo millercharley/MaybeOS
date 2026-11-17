@@ -110,6 +110,22 @@ export const PUBLIC_OFFERING_SELECT = {
  */
 export const MEMBER_OFFERING_SELECT = {
   ...PUBLIC_OFFERING_SELECT,
+  /*
+    Every session, in order — including the ones that have been.
+
+    Unlike the public read, which shows only what is still to come: a member
+    looking at a workshop they are thinking about wants the next date, and the
+    teacher looking at the same screen wants the whole run. The *screen*
+    decides which to draw, using `hasEnded` from `lib/event-tabs` so there is
+    one definition of past in the product (EVT-49).
+
+    Ordered here rather than in the page, because a list that arrives in
+    insertion order and is sorted on the client is a list that flickers.
+  */
+  sessions: {
+    ...PUBLIC_OFFERING_SELECT.sessions,
+    orderBy: { startTime: 'asc' as const },
+  },
   isPublished: true,
   createdAt: true,
   teacher: { select: { id: true, name: true, avatarUrl: true } },

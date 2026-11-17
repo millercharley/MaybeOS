@@ -8,6 +8,9 @@ import {
   scheduleLabel,
 } from '@/lib/teaching';
 import type { Offering } from '@/lib/api';
+import { stripComments } from './helpers/source-scan';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const offering = (over: Partial<Offering> = {}): Offering =>
   ({
@@ -171,5 +174,56 @@ describe('what the button says', () => {
         'No longer taking anybody',
       );
     }
+  });
+});
+
+/**
+ * The teaching screens, read as source (TCH-01).
+ *
+ * Two rules that live in a page rather than a function, so a scan is the only
+ * way to hold them. Both were bugs before they were rules.
+ */
+describe('the teaching screens', () => {
+  const page = (...parts: string[]) =>
+    stripComments(readFileSync(join(__dirname, '..', 'app', '(app)', ...parts), 'utf8'));
+
+  const detail = () => page('portal', '[orgSlug]', 'teaching', '[slug]', 'page.tsx');
+
+  /**
+   * A workshop's dates arrive oldest-first and include the ones that have
+   * been. Listing them all put a live "RSVP" button on an evening that had
+   * already happened.
+   */
+  it('shows only the dates still to come', () => {
+    expect(detail()).toContain('hasEnded(session)');
+  });
+
+  /**
+   * `hasEnded` rather than a comparison written here: it is the one place
+   * that decides what past means, and it measures from the end, so an evening
+   * in progress is not filed under history (EVT-49).
+   */
+  it('does not invent its own idea of past', () => {
+    const source = detail();
+
+    expect(source).toMatch(/from '@\/lib\/event-tabs'/);
+    expect(source).not.toMatch(/new Date\([^)]*startTime\)\s*<\s*/);
+    expect(source).not.toMatch(/\.isPast\b/);
+  });
+
+  /**
+   * A session inherits its offering's audience on the server. A dropdown here
+   * would be a members-only workshop whose dates went public because nobody
+   * read it.
+   */
+  it('never asks a teacher to set a session’s visibility', () => {
+    const scheduler = stripComments(
+      readFileSync(
+        join(__dirname, '..', 'components', 'teaching', 'session-scheduler.tsx'),
+        'utf8',
+      ),
+    );
+
+    expect(scheduler).not.toContain('visibility');
   });
 });
