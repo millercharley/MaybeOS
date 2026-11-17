@@ -167,6 +167,43 @@ export class TeachingController {
     });
   }
 
+  /**
+   * The conversation about this offering, which lives in #Teaching (CMN-22).
+   *
+   * Two routes, as on the events side and for the same reason: reading must
+   * not create. `GET` answers with whatever thread exists, and `POST` makes
+   * one — called by the first comment, never by opening the page.
+   */
+  @Get('orgs/:orgId/teaching/:id/thread')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'The post carrying this offering’s discussion' })
+  async thread(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.teaching.thread(orgId, id, {
+      userId: user.userId,
+      isStaff: isStaff(user, orgId),
+    });
+  }
+
+  @Post('orgs/:orgId/teaching/:id/thread')
+  @UseGuards(JwtAuthGuard, OrgMembershipGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get or create the post carrying the discussion' })
+  async startThread(
+    @Param('orgId', ParseUUIDPipe) orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.teaching.startThread(orgId, id, {
+      userId: user.userId,
+      isStaff: isStaff(user, orgId),
+    });
+  }
+
   /* ─── The open web ─────────────────────────────────────────── */
 
   /**

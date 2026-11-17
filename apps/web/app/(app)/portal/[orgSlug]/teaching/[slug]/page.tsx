@@ -13,6 +13,7 @@ import { isOpen, priceLabel, scheduleLabel } from '@/lib/teaching';
 import { hasEnded } from '@/lib/event-tabs';
 import { RichBody } from '@/components/composer/rich-body';
 import { whenLabel } from '@/lib/event-list';
+import { Discussion } from '@/components/commons/discussion';
 
 /**
  * One offering (TCH-01).
@@ -296,6 +297,34 @@ export default function OfferingPage(props: {
 
       {/* The teacher's own view. Nobody else is served this. */}
       {offering.mayEdit && <InterestList interest={interest} />}
+
+      {/*
+        The conversation, which is the one in #Teaching (CMN-22).
+
+        Charley: "all comments on an event page or teaching page should sync
+        to the identical conversation in the Commons. This prevents two places
+        with separate conversations about the same event."
+
+        Nothing syncs, because there is nothing to sync from — this is the
+        same post and the same comment rows the channel shows, through the
+        component the event page uses. A second store kept in step would be a
+        second store to disagree.
+
+        On a card like everything else that is not the page headline
+        (DESIGN §2a).
+      */}
+      {token && orgId && (
+        <Panel title="Questions about this">
+          <Discussion
+            orgId={orgId}
+            token={token}
+            readThread={() => api.teaching.thread(orgId, offering.id, token)}
+            startThread={() => api.teaching.startThread(orgId, offering.id, token)}
+            privateMessage="This is kept off the lists, so it has no discussion in the Commons."
+            placeholder="Ask the teacher a question…"
+          />
+        </Panel>
+      )}
     </div>
   );
 }

@@ -105,6 +105,9 @@ export class TeachingService {
         isPublished: true,
         payment: true,
         closedAt: true,
+        // The Commons thread this offering carries, so the page can open the
+        // conversation without a second read (CMN-22).
+        postId: true,
       },
     });
     if (!offering) throw new NotFoundException('Offering not found');
@@ -278,6 +281,33 @@ export class TeachingService {
    * are refused inside `announceOffering`, which is the one place that
    * decides.
    */
+  /**
+   * The post carrying this offering's conversation, if there is one
+   * (CMN-22).
+   *
+   * A read, never a create — the lesson EVT-42 paid for on the events side:
+   * when opening the page created the thread, three posts appeared in one
+   * browsing session attributed to whoever had looked, with no comments on
+   * any of them.
+   */
+  async thread(orgId: string, id: string, actor: Actor): Promise<{ postId: string | null }> {
+    const offering = await this.loadForActor(orgId, id, actor);
+    return { postId: offering.postId ?? null };
+  }
+
+  /**
+   * Make it, if this offering may have one.
+   *
+   * Called by the first comment rather than by opening the page. Returns a
+   * null id for anything kept off the lists: #Teaching is read by the whole
+   * co-op, and a workshop its owner hid has no business appearing there —
+   * `announceOffering` is the one place that decides.
+   */
+  async startThread(orgId: string, id: string, actor: Actor): Promise<{ postId: string | null }> {
+    await this.loadForActor(orgId, id, actor);
+    return this.threads.announceOffering(orgId, id);
+  }
+
   private async announce(orgId: string, offeringId: string): Promise<void> {
     await this.threads.announceOffering(orgId, offeringId).catch((err) => {
       this.logger.warn(

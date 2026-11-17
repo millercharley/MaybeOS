@@ -1,17 +1,15 @@
 'use client';
 
-import { use, useCallback, useEffect, useRef, useState } from 'react';
+import { use, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { DoorOpen, ArrowLeft, Calendar, MapPin, Users, Ticket } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { doorCost } from '@/lib/event-list';
-import { api, Event, Comment } from '@/lib/api';
-import { renderBodyHtml, isBlankBody } from '@/lib/rich-text';
-import { RichComposer, composerValue } from '@/components/composer/rich-composer';
+import { api, Event } from '@/lib/api';
+import { renderBodyHtml } from '@/lib/rich-text';
 import { AttachmentList } from '@/components/composer/attachment-list';
 import { RsvpFaces } from '@/components/events/rsvp-faces';
-import { uploadAttachments } from '@/lib/attachments';
 import { ticketCost, describeFees, money, MAX_SEATS_PER_PURCHASE } from '@/lib/fees';
 import {
   submitGuestRsvp,
@@ -24,6 +22,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { maturityBadge } from '@/lib/maturity';
 import { MemberName } from '@/components/member/member-name';
 import { rsvpRequested, shouldRsvpOnArrival, withoutRsvpParam } from '@/lib/radar-rsvp';
+import { Discussion } from '@/components/commons/discussion';
 
 /**
  * One event, at the size an event deserves (EVT-08, EVT-11).
@@ -454,8 +453,19 @@ export default function PortalEventPage(props: {
 
           {/* Members only, deliberately: an event page is public, the co-op's
               conversation about it is not. */}
+          {/*
+            The same conversation that is in #Events (CMN-22). Shared with the
+            teaching page rather than copied: one comment UI, one set of rows,
+            nothing to keep in step.
+          */}
           {org && token && isMember ? (
-            <EventDiscussion orgId={org.id} eventId={event.id} token={token} />
+            <Discussion
+              orgId={org.id}
+              token={token}
+              readThread={() => api.events.thread(org.id, event.id, token)}
+              startThread={() => api.events.startThread(org.id, event.id, token)}
+              privateMessage="This event is private, so it has no discussion."
+            />
           ) : (
             <p className="border-t border-gray-200 pt-6 text-sm text-gray-500">
               Members of {org?.name ?? 'this co-op'} can discuss this event.{' '}
@@ -726,163 +736,3 @@ export default function PortalEventPage(props: {
   );
 }
 
-/**
- * The conversation about an event.
- *
- * Runs against the post the event carries (EVT-11), so comments, replies,
- * flagging and moderation are the same code the Commons already uses — an
- * event does not get its own parallel comment system to keep in step.
- */
-function EventDiscussion({ orgId, eventId, token }: { orgId: string; eventId: string; token: string }) {
-  const [postId, setPostId] = useState<string | null>(null);
-  const [comments, setComments] = useState<Comment[]>([]);
-  const [draft, setDraft] = useState('');
-  const [files, setFiles] = useState<File[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-
-  const viewer = useAuthStore((state) => state.user);
-  const viewerIsAdmin = Boolean(
-    viewer?.orgs?.find((o) => o.orgId === orgId)?.role === 'ADMIN',
-  );
-
-  /** Withdraw a comment, or take one down (CMN-19). */
-  async function removeComment(commentId: string) {
-    if (busy) return;
-    if (!window.confirm('Delete this comment? This cannot be undone.')) return;
-    setBusy(true);
-    setError('');
-    try {
-      await api.commons.deleteComment(orgId, commentId, token);
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'That could not be deleted');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const load = useCallback(async () => {
-    try {
-      /*
-        A read (EVT-42).
-
-        This used to create the thread, on the reasoning that making one per
-        event would fill the Commons with empty threads. It filled them anyway
-        — opening an event page was enough — and the posts were attributed to
-        whoever had opened it. Three appeared in one browsing session, five
-        days after those events were published, with no comments on any of
-        them. The thread is made by the first comment now; see `submit`.
-      */
-      const { postId: id } = await api.events.thread(orgId, eventId, token);
-      setPostId(id);
-      if (id) {
-        const post = await api.commons.getPost(orgId, id, token);
-        setComments(post.comments ?? []);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load the discussion');
-    }
-  }, [orgId, eventId, token]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  async function submit() {
-    if (isBlankBody(draft) && files.length === 0) return;
-    setBusy(true);
-    setError('');
-    try {
-      /*
-        The first comment is what makes the thread (EVT-42).
-
-        Which means a thread in #Events is a conversation rather than a page
-        somebody opened. A private event never gets one — the channel is read
-        by the whole co-op — so there is nothing to post a comment onto.
-      */
-      const thread = postId ? { postId } : await api.events.startThread(orgId, eventId, token);
-      if (!thread.postId) {
-        setError('This event is private, so it has no discussion.');
-        return;
-      }
-      setPostId(thread.postId);
-
-      const comment = await api.commons.addComment(
-        orgId,
-        thread.postId,
-        { body: composerValue(draft) },
-        token,
-      );
-      if (files.length > 0) {
-        await uploadAttachments(orgId, files, { commentId: comment.id }, token);
-        setFiles([]);
-      }
-      setDraft('');
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Your comment was not posted');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <section className="border-t border-gray-200 pt-6">
-      <h2 className="mb-3 text-base font-semibold text-gray-900">
-        {comments.length > 0 ? `${comments.length} comment${comments.length === 1 ? '' : 's'}` : 'Discussion'}
-      </h2>
-
-      {error && <p className="mb-3 text-sm text-red-600" role="alert">{error}</p>}
-
-      <div className="mb-4 space-y-3">
-        {comments.map((comment) => (
-          <div key={comment.id} className="rounded-lg bg-gray-50 px-3 py-2">
-            <div className="flex items-center gap-2">
-              <MemberName
-                userId={comment.author?.id}
-                name={comment.author?.name || 'Member'}
-                className="text-xs font-medium text-gray-900"
-              />
-              <span className="text-[11px] text-gray-400">
-                {new Date(comment.createdAt).toLocaleDateString()}
-              </span>
-            </div>
-            <div
-              className="prose prose-sm mt-0.5 max-w-none whitespace-pre-wrap text-sm text-gray-700"
-              dangerouslySetInnerHTML={{ __html: renderBodyHtml(comment.body) }}
-            />
-            <AttachmentList orgId={orgId} token={token} commentId={comment.id} />
-            {/*
-              Their own, or anybody's if they run the place (CMN-19). An event's
-              comments are ordinary Commons comments — the same post, the same
-              endpoint — so they get the same right to be withdrawn.
-            */}
-            {(comment.author?.id === viewer?.id || viewerIsAdmin) && (
-              <button
-                type="button"
-                onClick={() => removeComment(comment.id)}
-                disabled={busy}
-                className="mt-1 text-xs text-gray-400 hover:text-red-600"
-              >
-                Delete
-              </button>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <RichComposer
-        value={draft}
-        onChange={setDraft}
-        onSubmit={submit}
-        placeholder="What are your thoughts?"
-        submitLabel="Post"
-        busy={busy}
-        rows={2}
-        files={files}
-        onFilesChange={setFiles}
-      />
-    </section>
-  );
-}

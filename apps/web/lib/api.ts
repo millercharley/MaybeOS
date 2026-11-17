@@ -2594,6 +2594,25 @@ class ApiClient {
         token,
       }),
 
+    /**
+     * The post carrying this offering's conversation, which lives in
+     * #Teaching (CMN-22).
+     *
+     * A read. Never creates — opening a page must not post into a channel the
+     * whole co-op reads, which is what EVT-42 paid for on the events side.
+     */
+    thread: (orgId: string, id: string, token: string) =>
+      this.request<{ postId: string | null }>(`/orgs/${orgId}/teaching/${id}/thread`, {
+        token,
+      }),
+
+    /** Make it, on the first comment. Null for anything kept off the lists. */
+    startThread: (orgId: string, id: string, token: string) =>
+      this.request<{ postId: string | null }>(`/orgs/${orgId}/teaching/${id}/thread`, {
+        method: 'POST',
+        token,
+      }),
+
     registerInterest: (orgId: string, id: string, note: string | undefined, token: string) =>
       this.request<{ registered: boolean }>(`/orgs/${orgId}/teaching/${id}/interest`, {
         method: 'POST',
