@@ -564,7 +564,30 @@ export class TeachingService {
       },
     });
 
-    return { org: publicOrg, offerings };
+    /*
+      The address of each offering, built here (EVT-21).
+
+      The embed script runs on somebody else's domain and deliberately holds
+      no rule about MaybeOS's address shape — it follows `url` and nothing
+      else. Building it there would put our routing in a file a co-op pasted
+      onto their website months ago and will never update.
+
+      To the offering's page, never to a checkout: buying a ticket needs a
+      date and a seat count, and a button on a marketing site that opens a
+      payment form is not what anybody expects of it.
+    */
+    const base = (this.config.get<string>('APP_URL') || this.config.get<string>('WEB_URL') || 'http://localhost:3000')
+      .split(',')[0]
+      .trim()
+      .replace(/\/+$/, '');
+
+    return {
+      org: publicOrg,
+      offerings: offerings.map((offering) => ({
+        ...offering,
+        url: `${base}/portal/${publicOrg.slug}/teaching/${offering.slug}`,
+      })),
+    };
   }
 
   /** The same thing the embed script paints. */

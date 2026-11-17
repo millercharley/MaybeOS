@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { Org } from '@/lib/api';
 import { EmbedShow, embedSnippet, normaliseHex, resolveAccent } from '@/lib/embed-snippet';
@@ -17,13 +17,60 @@ import { EmbedShow, embedSnippet, normaliseHex, resolveAccent } from '@/lib/embe
  * "embed" block that accepts a script, and fight anything more elaborate —
  * and one line is something an organiser can paste without a developer.
  *
- * Two of these now (PUB-01): the events list, and the membership tiers with
- * Join buttons that land on `/join`. Same card, same preview, same script —
- * only the copy and one attribute differ, and a co-op that wants both pastes
- * both tags.
+ * Three of these now (PUB-01, TCH-01): the events list, the membership tiers
+ * with Join buttons that land on `/join`, and what the co-op teaches. Same
+ * card, same preview, same script — only the copy and one attribute differ,
+ * and a co-op that wants all three pastes all three tags.
+ *
+ * The copy is a lookup rather than nested ternaries. It was two branches and
+ * read fine; at three it would be the shape where somebody adds a fourth and
+ * only remembers two of the places.
  */
+const COPY: Record<EmbedShow, { heading: string; blurb: string; note: ReactNode; previewing: string }> = {
+  events: {
+    heading: 'Your events on your website',
+    blurb:
+      'Paste this into an embed or custom-code block on your own site. Your public events for the next 30 days appear there and stay in step on their own — there is nothing to update when you add an event.',
+    previewing: 'events',
+    note: (
+      <p>
+        <span className="font-medium text-gray-700">Only public events appear.</span> Anything
+        members-only or private stays off your website, and a draft stays off until you publish
+        it.
+      </p>
+    ),
+  },
+  membership: {
+    heading: 'Membership on your website',
+    blurb:
+      'Paste this into an embed or custom-code block on your own site. Your tiers appear there with a Join button on each one, and stay in step on their own — change a price here and the website follows.',
+    previewing: 'tiers',
+    note: (
+      <p>
+        <span className="font-medium text-gray-700">Joining opens on MaybeOS.</span> The buttons
+        open your join page in a new tab, so your visitor keeps your site — and payment happens
+        on Stripe, never on your website. Deactivated tiers never appear.
+      </p>
+    ),
+  },
+  teaching: {
+    heading: 'What your members teach, on your website',
+    blurb:
+      'Paste this into an embed or custom-code block on your own site. Workshops and private lessons your members have made public appear there, and stay in step on their own.',
+    previewing: 'workshops and lessons',
+    note: (
+      <p>
+        <span className="font-medium text-gray-700">Only public offerings appear.</span> Anything
+        a member kept to the co-op stays off your website, and so does a draft. A workshop shows
+        its next date, or says it has none yet.
+      </p>
+    ),
+  },
+};
+
 export function WebsiteEmbed({ org, show = 'events' }: { org: Org; show?: EmbedShow }) {
-  const membership = show === 'membership';
+  // `words` not `copy`: this card already has a copy-to-clipboard handler.
+  const words = COPY[show];
   const [copied, setCopied] = useState(false);
   // Seeded from Branding, not from MaybeOS's red (BRD-03). This field used to
   // open on #b03030, so a co-op that had already chosen a colour had to type
@@ -63,12 +110,10 @@ export function WebsiteEmbed({ org, show = 'events' }: { org: Org; show?: EmbedS
     <section className="card space-y-4">
       <div>
         <h2 className="text-base font-semibold text-gray-900">
-          {membership ? 'Membership on your website' : 'Your events on your website'}
+          {words.heading}
         </h2>
         <p className="mt-1 text-sm text-gray-500">
-          {membership
-            ? 'Paste this into an embed or custom-code block on your own site. Your tiers appear there with a Join button on each one, and stay in step on their own — change a price here and the website follows.'
-            : 'Paste this into an embed or custom-code block on your own site. Your public events for the next 30 days appear there and stay in step on their own — there is nothing to update when you add an event.'}
+          {words.blurb}
         </p>
       </div>
 
@@ -126,19 +171,7 @@ export function WebsiteEmbed({ org, show = 'events' }: { org: Org; show?: EmbedS
       <EmbedPreview origin={origin} slug={org.slug} accent={accent ?? brandAccent} show={show} />
 
       <div className="border-t border-gray-100 pt-3 text-xs text-gray-500">
-        {membership ? (
-          <p>
-            <span className="font-medium text-gray-700">Joining opens on MaybeOS.</span> The
-            buttons open your join page in a new tab, so your visitor keeps your site — and
-            payment happens on Stripe, never on your website. Deactivated tiers never appear.
-          </p>
-        ) : (
-          <p>
-            <span className="font-medium text-gray-700">Only public events appear.</span> Anything
-            members-only or private stays off your website, and a draft stays off until you
-            publish it.
-          </p>
-        )}
+        {words.note}
       </div>
     </section>
   );
@@ -181,7 +214,9 @@ function EmbedPreview({
     script.src = `${origin}/embed.js`;
     script.setAttribute('data-org', slug);
     script.setAttribute('data-accent', accent);
-    if (show === 'membership') script.setAttribute('data-show', 'membership');
+    // Anything but events carries the attribute; events is the absence of
+    // it, which is what every tag pasted before PUB-01 looks like.
+    if (show !== 'events') script.setAttribute('data-show', show);
     script.onerror = () => setFailed(true);
     node.appendChild(script);
 
@@ -193,7 +228,7 @@ function EmbedPreview({
       <p className="text-sm font-medium text-gray-700">What it will show</p>
       <p className="mt-0.5 text-xs text-gray-500">
         This is the embed itself, running against your live{' '}
-        {show === 'membership' ? 'tiers' : 'events'} — not a picture of it.
+        {COPY[show].previewing} — not a picture of it.
       </p>
       <div className="mt-2 rounded-lg border border-dashed border-gray-300 bg-white p-4">
         {failed ? (

@@ -36,7 +36,7 @@ export function resolveAccent(brandColor?: string | null): string {
 }
 
 /** Which block the tag renders. Events is the default and the original. */
-export type EmbedShow = 'events' | 'membership';
+export type EmbedShow = 'events' | 'membership' | 'teaching';
 
 /**
  * One script tag.
@@ -48,6 +48,10 @@ export type EmbedShow = 'events' | 'membership';
  * `data-show` is omitted for events (PUB-01). Every tag already pasted onto a
  * real website lacks it, so absent has to keep meaning events — and a snippet
  * that adds an attribute meaning "as before" is one more thing to explain.
+ *
+ * Written as "anything but events" rather than a second equality test, so the
+ * third block (teaching, TCH-01) and the fourth need no change here. The
+ * events string stays byte-for-byte what it was, which a test pins.
  */
 export function embedSnippet(
   origin: string,
@@ -58,7 +62,7 @@ export function embedSnippet(
   const accent = normaliseHex(accentInput);
   return (
     `<script src="${origin}/embed.js" data-org="${slug}"` +
-    (show === 'membership' ? ` data-show="membership"` : '') +
+    (show === 'events' ? '' : ` data-show="${show}"`) +
     (accent && accent !== DEFAULT_ACCENT ? ` data-accent="${accent}"` : '') +
     ` defer></script>`
   );

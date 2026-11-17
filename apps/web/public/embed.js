@@ -31,7 +31,17 @@
 
   var slug = script.getAttribute('data-org');
   var accent = script.getAttribute('data-accent') || '#b03030';
-  var show = script.getAttribute('data-show') === 'membership' ? 'membership' : 'events';
+  /*
+    Which block this tag renders.
+
+    A membership test rather than a chain of equalities, so a fourth block is
+    one word here. Anything unrecognised is still events: the attribute was
+    absent on every tag pasted before PUB-01 and a typo on somebody's website
+    should show them what they expected, not nothing.
+  */
+  var asked = script.getAttribute('data-show');
+  var show =
+    asked === 'membership' || asked === 'teaching' ? asked : 'events';
 
   // Text that can be read on the accent (BRD-03). The accent now defaults to
   // the co-op's own brand colour, and a co-op whose colour is pale — a light
@@ -272,6 +282,26 @@
       same line as its neighbours'.
     */
     '.tiers { display: grid; gap: 20px; padding-top: 14px; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); }',
+    /*
+      Teaching (TCH-01). The same white ground the tier cards use, for the
+      same reason: a card that supplies its own background looks the same on
+      anybody's website, whatever colour their page is.
+
+      `auto-fit` with a narrower minimum than the tiers, because an offering
+      card carries a title and two short lines rather than a price table —
+      three across on a desktop and one on a phone, with no breakpoint of its
+      own to get wrong.
+    */
+    '.offerings { display: grid; gap: 16px; padding-top: 14px; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }',
+    '.offering { display: block; background: #ffffff; border: 1px solid rgba(0,0,0,0.08); border-radius: 14px; padding: 16px; text-decoration: none; color: inherit; transition: box-shadow 0.15s ease; }',
+    '.offering:hover { box-shadow: 0 6px 20px rgba(0,0,0,0.08); }',
+    '.offering-img { height: 110px; margin: -16px -16px 12px; border-radius: 14px 14px 0 0; background-size: cover; background-position: 50% 50%; }',
+    /* The accent, readable on white — never the raw colour (BRD-03). */
+    '.offering-kind { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: ' + accentText + '; }',
+    '.offering-title { margin-top: 6px; font-size: 16px; font-weight: 700; line-height: 1.3; color: #1a1a1a; }',
+    '.offering-who { margin-top: 2px; font-size: 13px; color: #6b665e; }',
+    '.offering-blurb { margin-top: 8px; font-size: 13px; line-height: 1.5; color: #44403c; }',
+    '.offering-meta { margin-top: 10px; font-size: 12px; color: #6b665e; }',
     /*
       A white ground, deliberately (PUB-04).
 
@@ -924,6 +954,111 @@
     wrap.appendChild(strip);
   };
 
+  /**
+   * What a community teaches, on somebody else's website (TCH-01).
+   *
+   * Charley: "This page should also have an embed code, just like the events
+   * embed code, to publicly showcase all of the public teaching offerings."
+   *
+   * One card per offering rather than the events hero-and-list shape. A
+   * workshop and a lesson are alternatives to each other — a visitor is
+   * choosing between them — where a calendar has a next thing and then the
+   * rest, which is what the hero is for.
+   *
+   * Every figure and every word comes from the feed. This file is pasted onto
+   * a co-op's site and may sit there untouched for years, so it holds no rule
+   * about what MaybeOS charges, where its pages live, or what a kind is
+   * called beyond the two it can be.
+   */
+  var teachingCard = function (offering) {
+    var a = linkTo(offering, 'offering');
+
+    if (offering.imageUrl) {
+      var img = document.createElement('div');
+      img.className = 'offering-img';
+      img.style.backgroundImage = 'url("' + offering.imageUrl + '")';
+      if (typeof offering.imageFocusY === 'number') {
+        img.style.backgroundPosition = '50% ' + offering.imageFocusY + '%';
+      }
+      a.appendChild(img);
+    }
+
+    var kind = document.createElement('div');
+    kind.className = 'offering-kind';
+    kind.textContent =
+      offering.kind === 'PRIVATE_LESSON' ? 'Private lessons' : 'Workshop';
+    a.appendChild(kind);
+
+    var title = document.createElement('div');
+    title.className = 'offering-title';
+    title.textContent = offering.title || '';
+    a.appendChild(title);
+
+    if (offering.teacher && offering.teacher.name) {
+      var who = document.createElement('div');
+      who.className = 'offering-who';
+      who.textContent = 'with ' + offering.teacher.name;
+      a.appendChild(who);
+    }
+
+    if (offering.summary) {
+      var blurb = document.createElement('div');
+      blurb.className = 'offering-blurb';
+      blurb.textContent = clamp(offering.summary, 140);
+      a.appendChild(blurb);
+    }
+
+    /*
+      When and what it costs, on one line.
+
+      A workshop with dates says its next one; a workshop without any says so
+      rather than going quiet, because "nothing scheduled yet" is the answer a
+      visitor needs in order to get in touch. A lesson never claims a date.
+
+      The price is whatever the teacher said, in their words, falling back to
+      the figure — the same order the app uses, because "pay what you can" is
+      an answer and "$0.00" is not.
+    */
+    var facts = [];
+    var sessions = offering.sessions || [];
+
+    if (offering.kind === 'PRIVATE_LESSON') facts.push('Arranged with you');
+    else if (sessions.length) facts.push(when(sessions[0].startTime, sessions[0].endTime));
+    else facts.push('No dates yet');
+
+    if (offering.priceNote) facts.push(offering.priceNote);
+    else if (offering.priceCents) facts.push(money(offering.priceCents, offering.currency));
+    else if (offering.kind !== 'PRIVATE_LESSON') facts.push('Free');
+
+    var meta = document.createElement('div');
+    meta.className = 'offering-meta';
+    meta.textContent = facts.join(' · ');
+    a.appendChild(meta);
+
+    return a;
+  };
+
+  var renderTeaching = function (data) {
+    var offerings = data.offerings || [];
+
+    if (!offerings.length) {
+      var empty = document.createElement('div');
+      empty.className = 'empty';
+      // Said as a state rather than an apology: a co-op whose members have
+      // not posted anything yet is not broken.
+      empty.textContent = 'Nothing is being taught here just yet.';
+      wrap.appendChild(empty);
+      return;
+    }
+
+    var grid = document.createElement('div');
+    grid.className = 'offerings';
+    offerings.forEach(function (offering) {
+      grid.appendChild(teachingCard(offering));
+    });
+    wrap.appendChild(grid);
+  };
+
   var renderMembership = function (data) {
     var tiers = data.tiers || [];
 
@@ -974,7 +1109,7 @@
     origin +
       '/api/embed/' +
       encodeURIComponent(slug) +
-      (show === 'membership' ? '/membership' : '/events'),
+      (show === 'events' ? '/events' : '/' + show),
   )
     .then(function (res) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -982,6 +1117,7 @@
     })
     .then(function (data) {
       if (show === 'membership') renderMembership(data);
+      else if (show === 'teaching') renderTeaching(data);
       else renderEvents(data);
     })
     .catch(function () {
@@ -993,7 +1129,9 @@
       failed.textContent =
         show === 'membership'
           ? 'Membership details are unavailable right now.'
-          : 'Events are unavailable right now.';
+          : show === 'teaching'
+            ? 'Workshops and lessons are unavailable right now.'
+            : 'Events are unavailable right now.';
       wrap.appendChild(failed);
     });
 })();

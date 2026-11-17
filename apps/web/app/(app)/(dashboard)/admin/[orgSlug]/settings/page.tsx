@@ -547,6 +547,12 @@ export default function SettingsPage() {
 
       {activeTab === 'website' && org && <WebsiteEmbed org={org} show="membership" />}
       {activeTab === 'website' && org && <WebsiteEmbed org={org} show="events" />}
+      {/* Only offered once the co-op actually runs teaching: a snippet for a
+          feature that is switched off would answer an empty list forever, and
+          the admin would have no way to tell that from a bug (TCH-01). */}
+      {activeTab === 'website' && org?.teachingEnabled && (
+        <WebsiteEmbed org={org} show="teaching" />
+      )}
       {/* The same events for a campaign (EVT-55). On this tab rather than its
           own, because an organiser looking for "how do my events get out of
           MaybeOS" looks in one place — and because the mistake worth
