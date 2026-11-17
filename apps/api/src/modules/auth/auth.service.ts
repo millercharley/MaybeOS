@@ -357,6 +357,20 @@ export class AuthService {
                 // its list with today's events, and a member reading it from
                 // another timezone is asking what is on at the *space*.
                 timezone: true,
+                /*
+                  Whether this co-op does teaching (TCH-01).
+
+                  Here rather than fetched by the sidebar, because the nav is
+                  built from the session and `sidebarSections()` is pure. The
+                  alternative — a permanent "Teaching" item leading to a page
+                  that says the feature is off — is what every other toggle in
+                  this product does, and it is wrong for a member: an item
+                  that exists only to disappoint is worse than no item.
+
+                  A boolean about the co-op, not about the member, and the
+                  same kind of fact as `memberGoal` beside it.
+                */
+                teachingEnabled: true,
               },
             },
           },

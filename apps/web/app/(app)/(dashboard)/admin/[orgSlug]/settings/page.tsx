@@ -20,6 +20,7 @@ import { Integrations } from '@/components/settings/integrations';
 import { PageHeader } from '@/components/layout/page-header';
 import { ShareTracking } from '@/components/settings/share-tracking';
 import { MemberChannels } from '@/components/settings/member-channels';
+import { TeachingToggle } from '@/components/settings/teaching-toggle';
 import { DoorAccess } from '@/components/settings/door-access';
 import { WelcomeEmail } from '@/components/settings/welcome-email';
 import { ReplyAddress } from '@/components/settings/reply-address';
@@ -445,6 +446,12 @@ export default function SettingsPage() {
       )}
       {activeTab === 'general' && org && (
         <MemberChannels orgId={org.id} orgSlug={org.slug} />
+      )}
+      {/* Whether members may broadcast what they teach (TCH-01). Beside the
+          other "what members may do" switches rather than on its own tab: it
+          is one boolean, and a tab for it would imply there is more to set. */}
+      {activeTab === 'general' && org && (
+        <TeachingToggle org={org} orgSlug={org.slug} onChange={refetch} />
       )}
       {activeTab === 'general' && org && <WelcomeEmail org={org} onSaved={refetch} />}
       {/* Where a member's reply goes (EML-03). */}

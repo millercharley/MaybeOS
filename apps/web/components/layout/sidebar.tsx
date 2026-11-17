@@ -81,6 +81,14 @@ export function Sidebar({
     orgName,
     signedIn,
     isPlatformAdmin: user?.globalRole === 'PLATFORM_ADMIN',
+    /*
+      Which optional features this co-op runs (TCH-01).
+
+      Read off the session rather than fetched, which is why `/auth/profile`
+      carries it: the nav is drawn on every page and a request per render to
+      decide whether to show one link would be a round trip for a boolean.
+    */
+    features: { teachingEnabled: membership?.org?.teachingEnabled },
   });
 
   // The one item lit and the one section open — both the longest match, so a

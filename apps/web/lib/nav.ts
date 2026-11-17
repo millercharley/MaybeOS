@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   CreditCard,
   DoorOpen,
+  GraduationCap,
   HandCoins,
   HandHelping,
   HeartHandshake,
@@ -70,6 +71,7 @@ const adminNav = (slug: string): NavItem[] => [
   { href: `/admin/${slug}/members`, label: 'Members', icon: Users },
   { href: `/admin/${slug}/tiers`, label: 'Tiers & Dues', icon: CreditCard },
   { href: `/admin/${slug}/events`, label: 'Events', icon: Calendar },
+  { href: `/admin/${slug}/teaching`, label: 'Teaching', icon: GraduationCap },
   { href: `/admin/${slug}/rooms`, label: 'Rooms & Booking', icon: DoorOpen },
   { href: `/admin/${slug}/commons`, label: 'Commons', icon: MessageSquare },
   // Its own tab rather than the foot of Commons (Charley, 2026-10-04). It sat
@@ -167,6 +169,16 @@ const coopNav = (slug: string): NavItem[] => [
   */
   { href: `/portal/${slug}/rooms`, label: 'Rooms', icon: DoorOpen },
   { href: `/portal/${slug}/events`, label: 'Events', icon: Calendar },
+  /*
+    What members teach, and will teach (TCH-01). After Events because a
+    workshop with dates *is* an event and will already be on that list — this
+    is where somebody goes to find the person rather than the evening, and
+    where the things with no dates at all live.
+
+    Filtered out entirely when the co-op has teaching switched off. See
+    `sidebarSections`.
+  */
+  { href: `/portal/${slug}/teaching`, label: 'Teaching', icon: GraduationCap },
   // What needs doing, and taking a turn (SRV-01). Last in the section
   // deliberately: a member comes to the portal to find out what is on before
   // they come to find out what needs doing.
@@ -200,6 +212,7 @@ export function sidebarSections({
   orgName,
   signedIn,
   isPlatformAdmin = false,
+  features,
 }: {
   membership?: NavMembership | null;
   /** The co-op whose page is on screen. Wins over the selected membership. */
@@ -208,6 +221,24 @@ export function sidebarSections({
   signedIn: boolean;
   /** MaybeOS's own operators. Nobody else ever sees this section. */
   isPlatformAdmin?: boolean;
+  /**
+   * Which optional features this co-op runs (TCH-01).
+   *
+   * The first thing to condition this nav on a setting, and worth saying why
+   * rather than following the house habit. Every other toggle in the product
+   * keeps a permanent nav entry and lets the *page* say the feature is off —
+   * which is right for an organiser, who needs somewhere to go and turn it
+   * on, and wrong for a member, for whom an item that exists only to
+   * disappoint is worse than no item at all.
+   *
+   * Passed in rather than read here, so this function stays pure: it has no
+   * token, no org and no network, which is why the sidebar matches unread
+   * counts to hrefs instead of asking for them.
+   *
+   * Absent means absent, not "on": a caller that has not loaded the session
+   * yet should show fewer things, never more.
+   */
+  features?: { teachingEnabled?: boolean };
 }): NavSection[] {
   const role = membership?.role;
   const isOrganiser = role === 'ADMIN' || role === 'STAFF';
@@ -223,6 +254,21 @@ export function sidebarSections({
   const admin = slug ? adminNav(slug) : [];
   const member = slug ? memberNav(slug) : [];
 
+  /*
+    Optional features, dropped from both lists when the co-op does not run
+    them (TCH-01).
+
+    One filter over both navs rather than a condition inside each array, so
+    the next optional feature is one line here and not two scattered ones —
+    and so the rule is in a place somebody will find when they wonder why
+    their nav item never appeared.
+  */
+  const off = new Set<string>();
+  if (!features?.teachingEnabled) off.add('/teaching');
+
+  const enabled = (items: NavItem[]) =>
+    items.filter((item) => ![...off].some((suffix) => item.href.endsWith(suffix)));
+
   if (signedIn && slug) {
     // **Always the member's own dashboard, organiser or not** (Charley,
     // 2026-10-02). It used to be whichever this person's was, which made the
@@ -236,7 +282,7 @@ export function sidebarSections({
   // Omitted rather than guessed when there is no slug: `/portal/undefined/...`
   // reads as a broken product rather than a profile that has not loaded.
   if (slug) {
-    sections.push({ label: name, id: 'community', items: coopNav(slug) });
+    sections.push({ label: name, id: 'community', items: enabled(coopNav(slug)) });
   }
 
   if (signedIn && slug) {
@@ -256,7 +302,7 @@ export function sidebarSections({
     // an organiser had closed.
     // The whole of `admin`, including its dashboard, which used to be lifted
     // out to the top of the nav and is now the first thing in this section.
-    sections.push({ label: 'Administration', id: 'organizing', items: admin });
+    sections.push({ label: 'Administration', id: 'organizing', items: enabled(admin) });
   }
 
   // Last, and labelled as MaybeOS rather than as part of the co-op — because

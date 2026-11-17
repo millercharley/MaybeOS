@@ -711,6 +711,8 @@ class ApiClient {
         sharesEnabled?: boolean;
         /** Whether any member may open a channel in the Commons (CMN-11). */
         memberChannelsEnabled?: boolean;
+        /** Whether members may broadcast what they teach (TCH-01). */
+        teachingEnabled?: boolean;
         /** Door access (DOR-01): issuing codes, the sheet, and the emails. */
         doorAccessEnabled?: boolean;
         doorCodeEmailsEnabled?: boolean;
@@ -2548,6 +2550,66 @@ class ApiClient {
       }),
   };
 
+  // ── What members teach, and will teach (TCH-01) ──
+  teaching = {
+    /** What this member may see, including their own drafts. */
+    list: (orgId: string, token: string) =>
+      this.request<Offering[]>(`/orgs/${orgId}/teaching`, { token }),
+
+    get: (orgId: string, slug: string, token: string) =>
+      this.request<Offering & { mayEdit: boolean }>(
+        `/orgs/${orgId}/teaching/${encodeURIComponent(slug)}`,
+        { token },
+      ),
+
+    create: (orgId: string, body: OfferingInput, token: string) =>
+      this.request<Offering>(`/orgs/${orgId}/teaching`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        token,
+      }),
+
+    update: (orgId: string, id: string, body: Partial<OfferingInput>, token: string) =>
+      this.request<Offering>(`/orgs/${orgId}/teaching/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+        token,
+      }),
+
+    remove: (orgId: string, id: string, token: string) =>
+      this.request<{ removed: boolean; sessionsKept: number }>(
+        `/orgs/${orgId}/teaching/${id}`,
+        { method: 'DELETE', token },
+      ),
+
+    /**
+     * Put a date on a workshop. It becomes an `Event`, which is why the body
+     * is the event one: everything about a date — the room, the capacity, the
+     * ticket price — already belongs to events and is not re-described here.
+     */
+    addSession: (orgId: string, id: string, body: Record<string, unknown>, token: string) =>
+      this.request<Event>(`/orgs/${orgId}/teaching/${id}/sessions`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        token,
+      }),
+
+    registerInterest: (orgId: string, id: string, note: string | undefined, token: string) =>
+      this.request<{ registered: boolean }>(`/orgs/${orgId}/teaching/${id}/interest`, {
+        method: 'POST',
+        body: JSON.stringify({ note }),
+        token,
+      }),
+
+    /** Who has asked. Teacher, whoever wrote it up, or an organiser. */
+    interest: (orgId: string, id: string, token: string) =>
+      this.request<OfferingInterest[]>(`/orgs/${orgId}/teaching/${id}/interest`, { token }),
+
+    /** What a co-op teaches, for somebody with no account. */
+    publicList: (orgSlug: string) =>
+      this.request<PublicTeaching>(`/public/teaching/${encodeURIComponent(orgSlug)}`),
+  };
+
   commons = {
     listChannels: (orgId: string, token: string) =>
       this.request<Channel[]>(`/orgs/${orgId}/channels`, { token }),
@@ -3748,6 +3810,12 @@ export interface UserProfile {
       legacyBillingUrl?: string | null;
       /** What "today" means at this co-op, for the dashboard's event list. */
       timezone?: string;
+      /**
+       * Whether this co-op does teaching (TCH-01). On the session so the nav
+       * can leave the item out entirely rather than offer a page that says
+       * the feature is off.
+       */
+      teachingEnabled?: boolean;
     };
   }>;
 }
@@ -3835,6 +3903,8 @@ export interface Org {
    */
   /** Whether hosts may share public events to Facebook and Instagram (SOC-01). */
   socialSharingEnabled?: boolean;
+  /** Whether members may broadcast what they teach (TCH-01). */
+  teachingEnabled?: boolean;
   doorAccessEnabled?: boolean;
   doorCodeEmailsEnabled?: boolean;
   /** Whether MaybeOS welcomes a new member itself (MEM-17). */
@@ -6512,4 +6582,94 @@ export interface PublicPricing {
   currency: 'usd';
   plans: PublicPlan[];
   writtenReportCents: number;
+}
+
+// ── Teaching (TCH-01) ────────────────────────────────────────
+
+export type OfferingKind = 'WORKSHOP' | 'PRIVATE_LESSON';
+export type OfferingPayment = 'THROUGH_MAYBEOS' | 'ARRANGE_DIRECTLY';
+
+/** One date of a workshop, as the teaching screens need it. */
+export interface OfferingSession {
+  slug: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  timezone?: string | null;
+  priceCents?: number | null;
+  currency?: string;
+  capacity?: number | null;
+  maturityLevel?: string;
+  location?: { name: string } | null;
+}
+
+/**
+ * What a member teaches, or will teach.
+ *
+ * `teacher` carries a name and a picture and — inside the co-op — an id, so
+ * the page can link to their profile. Never an email address: a learner
+ * reaches them through `registerInterest`, which is the whole reason that
+ * route exists rather than publishing contact details.
+ */
+export interface Offering {
+  id: string;
+  orgId: string;
+  kind: OfferingKind;
+  title: string;
+  slug: string;
+  summary?: string | null;
+  description?: string | null;
+  richDescription?: string | null;
+  imageUrl?: string | null;
+  imageCredit?: string | null;
+  imageCreditUrl?: string | null;
+  imageFocusY?: number;
+  visibility: 'PUBLIC' | 'MEMBERS_ONLY' | 'PRIVATE';
+  payment: OfferingPayment;
+  priceCents?: number | null;
+  priceNote?: string | null;
+  currency?: string;
+  closedAt?: string | null;
+  isPublished?: boolean;
+  createdAt?: string;
+  teacher: { id?: string; name?: string | null; avatarUrl?: string | null };
+  sessions?: OfferingSession[];
+  _count?: { interests: number };
+}
+
+export interface OfferingInput {
+  kind: OfferingKind;
+  title: string;
+  summary?: string;
+  description?: string;
+  richDescription?: string;
+  visibility?: 'PUBLIC' | 'MEMBERS_ONLY' | 'PRIVATE';
+  payment?: OfferingPayment;
+  priceCents?: number | null;
+  priceNote?: string;
+  imageUrl?: string;
+  teacherId?: string;
+  publish?: boolean;
+  isPublished?: boolean;
+  closed?: boolean;
+}
+
+/** Somebody who put their hand up. The note is theirs, and private. */
+export interface OfferingInterest {
+  id: string;
+  note?: string | null;
+  handledAt?: string | null;
+  createdAt: string;
+  user: { id: string; name?: string | null; avatarUrl?: string | null };
+}
+
+/** The payload behind the public page and the website embed. */
+export interface PublicTeaching {
+  org: {
+    name: string;
+    slug: string;
+    brandColor?: string | null;
+    timezone?: string | null;
+  };
+  offerings: Offering[];
 }
