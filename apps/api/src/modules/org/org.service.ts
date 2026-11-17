@@ -14,6 +14,7 @@ import { CreateOrgDto } from './dto/create-org.dto';
 import { RESERVED_ORG_SLUGS } from './reserved-slugs';
 import { UpdateOrgDto } from './dto/update-org.dto';
 import { ForumService } from './forum.service';
+import { THREAD_CHANNELS } from '../commons/thread-policy';
 
 @Injectable()
 export class OrgService {
@@ -182,6 +183,31 @@ export class OrgService {
           description: 'Default discussion channel',
           isDefault: true,
           isPublic: true,
+        },
+      });
+
+      /*
+        And #Events, which every co-op gets (CMN-22).
+
+        Charley asked for these to be standard. Events have no on/off switch —
+        every co-op on MaybeOS has them — so this one belongs at founding,
+        beside General, rather than appearing the first time somebody
+        publishes something. A channel that materialises out of nowhere looks
+        like a mistake; one that was always there is the co-op's.
+
+        Not `isDefault`: that flag means "cannot be deleted", and a co-op that
+        does not want this channel should be able to remove it. Publishing
+        would bring it back, which is the right amount of insistence.
+      */
+      await tx.channel.create({
+        data: {
+          orgId: org.id,
+          name: THREAD_CHANNELS.events.name,
+          slug: THREAD_CHANNELS.events.slug,
+          emoji: THREAD_CHANNELS.events.emoji,
+          description: THREAD_CHANNELS.events.description,
+          isPublic: true,
+          position: 1,
         },
       });
 
@@ -506,7 +532,7 @@ export class OrgService {
   async update(orgId: string, dto: UpdateOrgDto) {
     await this.findById(orgId); // ensure it exists
 
-    return this.prisma.organization.update({
+    const updated = await this.prisma.organization.update({
       where: { id: orgId },
       data: {
         ...dto,
@@ -532,6 +558,43 @@ export class OrgService {
         }),
       },
     });
+
+    /*
+      Switching teaching on gives the co-op its #Teaching channel (CMN-22).
+
+      Charley asked for these channels to be standard "for any community with
+      events and teaching activated by the admin", and this is the moment of
+      activation. Without it the channel would appear the first time a member
+      published a workshop, which is both late and startling — an admin who
+      turned the feature on and went to look at the Commons would find nothing
+      there.
+
+      Upsert on the unique `(orgId, slug)`, so turning it off and on again
+      keeps the conversations rather than making a second channel. Best-effort
+      for the same reason announcing is: a settings toggle must not fail
+      because of a channel.
+    */
+    if (dto.teachingEnabled === true) {
+      await this.prisma.channel
+        .upsert({
+          where: { orgId_slug: { orgId, slug: THREAD_CHANNELS.teaching.slug } },
+          create: {
+            orgId,
+            name: THREAD_CHANNELS.teaching.name,
+            slug: THREAD_CHANNELS.teaching.slug,
+            emoji: THREAD_CHANNELS.teaching.emoji,
+            description: THREAD_CHANNELS.teaching.description,
+            isPublic: true,
+          },
+          update: {},
+        })
+        .catch(() => {
+          /* The setting is what the admin asked for; the channel can wait
+             for the first publish, which upserts it too. */
+        });
+    }
+
+    return updated;
   }
 
   /**
