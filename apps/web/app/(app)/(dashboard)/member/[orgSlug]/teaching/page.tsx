@@ -168,7 +168,14 @@ export default function MyTeachingPage(props: { params: Promise<{ orgSlug: strin
   return (
     <div className="space-y-6">
       <PageHeader
-        title="What you teach"
+        /*
+          Named for the nav item that reaches it (Charley, 2026-11-17). Every
+          other screen in My membership does the same — My Events, My
+          Bookings, My Service — and a link that says one thing landing on a
+          page headed another is how somebody wonders whether they clicked
+          the wrong one.
+        */
+        title="My Teaching"
         description="Run a workshop, or offer private lessons. You decide who can see it."
         actions={
           <button

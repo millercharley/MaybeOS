@@ -127,6 +127,17 @@ const memberNav = (slug: string): NavItem[] => [
   // No 'My RSVPs': it lives inside My Events now, because hosting something
   // and going to something are the same question asked twice.
   { href: `/member/${slug}/events`, label: 'My Events', icon: CalendarPlus },
+  /*
+    What I teach, beside what I host (Charley, 2026-11-17).
+
+    Next to My Events because they are the same kind of thing from a member's
+    side — something I am putting on — and because a workshop's dates *are*
+    events, so the two screens lead into each other.
+
+    Dropped with the rest of teaching when the co-op has it switched off; the
+    `enabled()` filter below does that by matching the `/teaching` suffix.
+  */
+  { href: `/member/${slug}/teaching`, label: 'My Teaching', icon: GraduationCap },
   { href: `/member/${slug}/bookings`, label: 'My Bookings', icon: DoorOpen },
   // What I have taken on and what it adds up to (SRV-01).
   { href: `/member/${slug}/service`, label: 'My Service', icon: ClipboardCheck },
@@ -286,7 +297,13 @@ export function sidebarSections({
   }
 
   if (signedIn && slug) {
-    sections.push({ label: 'My membership', id: 'membership', items: member.slice(1) });
+    /*
+      Filtered too, since TCH-02 put My Teaching in here. This section used to
+      hold nothing optional, so it took the list raw — which would have left
+      a member of a co-op with teaching switched off looking at a link to a
+      page that tells them the feature is off.
+    */
+    sections.push({ label: 'My membership', id: 'membership', items: enabled(member.slice(1)) });
   }
 
   // Below My membership (Charley, 2026-09-04). Administration is a long section —

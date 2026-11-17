@@ -59,9 +59,60 @@ describe('the Teaching item', () => {
     const off = hrefs(nav(false));
     const on = hrefs(nav(true));
 
-    // Exactly one item differs, and it is the one this is about.
-    expect(on.filter((href) => !off.includes(href))).toEqual(['/portal/sunrise/teaching']);
+    // Exactly these differ, and both are the thing this is about.
+    expect(on.filter((href) => !off.includes(href))).toEqual([
+      '/portal/sunrise/teaching',
+      '/member/sunrise/teaching',
+    ]);
     expect(off.filter((href) => !on.includes(href))).toEqual([]);
+  });
+
+  /**
+   * My Teaching, under My membership (Charley, 2026-11-17).
+   *
+   * The member's own screen, beside My Events — the community list at
+   * `/portal/:slug/teaching` answers a different question and keeps its own
+   * place in the co-op section.
+   */
+  describe('My Teaching', () => {
+    const section = (teachingEnabled: boolean) =>
+      nav(teachingEnabled).find((s) => s.id === 'membership');
+
+    it('sits under My membership when the co-op runs teaching', () => {
+      const items = section(true)?.items ?? [];
+      const mine = items.find((item) => item.href === '/member/sunrise/teaching');
+
+      expect(mine?.label).toBe('My Teaching');
+    });
+
+    /**
+     * The half that was missing: this section took its items unfiltered,
+     * because until TCH-02 nothing optional lived in it.
+     */
+    it('goes away with the flag, like everything else teaching', () => {
+      const hrefsIn = (on: boolean) => (section(on)?.items ?? []).map((i) => i.href);
+
+      expect(hrefsIn(true)).toContain('/member/sunrise/teaching');
+      expect(hrefsIn(false)).not.toContain('/member/sunrise/teaching');
+    });
+
+    it('is next to My Events, not at the end of the list', () => {
+      const items = (section(true)?.items ?? []).map((i) => i.href);
+      const events = items.indexOf('/member/sunrise/events');
+      const teaching = items.indexOf('/member/sunrise/teaching');
+
+      expect(teaching).toBe(events + 1);
+    });
+
+    /** Turning teaching off must not cost a member anything else. */
+    it('takes nothing else out of the section with it', () => {
+      const on = (section(true)?.items ?? []).map((i) => i.href);
+      const off = (section(false)?.items ?? []).map((i) => i.href);
+
+      expect(on.filter((href) => !off.includes(href))).toEqual([
+        '/member/sunrise/teaching',
+      ]);
+    });
   });
 
   /** An organiser gets the admin screen too, and loses it the same way. */
@@ -78,8 +129,8 @@ describe('the Teaching item', () => {
    * merely ends in the same letters. Nothing does today; this is what notices
    * the day somebody adds `/portal/:slug/student-teaching`.
    */
-  it('matches the teaching route and not a lookalike', () => {
+  it('matches the teaching routes and not a lookalike', () => {
     const teaching = hrefs(nav(true)).filter((href) => href.includes('teaching'));
-    expect(teaching).toEqual(['/portal/sunrise/teaching']);
+    expect(teaching).toEqual(['/portal/sunrise/teaching', '/member/sunrise/teaching']);
   });
 });
