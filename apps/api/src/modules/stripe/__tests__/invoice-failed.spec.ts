@@ -4,6 +4,7 @@ import Stripe from 'stripe';
 import { StripeService } from '../stripe.service';
 import { TicketPassService } from '../../events/ticket-pass.service';
 import { ConnectService } from '../connect.service';
+import { EmailService } from '../../email/email.service';
 import { PrismaService } from '../../../config/prisma.service';
 
 /**
@@ -52,6 +53,9 @@ describe('StripeService — invoice.payment_failed', () => {
         // Confirming a ticket to its buyer (EVT-46). After the webhook's
         // transaction, so these suites assert nothing about it.
         { provide: TicketPassService, useValue: { confirm: jest.fn() } },
+        // Telling a member their dues payment failed (PAY-12). After the
+        // webhook's transaction, so these suites assert nothing about it.
+        { provide: EmailService, useValue: { sendDunning: jest.fn() } },
         { provide: PrismaService, useValue: {} },
         { provide: ConfigService, useValue: { get: () => 'https://maybeos.org' } },
         { provide: ConnectService, useValue: { recordTicketFromSession: jest.fn() } },

@@ -618,8 +618,34 @@ export class EmailService {
     await this.send({ type: 'renewal-reminder', to, data: { memberName, dueDate } });
   }
 
-  async sendDunning(to: string | Addresses, memberName: string, orgName: string) {
-    await this.send({ type: 'dunning', to, data: { memberName, orgName } });
+  /**
+   * A dues payment did not go through (PAY-12).
+   *
+   * `billingUrl` is new and required. This had none for as long as it had no
+   * callers: it told somebody to "update your payment method" and gave them
+   * nowhere to do it, then suggested they contact an administrator — who
+   * cannot fix a card either.
+   */
+  async sendDunning(
+    to: string | Addresses,
+    memberName: string,
+    orgName: string,
+    billingUrl: string,
+    replyTo: string | null,
+  ) {
+    /*
+      A reply reaches the co-op, not a noreply address (EML-03).
+
+      This email is among the likeliest in the product to be replied to —
+      "my card changed, can you help?" — and the person who can help is an
+      organiser at the co-op, not MaybeOS. Null where a co-op has set no
+      address, which falls back the way every other send does.
+    */
+    await this.send({
+      type: 'dunning',
+      to,
+      data: { memberName, orgName, billingUrl, replyTo },
+    });
   }
 
   // ─── Room bookings ───────────────────────────────────────────
@@ -1446,15 +1472,30 @@ export class EmailService {
           `,
         };
 
+      /*
+        A dues payment did not go through (PAY-12).
+
+        Rewritten along with being wired up. The old copy said "Action
+        required: Payment failed" over "We were unable to process your
+        payment", told the reader to update a payment method without linking
+        to one, and sent them to an administrator who cannot fix a card
+        either. Plain words, and the thing to press (DESIGN §8).
+
+        It names the co-op rather than MaybeOS, because that is who the
+        member thinks they pay. It does not say "this month's dues": a
+        co-op's tiers can bill annually, and an email that names the wrong
+        cadence is one the reader stops believing.
+      */
       case 'dunning':
         return {
-          subject: 'Action required: Payment failed',
+          subject: `Your payment to ${data.orgName} didn't go through`,
           htmlBody: `
-            <h1>Payment Failed</h1>
+            <h1>Your payment didn't go through</h1>
             <p>Hi ${data.memberName},</p>
-            <p>We were unable to process your payment for your <strong>${data.orgName}</strong> membership.</p>
-            <p>Please update your payment method to keep your membership active.</p>
-            <p>If you believe this is an error, please contact the organization administrator.</p>
+            <p>The payment for your <strong>${data.orgName}</strong> membership didn't go through, so your dues are unpaid.</p>
+            <p>Your membership is still here. Updating the card on file usually puts it right.</p>
+            <p><a href="${data.billingUrl}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;">Update your card</a></p>
+            <p style="color:#666;font-size:14px;">If you've already sorted it out, or you meant to stop your membership, you can ignore this.</p>
           `,
         };
 

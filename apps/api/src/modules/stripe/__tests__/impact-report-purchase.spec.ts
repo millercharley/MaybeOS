@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { StripeService } from '../stripe.service';
 import { TicketPassService } from '../../events/ticket-pass.service';
 import { ConnectService } from '../connect.service';
+import { EmailService } from '../../email/email.service';
 import { PrismaService } from '../../../config/prisma.service';
 import {
   WRITTEN_REPORT_PRICE_CENTS,
@@ -50,6 +51,9 @@ describe('StripeService — buying the written impact report', () => {
         // Confirming a ticket to its buyer (EVT-46). After the webhook's
         // transaction, so these suites assert nothing about it.
         { provide: TicketPassService, useValue: { confirm: jest.fn() } },
+        // Telling a member their dues payment failed (PAY-12). After the
+        // webhook's transaction, so these suites assert nothing about it.
+        { provide: EmailService, useValue: { sendDunning: jest.fn() } },
         { provide: PrismaService, useValue: prisma },
         { provide: ConfigService, useValue: { get: () => 'whsec_test' } },
         {

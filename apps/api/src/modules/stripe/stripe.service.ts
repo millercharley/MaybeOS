@@ -22,7 +22,8 @@ import { TicketPassService } from '../events/ticket-pass.service';
 import { membershipStatusFor } from './subscription-status';
 import { initiationOwed } from './initiation';
 import { applicationFeePercent, duesFeeFor } from './dues-pricing';
-import { duesPaymentFrom, payerFrom } from './dues-ledger';
+import { duesPaymentFrom, payerFrom, subscriptionIdOf } from './dues-ledger';
+import { EmailService } from '../email/email.service';
 import {
   WRITTEN_REPORT_PRICE_CENTS,
   WRITTEN_REPORT_PRODUCT_NAME,
@@ -77,6 +78,9 @@ export class StripeService implements OnModuleInit {
     // Confirming a ticket to the person who bought it (EVT-46). Used only
     // after the webhook's transaction has committed — see `handleWebhook`.
     private readonly ticketPasses: TicketPassService,
+    // Telling a member their dues payment failed (PAY-12). Also only after
+    // the commit, and for the same reason.
+    private readonly email: EmailService,
   ) {
     const stripeKey = this.configService.get<string>('STRIPE_SECRET_KEY');
     if (!stripeKey) {
@@ -1049,7 +1053,75 @@ export class StripeService implements OnModuleInit {
     */
     await this.confirmTicketIfAny(event);
 
+    /*
+      Tell the member their dues payment failed (PAY-12).
+
+      Same placement and the same rules as the ticket confirmation above:
+      after the transaction, and nothing here may throw. The membership is
+      already PAST_DUE and Stripe must be told we got the event — an
+      exception escaping here would turn a recorded failure into a retry
+      loop, and the member still would not have heard.
+    */
+    await this.tellAboutFailedDuesIfAny(event);
+
     return { received: true };
+  }
+
+  /**
+   * The member whose dues payment just failed, told so (PAY-12).
+   *
+   * Charley's board: "A member whose dues payment fails is never told." The
+   * card put it down to Stripe — the Connect endpoint does not subscribe to
+   * `invoice.payment_failed`, and member dues live on the co-op's connected
+   * account, so the handler never ran. True, and not the whole of it:
+   * `EmailService.sendDunning` had been written, templated and left with no
+   * callers at all, so subscribing the endpoint would have delivered a log
+   * line.
+   *
+   * Reads the membership back rather than being handed one, like
+   * `confirmTicketIfAny`: the row was written inside a transaction this code
+   * is now outside of.
+   *
+   * The link is the member's own billing page, not a Stripe portal URL. A
+   * portal session is short-lived and single-use, and an email that sits in
+   * an inbox for two days would carry a dead one — while the page it points
+   * at needs a sign-in, which is what everything inside MaybeOS requires.
+   */
+  private async tellAboutFailedDuesIfAny(event: Stripe.Event): Promise<void> {
+    if (event.type !== 'invoice.payment_failed') return;
+
+    try {
+      // The same pure reader the ledger uses, so the acacia/dahlia move of
+      // `invoice.subscription` is handled in one place rather than two.
+      const subscriptionId = subscriptionIdOf(event.data.object as Stripe.Invoice);
+      if (!subscriptionId) return;
+
+      const membership = await this.prisma.userOrg.findFirst({
+        where: { stripeSubscriptionId: subscriptionId },
+        select: {
+          user: { select: { name: true, email: true } },
+          // `replyToEmail` so a reply reaches the co-op (EML-03): this is an
+          // email people answer, and the person who can help is an organiser.
+          org: { select: { name: true, slug: true, replyToEmail: true } },
+        },
+      });
+      if (!membership?.user?.email) return;
+
+      const appUrl = this.configService.get<string>('APP_URL') ?? 'https://maybeos.org';
+
+      await this.email.sendDunning(
+        membership.user.email,
+        membership.user.name ?? 'there',
+        membership.org.name,
+        `${appUrl}/member/${membership.org.slug}/billing`,
+        membership.org.replyToEmail ?? null,
+      );
+    } catch (err) {
+      this.logger.error(
+        `Could not tell anybody about failed dues on event ${event.id}: ` +
+          (err instanceof Error ? err.message : 'unknown error'),
+      );
+    }
   }
 
   /**
@@ -1673,11 +1745,25 @@ export class StripeService implements OnModuleInit {
       data: { subscriptionStatus: 'PAST_DUE' },
     });
 
-    // Queue a dunning email via the email module.
-    // NOTE: To avoid a circular dependency, the controller or an event emitter
-    // should handle email dispatch. For MVP we log the intent here.
+    /*
+      The member is told after this transaction commits, not here (PAY-12).
+
+      This used to end with a log line and a note saying a circular
+      dependency meant "the controller or an event emitter should handle
+      email dispatch. For MVP we log the intent here." Both halves had
+      stopped being true: `StripeService` already depends on
+      `TicketPassService`, which depends on `EmailService`, so there is no
+      cycle — and the MVP shipped. `sendDunning` was written, templated, and
+      had zero callers, so every member whose dues payment failed was marked
+      PAST_DUE in silence.
+
+      It belongs after the commit for the reason EVT-46 gives above: this
+      transaction holds the runtime's only connection on a 20s budget, and a
+      Postmark call inside it is how a committed write gets rolled back by a
+      third party being slow.
+    */
     this.logger.warn(
-      `Payment failed for user ${userOrg.userId} in org ${userOrg.orgId} – dunning email should be queued`,
+      `Payment failed for user ${userOrg.userId} in org ${userOrg.orgId} — marked past due`,
     );
   }
 

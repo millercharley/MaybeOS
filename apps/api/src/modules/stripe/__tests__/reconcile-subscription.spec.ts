@@ -4,6 +4,7 @@ import { StripeService } from '../stripe.service';
 import { TicketPassService } from '../../events/ticket-pass.service';
 import { PrismaService } from '../../../config/prisma.service';
 import { ConnectService } from '../connect.service';
+import { EmailService } from '../../email/email.service';
 
 /**
  * Reading a subscription back from Stripe (PLT-07).
@@ -50,6 +51,9 @@ describe('reconciling a membership against Stripe', () => {
         // Confirming a ticket to its buyer (EVT-46). After the webhook's
         // transaction, so these suites assert nothing about it.
         { provide: TicketPassService, useValue: { confirm: jest.fn() } },
+        // Telling a member their dues payment failed (PAY-12). After the
+        // webhook's transaction, so these suites assert nothing about it.
+        { provide: EmailService, useValue: { sendDunning: jest.fn() } },
         { provide: PrismaService, useValue: prisma },
         { provide: ConfigService, useValue: { get: () => 'sk_test_x' } },
         { provide: ConnectService, useValue: { recordTicketFromSession: jest.fn() } },
@@ -159,6 +163,7 @@ describe('the boot sweep', () => {
         // Confirming a ticket to its buyer (EVT-46). After the webhook's
         // transaction, so these suites assert nothing about it.
         { provide: TicketPassService, useValue: { confirm: jest.fn() } },
+        { provide: EmailService, useValue: { sendDunning: jest.fn() } },
         { provide: PrismaService, useValue: prisma },
         { provide: ConfigService, useValue: { get: () => 'sk_test_x' } },
         { provide: ConnectService, useValue: { recordTicketFromSession: jest.fn() } },

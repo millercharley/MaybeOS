@@ -4,6 +4,7 @@ import { BadRequestException } from '@nestjs/common';
 import { StripeService } from '../stripe.service';
 import { TicketPassService } from '../../events/ticket-pass.service';
 import { ConnectService } from '../connect.service';
+import { EmailService } from '../../email/email.service';
 import { PrismaService } from '../../../config/prisma.service';
 
 jest.mock('stripe', () => {
@@ -31,6 +32,9 @@ describe('StripeService', () => {
         // Confirming a ticket to its buyer (EVT-46). After the webhook's
         // transaction, so these suites assert nothing about it.
         { provide: TicketPassService, useValue: { confirm: jest.fn() } },
+        // Telling a member their dues payment failed (PAY-12). After the
+        // webhook's transaction, so these suites assert nothing about it.
+        { provide: EmailService, useValue: { sendDunning: jest.fn() } },
         // Ticket sales are recorded by ConnectService (D-013); these tests
         // cover membership dues and never reach that branch.
         { provide: ConnectService, useValue: { recordTicketFromSession: jest.fn() } },
