@@ -119,6 +119,55 @@ describe('hiding and deleting', () => {
       expect(prisma.event.delete).not.toHaveBeenCalled();
     });
 
+    /**
+     * Who did it, and when (EVT-62).
+     *
+     * Hiding was the one way an event could leave a co-op's sight and leave
+     * no trace. Twelve of MaybeItsFate's imported events turned up hidden —
+     * nine of one member's Improv Club nights, running into 2027 — and
+     * nothing in the database could say whether somebody had done it on
+     * purpose or the product had done it to them. A card asserted a bug for
+     * five days on that ambiguity alone, and the honest answer took a
+     * reading of `publishedAt` against the importer's own timestamps to
+     * guess at.
+     */
+    it('records who hid it', async () => {
+      await service.unpublish('org-1', 'e-1', organiser);
+
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: {
+          orgId: 'org-1',
+          actorId: 'an-admin',
+          action: 'event.hidden',
+          entityType: 'Event',
+          entityId: 'e-1',
+        },
+      });
+    });
+
+    it('still hides it when the record cannot be written', async () => {
+      /*
+        Best-effort, like every other side effect in this service: the event
+        is already hidden by the time this runs, and failing the request
+        would tell an organiser it had not been.
+      */
+      prisma.auditLog.create.mockRejectedValueOnce(new Error('audit is down'));
+
+      await expect(service.unpublish('org-1', 'e-1', organiser)).resolves.toEqual({
+        hidden: true,
+      });
+      expect(prisma.event.update).toHaveBeenCalled();
+    });
+
+    it('does not record a refusal as a hiding', async () => {
+      // The rule throws before the write; an audit row saying it happened
+      // would be worse than none.
+      prisma.event.findFirst.mockResolvedValue(null);
+
+      await expect(service.unpublish('org-1', 'e-1', organiser)).rejects.toThrow();
+      expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    });
+
     it('refuses an event in another co-op', async () => {
       prisma.event.findFirst.mockResolvedValue(null);
 

@@ -220,3 +220,64 @@ export function unambiguousNames(
   for (const [key, userId] of seen) if (userId) unique.set(key, userId);
   return unique;
 }
+
+/**
+ * Which Google recurring series an entry is an instance of (CAL-15).
+ *
+ * Google gives every instance of a recurring event an id of the form
+ * `«series»_«YYYYMMDDTHHMMSSZ»`, where the suffix is the instance's own start
+ * in basic UTC. MaybeOS stores each instance as its own `Event` row with no
+ * link between them, which is why moving a series to its real host meant
+ * moving forty rows one at a time — and why the rows the sync added next
+ * week arrived back under the account whose calendar was read.
+ *
+ * MaybeItsFate's 799 imported events are 547 one-offs and 252 instances of
+ * 18 series. Not one of the 547 ids contains an underscore, and the suffix
+ * is pinned to the exact shape above, so nothing is mistaken for a series
+ * that is not one.
+ *
+ * This reads the id rather than adding a column, deliberately: Google
+ * already decided which instances belong together, and a column would be a
+ * second answer to maintain and eventually to disagree.
+ */
+const SERIES_INSTANCE = /^(.+)_(\d{8}T\d{6}Z)$/;
+
+export function seriesRoot(googleEventId: string | null | undefined): string | null {
+  const found = (googleEventId ?? '').trim().match(SERIES_INSTANCE);
+  return found ? found[1] : null;
+}
+
+/**
+ * Whose event this is, on the way in (CAL-15).
+ *
+ * Three answers, in order:
+ *
+ *  1. **The address on this entry**, when it belongs to a member who is not
+ *     the account the calendar was read under. That is Google saying who
+ *     runs *this* evening, and it has to win — a series where one week is
+ *     covered by somebody else is a thing a co-op really does, and it is
+ *     expressible in Google by changing that one instance's organiser.
+ *  2. **The host MaybeOS already records for another instance of the same
+ *     series.** An organiser moved that series to its real host; the
+ *     instances the sync creates afterwards are the same series and the same
+ *     person. Without this, "Events keep arriving under your account faster
+ *     than they are moved" is the only possible outcome: 115 were moved on
+ *     11 November and 34 more on 13 November, and the total went up anyway.
+ *  3. **The address, whoever it resolved to** — which on a shared calendar
+ *     is the creator, the person who was at the keyboard (CAL-07). Last,
+ *     because it is the answer that caused all of this.
+ *
+ * Note what is *not* here: the host of another event with the same title.
+ * MaybeItsFate has three separate "Board Games Club" series, and "the same
+ * activity is run by the same person" is a claim about a co-op's habits
+ * rather than about its calendar — the same reason `titleNameKeys` refuses a
+ * bare prefix.
+ */
+export function importedHost(
+  matched: string | null,
+  inherited: string | null,
+  fallbackId: string | null,
+): string | null {
+  if (matched && matched !== fallbackId) return matched;
+  return inherited ?? matched;
+}

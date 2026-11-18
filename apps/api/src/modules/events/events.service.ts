@@ -2857,6 +2857,39 @@ export class EventsService {
       data: { isPublished: false },
     });
 
+    /*
+      Who hid it, and when (EVT-62).
+
+      Hiding was the one way an event could leave the co-op's sight and leave
+      no record at all. Twelve of MaybeItsFate's imported events turned up
+      hidden — nine of one member's Improv Club nights, running into 2027 —
+      and nothing could say whether a person had done it on purpose or the
+      product had done it to them. The card they were logged on asserted a
+      bug for five days on that ambiguity alone.
+
+      `publishedAt` is deliberately left where it is: it records when the
+      event first went live, which is still true. This row is what records
+      the hiding.
+    */
+    await this.prisma.auditLog
+      .create({
+        data: {
+          orgId,
+          actorId: actor.userId,
+          action: 'event.hidden',
+          entityType: 'Event',
+          entityId: eventId,
+        },
+      })
+      // Best-effort, like every other side effect here: the event is already
+      // hidden, and failing the request now would say it had not been.
+      .catch((err) =>
+        this.logger.warn(
+          `Hid event ${eventId} but could not record it: ` +
+            (err instanceof Error ? err.message : 'unknown error'),
+        ),
+      );
+
     return { hidden: true };
   }
 

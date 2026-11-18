@@ -7,8 +7,10 @@ import {
   hostFields,
   hostKey,
   hostLabel,
+  importedHost,
   personFor,
   nameKey,
+  seriesRoot,
   titleNameKeys,
   unambiguousNames,
 } from './past-host';
@@ -741,6 +743,77 @@ export class CalendarImportService {
   }
 
   /**
+   * The account an unattributed row lands on: the co-op's oldest organiser.
+   *
+   * Shared by the event and booking writers, which both have to be able to
+   * recognise it — it is the answer that means "nobody told us", so a rule
+   * that treats it as evidence puts the whole calendar on one person
+   * (SPC-25, CAL-07).
+   */
+  private async fallbackOwner(orgId: string): Promise<string | null> {
+    const fallback = await this.prisma.userOrg.findFirst({
+      where: { orgId, role: 'ADMIN' },
+      select: { userId: true },
+      orderBy: { memberSince: 'asc' },
+    });
+    return fallback?.userId ?? null;
+  }
+
+  /**
+   * Who already hosts each Google series in this batch (CAL-15).
+   *
+   * One query for the whole chunk, not one per series: the lesson of CAL-06,
+   * where forty chunks each re-read a whole calendar and wrote 274 rows
+   * before stopping in the same place twice.
+   *
+   * A series with two different hosts answers nothing and is dropped rather
+   * than guessed between — the same rule as `unambiguousNames`. In practice
+   * that case is a series an organiser has split on purpose, and an import
+   * is not the thing that should decide what they meant.
+   */
+  private async seriesHostsFor(
+    orgId: string,
+    entries: ImportedEntry[],
+    fallbackId: string | null,
+  ): Promise<Map<string, string>> {
+    const roots = [
+      ...new Set(
+        entries
+          .map((entry) => seriesRoot(entry.googleEventId))
+          .filter((root): root is string => root !== null),
+      ),
+    ];
+    if (roots.length === 0) return new Map();
+
+    const siblings = await this.prisma.event.findMany({
+      where: {
+        orgId,
+        hostId: { not: null },
+        // `startsWith root + '_'`, so one series is never read as the prefix
+        // of a longer one.
+        OR: roots.map((root) => ({ googleEventId: { startsWith: `${root}_` } })),
+      },
+      select: { googleEventId: true, hostId: true },
+    });
+
+    // null marks a root two members both hold.
+    const seen = new Map<string, string | null>();
+    for (const sibling of siblings) {
+      const root = seriesRoot(sibling.googleEventId);
+      // The fallback is not an answer, it is the absence of one.
+      if (!root || !sibling.hostId || sibling.hostId === fallbackId) continue;
+      seen.set(
+        root,
+        seen.has(root) && seen.get(root) !== sibling.hostId ? null : sibling.hostId,
+      );
+    }
+
+    const settled = new Map<string, string>();
+    for (const [root, hostId] of seen) if (hostId) settled.set(root, hostId);
+    return settled;
+  }
+
+  /**
    * Write the events, and survive the ones that will not go (CAL-04).
    *
    * The first import of MaybeItsFate's calendar stopped on a single row — a
@@ -759,9 +832,11 @@ export class CalendarImportService {
   ): Promise<number> {
     let written = 0;
 
-    // Two queries for the whole batch instead of two per entry (CAL-05).
+    // Queries for the whole batch instead of per entry (CAL-05).
     const hosts = await this.hostsFor(org.id, entries);
     const slugs = await this.slugsFor(org.id, entries);
+    const fallbackId = await this.fallbackOwner(org.id);
+    const seriesHosts = await this.seriesHostsFor(org.id, entries, fallbackId);
 
     for (const [index, entry] of entries.entries()) {
       /*
@@ -779,9 +854,25 @@ export class CalendarImportService {
       try {
       const person = entry.hostPerson ?? { email: null, name: null };
       const matched = person.email ? (hosts.get(person.email) ?? null) : null;
+
+      /*
+        The host this series already has, where the address does not say
+        (CAL-15).
+
+        Read on the way in, and used only by the `create` branch below. Not
+        on update, which would be CAL-14 again from the other direction: a
+        series host propagating over a single instance somebody deliberately
+        gave to whoever is covering that week.
+      */
+      const inherited = seriesHosts.get(seriesRoot(entry.googleEventId) ?? '') ?? null;
+
       // A host who is not a member still ran it (CAL-03). Their name goes on
       // the event; their address is kept to match them if they come back.
-      const host = hostFields(matched, person.email, person.name);
+      const host = hostFields(
+        importedHost(matched, inherited, fallbackId),
+        person.email,
+        person.name,
+      );
 
       await this.prisma.event.upsert({
         where: { orgId_googleEventId: { orgId: org.id, googleEventId: entry.googleEventId } },
@@ -876,12 +967,9 @@ export class CalendarImportService {
     entries: ImportedEntry[],
     outOfTime: () => boolean = () => false,
   ): Promise<number> {
-    const fallback = await this.prisma.userOrg.findFirst({
-      where: { orgId, role: 'ADMIN' },
-      select: { userId: true },
-      orderBy: { memberSince: 'asc' },
-    });
-    if (!fallback) return 0;
+    const fallbackId = await this.fallbackOwner(orgId);
+    if (!fallbackId) return 0;
+    const fallback = { userId: fallbackId };
 
     let written = 0;
 
