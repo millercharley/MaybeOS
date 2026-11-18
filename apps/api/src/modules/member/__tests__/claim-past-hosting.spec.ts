@@ -78,8 +78,26 @@ describe('claiming past hosting', () => {
 
     expect(prisma.booking.updateMany).toHaveBeenCalledWith({
       where: { bookedForEmail: 'sam@example.com', room: { orgId: 'org-1' } },
-      data: { userId: 'u-sam', bookedForEmail: null, bookedForName: null },
+      data: {
+        userId: 'u-sam',
+        isCoopHold: false,
+        bookedForEmail: null,
+        bookedForName: null,
+      },
     });
+  });
+
+  it('makes the reservation visible, not merely theirs (SPC-38)', async () => {
+    /*
+      `isCoopHold` was left alone here, so a rejoining member got the row in
+      the database and nothing in My Bookings — which is also what the room
+      picker reads. That is the half-corrected state SPC-35 was about,
+      arriving by a different door: handing somebody a booking they cannot
+      see is not handing it to them.
+    */
+    await service.claimPastHosting('org-1', 'u-sam', 'sam@example.com');
+
+    expect(prisma.booking.updateMany.mock.calls[0][0].data.isCoopHold).toBe(false);
   });
 
   it('clears the address as it goes, so a second run finds nothing', async () => {

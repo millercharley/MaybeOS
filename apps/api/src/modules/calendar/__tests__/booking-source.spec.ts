@@ -89,7 +89,10 @@ describe('the importer leaves a MaybeOS booking alone', () => {
   });
 
   it('does not move the owner of one of ours', () => {
-    expect(IMPORT).toMatch(/\.\.\.\(!ours && byTitle && byTitle !== fallback\.userId/);
+    // `byPerson` since SPC-38, which is `byGuestName ?? byTitle` — the same
+    // kind of evidence from one more place. The `!ours &&` this test exists
+    // for is untouched.
+    expect(IMPORT).toMatch(/\.\.\.\(!ours && byPerson && byPerson !== fallback\.userId/);
   });
 
   it('does not put anybody else’s name on one of ours', () => {

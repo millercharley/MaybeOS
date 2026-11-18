@@ -149,8 +149,31 @@ describe('the importer does not take a booking off its owner', () => {
     expect(SOURCE).not.toMatch(/nameKey\(entry\.title\)/);
   });
 
-  it('consults the title only when there is no guest line', () => {
-    // A guest line is stronger evidence and must still win.
-    expect(SOURCE).toMatch(/const byTitle = guest\s*\n?\s*\? null/);
+  it('lets a guest line win only when its address resolves (SPC-38)', () => {
+    /*
+      This used to pin `const byTitle = guest ? null` — a guest line stopped
+      the title being read at all, because it is the stronger signal.
+
+      It is stronger, and only when the address it carries belongs to a
+      member. 211 of MaybeItsFate's reservations carry a line naming a
+      current member under an address MaybeOS has never seen, so the address
+      resolved to nobody and the title naming the same person was never
+      consulted. The rule that survives is the ordering below; what was
+      wrong was treating an unresolvable line as evidence about anybody.
+    */
+    expect(SOURCE).toMatch(/const matched = guest \? \(byEmail \?\? byPerson\) : \(byPerson \?\? byEmail\);/);
+    expect(SOURCE).toMatch(/const byGuestName = guest \?/);
+  });
+
+  it('still keeps a creator’s address behind the title', () => {
+    /*
+      The other half of that ordering, and the reason it is not simply
+      "email, then name, then title". With no guest line the address on the
+      entry is the *creator* — the automation's account, identical on all
+      3,019 of MaybeItsFate's — so a title naming somebody has to beat it.
+      Flattening the precedence would hand the whole room calendar back to
+      one person, which is the SPC-25 incident.
+    */
+    expect(SOURCE).toMatch(/: \(byPerson \?\? byEmail\)/);
   });
 });

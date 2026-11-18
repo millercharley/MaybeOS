@@ -540,7 +540,15 @@ export class MemberService {
         }),
         this.prisma.booking.updateMany({
           where: { bookedForEmail: address, room: { orgId } },
-          data: { userId, bookedForEmail: null, bookedForName: null },
+          /*
+            `isCoopHold: false` is what makes this visible (SPC-38).
+            Without it the reservation became theirs in the database and
+            stayed out of My Bookings, which the room picker and the member's
+            own list both read — the same half-corrected state SPC-35 was
+            about. Handing somebody a booking they still cannot see is not
+            handing it to them.
+          */
+          data: { userId, isCoopHold: false, bookedForEmail: null, bookedForName: null },
         }),
       ]);
 

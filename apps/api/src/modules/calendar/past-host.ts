@@ -128,7 +128,7 @@ export function nameKey(name: string | null | undefined): string | null {
 }
 
 /**
- * The keys a reservation's title might be naming somebody by (SPC-35).
+ * The keys a reservation's title might be naming somebody by (SPC-35, SPC-38).
  *
  * `nameKey` keys the *whole* title, which only matches a calendar entry
  * called exactly "Avery Lanning". MaybeItsFate's rooms are mostly booked
@@ -140,22 +140,60 @@ export function nameKey(name: string | null | undefined): string | null {
  * Names in these comments are stand-ins; the real ones stay in the
  * database.
  *
- * Only the segment before a `·` or a `•` is tried, never a bare prefix of
- * the words. The separator is structure the co-op actually wrote; a prefix
- * is a guess, and "Sarah Jones Memorial Lecture" is not Sarah Jones's
- * booking. 149 of the 203 carry a separator, and the rest are left alone
- * rather than attributed on a hunch — the same under-claiming this file
- * already prefers.
+ * **Every segment, not only the first (SPC-38).** Keying the lead segment
+ * alone missed "Art Improv • Carolyn Dube • Attic", where the convention
+ * puts what it is first and who booked it second. The co-op wrote the
+ * separators either way; which slot the name landed in is not evidence of
+ * anything.
+ *
+ * **A spaced dash counts as a separator (SPC-38).** A bare hyphen is still
+ * refused, and for the reason this file originally gave — it lives inside
+ * plenty of real names, "Abbi Heimach-Snipes" among MaybeItsFate's own
+ * members. But a hyphenated surname has no spaces around its hyphen, so
+ * " - " is structure rather than spelling, and it is how eighteen of these
+ * were typed: "Iraj Rahmani - Meaningful Conversation".
+ *
+ * **"hold" is a label, not a guess**, the same class of evidence as the
+ * "Guest •" line in `booking-guest.ts`: a word whose whole job is to say
+ * that a room is being held, and for whom. MaybeItsFate writes it four ways
+ * — "HOLD for Andrea Parr", "Hold: Andrea Parr", "HOLD Christa Iwu • Zen
+ * Room" and "Jessica Mathis Hold" — so it is stripped from either end of a
+ * segment, and what is left still has to equal a member's name exactly.
+ * `\bhold\b`, so "Holden Reese" keeps his name.
+ *
+ * What is still refused is the bare prefix. The separator and the label are
+ * structure the co-op actually wrote; a prefix is a hunch, and "Sarah Jones
+ * Memorial Lecture" is not Sarah Jones's booking. 73 of MaybeItsFate's
+ * reservations name a member that way and are left alone — none of them is
+ * in the future, so nobody is locked out of a room by this caution.
  */
+const SEPARATED = /\s*[\u00b7\u2022]\s*|\s+[-\u2013\u2014]\s+/;
+const HOLD_BEFORE = /^hold\b\s*(?:for\b|:)?\s*/;
+const HOLD_AFTER = /\s+hold$/;
+
 export function titleNameKeys(title: string | null | undefined): string[] {
   const whole = nameKey(title);
   if (!whole) return [];
 
-  const keys = [whole];
-  // Split on the separator only. A hyphen is excluded deliberately: it lives
-  // inside plenty of real names.
-  const lead = nameKey(whole.split(/[\u00b7\u2022]/)[0]);
-  if (lead && lead !== whole) keys.push(lead);
+  const keys: string[] = [];
+  const add = (value: string | null | undefined) => {
+    const key = nameKey(value);
+    // A key with no letter in it is not anybody's name: a title of "• •"
+    // split into bullets and offered them as candidates. `\p{L}` rather than
+    // `a-z`, so an accented or non-Latin name still counts as one.
+    if (key && /\p{L}/u.test(key) && !keys.includes(key)) keys.push(key);
+  };
+
+  add(whole);
+
+  // Per segment, because the label and the separators are written together:
+  // "HOLD Christa Iwu • Zen Room" is the label on the first of two segments.
+  for (const segment of whole.split(SEPARATED)) {
+    add(segment);
+    const held = segment.replace(HOLD_BEFORE, '').replace(HOLD_AFTER, '');
+    if (held !== segment) add(held);
+  }
+
   return keys;
 }
 

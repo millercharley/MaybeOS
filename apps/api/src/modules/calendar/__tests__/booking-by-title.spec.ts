@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { nameKey, unambiguousNames } from '../past-host';
+import { nameKey, titleNameKeys, unambiguousNames } from '../past-host';
 
 /**
  * Whose reservation a hand-typed calendar entry is (SPC-34).
@@ -71,21 +71,32 @@ describe('what the importer does with it', () => {
   const src = readFileSync(join(__dirname, '..', 'calendar-import.service.ts'), 'utf8');
   const writeBookings = src.slice(src.indexOf('private async writeBookings'));
 
-  it('prefers the guest line, which is the stronger signal', () => {
+  it('reads the title whether or not there is a guest line (SPC-38)', () => {
     /*
-      The automation writes "Guest • Rosalind Pike (…)" and that names the
-      person outright. A title is a guess by comparison.
+      This used to pin `const byTitle = guest ? null : nameKey(entry.title)`,
+      and then the keyed version of the same expression. The reasoning was
+      that a guest line names the person outright and a title is a guess by
+      comparison.
 
-      This used to pin `const titleKey = guest ? null : nameKey(entry.title)`.
-      The title is now keyed several ways rather than one, because
-      MaybeItsFate books as "avery lanning · White Elephant · Attic" and a
-      whole-title key matched nobody (SPC-35) — so the expression moved. The
-      rule it protects did not: the title is consulted only when there is no
-      guest line, and the title still loses to nothing else.
+      True of a guest line whose address resolves. 211 of MaybeItsFate's
+      reservations carry one naming a current member under an address MaybeOS
+      has never seen — a personal account given to the booking tool instead
+      of the one they joined with — so the address resolved to nobody, and
+      because the line existed the title naming the very same person was
+      never read. One member's standing Salon booking runs to 2028 that way.
+
+      The precedence is what carries the old rule now: a guest *address* that
+      resolves still beats everything.
     */
-    expect(writeBookings).toMatch(/const byTitle = guest\s*\n?\s*\? null/);
     expect(writeBookings).toMatch(/titleNameKeys\(entry\.title\)/);
-    expect(writeBookings).toMatch(/const matched = byTitle \?\? byEmail/);
+    expect(writeBookings).not.toMatch(/const byTitle = guest\s*\n?\s*\? null/);
+    expect(writeBookings).toMatch(/const matched = guest \? \(byEmail \?\? byPerson\) : \(byPerson \?\? byEmail\);/);
+  });
+
+  it('matches the name on the guest line the same way a title’s is', () => {
+    // Against members whose name belongs to exactly one of them — never a
+    // bare address, which is what `byEmail` already is.
+    expect(writeBookings).toMatch(/const byGuestName = guest \? \(byName\.get\(nameKey\(guest\.name\) \?\? ''\)/);
   });
 
   it('counts a matched title as naming somebody', () => {
@@ -106,14 +117,94 @@ describe('what the importer does with it', () => {
     // moved by the import, however the calendar entry is titled. The
     // correction this guards is for imported rows, which is all it ever
     // meant.
+    //
+    // `byPerson` since SPC-38 — `byGuestName ?? byTitle`, a name from either
+    // place. Deliberately not an address: one that resolves on one pass and
+    // not the next is how SPC-35 took four reservations off the member who
+    // made them.
     expect(writeBookings).toMatch(
-      /\.\.\.\(!ours && byTitle && byTitle !== fallback\.userId \? \{ userId: byTitle \} : \{\}\)/,
+      /\.\.\.\(!ours && byPerson && byPerson !== fallback\.userId \? \{ userId: byPerson \} : \{\}\)/,
     );
   });
 
-  it('will not hand a reservation to the fallback organiser by title', () => {
+  it('will not hand a reservation to the fallback organiser by name', () => {
     // That is the state being corrected; re-applying it would be a no-op at
     // best and would undo a real correction at worst.
-    expect(writeBookings).toMatch(/byTitle !== fallback\.userId/);
+    expect(writeBookings).toMatch(/byPerson !== fallback\.userId/);
+  });
+});
+
+/**
+ * The shapes MaybeItsFate's rooms were actually booked under (SPC-38).
+ *
+ * Every title below is the shape of a real reservation, counted against
+ * production on 18 November; the names are stand-ins, as everywhere else in
+ * this file. The point of keeping them is that each one was a co-op hold
+ * nobody could see, and each failed for a different reason.
+ */
+describe('reading a name out of the shapes a co-op actually types', () => {
+  const key = 'avery lanning';
+
+  it('takes the name wherever the separators put it', () => {
+    // "Art Improv • Carolyn Dube • Attic" — what it is first, who booked it
+    // second. Keying the lead segment alone matched nobody here.
+    expect(titleNameKeys('Art Improv • Avery Lanning • Attic')).toContain(key);
+    expect(titleNameKeys('Avery Lanning • 3rd Floor Attic')).toContain(key);
+    expect(titleNameKeys('avery lanning · White Elephant · Attic')).toContain(key);
+  });
+
+  it('treats a spaced dash as a separator', () => {
+    expect(titleNameKeys('Avery Lanning - Meaningful Conversation')).toContain(key);
+    expect(titleNameKeys('Avery Lanning – Dog Sees God')).toContain(key);
+  });
+
+  it('does not split a hyphenated surname', () => {
+    /*
+      The reason the original refused hyphens outright, and a real member:
+      "Abbi Heimach-Snipes". A hyphen inside a name has no spaces around it,
+      which is the whole distinction " - " rests on — so the name survives
+      whole and the halves are never offered as keys.
+    */
+    expect(titleNameKeys('Abbi Heimach-Snipes')).toEqual(['abbi heimach-snipes']);
+    expect(titleNameKeys('Abbi Heimach-Snipes • Attic')).toContain('abbi heimach-snipes');
+    expect(titleNameKeys('Abbi Heimach-Snipes')).not.toContain('abbi heimach');
+  });
+
+  it('reads the label a hold is written under, all four ways', () => {
+    // The co-op writes it with a preposition, with a colon, with neither,
+    // and after the name.
+    expect(titleNameKeys('HOLD for Avery Lanning')).toContain(key);
+    expect(titleNameKeys('Hold: Avery Lanning')).toContain(key);
+    expect(titleNameKeys('HOLD Avery Lanning • Zen Room')).toContain(key);
+    expect(titleNameKeys('Avery Lanning Hold')).toContain(key);
+  });
+
+  it('does not take “hold” out of a name that begins with it', () => {
+    // `\bhold\b`, so Holden keeps his.
+    expect(titleNameKeys('Holden Reese')).toEqual(['holden reese']);
+  });
+
+  it('still refuses a bare prefix', () => {
+    /*
+      The caution this file was built on, and it is still right: 73 of
+      MaybeItsFate's reservations name a member this way and stay the
+      co-op's. "Sarah Jones Memorial Lecture" is not Sarah Jones's booking,
+      and a programme series names its performer, not whoever booked the
+      room. None of the 73 is in the future, so nobody is shut out of a room
+      by leaving them alone.
+    */
+    expect(titleNameKeys('Avery Lanning Workshop')).not.toContain(key);
+    expect(titleNameKeys('Avery Lanning Yoga')).not.toContain(key);
+    // Two people named and no way to tell whose it is.
+    expect(titleNameKeys('HOLD for Avery Lanning and Rosalind Pike')).not.toContain(key);
+    expect(titleNameKeys('Music in the Attic: Avery Lanning')).not.toContain(key);
+  });
+
+  it('offers no key twice, and none for nothing', () => {
+    // The caller maps every key against a member lookup, so a duplicate is
+    // only waste — but a title that is one segment produced it every time.
+    expect(titleNameKeys('Avery Lanning')).toEqual([key]);
+    expect(titleNameKeys('  •  ')).toEqual([]);
+    expect(titleNameKeys(null)).toEqual([]);
   });
 });

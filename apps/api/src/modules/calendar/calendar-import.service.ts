@@ -8,6 +8,7 @@ import {
   hostKey,
   hostLabel,
   personFor,
+  nameKey,
   titleNameKeys,
   unambiguousNames,
 } from './past-host';
@@ -961,12 +962,46 @@ export class CalendarImportService {
 
       // Guest line first, then the title, then whoever's address is on it.
       const guest = guests.get(entry.googleEventId);
-      const byTitle = guest
-        ? null
-        : (titleNameKeys(entry.title)
-            .map((key) => byName.get(key) ?? null)
-            .find(Boolean) ?? null);
-      const matched = byTitle ?? byEmail;
+      const byTitle =
+        titleNameKeys(entry.title)
+          .map((key) => byName.get(key) ?? null)
+          .find(Boolean) ?? null;
+
+      /*
+        The *name* on the guest line, when its address resolves to nobody
+        (SPC-38).
+
+        A guest line used to stop the title being read at all, on the
+        reasoning that it is the stronger signal. It is — but only when the
+        address it carries belongs to a member. 211 of MaybeItsFate's
+        reservations carry a line naming somebody who is a member here
+        under an address MaybeOS has never seen: a personal account, where
+        the booking tool asked for an email and the member gave a different
+        one from the one they joined with. The address resolved to nobody,
+        and because the line existed, the title naming the very same person
+        was never consulted. One member's standing Salon booking runs to
+        2028 that way — dozens of evenings, every one of them titled with
+        her name, in nobody's My Bookings.
+
+        So an unresolvable guest line is now weaker than the name written
+        beside it, rather than stronger than everything. The name is matched
+        the same way a title's is: against members whose name belongs to
+        exactly one of them.
+
+        It also corroborates: on all 211 the guest name and the title named
+        the same member, and on none of them did the two disagree.
+      */
+      const byGuestName = guest ? (byName.get(nameKey(guest.name) ?? '') ?? null) : null;
+
+      /*
+        Evidence that names a *person*, as opposed to an address that
+        resolves to whoever keeps the calendar. The distinction matters
+        below: a creator's address is the automation's account on every
+        entry, so a title has to beat it, while a guest's address is the one
+        thing stronger than a name.
+      */
+      const byPerson = byGuestName ?? byTitle;
+      const matched = guest ? (byEmail ?? byPerson) : (byPerson ?? byEmail);
       // `userId` is required, so an unmatched reservation still has to be
       // filed under somebody — but it no longer *claims* to be theirs.
       const userId = matched ?? fallback.userId;
@@ -1080,8 +1115,15 @@ export class CalendarImportService {
               had been handed stayed theirs. But a row the importer got wrong
               before it could read titles would then stay wrong for ever — so
               a title that now names a member moves it, and nothing else does.
+
+              `byPerson` rather than `byTitle` since SPC-38: the guest line's
+              name is the same kind of evidence and corrects the same rows.
+              Still only a name — an address is deliberately not allowed to
+              move an existing row, because an address that resolves on one
+              pass and not the next is exactly how SPC-35 took four
+              reservations off the member who made them.
             */
-            ...(!ours && byTitle && byTitle !== fallback.userId ? { userId: byTitle } : {}),
+            ...(!ours && byPerson && byPerson !== fallback.userId ? { userId: byPerson } : {}),
           },
         });
       } else {
