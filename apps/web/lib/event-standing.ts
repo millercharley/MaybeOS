@@ -57,9 +57,15 @@ export const STANDING_LABEL: Record<Standing, string> = {
  * Deliberately not red: nothing has gone wrong. A co-op tidying duplicates
  * out of its own calendar is housekeeping, and an alarming badge on forty
  * cards would teach an organiser to stop reading badges.
+ *
+ * `amber-100` rather than the `amber-50` this shipped with for ten minutes.
+ * The cards sit on MaybeOS's cream, and amber-50 vanished into it — so the
+ * one badge that wants attention rendered as bare text while Published kept
+ * a visible green pill beside it. Caught by looking at it, which the tests
+ * could not have told me.
  */
 export const STANDING_TONE: Record<Standing, string> = {
-  orphaned: 'bg-amber-50 text-amber-800',
+  orphaned: 'bg-amber-100 text-amber-800',
   cancelled: 'bg-gray-100 text-gray-600',
   published: 'bg-green-50 text-green-700',
   draft: 'bg-gray-100 text-gray-600',
