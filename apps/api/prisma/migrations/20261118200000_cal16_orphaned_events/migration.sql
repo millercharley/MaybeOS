@@ -1,0 +1,30 @@
+-- CAL-16: an event whose Google entry was deleted says so, to the admin.
+--
+-- Charley, 2026-11-18: "If an event gets cancelled in the Google Calendar,
+-- after the sync, if the event was already present in MaybeOS, provide a tag
+-- that the admin can see to understand this is an orphaned event that was
+-- cancelled in the google calendar. The admin can hide or delete the event in
+-- MaybeOS or restore the event in Google Calendar."
+--
+-- A single import pass on 14 November at 01:30:46 cancelled 40 future events —
+-- all of "Board Games Club" and "MaybeItsFate Community Potluck", out to 2028.
+-- That was correct: Charley had deleted both recurring series in Google
+-- because they were duplicates there, and the sync faithfully followed. But
+-- `canceledAt` is written by the sync and by a person in MaybeOS alike, with
+-- nothing recording which, so the admin console showed forty ordinary-looking
+-- published cards and no way to tell they were leftovers.
+--
+-- `canceledAt` says cancelled. This says *why*, and it is the only thing that
+-- distinguishes a calendar deletion upstream from a decision taken here.
+--
+-- Nullable and absent by default, so every event that already exists is
+-- unmarked rather than retroactively called an orphan. The 40 above are left
+-- unmarked too: nothing in the database can now prove which of the existing
+-- cancellations came from Google, and inventing the answer for them would put
+-- a wrong word on an admin's screen.
+--
+-- Cleared again by the import's own upsert when the entry comes back, which is
+-- what makes "restore the event in Google Calendar" work with no further
+-- action in MaybeOS — the same reversibility `canceledAt` already has (CAL-12).
+
+ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "orphanedAt" TIMESTAMP(3);

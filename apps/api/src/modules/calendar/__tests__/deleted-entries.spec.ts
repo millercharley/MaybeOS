@@ -82,9 +82,17 @@ describe('the request that asks for them', () => {
   });
 
   it('keeps the event, marking it cancelled rather than deleting it', () => {
-    // People may have RSVPed. A co-op's record of what it ran should not
-    // vanish because a calendar row did.
-    expect(source).toMatch(/prisma\.event\.updateMany\(\{[\s\S]{0,200}canceledAt: new Date\(\)/);
+    /*
+      People may have RSVPed. A co-op's record of what it ran should not
+      vanish because a calendar row did.
+
+      This used to pin `canceledAt: new Date()` inline. CAL-16 lifted the
+      instant into a `now` shared with `orphanedAt`, so the two columns
+      describing one event cannot disagree by a millisecond. The rule being
+      guarded is unchanged: `updateMany` on events, not `delete`.
+    */
+    expect(source).toMatch(/prisma\.event\.updateMany\(\{[\s\S]{0,240}canceledAt: now/);
+    expect(source).not.toMatch(/prisma\.event\.deleteMany/);
   });
 
   it('tells the admin when something was let go', () => {

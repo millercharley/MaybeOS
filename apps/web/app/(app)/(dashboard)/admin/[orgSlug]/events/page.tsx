@@ -16,6 +16,13 @@ import { TransferEvents } from '@/components/events/transfer-events';
 import { EventTabs } from '@/components/events/event-tabs';
 import { emptyNote, searchEvents, splitEvents, type EventTab } from '@/lib/event-tabs';
 import { SHARE_LABEL, shareability, shouldOfferAfterPublish } from '@/lib/event-sharing';
+import {
+  STANDING_LABEL,
+  STANDING_TONE,
+  orphanedAmong,
+  orphanedNote,
+  standingOf,
+} from '@/lib/event-standing';
 import { PageHeader } from '@/components/layout/page-header';
 import { useReveal } from '@/hooks/use-reveal';
 
@@ -394,6 +401,23 @@ export default function EventsPage() {
         </label>
       </div>
 
+      {/*
+        Left over from a Google deletion, said once (CAL-16).
+
+        On the note rather than on each card, because the thing it explains
+        happens to a whole recurring series at a time: forty identical
+        paragraphs is forty chances to stop reading. Each card still carries
+        the tag, so which ones is never a guess.
+
+        On a card, like everything else that is not the page headline
+        (DESIGN §2a).
+      */}
+      {orphanedNote(orphanedAmong(filtered)) && (
+        <div className="card border-l-4 border-amber-400 bg-amber-50/40">
+          <p className="text-sm text-ink">{orphanedNote(orphanedAmong(filtered))}</p>
+        </div>
+      )}
+
       {filtered.length === 0 && (
         <p className="text-sm text-gray-500">
           {draftsOnly && !search.trim()
@@ -432,14 +456,21 @@ export default function EventsPage() {
             >
               <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                 <h3 className="text-base font-semibold text-gray-900">{event.title}</h3>
+                {/*
+                  One badge, four states (CAL-16).
+
+                  This read `isPublished ? 'Published' : 'Draft'`, so a
+                  cancelled event was indistinguishable from a live one and an
+                  event deleted in Google was indistinguishable from one
+                  somebody here called off. `standingOf` decides, so the words
+                  and their order live in one tested place.
+                */}
                 <span
                   className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                    event.isPublished
-                      ? 'bg-green-50 text-green-700'
-                      : 'bg-gray-100 text-gray-600'
+                    STANDING_TONE[standingOf(event)]
                   }`}
                 >
-                  {event.isPublished ? 'Published' : 'Draft'}
+                  {STANDING_LABEL[standingOf(event)]}
                 </span>
               </div>
 

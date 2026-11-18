@@ -1104,6 +1104,20 @@ model Event {
   isPublished         Boolean         @default(false)
   publishedAt         DateTime?
   canceledAt          DateTime?
+  /// Cancelled because its Google entry was deleted, not by anybody here
+  /// (CAL-16).
+  ///
+  /// `canceledAt` is written by the sync and by a person in MaybeOS alike,
+  /// with nothing saying which. One import pass cancelled 40 future events in
+  /// a single statement — two whole recurring series that had been deleted in
+  /// Google as duplicates — and the admin console showed forty
+  /// ordinary-looking cards with no way to tell they were leftovers.
+  ///
+  /// So this is the *reason*, and it is only ever set by the importer. The
+  /// importer's own upsert clears it again if the entry comes back, which is
+  /// what makes "put it back in Google" a complete fix with nothing to do
+  /// here (CAL-12).
+  orphanedAt          DateTime?
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
 

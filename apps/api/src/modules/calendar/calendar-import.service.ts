@@ -605,13 +605,26 @@ export class CalendarImportService {
    * it and a co-op's record of what it ran should not disappear because a
    * calendar row did. The import's own update clears `canceledAt` again if the
    * entry comes back, so this is reversible by the thing that caused it.
+   *
+   * **And it says who did it (CAL-16).** `canceledAt` alone is written here
+   * and by a person in MaybeOS alike. One pass through this method cancelled
+   * 40 future events in a single statement — two recurring series deleted in
+   * Google as duplicates — and the admin console had no way to tell those
+   * forty cards from events somebody had called off on purpose.
+   *
+   * `orphanedAt` is set only here, so it means exactly one thing: MaybeOS is
+   * holding an event that no longer exists upstream. Nothing notifies anybody
+   * — Charley, 2026-11-18, on these same 40: "Do not tell any members." The
+   * remedy is an admin reading the tag and deciding, not mail to people whose
+   * evening was a duplicate of another one.
    */
   private async cancelEvents(orgId: string, googleEventIds: string[]): Promise<number> {
     if (googleEventIds.length === 0) return 0;
 
+    const now = new Date();
     const { count } = await this.prisma.event.updateMany({
       where: { orgId, googleEventId: { in: googleEventIds }, canceledAt: null },
-      data: { canceledAt: new Date() },
+      data: { canceledAt: now, orphanedAt: now },
     });
 
     if (count > 0) {
@@ -900,6 +913,16 @@ export class CalendarImportService {
           startTime: entry.start,
           endTime: entry.end,
           canceledAt: null,
+          /*
+            Back in Google, so no longer an orphan (CAL-16).
+
+            Cleared beside `canceledAt` and for the same reason: an admin
+            told to "put it back in Google Calendar" should not then have to
+            come here and clear a tag by hand. Unconditional, like the line
+            above it — an event present in the feed is not orphaned,
+            whatever it was last time.
+          */
+          orphanedAt: null,
           /*
             The host is not written here at all (CAL-14).
 

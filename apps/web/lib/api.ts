@@ -4690,6 +4690,17 @@ export interface Event {
   /** Whether the host has stopped selling for now (EVT-41). */
   ticketSalesPaused?: boolean;
   isPublished: boolean;
+  /** When the event was called off, by anybody or anything (EVT-30). */
+  canceledAt?: string | null;
+  /**
+   * When the sync found its Google entry gone (CAL-16).
+   *
+   * Only ever set by the calendar import, so it means one thing: MaybeOS is
+   * holding an event that no longer exists upstream. `canceledAt` says
+   * cancelled; this says the cancelling happened in Google rather than here,
+   * which is the difference an organiser needs to act on.
+   */
+  orphanedAt?: string | null;
   /** CONFIRMED RSVPs only — cancelled and waitlisted are not attendees. */
   rsvpCount?: number;
   /**
