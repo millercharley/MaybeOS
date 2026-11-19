@@ -144,7 +144,10 @@ describe('CommonsService — member channels, sections and invitations', () => {
         .mockResolvedValue(null); // the slug is free
 
       await expect(
-        service.updateChannel(ORG, 'c1', { name: 'Cycling club' }, MEMBER, 'MEMBER'),
+        service.updateChannel(
+        ORG,
+        'c1',
+        { isStaff: true }, { name: 'Cycling club' }, MEMBER, 'MEMBER'),
       ).resolves.toMatchObject({ name: 'Cycling club' });
     });
 
@@ -152,7 +155,10 @@ describe('CommonsService — member channels, sections and invitations', () => {
       channelBy(MEMBER);
 
       await expect(
-        service.updateChannel(ORG, 'c1', { name: 'Mine now' }, OTHER_MEMBER, 'MEMBER'),
+        service.updateChannel(
+        ORG,
+        'c1',
+        { isStaff: true }, { name: 'Mine now' }, OTHER_MEMBER, 'MEMBER'),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -162,14 +168,20 @@ describe('CommonsService — member channels, sections and invitations', () => {
         .mockResolvedValue(null);
 
       await expect(
-        service.updateChannel(ORG, 'c1', { emoji: '🚲' }, ADMIN, 'ADMIN'),
+        service.updateChannel(
+        ORG,
+        'c1',
+        { isStaff: true }, { emoji: '🚲' }, ADMIN, 'ADMIN'),
       ).resolves.toMatchObject({ emoji: '🚲' });
     });
 
     it('clears the emoji when given an empty string, the same as null', async () => {
       channelBy(ADMIN);
 
-      const updated = await service.updateChannel(ORG, 'c1', { emoji: '' }, ADMIN, 'ADMIN');
+      const updated = await service.updateChannel(
+        ORG,
+        'c1',
+        { isStaff: true }, { emoji: '' }, ADMIN, 'ADMIN');
 
       expect(updated.emoji).toBeNull();
     });
@@ -179,7 +191,10 @@ describe('CommonsService — member channels, sections and invitations', () => {
       prisma.channelSection.findFirst.mockResolvedValue(null); // not in this org
 
       await expect(
-        service.updateChannel(ORG, 'c1', { sectionId: 'section-elsewhere' }, ADMIN, 'ADMIN'),
+        service.updateChannel(
+        ORG,
+        'c1',
+        { isStaff: true }, { sectionId: 'section-elsewhere' }, ADMIN, 'ADMIN'),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -216,7 +231,7 @@ describe('CommonsService — member channels, sections and invitations', () => {
     });
 
     it('sends one message per member, from the person inviting', async () => {
-      const result = await service.inviteToChannel(ORG, 'c1', MEMBER, [OTHER_MEMBER, 'member-3']);
+      const result = await service.inviteToChannel(ORG, 'c1', MEMBER, [OTHER_MEMBER, 'member-3'], { isStaff: true });
 
       expect(result).toEqual({ invited: 2, channelId: 'c1' });
       const { data } = (prisma.directMessage.createMany as jest.Mock).mock.calls[0][0];
@@ -226,13 +241,13 @@ describe('CommonsService — member channels, sections and invitations', () => {
     });
 
     it('drops the inviter from their own invitation list', async () => {
-      const result = await service.inviteToChannel(ORG, 'c1', MEMBER, [MEMBER, OTHER_MEMBER]);
+      const result = await service.inviteToChannel(ORG, 'c1', MEMBER, [MEMBER, OTHER_MEMBER], { isStaff: true });
 
       expect(result.invited).toBe(1);
     });
 
     it('refuses an invitation addressed only to yourself', async () => {
-      await expect(service.inviteToChannel(ORG, 'c1', MEMBER, [MEMBER])).rejects.toThrow(
+      await expect(service.inviteToChannel(ORG, 'c1', MEMBER, [MEMBER], { isStaff: true })).rejects.toThrow(
         BadRequestException,
       );
     });
@@ -243,7 +258,7 @@ describe('CommonsService — member channels, sections and invitations', () => {
       prisma.userOrg.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.inviteToChannel(ORG, 'c1', MEMBER, ['stranger']),
+        service.inviteToChannel(ORG, 'c1', MEMBER, ['stranger'], { isStaff: true }),
       ).rejects.toThrow(NotFoundException);
       expect(prisma.directMessage.createMany).not.toHaveBeenCalled();
     });
@@ -256,7 +271,7 @@ describe('CommonsService — member channels, sections and invitations', () => {
         emoji: null,
       } as never);
 
-      await service.inviteToChannel(ORG, 'c1', MEMBER, [OTHER_MEMBER]);
+      await service.inviteToChannel(ORG, 'c1', MEMBER, [OTHER_MEMBER], { isStaff: true });
 
       const { data } = (prisma.directMessage.createMany as jest.Mock).mock.calls[0][0];
       expect(data[0].body).not.toContain('<img');
@@ -264,7 +279,7 @@ describe('CommonsService — member channels, sections and invitations', () => {
     });
 
     it('escapes the note as well as the name', async () => {
-      await service.inviteToChannel(ORG, 'c1', MEMBER, [OTHER_MEMBER], '<script>bad()</script>');
+      await service.inviteToChannel(ORG, 'c1', MEMBER, [OTHER_MEMBER], { isStaff: true }, '<script>bad()</script>');
 
       const { data } = (prisma.directMessage.createMany as jest.Mock).mock.calls[0][0];
       expect(data[0].body).not.toContain('<script>');
@@ -281,7 +296,7 @@ describe('CommonsService — member channels, sections and invitations', () => {
       prisma.channel.findFirst.mockResolvedValue({ id: 'c1' } as never);
       (prisma.$transaction as jest.Mock).mockResolvedValue([[{ id: 'p1' }], 41]);
 
-      const page = await service.listPosts(ORG, 'c1', 1, 20);
+      const page = await service.listPosts(ORG, 'c1', 1, 20, { isStaff: true });
 
       expect(page.meta).toEqual({ page: 1, perPage: 20, total: 41, totalPages: 3 });
       expect(page.data).toHaveLength(1);

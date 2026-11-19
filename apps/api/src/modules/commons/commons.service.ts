@@ -22,6 +22,11 @@ import { groupReactions, isAllowedReaction } from './reactions';
 import { EmailService } from '../email/email.service';
 import { ConfigService } from '@nestjs/config';
 import { THREAD_CHANNELS, excerptOf, whoHearsAboutReply } from './thread-policy';
+import {
+  type Viewer,
+  visibleChannelRelation,
+  visibleChannelWhere,
+} from './channel-visibility';
 
 const AUTHOR_SELECT = { id: true, name: true, avatarUrl: true, avatarPath: true } as const;
 
@@ -62,33 +67,49 @@ export class CommonsService {
   // somewhere in the system. Same choice as SpaceOS bookings (SPC-02),
   // ImpactOS surveys (IMP-01) and D-009.
 
-  private async findChannelInOrg(orgId: string, channelId: string) {
+  /*
+    A private channel is invisible, not forbidden (CMN-30).
+
+    The visibility clause goes into these four finders rather than into
+    their seventeen callers, for the same reason the org clause did: a rule
+    enforced in one place is a rule, and a rule enforced in seventeen is a
+    rule with sixteen chances to be forgotten. Everything that reads or
+    writes a channel, a post, a comment or a proposal comes through here.
+
+    And it raises NotFound, which the comment above already explains: a 403
+    on a channel a member may not see would confirm that it exists, which
+    is most of what is being kept from them.
+  */
+  private async findChannelInOrg(orgId: string, channelId: string, viewer: Viewer) {
     const channel = await this.prisma.channel.findFirst({
-      where: { id: channelId, orgId },
+      where: { id: channelId, orgId, ...visibleChannelWhere(viewer) },
     });
     if (!channel) throw new NotFoundException('Channel not found');
     return channel;
   }
 
-  private async findPostInOrg(orgId: string, postId: string) {
+  private async findPostInOrg(orgId: string, postId: string, viewer: Viewer) {
     const post = await this.prisma.post.findFirst({
-      where: { id: postId, channel: { orgId } },
+      where: { id: postId, channel: { orgId, ...visibleChannelRelation(viewer) } },
     });
     if (!post) throw new NotFoundException('Post not found');
     return post;
   }
 
-  private async findCommentInOrg(orgId: string, commentId: string) {
+  private async findCommentInOrg(orgId: string, commentId: string, viewer: Viewer) {
     const comment = await this.prisma.comment.findFirst({
-      where: { id: commentId, post: { channel: { orgId } } },
+      where: {
+        id: commentId,
+        post: { channel: { orgId, ...visibleChannelRelation(viewer) } },
+      },
     });
     if (!comment) throw new NotFoundException('Comment not found');
     return comment;
   }
 
-  private async findProposalInOrg(orgId: string, proposalId: string) {
+  private async findProposalInOrg(orgId: string, proposalId: string, viewer: Viewer) {
     const proposal = await this.prisma.proposal.findFirst({
-      where: { id: proposalId, channel: { orgId } },
+      where: { id: proposalId, channel: { orgId, ...visibleChannelRelation(viewer) } },
     });
     if (!proposal) throw new NotFoundException('Proposal not found');
     return proposal;
@@ -261,9 +282,13 @@ export class CommonsService {
     );
   }
 
-  async listChannels(orgId: string) {
+  async listChannels(orgId: string, viewer: Viewer) {
     return this.prisma.channel.findMany({
-      where: { orgId },
+      // A private channel is not in the list a member sees (CMN-30). This is
+      // the leak that mattered most: the sidebar named every channel in the
+      // co-op, so even with its posts locked away the *existence* of
+      // "#safeguarding" or "#complaint-about-dave" was public.
+      where: { orgId, ...visibleChannelWhere(viewer) },
       // Position first, creation date as the tie-break — so a co-op that has
       // never reordered anything keeps exactly the order it had (CMN-10).
       orderBy: [{ isPinned: 'desc' }, { position: 'asc' }, { createdAt: 'asc' }],
@@ -271,8 +296,13 @@ export class CommonsService {
     });
   }
 
-  async pinChannel(orgId: string, channelId: string, isPinned: boolean) {
-    await this.findChannelInOrg(orgId, channelId);
+  async pinChannel(
+    orgId: string,
+    channelId: string,
+    isPinned: boolean,
+    viewer: Viewer,
+  ) {
+    await this.findChannelInOrg(orgId, channelId, viewer);
 
     return this.prisma.channel.update({
       where: { id: channelId },
@@ -292,6 +322,7 @@ export class CommonsService {
   async updateChannel(
     orgId: string,
     channelId: string,
+    viewer: Viewer,
     dto: {
       name?: string;
       description?: string | null;
@@ -302,7 +333,7 @@ export class CommonsService {
     userId?: string,
     role?: string,
   ) {
-    const channel = await this.findChannelInOrg(orgId, channelId);
+    const channel = await this.findChannelInOrg(orgId, channelId, viewer);
     this.assertMayEditChannel(channel, userId, role);
     await this.assertSectionInOrg(orgId, dto.sectionId);
 
@@ -347,7 +378,10 @@ export class CommonsService {
       ),
     );
 
-    return this.listChannels(orgId);
+    // Reordering is ADMIN-only, so the list it answers with is an
+    // organiser's — which is also the only way they would see a private
+    // channel they had just moved (CMN-30).
+    return this.listChannels(orgId, { isStaff: true });
   }
 
   /**
@@ -363,8 +397,12 @@ export class CommonsService {
    * where anything without a home goes; deleting it leaves the Commons with no
    * floor to stand on.
    */
-  async deleteChannel(orgId: string, channelId: string) {
-    const channel = await this.findChannelInOrg(orgId, channelId);
+  async deleteChannel(
+    orgId: string,
+    channelId: string,
+    viewer: Viewer,
+  ) {
+    const channel = await this.findChannelInOrg(orgId, channelId, viewer);
 
     if (channel.isDefault) {
       throw new BadRequestException(
@@ -513,9 +551,10 @@ export class CommonsService {
     channelId: string,
     inviterId: string,
     userIds: string[],
+    viewer: Viewer,
     note?: string,
   ) {
-    const channel = await this.findChannelInOrg(orgId, channelId);
+    const channel = await this.findChannelInOrg(orgId, channelId, viewer);
 
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
@@ -551,10 +590,16 @@ export class CommonsService {
 
   // ─── Posts ──────────────────────────────────────────────────
 
-  async createPost(orgId: string, channelId: string, authorId: string, dto: CreatePostDto) {
+  async createPost(
+    orgId: string,
+    channelId: string,
+    authorId: string,
+    dto: CreatePostDto,
+    viewer: Viewer,
+  ) {
     // Previously unchecked entirely: this would happily write a post into
     // another co-op's channel.
-    await this.findChannelInOrg(orgId, channelId);
+    await this.findChannelInOrg(orgId, channelId, viewer);
 
     return this.prisma.post.create({
       data: {
@@ -572,9 +617,10 @@ export class CommonsService {
     channelId: string,
     page: number,
     perPage: number,
+    viewer: Viewer,
     viewerId?: string,
   ) {
-    await this.findChannelInOrg(orgId, channelId);
+    await this.findChannelInOrg(orgId, channelId, viewer);
 
     const skip = (page - 1) * perPage;
 
@@ -680,9 +726,12 @@ export class CommonsService {
    * (CMN-18) — a pill that cannot tell you whether you already pressed it is
    * a pill people press twice.
    */
-  async getPost(orgId: string, postId: string, viewerId?: string) {
+  async getPost(orgId: string, postId: string, viewer: Viewer, viewerId?: string) {
     const post = await this.prisma.post.findFirst({
-      where: { id: postId, channel: { orgId } },
+      // Not through `findPostInOrg`, because this read carries its own
+      // includes — so the visibility clause has to be repeated here, and a
+      // guard test checks that it is (CMN-30).
+      where: { id: postId, channel: { orgId, ...visibleChannelRelation(viewer) } },
       include: {
         author: { select: AUTHOR_SELECT },
         comments: {
@@ -732,9 +781,10 @@ export class CommonsService {
     postId: string,
     authorId: string,
     body: string,
+    viewer: Viewer,
     parentId?: string,
   ) {
-    await this.findPostInOrg(orgId, postId);
+    await this.findPostInOrg(orgId, postId, viewer);
 
     if (parentId) {
       // tenant-scoping-exempt: the post above is already scoped to the org,
@@ -852,14 +902,20 @@ export class CommonsService {
    * Returning the grouped counts is what lets the shared `ReactionBar` show a
    * number immediately and roll back if the write fails.
    */
-  async togglePostReaction(orgId: string, postId: string, userId: string, emoji: string) {
+  async togglePostReaction(
+    orgId: string,
+    postId: string,
+    userId: string,
+    emoji: string,
+    viewer: Viewer,
+  ) {
     if (!isAllowedReaction(emoji)) {
       throw new BadRequestException('A reaction has to be an emoji.');
     }
 
     // An unchecked write here would attach a reaction to a post in another
     // co-op, where it would then be visible to that co-op's members (SEC-04).
-    await this.findPostInOrg(orgId, postId);
+    await this.findPostInOrg(orgId, postId, viewer);
 
     const existing = await this.prisma.reaction.findUnique({
       where: { postId_userId_emoji: { postId, userId, emoji } },
@@ -946,8 +1002,9 @@ export class CommonsService {
     orgId: string,
     postId: string,
     actor: { userId: string; isAdmin: boolean },
+    viewer: Viewer,
   ) {
-    const post = await this.findPostInOrg(orgId, postId);
+    const post = await this.findPostInOrg(orgId, postId, viewer);
 
     /*
       Two ways to be allowed, and they mean different things (CMN-19).
@@ -1021,8 +1078,9 @@ export class CommonsService {
     orgId: string,
     commentId: string,
     actor: { userId: string; isAdmin: boolean },
+    viewer: Viewer,
   ) {
-    const comment = await this.findCommentInOrg(orgId, commentId);
+    const comment = await this.findCommentInOrg(orgId, commentId, viewer);
 
     // An admin, or the person who wrote it (CMN-19). See `deletePost`.
     if (!actor.isAdmin && comment.authorId !== actor.userId) {
@@ -1091,8 +1149,12 @@ export class CommonsService {
     return { deleted: true };
   }
 
-  async flagPost(orgId: string, postId: string) {
-    await this.findPostInOrg(orgId, postId);
+  async flagPost(
+    orgId: string,
+    postId: string,
+    viewer: Viewer,
+  ) {
+    await this.findPostInOrg(orgId, postId, viewer);
 
     return this.prisma.post.update({
       where: { id: postId },
@@ -1112,8 +1174,14 @@ export class CommonsService {
    * thread shows means somebody changed their words rather than that any write
    * touched the row.
    */
-  async editComment(orgId: string, commentId: string, userId: string, body: string) {
-    const comment = await this.findCommentInOrg(orgId, commentId);
+  async editComment(
+    orgId: string,
+    commentId: string,
+    userId: string,
+    body: string,
+    viewer: Viewer,
+  ) {
+    const comment = await this.findCommentInOrg(orgId, commentId, viewer);
 
     if (comment.authorId !== userId) {
       throw new ForbiddenException('You can only edit your own comments');
@@ -1126,8 +1194,12 @@ export class CommonsService {
     });
   }
 
-  async flagComment(orgId: string, commentId: string) {
-    await this.findCommentInOrg(orgId, commentId);
+  async flagComment(
+    orgId: string,
+    commentId: string,
+    viewer: Viewer,
+  ) {
+    await this.findCommentInOrg(orgId, commentId, viewer);
 
     return this.prisma.comment.update({
       where: { id: commentId },
@@ -1142,8 +1214,9 @@ export class CommonsService {
     channelId: string,
     authorId: string,
     dto: CreateProposalDto,
+    viewer: Viewer,
   ) {
-    await this.findChannelInOrg(orgId, channelId);
+    await this.findChannelInOrg(orgId, channelId, viewer);
 
     return this.prisma.proposal.create({
       data: {
@@ -1158,8 +1231,12 @@ export class CommonsService {
     });
   }
 
-  async openProposal(orgId: string, proposalId: string) {
-    await this.findProposalInOrg(orgId, proposalId);
+  async openProposal(
+    orgId: string,
+    proposalId: string,
+    viewer: Viewer,
+  ) {
+    await this.findProposalInOrg(orgId, proposalId, viewer);
 
     return this.prisma.proposal.update({
       where: { id: proposalId },
@@ -1176,8 +1253,12 @@ export class CommonsService {
    * optional "for the scheduler" would leave exactly one unscoped path into
    * this method, which is how the original hole existed.
    */
-  async closeProposal(orgId: string, proposalId: string) {
-    await this.findProposalInOrg(orgId, proposalId);
+  async closeProposal(
+    orgId: string,
+    proposalId: string,
+    viewer: Viewer,
+  ) {
+    await this.findProposalInOrg(orgId, proposalId, viewer);
 
     const proposal = await this.prisma.proposal.findUniqueOrThrow({
       where: { id: proposalId },
@@ -1211,8 +1292,14 @@ export class CommonsService {
    *   on one whose `closesAt` had long passed — silently changing the record
    *   behind a decision that had already been announced.
    */
-  async castVote(orgId: string, proposalId: string, userId: string, choice: VoteChoice) {
-    const proposal = await this.findProposalInOrg(orgId, proposalId);
+  async castVote(
+    orgId: string,
+    proposalId: string,
+    userId: string,
+    choice: VoteChoice,
+    viewer: Viewer,
+  ) {
+    const proposal = await this.findProposalInOrg(orgId, proposalId, viewer);
 
     if (proposal.status !== 'OPEN') {
       throw new BadRequestException(
@@ -1386,7 +1473,12 @@ export class CommonsService {
    * still calling it is a no-op returning the right numbers rather than a
    * 404; the unread figure comes from `thread_participants` now.
    */
-  async markConversationRead(orgId: string, userId: string, otherUserId: string) {
+  async markConversationRead(
+    orgId: string,
+    userId: string,
+    otherUserId: string,
+    viewer: Viewer,
+  ) {
     await this.assertOrgMember(orgId, otherUserId);
 
     await this.prisma.directMessage.updateMany({
@@ -1398,7 +1490,7 @@ export class CommonsService {
     // caller has just made this number smaller and is the one surface that
     // knows it; returning nothing meant the sidebar stayed wrong until the
     // next poll.
-    return this.unreadCounts(orgId, userId);
+    return this.unreadCounts(orgId, userId, viewer);
   }
 
   // ─── What has not been read (CMN-14) ──────────────────────────
@@ -1414,13 +1506,13 @@ export class CommonsService {
    * themselves would put private conversations into a response that every
    * signed-in page fetches on an interval.
    */
-  async unreadCounts(orgId: string, userId: string): Promise<UnreadCounts> {
+  async unreadCounts(orgId: string, userId: string, viewer: Viewer): Promise<UnreadCounts> {
     const [messages, commons] = await Promise.all([
       // Threads, not `direct_messages` — that table is migrated and dormant
       // (CMN-16). A group message counts the same as a one-to-one, because
       // it is the same thing with more people in it.
       this.threads.unreadMessages(orgId, userId),
-      this.unreadInCommons(orgId, userId),
+      this.unreadInCommons(orgId, userId, viewer),
     ]);
 
     return { messages, commons: commons.total, channels: commons.channels };
@@ -1435,9 +1527,23 @@ export class CommonsService {
   private async unreadInCommons(
     orgId: string,
     userId: string,
+    viewer: Viewer,
   ): Promise<{ total: number; channels: Record<string, number> }> {
     const [channels, reads, membership] = await Promise.all([
-      this.prisma.channel.findMany({ where: { orgId }, select: { id: true, slug: true } }),
+      /*
+        Only channels this member can see (CMN-30).
+
+        Otherwise the badge counts posts nobody is allowed to read, and the
+        per-channel map — keyed by channel id, not name — tells a member
+        that something is happening in a conversation they cannot open. They
+        could not reach it, because the finders refuse, but a number that
+        rises and never goes away is both a leak and a badge that cannot be
+        cleared.
+      */
+      this.prisma.channel.findMany({
+        where: { orgId, ...visibleChannelWhere(viewer) },
+        select: { id: true, slug: true },
+      }),
       this.prisma.channelRead.findMany({
         where: { userId, channel: { orgId } },
         select: { channelId: true, lastReadAt: true },
@@ -1616,12 +1722,20 @@ export class CommonsService {
    * `[userId, channelId]` is what keeps one row per member per channel when
    * two tabs do this at once.
    */
-  async markChannelRead(orgId: string, userId: string, channelId: string) {
+  async markChannelRead(
+    orgId: string,
+    userId: string,
+    channelId: string,
+    viewer: Viewer,
+  ) {
     // Scoped, not trusted: a channelId from the request that belongs to
     // another co-op would otherwise write a read marker across the tenant
     // boundary (SEC-04).
     const channel = await this.prisma.channel.findFirst({
-      where: { id: channelId, orgId },
+      // And not visible to this member means not found (CMN-30): marking a
+      // private channel read would both write a marker in it and confirm
+      // that it exists.
+      where: { id: channelId, orgId, ...visibleChannelWhere(viewer) },
       select: { id: true },
     });
     if (!channel) throw new NotFoundException('Channel not found');
@@ -1633,7 +1747,7 @@ export class CommonsService {
       update: { lastReadAt },
     });
 
-    return this.unreadCounts(orgId, userId);
+    return this.unreadCounts(orgId, userId, viewer);
   }
 
   // ─── Collections (wiki) ───────────────────────────────────────

@@ -38,6 +38,31 @@ import { ReactionDto } from './dto/reaction.dto';
 import { CreateCollectionDto, UpdateCollectionDto } from './dto/create-collection.dto';
 import { CreatePageDto, UpdatePageDto } from './dto/page.dto';
 import { VoteChoice } from '@prisma/client';
+import { type Viewer } from './channel-visibility';
+
+
+/**
+ * Who the Commons shows a private channel to (CMN-30).
+ *
+ * The role comes from the JWT, the same place `RolesGuard` reads it, rather
+ * than a second lookup that could disagree with the guard sitting in front
+ * of the route — the rule `assertMayCreateChannel` already follows.
+ */
+function viewerOf(user: RequestUser, orgId: string): Viewer {
+  if (user.globalRole === 'PLATFORM_ADMIN') return { isStaff: true };
+  const role = user.orgRoles?.[orgId];
+  return { isStaff: role === 'ADMIN' || role === 'STAFF' };
+}
+
+/**
+ * For routes that are already behind `@Roles('ADMIN')` or `('ADMIN','STAFF')`.
+ *
+ * The guard has proved it before the handler runs, so reading the token a
+ * second time to ask the same question would be ceremony — but it is written
+ * down rather than passed as a bare `{ isStaff: true }`, so that deleting the
+ * decorator and leaving this behind reads as the mistake it would be.
+ */
+const GUARDED_AS_STAFF: Viewer = { isStaff: true };
 
 @ApiTags('commons')
 @ApiBearerAuth()
@@ -71,8 +96,8 @@ export class CommonsController {
   }
 
   @Get('channels')
-  listChannels(@Param('orgId') orgId: string) {
-    return this.commonsService.listChannels(orgId);
+  listChannels(@Param('orgId') orgId: string, @CurrentUser() user: RequestUser) {
+    return this.commonsService.listChannels(orgId, viewerOf(user, orgId));
   }
 
   /**
@@ -93,11 +118,10 @@ export class CommonsController {
   ) {
     return this.commonsService.updateChannel(
       orgId,
-      channelId,
+      channelId, viewerOf(user, orgId),
       dto,
       user.userId,
-      user.orgRoles?.[orgId],
-    );
+      user.orgRoles?.[orgId]);
   }
 
   /**
@@ -117,7 +141,7 @@ export class CommonsController {
     @Param('orgId') orgId: string,
     @Param('channelId') channelId: string,
   ) {
-    return this.commonsService.deleteChannel(orgId, channelId);
+    return this.commonsService.deleteChannel(orgId, channelId, GUARDED_AS_STAFF);
   }
 
   @Post('channels/:channelId/pin')
@@ -126,7 +150,7 @@ export class CommonsController {
     @Param('orgId') orgId: string,
     @Param('channelId') channelId: string,
   ) {
-    return this.commonsService.pinChannel(orgId, channelId, true);
+    return this.commonsService.pinChannel(orgId, channelId, true, GUARDED_AS_STAFF);
   }
 
   @Delete('channels/:channelId/pin')
@@ -135,7 +159,7 @@ export class CommonsController {
     @Param('orgId') orgId: string,
     @Param('channelId') channelId: string,
   ) {
-    return this.commonsService.pinChannel(orgId, channelId, false);
+    return this.commonsService.pinChannel(orgId, channelId, false, GUARDED_AS_STAFF);
   }
 
   /**
@@ -157,9 +181,8 @@ export class CommonsController {
       orgId,
       channelId,
       user.userId,
-      dto.userIds,
-      dto.note,
-    );
+      dto.userIds, viewerOf(user, orgId),
+      dto.note);
   }
 
   /** Whether this member may open a channel here, and manage sections. */
@@ -225,7 +248,7 @@ export class CommonsController {
     @CurrentUser() user: RequestUser,
     @Body() dto: CreatePostDto,
   ) {
-    return this.commonsService.createPost(orgId, channelId, user.userId, dto);
+    return this.commonsService.createPost(orgId, channelId, user.userId, dto, viewerOf(user, orgId));
   }
 
   @Get('channels/:channelId/posts')
@@ -239,7 +262,7 @@ export class CommonsController {
     // Named so a post's reactions can say which are the reader's own (CMN-20).
     @CurrentUser() user: RequestUser,
   ) {
-    return this.commonsService.listPosts(orgId, channelId, page, perPage, user.userId);
+    return this.commonsService.listPosts(orgId, channelId, page, perPage, viewerOf(user, orgId), user.userId);
   }
 
   @Get('posts/:postId')
@@ -248,7 +271,7 @@ export class CommonsController {
     @Param('postId') postId: string,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.commonsService.getPost(orgId, postId, user.userId);
+    return this.commonsService.getPost(orgId, postId, viewerOf(user, orgId), user.userId);
   }
 
   // ─── Comments ───────────────────────────────────────────────
@@ -260,7 +283,7 @@ export class CommonsController {
     @CurrentUser() user: RequestUser,
     @Body() dto: AddCommentDto,
   ) {
-    return this.commonsService.addComment(orgId, postId, user.userId, dto.body, dto.parentId);
+    return this.commonsService.addComment(orgId, postId, user.userId, dto.body, viewerOf(user, orgId), dto.parentId);
   }
 
   /**
@@ -277,7 +300,7 @@ export class CommonsController {
     @CurrentUser() user: RequestUser,
     @Body() dto: EditCommentDto,
   ) {
-    return this.commonsService.editComment(orgId, commentId, user.userId, dto.body);
+    return this.commonsService.editComment(orgId, commentId, user.userId, dto.body, viewerOf(user, orgId));
   }
 
   @Post('comments/:commentId/flag')
@@ -286,7 +309,7 @@ export class CommonsController {
     @Param('orgId') orgId: string,
     @Param('commentId') commentId: string,
   ) {
-    return this.commonsService.flagComment(orgId, commentId);
+    return this.commonsService.flagComment(orgId, commentId, GUARDED_AS_STAFF);
   }
 
   // ─── Reactions ──────────────────────────────────────────────
@@ -307,7 +330,7 @@ export class CommonsController {
     @CurrentUser() user: RequestUser,
     @Body('emoji') emoji: string,
   ) {
-    return this.commonsService.togglePostReaction(orgId, postId, user.userId, emoji);
+    return this.commonsService.togglePostReaction(orgId, postId, user.userId, emoji, viewerOf(user, orgId));
   }
 
   // ─── Taking things down (CMN-18) ────────────────────────────
@@ -331,7 +354,7 @@ export class CommonsController {
     return this.commonsService.deletePost(orgId, postId, {
       userId: user.userId,
       isAdmin: user.orgRoles?.[orgId] === 'ADMIN',
-    });
+    }, viewerOf(user, orgId));
   }
 
   /** Delete a comment and its replies: an admin anybody's, an author their own. */
@@ -345,7 +368,7 @@ export class CommonsController {
     return this.commonsService.deleteComment(orgId, commentId, {
       userId: user.userId,
       isAdmin: user.orgRoles?.[orgId] === 'ADMIN',
-    });
+    }, viewerOf(user, orgId));
   }
 
   // ─── Flagging ───────────────────────────────────────────────
@@ -354,8 +377,12 @@ export class CommonsController {
   flagPost(
     @Param('orgId') orgId: string,
     @Param('postId') postId: string,
+    // Added with CMN-30: flagging resolves the post through the visibility
+    // gate, so the route has to say who is asking. It did not need to while
+    // every channel was visible to everybody.
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.commonsService.flagPost(orgId, postId);
+    return this.commonsService.flagPost(orgId, postId, viewerOf(user, orgId));
   }
 
   // ─── Proposals ──────────────────────────────────────────────
@@ -367,7 +394,7 @@ export class CommonsController {
     @CurrentUser() user: RequestUser,
     @Body() dto: CreateProposalDto,
   ) {
-    return this.commonsService.createProposal(orgId, channelId, user.userId, dto);
+    return this.commonsService.createProposal(orgId, channelId, user.userId, dto, viewerOf(user, orgId));
   }
 
   @Post('proposals/:proposalId/open')
@@ -376,7 +403,7 @@ export class CommonsController {
     @Param('orgId') orgId: string,
     @Param('proposalId') proposalId: string,
   ) {
-    return this.commonsService.openProposal(orgId, proposalId);
+    return this.commonsService.openProposal(orgId, proposalId, GUARDED_AS_STAFF);
   }
 
   @Post('proposals/:proposalId/close')
@@ -385,7 +412,7 @@ export class CommonsController {
     @Param('orgId') orgId: string,
     @Param('proposalId') proposalId: string,
   ) {
-    return this.commonsService.closeProposal(orgId, proposalId);
+    return this.commonsService.closeProposal(orgId, proposalId, GUARDED_AS_STAFF);
   }
 
   @Post('proposals/:proposalId/vote')
@@ -395,7 +422,7 @@ export class CommonsController {
     @CurrentUser() user: RequestUser,
     @Body('choice') choice: VoteChoice,
   ) {
-    return this.commonsService.castVote(orgId, proposalId, user.userId, choice);
+    return this.commonsService.castVote(orgId, proposalId, user.userId, choice, viewerOf(user, orgId));
   }
 
   @Get('proposals/:proposalId')
@@ -427,7 +454,7 @@ export class CommonsController {
   @Get('unread')
   @ApiOperation({ summary: 'Unread counts for the signed-in member' })
   unreadCounts(@Param('orgId') orgId: string, @CurrentUser() user: RequestUser) {
-    return this.commonsService.unreadCounts(orgId, user.userId);
+    return this.commonsService.unreadCounts(orgId, user.userId, viewerOf(user, orgId));
   }
 
   /** Opening a channel is reading it. Returns the new totals. */
@@ -438,7 +465,7 @@ export class CommonsController {
     @Param('channelId') channelId: string,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.commonsService.markChannelRead(orgId, user.userId, channelId);
+    return this.commonsService.markChannelRead(orgId, user.userId, channelId, viewerOf(user, orgId));
   }
 
   // ─── Conversations (CMN-16) ──────────────────────────────────
@@ -590,7 +617,7 @@ export class CommonsController {
     @CurrentUser() user: RequestUser,
   ) {
     await this.threads.markThreadRead(orgId, user.userId, threadId);
-    return this.commonsService.unreadCounts(orgId, user.userId);
+    return this.commonsService.unreadCounts(orgId, user.userId, viewerOf(user, orgId));
   }
 
   // ─── Reactions on messages (CMN-18) ──────────────────────────
@@ -655,7 +682,7 @@ export class CommonsController {
     @Param('otherUserId') otherUserId: string,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.commonsService.markConversationRead(orgId, user.userId, otherUserId);
+    return this.commonsService.markConversationRead(orgId, user.userId, otherUserId, viewerOf(user, orgId));
   }
 
   // ─── Collections (wiki) ─────────────────────────────────────

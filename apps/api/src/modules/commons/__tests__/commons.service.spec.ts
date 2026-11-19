@@ -88,22 +88,22 @@ describe('CommonsService — tenant isolation (CMN-07)', () => {
 
   // Each entry: a method reached with an id belonging to another org.
   const crossOrgCalls: Array<[string, () => Promise<unknown>]> = [
-    ['pinChannel', () => service.pinChannel(OTHER, 'channel-1', true)],
-    ['updateChannel', () => service.updateChannel(OTHER, 'channel-1', { name: 'renamed' })],
-    ['deleteChannel', () => service.deleteChannel(OTHER, 'channel-1')],
-    ['createPost', () => service.createPost(OTHER, 'channel-1', 'u1', { body: 'x' } as never)],
-    ['listPosts', () => service.listPosts(OTHER, 'channel-1', 1, 20)],
-    ['getPost', () => service.getPost(OTHER, 'post-1')],
-    ['addComment', () => service.addComment(OTHER, 'post-1', 'u1', 'hello')],
-    ['flagComment', () => service.flagComment(OTHER, 'comment-1')],
-    ['editComment', () => service.editComment(OTHER, 'comment-1', 'u1', 'rewritten')],
+    ['pinChannel', () => service.pinChannel(OTHER, 'channel-1', true, { isStaff: true })],
+    ['updateChannel', () => service.updateChannel(OTHER, 'channel-1', { isStaff: true }, { name: 'renamed' })],
+    ['deleteChannel', () => service.deleteChannel(OTHER, 'channel-1', { isStaff: true })],
+    ['createPost', () => service.createPost(OTHER, 'channel-1', 'u1', { body: 'x' } as never, { isStaff: true })],
+    ['listPosts', () => service.listPosts(OTHER, 'channel-1', 1, 20, { isStaff: true })],
+    ['getPost', () => service.getPost(OTHER, 'post-1', { isStaff: true })],
+    ['addComment', () => service.addComment(OTHER, 'post-1', 'u1', 'hello', { isStaff: true })],
+    ['flagComment', () => service.flagComment(OTHER, 'comment-1', { isStaff: true })],
+    ['editComment', () => service.editComment(OTHER, 'comment-1', 'u1', 'rewritten', { isStaff: true })],
     // One toggle now, where there were an add and a delete (CMN-20).
-    ['togglePostReaction', () => service.togglePostReaction(OTHER, 'post-1', 'u1', '👍')],
-    ['flagPost', () => service.flagPost(OTHER, 'post-1')],
-    ['createProposal', () => service.createProposal(OTHER, 'channel-1', 'u1', { title: 't', body: 'b' } as never)],
-    ['openProposal', () => service.openProposal(OTHER, 'proposal-1')],
-    ['closeProposal', () => service.closeProposal(OTHER, 'proposal-1')],
-    ['castVote', () => service.castVote(OTHER, 'proposal-1', 'u1', 'YES' as never)],
+    ['togglePostReaction', () => service.togglePostReaction(OTHER, 'post-1', 'u1', '👍', { isStaff: true })],
+    ['flagPost', () => service.flagPost(OTHER, 'post-1', { isStaff: true })],
+    ['createProposal', () => service.createProposal(OTHER, 'channel-1', 'u1', { title: 't', body: 'b' } as never, { isStaff: true })],
+    ['openProposal', () => service.openProposal(OTHER, 'proposal-1', { isStaff: true })],
+    ['closeProposal', () => service.closeProposal(OTHER, 'proposal-1', { isStaff: true })],
+    ['castVote', () => service.castVote(OTHER, 'proposal-1', 'u1', 'YES' as never, { isStaff: true })],
     ['getProposal', () => service.getProposal(OTHER, 'proposal-1')],
     ['updateCollection', () => service.updateCollection(OTHER, 'collection-1', {} as never)],
     ['deleteCollection', () => service.deleteCollection(OTHER, 'collection-1')],
@@ -113,7 +113,7 @@ describe('CommonsService — tenant isolation (CMN-07)', () => {
     ['deletePage', () => service.deletePage(OTHER, 'page-1')],
     ['getConversation', () => service.getConversation(OTHER, 'u1', 'u2')],
     ['sendMessage', () => service.sendMessage(OTHER, 'u1', 'u2', 'hi')],
-    ['markConversationRead', () => service.markConversationRead(OTHER, 'u1', 'u2')],
+    ['markConversationRead', () => service.markConversationRead(OTHER, 'u1', 'u2', { isStaff: true })],
   ];
 
   it.each(crossOrgCalls)('%s refuses an id from another org', async (_name, call) => {
@@ -150,7 +150,7 @@ describe('CommonsService — tenant isolation (CMN-07)', () => {
 
     await service.listConversations(OWN, 'u1');
     await service.getConversation(OWN, 'u1', 'u2');
-    await service.markConversationRead(OWN, 'u1', 'u2');
+    await service.markConversationRead(OWN, 'u1', 'u2', { isStaff: true });
 
     // Every read and write names the org. Before CMN-08 a conversation had a
     // sender and a receiver and nothing else, so the org in the URL could not
@@ -179,10 +179,10 @@ describe('CommonsService — tenant isolation (CMN-07)', () => {
 
   it('resolves entities through their org, not by id alone', async () => {
     const OWN = 'org-mine';
-    await service.getPost(OWN, 'post-1').catch(() => undefined);
+    await service.getPost(OWN, 'post-1', { isStaff: true }).catch(() => undefined);
     await service.getProposal(OWN, 'proposal-1').catch(() => undefined);
     await service.getPage(OWN, 'page-1').catch(() => undefined);
-    await service.flagComment(OWN, 'comment-1').catch(() => undefined);
+    await service.flagComment(OWN, 'comment-1', { isStaff: true }).catch(() => undefined);
 
     // The ownership chains, which are the part most likely to be got wrong.
     expect(prisma.post.findFirst).toHaveBeenCalledWith(
@@ -245,7 +245,7 @@ describe('CommonsService — voting is only open while a proposal is open', () =
   it('accepts a vote on an open proposal with no deadline', async () => {
     prisma.proposal.findFirst.mockResolvedValue(openProposal as never);
 
-    await service.castVote(ORG, 'p1', 'u1', 'YES' as never);
+    await service.castVote(ORG, 'p1', 'u1', 'YES' as never, { isStaff: true });
 
     expect(prisma.vote.upsert).toHaveBeenCalled();
   });
@@ -256,7 +256,7 @@ describe('CommonsService — voting is only open while a proposal is open', () =
       closesAt: new Date(Date.now() + 60_000),
     } as never);
 
-    await service.castVote(ORG, 'p1', 'u1', 'YES' as never);
+    await service.castVote(ORG, 'p1', 'u1', 'YES' as never, { isStaff: true });
 
     expect(prisma.vote.upsert).toHaveBeenCalled();
   });
@@ -266,7 +266,7 @@ describe('CommonsService — voting is only open while a proposal is open', () =
     async (status) => {
       prisma.proposal.findFirst.mockResolvedValue({ ...openProposal, status } as never);
 
-      await expect(service.castVote(ORG, 'p1', 'u1', 'YES' as never)).rejects.toThrow(
+      await expect(service.castVote(ORG, 'p1', 'u1', 'YES' as never, { isStaff: true })).rejects.toThrow(
         BadRequestException,
       );
       expect(prisma.vote.upsert).not.toHaveBeenCalled();
@@ -281,7 +281,7 @@ describe('CommonsService — voting is only open while a proposal is open', () =
       closesAt: new Date(Date.now() - 1000),
     } as never);
 
-    await expect(service.castVote(ORG, 'p1', 'u1', 'YES' as never)).rejects.toThrow(
+    await expect(service.castVote(ORG, 'p1', 'u1', 'YES' as never, { isStaff: true })).rejects.toThrow(
       BadRequestException,
     );
     expect(prisma.vote.upsert).not.toHaveBeenCalled();

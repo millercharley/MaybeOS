@@ -6,6 +6,7 @@ import {
   Plus,
   MessageSquare,
   Hash,
+  Lock,
   Pin,
   PinOff,
   Send,
@@ -225,6 +226,19 @@ function CommentThread({
     </div>
   );
 }
+
+/**
+ * What an organiser is told before they make a channel organisers-only
+ * (CMN-30).
+ *
+ * Says who can see it in the words the product uses elsewhere, and says the
+ * part that is easy to assume wrongly: this is not a way to talk to one
+ * person — there is no channel membership — and it is retroactive, so what
+ * is already in there stops being visible too (DESIGN §8).
+ */
+const ORGANISERS_ONLY_NOTE =
+  'Only organisers will see this channel. Members will not find it in the Commons, ' +
+  'and anything already posted in it stops being visible to them.';
 
 export default function CommonsPage() {
   const user = useAuthStore((s) => s.user);
@@ -522,10 +536,10 @@ export default function CommonsPage() {
     });
   }
 
-  /** An emoji, or the section a channel files under (CMN-11). */
+  /** An emoji, the section it files under (CMN-11), or who can see it (CMN-30). */
   async function handleChannelDetail(
     channelId: string,
-    data: { emoji?: string | null; sectionId?: string | null },
+    data: { emoji?: string | null; sectionId?: string | null; isPublic?: boolean },
   ) {
     await withChannels(async () => {
       await api.commons.updateChannel(currentOrgId!, channelId, data, token!);
@@ -755,6 +769,25 @@ export default function CommonsPage() {
                                     <Hash className="h-4 w-4 shrink-0" />
                                   )}
                                   <span className="truncate">{channel.name}</span>
+                                  {/*
+                                    Said on the row, not only in the control:
+                                    a setting you cannot see is how this one
+                                    spent a year doing nothing (CMN-30).
+
+                                    A lock rather than the words, because the
+                                    words are wider than this column — the
+                                    first version turned "Safeguarding" into
+                                    "Safe…", which is a worse bug than the one
+                                    being fixed. The title carries the meaning
+                                    for a pointer, the sr-only text for a
+                                    screen reader.
+                                  */}
+                                  {channel.isPublic === false && (
+                                    <span className="ml-1.5 inline-flex shrink-0 items-center text-amber-700">
+                                      <Lock className="h-3 w-3" aria-hidden="true" />
+                                      <span className="sr-only">Organisers only</span>
+                                    </span>
+                                  )}
                                   {channel.isPinned && <Pin className="h-3 w-3 shrink-0 text-gray-400" />}
                                 </button>
                                 {isAdmin && !managing && (
@@ -804,6 +837,32 @@ export default function CommonsPage() {
                                   className="text-[11px] text-gray-400 hover:text-gray-700 disabled:opacity-40"
                                 >
                                   {channel.isPinned ? 'Unpin' : 'Pin'}
+                                </button>
+                                {/*
+                                  Who can see it (CMN-30).
+
+                                  The column has existed since the Commons was
+                                  built and nothing read it — so a co-op could
+                                  not set this at all, and anything that did
+                                  set it was ignored. Now it is enforced, this
+                                  is the control that makes it reachable.
+                                */}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleChannelDetail(channel.id, {
+                                      isPublic: channel.isPublic === false,
+                                    })
+                                  }
+                                  disabled={channelBusy}
+                                  className="text-[11px] text-gray-400 hover:text-gray-700 disabled:opacity-40"
+                                  title={
+                                    channel.isPublic === false
+                                      ? 'Let every member see this channel again'
+                                      : ORGANISERS_ONLY_NOTE
+                                  }
+                                >
+                                  {channel.isPublic === false ? 'Make public' : 'Make private'}
                                 </button>
                                 {/* The emoji and the heading it files under (CMN-11).
                                     Both save on change rather than behind a Save button:

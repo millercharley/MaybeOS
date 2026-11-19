@@ -65,7 +65,7 @@ describe('what the announcement channels count', () => {
    */
   it('counts no new posts in #Events or #Teaching, for anybody', async () => {
     const { service, prisma } = await build();
-    await service.unreadCounts(ORG, USER);
+    await service.unreadCounts(ORG, USER, { isStaff: true });
 
     const where = prisma.post.groupBy.mock.calls[0][0].where;
     const counted = where.OR.flatMap((clause: { channelId: { in: string[] } }) => clause.channelId.in);
@@ -78,7 +78,7 @@ describe('what the announcement channels count', () => {
   /** An ordinary channel is untouched by any of this. */
   it('still counts new posts everywhere else', async () => {
     const { service, prisma } = await build();
-    await service.unreadCounts(ORG, USER);
+    await service.unreadCounts(ORG, USER, { isStaff: true });
 
     const where = prisma.post.groupBy.mock.calls[0][0].where;
     expect(where.OR.some((c: { channelId: { in: string[] } }) => c.channelId.in.includes('c-general'))).toBe(true);
@@ -86,7 +86,7 @@ describe('what the announcement channels count', () => {
 
   it('asks once which threads this member has a stake in', async () => {
     const { service, prisma } = await build();
-    await service.unreadCounts(ORG, USER);
+    await service.unreadCounts(ORG, USER, { isStaff: true });
 
     expect(prisma.post.findMany).toHaveBeenCalledTimes(1);
     const where = prisma.post.findMany.mock.calls[0][0].where;
@@ -96,7 +96,7 @@ describe('what the announcement channels count', () => {
   /** All four of Charley's reasons, and nothing that stores them anew. */
   it('counts running it, going to it, asking about it and writing in it', async () => {
     const { service, prisma } = await build();
-    await service.unreadCounts(ORG, USER);
+    await service.unreadCounts(ORG, USER, { isStaff: true });
 
     const or = JSON.stringify(prisma.post.findMany.mock.calls[0][0].where.OR);
 
@@ -110,7 +110,7 @@ describe('what the announcement channels count', () => {
 
   it('counts replies only in the threads it found a stake in', async () => {
     const { service, prisma } = await build([{ id: 'p-mine' }]);
-    await service.unreadCounts(ORG, USER);
+    await service.unreadCounts(ORG, USER, { isStaff: true });
 
     const or = prisma.comment.findMany.mock.calls[0][0].where.OR;
     const announcing = or.filter((c: { postId?: unknown }) => c.postId !== undefined);
@@ -126,7 +126,7 @@ describe('what the announcement channels count', () => {
    */
   it('counts nothing in those channels for a member with no stake at all', async () => {
     const { service, prisma } = await build([]);
-    await service.unreadCounts(ORG, USER);
+    await service.unreadCounts(ORG, USER, { isStaff: true });
 
     const or = prisma.comment.findMany.mock.calls[0][0].where.OR;
     const announcing = or.filter((c: { postId?: unknown }) => c.postId !== undefined);
@@ -136,7 +136,7 @@ describe('what the announcement channels count', () => {
 
   it('leaves replies in ordinary channels alone', async () => {
     const { service, prisma } = await build([]);
-    await service.unreadCounts(ORG, USER);
+    await service.unreadCounts(ORG, USER, { isStaff: true });
 
     const or = prisma.comment.findMany.mock.calls[0][0].where.OR;
     const ordinary = or.filter((c: { postId?: unknown }) => c.postId === undefined);
@@ -166,7 +166,7 @@ describe('what the announcement channels count', () => {
       ],
     }).compile();
 
-    await module.get(CommonsService).unreadCounts(ORG, USER);
+    await module.get(CommonsService).unreadCounts(ORG, USER, { isStaff: true });
 
     expect(prisma.post.findMany).not.toHaveBeenCalled();
   });

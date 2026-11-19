@@ -103,7 +103,26 @@ export class CommonsDigestService {
       about it is nothing at all.
     */
     const rows = await this.prisma.post.findMany({
-      where: { channel: { orgId: org.id }, createdAt: { gte: since }, isFlagged: false },
+      where: {
+        /*
+          Public channels only (CMN-30).
+
+          This is the sharpest edge the private-channel setting had: the
+          digest reads every post in the co-op once and mails the same
+          summary to every member, so an organisers-only channel would have
+          posted its titles and its first lines straight into four hundred
+          inboxes — past every check in the app, because email has none.
+
+          Not "public for members, private for organisers": the digest is
+          built once and sent to everybody, and a weekly summary of a
+          safeguarding conversation is not a thing to email even to the
+          people allowed to read it. Organisers see those channels in the
+          Commons, where they belong.
+        */
+        channel: { orgId: org.id, isPublic: true },
+        createdAt: { gte: since },
+        isFlagged: false,
+      },
       select: {
         id: true,
         channelId: true,

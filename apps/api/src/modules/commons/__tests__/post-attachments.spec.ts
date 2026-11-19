@@ -78,7 +78,7 @@ describe('CommonsService — attachments on the feed', () => {
   it('sends each post its own files', async () => {
     const { service } = await build();
 
-    const { data } = await service.listPosts('org-1', 'ch-1', 1, 20);
+    const { data } = await service.listPosts('org-1', 'ch-1', 1, 20, { isStaff: true });
 
     expect(data[0].attachments).toEqual([
       expect.objectContaining({ id: 'a1', url: 'https://files/a1?sig=1' }),
@@ -92,7 +92,7 @@ describe('CommonsService — attachments on the feed', () => {
   it('signs every file on the page in a single request', async () => {
     const { service, signedAttachmentUrls } = await build();
 
-    await service.listPosts('org-1', 'ch-1', 1, 20);
+    await service.listPosts('org-1', 'ch-1', 1, 20, { isStaff: true });
 
     expect(signedAttachmentUrls).toHaveBeenCalledTimes(1);
     expect(signedAttachmentUrls).toHaveBeenCalledWith(
@@ -110,7 +110,7 @@ describe('CommonsService — attachments on the feed', () => {
   it('gives a post with no files an empty list rather than nothing', async () => {
     const { service } = await build();
 
-    const { data } = await service.listPosts('org-1', 'ch-1', 1, 20);
+    const { data } = await service.listPosts('org-1', 'ch-1', 1, 20, { isStaff: true });
 
     expect(data[2].attachments).toEqual([]);
   });
@@ -119,7 +119,7 @@ describe('CommonsService — attachments on the feed', () => {
   it('never sends the storage path', async () => {
     const { service } = await build();
 
-    const { data } = await service.listPosts('org-1', 'ch-1', 1, 20);
+    const { data } = await service.listPosts('org-1', 'ch-1', 1, 20, { isStaff: true });
 
     expect(JSON.stringify(data)).not.toContain('org/a1.pdf');
     expect(data[0].attachments[0]).not.toHaveProperty('path');
@@ -134,7 +134,7 @@ describe('CommonsService — attachments on the feed', () => {
       signed: new Map([['org/a2.pdf', 'https://files/a2?sig=2']]),
     });
 
-    const { data } = await service.listPosts('org-1', 'ch-1', 1, 20);
+    const { data } = await service.listPosts('org-1', 'ch-1', 1, 20, { isStaff: true });
 
     expect(data[0].attachments).toEqual([]);
     expect(data[0].id).toBe('p1');
@@ -147,7 +147,7 @@ describe('CommonsService — attachments on the feed', () => {
       posts: [{ id: 'p1', channelId: 'ch-1', reactions: [], attachments: [] }],
     });
 
-    const { data } = await service.listPosts('org-1', 'ch-1', 1, 20);
+    const { data } = await service.listPosts('org-1', 'ch-1', 1, 20, { isStaff: true });
 
     expect(data[0].attachments).toEqual([]);
   });

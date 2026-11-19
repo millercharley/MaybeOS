@@ -162,7 +162,7 @@ describe('CommonsService — unread counts', () => {
   it('counts the messages I have not read, across every conversation', async () => {
     const { service, threads } = await build({ dms: 3 });
 
-    expect((await service.unreadCounts(ORG, ME)).messages).toBe(3);
+    expect((await service.unreadCounts(ORG, ME, { isStaff: true })).messages).toBe(3);
     // Threads, not the dormant `direct_messages` table (CMN-16): a group
     // message counts the same as a one-to-one.
     expect(threads.unreadMessages).toHaveBeenCalledWith(ORG, ME);
@@ -182,7 +182,7 @@ describe('CommonsService — unread counts', () => {
       commentRows: [{ channelId: 'ch-1', authorId: 'someone', createdAt: recent }],
     });
 
-    expect((await service.unreadCounts(ORG, ME)).commons).toBe(3);
+    expect((await service.unreadCounts(ORG, ME, { isStaff: true })).commons).toBe(3);
   });
 
   it('does not count my own posts — writing is not reading', async () => {
@@ -194,7 +194,7 @@ describe('CommonsService — unread counts', () => {
       ],
     });
 
-    expect((await service.unreadCounts(ORG, ME)).commons).toBe(1);
+    expect((await service.unreadCounts(ORG, ME, { isStaff: true })).commons).toBe(1);
     expect(prisma.post.groupBy.mock.calls[0][0].where.authorId).toEqual({ not: ME });
   });
 
@@ -209,7 +209,7 @@ describe('CommonsService — unread counts', () => {
       ],
     });
 
-    expect((await service.unreadCounts(ORG, ME)).commons).toBe(1);
+    expect((await service.unreadCounts(ORG, ME, { isStaff: true })).commons).toBe(1);
   });
 
   it('counts from the day I joined in a channel I have never opened', async () => {
@@ -228,7 +228,7 @@ describe('CommonsService — unread counts', () => {
       ],
     });
 
-    expect((await service.unreadCounts(ORG, ME)).commons).toBe(1);
+    expect((await service.unreadCounts(ORG, ME, { isStaff: true })).commons).toBe(1);
   });
 
   it('uses each channel\'s own line, not one line for all of them', async () => {
@@ -250,7 +250,7 @@ describe('CommonsService — unread counts', () => {
       ],
     });
 
-    expect((await service.unreadCounts(ORG, ME)).commons).toBe(1);
+    expect((await service.unreadCounts(ORG, ME, { isStaff: true })).commons).toBe(1);
   });
 
   it('still asks the database only twice, however many channels there are', async () => {
@@ -260,7 +260,7 @@ describe('CommonsService — unread counts', () => {
     const channels = Array.from({ length: 12 }, (_, i) => ({ id: `ch-${i}` }));
     const { service, prisma } = await build({ channels });
 
-    await service.unreadCounts(ORG, ME);
+    await service.unreadCounts(ORG, ME, { isStaff: true });
 
     expect(prisma.post.groupBy).toHaveBeenCalledTimes(1);
     expect(prisma.comment.findMany).toHaveBeenCalledTimes(1);
@@ -269,7 +269,7 @@ describe('CommonsService — unread counts', () => {
   it('says nothing is unread when the co-op has no channels', async () => {
     const { service, prisma } = await build({ channels: [] });
 
-    expect((await service.unreadCounts(ORG, ME)).commons).toBe(0);
+    expect((await service.unreadCounts(ORG, ME, { isStaff: true })).commons).toBe(0);
     expect(prisma.post.groupBy).not.toHaveBeenCalled();
   });
 
@@ -277,7 +277,7 @@ describe('CommonsService — unread counts', () => {
     // Somebody in two co-ops must not see one co-op's badge on the other's
     // sidebar (CMN-08).
     const { service, prisma } = await build();
-    await service.unreadCounts(ORG, ME);
+    await service.unreadCounts(ORG, ME, { isStaff: true });
 
     expect(prisma.channel.findMany.mock.calls[0][0].where.orgId).toBe(ORG);
     expect(prisma.channelRead.findMany.mock.calls[0][0].where.channel.orgId).toBe(ORG);
@@ -322,7 +322,7 @@ describe('CommonsService — marking things read', () => {
   it('writes one row per member per channel, however many times they look', async () => {
     const { service, prisma } = await build();
 
-    await service.markChannelRead(ORG, ME, 'ch-1');
+    await service.markChannelRead(ORG, ME, 'ch-1', { isStaff: true });
 
     expect(prisma.channelRead.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ where: { userId_channelId: { userId: ME, channelId: 'ch-1' } } }),
@@ -334,7 +334,7 @@ describe('CommonsService — marking things read', () => {
     // scope check this would write a read marker across the tenant boundary.
     const { service } = await build(null);
 
-    await expect(service.markChannelRead(ORG, ME, 'someone-elses')).rejects.toThrow(
+    await expect(service.markChannelRead(ORG, ME, 'someone-elses', { isStaff: true })).rejects.toThrow(
       NotFoundException,
     );
   });
@@ -344,7 +344,7 @@ describe('CommonsService — marking things read', () => {
 
     // The breakdown travels with the totals (CMN-27), so the page can clear
     // the channel's own dot without waiting for the next poll.
-    await expect(service.markChannelRead(ORG, ME, 'ch-1')).resolves.toEqual({
+    await expect(service.markChannelRead(ORG, ME, 'ch-1', { isStaff: true })).resolves.toEqual({
       messages: 0,
       commons: 0,
       channels: {},
@@ -368,7 +368,9 @@ describe('CommonsController — unread routes', () => {
 
   it('asks for the counts as the signed-in member', () => {
     controller.unreadCounts('org-1', me);
-    expect(service.unreadCounts).toHaveBeenCalledWith('org-1', 'me');
+    // The viewer rides along since CMN-30: a private channel must not show
+    // up in anybody's badge, and `me` is an ordinary member here.
+    expect(service.unreadCounts).toHaveBeenCalledWith('org-1', 'me', { isStaff: false });
   });
 
   it('passes the member and the channel the right way round', () => {
@@ -377,6 +379,8 @@ describe('CommonsController — unread routes', () => {
     // (orgId, userId, channelId). Both are strings, so nothing complained —
     // it would have written a read marker for a user id that is a channel.
     controller.markChannelRead('org-1', 'ch-9', me);
-    expect(service.markChannelRead).toHaveBeenCalledWith('org-1', 'me', 'ch-9');
+    expect(service.markChannelRead).toHaveBeenCalledWith('org-1', 'me', 'ch-9', {
+      isStaff: false,
+    });
   });
 });

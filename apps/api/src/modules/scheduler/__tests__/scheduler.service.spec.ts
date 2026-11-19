@@ -140,6 +140,12 @@ describe('SchedulerService', () => {
   const task = (result: { tasks: { task: string }[] }, name: string) =>
     result.tasks.find((t) => t.task === name) as never;
 
+  /*
+    The scheduler looks with an organiser's eyes since CMN-30: a proposal
+    whose voting has closed must close whichever channel it sits in, and a
+    private one does not get to keep voting open because the clock has no
+    membership. These assertions carry the viewer for that reason.
+  */
   describe('close-due-proposals', () => {
     it('only selects OPEN proposals with a deadline at or before now', async () => {
       await service.runDueTasks(NOW);
@@ -163,8 +169,8 @@ describe('SchedulerService', () => {
       // Each proposal is closed in *its own* org, not in some ambient one:
       // the scheduler crosses org boundaries by reading each row's org and
       // naming it, rather than through an unscoped call (CMN-07).
-      expect(commons.closeProposal).toHaveBeenCalledWith('org-a', 'p1');
-      expect(commons.closeProposal).toHaveBeenCalledWith('org-b', 'p2');
+      expect(commons.closeProposal).toHaveBeenCalledWith('org-a', 'p1', { isStaff: true });
+      expect(commons.closeProposal).toHaveBeenCalledWith('org-b', 'p2', { isStaff: true });
       expect(task(result, 'close-due-proposals')).toMatchObject({ processed: 2, failed: 0 });
     });
 
@@ -182,7 +188,7 @@ describe('SchedulerService', () => {
       const result = await service.runDueTasks(NOW);
 
       // The two healthy rows must still have been closed.
-      expect(commons.closeProposal).toHaveBeenCalledWith('org-a', 'p3');
+      expect(commons.closeProposal).toHaveBeenCalledWith('org-a', 'p3', { isStaff: true });
       expect(task(result, 'close-due-proposals')).toMatchObject({ processed: 2, failed: 1 });
       expect(task(result, 'close-due-proposals').errors[0]).toContain('boom');
     });

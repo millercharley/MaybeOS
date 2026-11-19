@@ -554,7 +554,13 @@ export class SchedulerService {
 
     for (const { id, channel } of due) {
       try {
-        await this.commons.closeProposal(channel.orgId, id);
+        /*
+          The scheduler is nobody, so it looks with an organiser's eyes
+          (CMN-30). A proposal whose voting has closed must close whichever
+          channel it lives in — a private one does not get to keep voting
+          open because the clock has no membership.
+        */
+        await this.commons.closeProposal(channel.orgId, id, { isStaff: true });
         result.processed++;
       } catch (error) {
         result.failed++;

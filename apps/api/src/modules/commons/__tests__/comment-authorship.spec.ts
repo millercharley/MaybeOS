@@ -65,7 +65,7 @@ describe('CommonsService — editing a comment', () => {
   });
 
   it('lets the author rewrite what they wrote', async () => {
-    await service.editComment(ORG, 'comment-1', AUTHOR, 'what they meant');
+    await service.editComment(ORG, 'comment-1', AUTHOR, 'what they meant', { isStaff: true });
 
     expect(prisma.comment.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -76,7 +76,7 @@ describe('CommonsService — editing a comment', () => {
   });
 
   it('stamps editedAt, so the thread can say so honestly', async () => {
-    await service.editComment(ORG, 'comment-1', AUTHOR, 'revised');
+    await service.editComment(ORG, 'comment-1', AUTHOR, 'revised', { isStaff: true });
 
     const { data } = prisma.comment.update.mock.calls[0][0] as { data: { editedAt: Date } };
     expect(data.editedAt).toBeInstanceOf(Date);
@@ -84,7 +84,7 @@ describe('CommonsService — editing a comment', () => {
 
   it('refuses somebody else, and writes nothing', async () => {
     await expect(
-      service.editComment(ORG, 'comment-1', 'a-different-member', 'not yours'),
+      service.editComment(ORG, 'comment-1', 'a-different-member', 'not yours', { isStaff: true }),
     ).rejects.toThrow(ForbiddenException);
 
     expect(prisma.comment.update).not.toHaveBeenCalled();
@@ -95,7 +95,7 @@ describe('CommonsService — editing a comment', () => {
     // future change grants organisers the edit, this test is where it argues
     // its case.
     await expect(
-      service.editComment(ORG, 'comment-1', 'the-admin', 'tidied up'),
+      service.editComment(ORG, 'comment-1', 'the-admin', 'tidied up', { isStaff: true }),
     ).rejects.toThrow(ForbiddenException);
   });
 
@@ -103,7 +103,7 @@ describe('CommonsService — editing a comment', () => {
     prisma.comment.findFirst.mockResolvedValue(null);
 
     await expect(
-      service.editComment(ORG, 'comment-elsewhere', AUTHOR, 'x'),
+      service.editComment(ORG, 'comment-elsewhere', AUTHOR, 'x', { isStaff: true }),
     ).rejects.toThrow(NotFoundException);
     expect(prisma.comment.update).not.toHaveBeenCalled();
   });

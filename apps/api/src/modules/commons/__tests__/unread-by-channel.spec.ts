@@ -71,7 +71,7 @@ describe('CommonsService — unread by channel', () => {
       comments: [{ post: { channelId: 'events' } }],
     });
 
-    const counts = await service.unreadCounts(ORG, USER);
+    const counts = await service.unreadCounts(ORG, USER, { isStaff: true });
 
     expect(counts.commons).toBe(2);
     expect(counts.channels).toEqual({ events: 2 });
@@ -86,7 +86,7 @@ describe('CommonsService — unread by channel', () => {
       comments: [{ post: { channelId: 'general' } }, { post: { channelId: 'announcements' } }],
     });
 
-    const counts = await service.unreadCounts(ORG, USER);
+    const counts = await service.unreadCounts(ORG, USER, { isStaff: true });
 
     expect(counts.channels).toEqual({ general: 4, events: 1, announcements: 1 });
     expect(counts.commons).toBe(
@@ -104,7 +104,7 @@ describe('CommonsService — unread by channel', () => {
       postGroups: [{ channelId: 'b', _count: { _all: 2 } }],
     });
 
-    const counts = await service.unreadCounts(ORG, USER);
+    const counts = await service.unreadCounts(ORG, USER, { isStaff: true });
 
     expect(counts.channels).toEqual({ b: 2 });
   });
@@ -112,7 +112,7 @@ describe('CommonsService — unread by channel', () => {
   it('is empty when there is nothing to read', async () => {
     const { service } = await build();
 
-    const counts = await service.unreadCounts(ORG, USER);
+    const counts = await service.unreadCounts(ORG, USER, { isStaff: true });
 
     expect(counts).toMatchObject({ commons: 0, channels: {} });
   });
@@ -120,7 +120,7 @@ describe('CommonsService — unread by channel', () => {
   it('is empty for a co-op with no channels at all', async () => {
     const { service } = await build({ channels: [] });
 
-    const counts = await service.unreadCounts(ORG, USER);
+    const counts = await service.unreadCounts(ORG, USER, { isStaff: true });
 
     expect(counts).toMatchObject({ commons: 0, channels: {} });
   });
@@ -135,7 +135,7 @@ describe('CommonsService — unread by channel', () => {
       postGroups: [{ channelId: 'events', _count: { _all: 1 } }],
     });
 
-    await service.unreadCounts(ORG, USER);
+    await service.unreadCounts(ORG, USER, { isStaff: true });
 
     expect(prisma.post.groupBy).toHaveBeenCalledTimes(1);
     expect(prisma.comment.findMany).toHaveBeenCalledTimes(1);
@@ -145,7 +145,7 @@ describe('CommonsService — unread by channel', () => {
   it('never counts the member’s own posts or comments', async () => {
     const { service, prisma } = await build();
 
-    await service.unreadCounts(ORG, USER);
+    await service.unreadCounts(ORG, USER, { isStaff: true });
 
     expect(prisma.post.groupBy).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ authorId: { not: USER } }) }),

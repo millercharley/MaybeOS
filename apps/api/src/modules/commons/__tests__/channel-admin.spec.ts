@@ -103,7 +103,10 @@ describe('CommonsService — channels', () => {
         .mockResolvedValueOnce({ id: 'c1', orgId: ORG } as never) // the scoped lookup
         .mockResolvedValueOnce(null); // the new slug is free
 
-      const updated = await service.updateChannel(ORG, 'c1', { name: 'Announcements' }, ADMIN, 'ADMIN');
+      const updated = await service.updateChannel(
+        ORG,
+        'c1',
+        { isStaff: true }, { name: 'Announcements' }, ADMIN, 'ADMIN');
 
       expect(updated).toMatchObject({ name: 'Announcements', slug: 'announcements' });
     });
@@ -111,7 +114,10 @@ describe('CommonsService — channels', () => {
     it('refuses a name of nothing but spaces', async () => {
       prisma.channel.findFirst.mockResolvedValue({ id: 'c1', orgId: ORG } as never);
 
-      await expect(service.updateChannel(ORG, 'c1', { name: '   ' }, ADMIN, 'ADMIN')).rejects.toThrow(
+      await expect(service.updateChannel(
+        ORG,
+        'c1',
+        { isStaff: true }, { name: '   ' }, ADMIN, 'ADMIN')).rejects.toThrow(
         BadRequestException,
       );
       expect(prisma.channel.update).not.toHaveBeenCalled();
@@ -128,7 +134,7 @@ describe('CommonsService — channels', () => {
         isDefault: true,
       } as never);
 
-      await expect(service.deleteChannel(ORG, 'c1')).rejects.toThrow(BadRequestException);
+      await expect(service.deleteChannel(ORG, 'c1', { isStaff: true })).rejects.toThrow(BadRequestException);
       expect(prisma.channel.delete).not.toHaveBeenCalled();
     });
 
@@ -139,7 +145,7 @@ describe('CommonsService — channels', () => {
         isDefault: false,
       } as never);
 
-      await expect(service.deleteChannel(ORG, 'c2')).resolves.toEqual({ deleted: 'c2' });
+      await expect(service.deleteChannel(ORG, 'c2', { isStaff: true })).resolves.toEqual({ deleted: 'c2' });
     });
   });
 
