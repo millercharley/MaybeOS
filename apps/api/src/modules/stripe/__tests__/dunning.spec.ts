@@ -221,3 +221,170 @@ describe('the handler itself', () => {
     expect(source).not.toMatch(/For MVP we log the intent/);
   });
 });
+
+/**
+ * The whole way through, from a signed body to the send.
+ *
+ * Everything above drives `tellAboutFailedDuesIfAny` directly, and the source
+ * scan below only reads where the call sits in the file. Neither executes the
+ * seam that actually carries a real event: signature verification, the
+ * dispatch switch, the claim transaction, and then the after-commit step with
+ * the same `event` object the switch saw.
+ *
+ * That seam is where this bug lived for months — the handler ran, marked the
+ * membership PAST_DUE, and stopped. So it is worth one test that starts where
+ * Stripe starts: a payload and a signature.
+ *
+ * Written after subscribing the live Connect endpoint to
+ * `invoice.payment_failed` on 2026-11-19, because a live event cannot be
+ * fabricated to prove this and the dashboard's test webhook names a
+ * subscription no membership holds.
+ */
+describe('a signed invoice.payment_failed, end to end', () => {
+  const SECRET = 'whsec_test_secret_for_signing';
+
+  let service: StripeService;
+  let email: { sendDunning: jest.Mock };
+  let update: jest.Mock;
+  let created: jest.Mock;
+
+  const membership = {
+    id: 'uo_1',
+    userId: 'usr_1',
+    orgId: 'org_1',
+    user: { name: 'Alex Rivera', email: 'alex@example.com' },
+    org: { name: 'Sunrise Community', slug: 'sunrise', replyToEmail: 'hello@sunrise.coop' },
+  };
+
+  beforeEach(async () => {
+    email = { sendDunning: jest.fn().mockResolvedValue(undefined) };
+    update = jest.fn().mockResolvedValue(membership);
+    created = jest.fn().mockResolvedValue({ id: 'evt_e2e' });
+
+    const findFirst = jest.fn().mockResolvedValue(membership);
+    const tx = { webhookEvent: { create: created }, userOrg: { findFirst, update } };
+
+    const prisma = {
+      // Runs the callback, as an interactive transaction does. The commit
+      // boundary this test cares about is "the callback returned".
+      $transaction: jest.fn(async (fn: (c: typeof tx) => Promise<void>) => fn(tx)),
+      userOrg: { findFirst },
+    };
+
+    const config = {
+      get: (key: string) =>
+        key === 'STRIPE_WEBHOOK_SECRET' ? SECRET
+        : key === 'APP_URL' ? 'https://maybeos.org'
+        : undefined,
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        StripeService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: EmailService, useValue: email },
+        { provide: TicketPassService, useValue: { confirm: jest.fn() } },
+        { provide: ConnectService, useValue: {} },
+        { provide: ConfigService, useValue: config },
+      ],
+    }).compile();
+
+    service = module.get(StripeService);
+  });
+
+  /** The shape Stripe sends on dahlia, which is not where acacia put it. */
+  const body = JSON.stringify({
+    id: 'evt_e2e',
+    object: 'event',
+    type: 'invoice.payment_failed',
+    account: 'acct_coop',
+    data: {
+      object: {
+        id: 'in_e2e',
+        object: 'invoice',
+        parent: { subscription_details: { subscription: 'sub_e2e' } },
+      },
+    },
+  });
+
+  const signed = () =>
+    service.handleWebhook(
+      Buffer.from(body),
+      Stripe.webhooks.generateTestHeaderString({ payload: body, secret: SECRET }),
+    );
+
+  it('reaches the member, starting from a payload and a signature', async () => {
+    await expect(signed()).resolves.toEqual({ received: true });
+
+    expect(email.sendDunning).toHaveBeenCalledWith(
+      'alex@example.com',
+      'Alex Rivera',
+      'Sunrise Community',
+      'https://maybeos.org/member/sunrise/billing',
+      'hello@sunrise.coop',
+    );
+  });
+
+  it('marks the membership past due and claims the event too', async () => {
+    await signed();
+
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'uo_1' },
+      data: { subscriptionStatus: 'PAST_DUE' },
+    });
+    expect(created).toHaveBeenCalledWith({
+      data: { id: 'evt_e2e', source: 'stripe' },
+    });
+  });
+
+  it('sends only after the transaction has returned', async () => {
+    /*
+      The rule EVT-46 wrote down and PAY-12 inherited: a Postmark call inside
+      the claim's transaction risks a committed write being rolled back by a
+      third party being slow. Asserted by execution here rather than by
+      reading the file — if the call is ever moved inside, this fails.
+    */
+    let sentDuringTransaction: boolean | null = null;
+    let open = false;
+
+    email.sendDunning.mockImplementation(async () => {
+      sentDuringTransaction = open;
+    });
+
+    const prisma = service as unknown as {
+      prisma: { $transaction: jest.Mock };
+    };
+    const original = prisma.prisma.$transaction;
+    prisma.prisma.$transaction = jest.fn(async (fn: (c: unknown) => Promise<void>) => {
+      open = true;
+      try {
+        return await original(fn);
+      } finally {
+        open = false;
+      }
+    });
+
+    await signed();
+
+    // Not vacuous: `false` would also be the answer if the override never
+    // ran and `open` stayed false throughout. The wrapper must have been
+    // entered, and the send must have happened.
+    expect(prisma.prisma.$transaction).toHaveBeenCalled();
+    expect(email.sendDunning).toHaveBeenCalled();
+    expect(sentDuringTransaction).toBe(false);
+  });
+
+  it('refuses a body whose signature does not match', async () => {
+    // The same payload, signed with something else: nothing is claimed and
+    // nobody is written to.
+    await expect(
+      service.handleWebhook(
+        Buffer.from(body),
+        Stripe.webhooks.generateTestHeaderString({ payload: body, secret: 'whsec_wrong' }),
+      ),
+    ).rejects.toThrow();
+
+    expect(created).not.toHaveBeenCalled();
+    expect(email.sendDunning).not.toHaveBeenCalled();
+  });
+});
