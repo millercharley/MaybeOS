@@ -1,3 +1,5 @@
+import { emptyNote, type EventTab } from './event-tabs';
+
 /**
  * Arranging events the way somebody reads them (EVT-18).
  *
@@ -211,9 +213,21 @@ export function eventWindow(now: Date, daysBack: number): { from: string; perPag
  * evenings from November 2024 and found none, on the one page whose job is
  * showing an organiser their events.
  *
- * Drafts are the exception: an unpublished event is as likely to be in the
- * past as the future — that is often why it is still a draft — so that tab
- * asks for the lot and filters here.
+ * **Drafts asks for the same stretch as Upcoming (EVT-63).** It used to ask
+ * for the lot, on the reasoning that "an unpublished event is as likely to
+ * be in the past as the future — that is often why it is still a draft".
+ * True, and it is what made the old tab useless: it opened on unpublished
+ * events from 2025 sitting beside ones for next spring, and that mixing is
+ * why the tab was removed on 3 November.
+ *
+ * Charley, 2026-11-19: "Bring the Drafts tab back with only upcoming." So
+ * the tab is now a working queue — the unfinished evenings that are still
+ * ahead — and asking for the upcoming window is what makes it one. Drafts
+ * left behind in the past are still reachable, through Past with *Drafts
+ * only* ticked; they are a different job, which was always the argument for
+ * separating them.
+ *
+ * `all` is unused by the console and keeps its behaviour.
  */
 export function adminEventWindow(
   tab: 'all' | 'upcoming' | 'past' | 'draft',
@@ -222,10 +236,51 @@ export function adminEventWindow(
   const midnight = new Date(now);
   midnight.setHours(0, 0, 0, 0);
 
-  if (tab === 'upcoming') return { from: midnight.toISOString(), perPage: 100 };
+  if (tab === 'upcoming' || tab === 'draft') {
+    return { from: midnight.toISOString(), perPage: 100 };
+  }
   if (tab === 'past') return { to: now.toISOString(), perPage: 100 };
 
   return { perPage: 100 };
+}
+
+/**
+ * Which tab's list this is, in the organiser's console (EVT-63).
+ *
+ * Upcoming and Past are the time split EVT-49 is about. Drafts is not a
+ * third kind of date — it is a standing, filtered to what is ahead — which
+ * is why it lives here as a separate type rather than widening `EventTab`.
+ */
+export type AdminEventTab = EventTab | 'draft';
+
+/** The window two tabs share, so switching between them refetches nothing. */
+export function adminWindowKey(tab: AdminEventTab): 'upcoming' | 'past' {
+  return tab === 'past' ? 'past' : 'upcoming';
+}
+
+/**
+ * What the console says when a list comes back empty (DESIGN §7).
+ *
+ * Four different nothings, and they mean different things: no search hits,
+ * no drafts ahead, no drafts behind, and a genuinely empty stretch of
+ * calendar. One function so a third branch cannot grow into a ternary
+ * nobody can read.
+ */
+export function adminEmptyNote(
+  tab: AdminEventTab,
+  draftsOnly: boolean,
+  searching: boolean,
+): string {
+  if (searching) return 'Nothing matches that.';
+
+  if (tab === 'draft') {
+    return 'No drafts coming up. An event you save without publishing waits here.';
+  }
+  if (draftsOnly) {
+    return tab === 'past' ? 'No drafts among the past events.' : 'No drafts coming up.';
+  }
+
+  return emptyNote(tab, false);
 }
 
 /**

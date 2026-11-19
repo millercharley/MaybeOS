@@ -71,6 +71,23 @@ export const STANDING_TONE: Record<Standing, string> = {
   draft: 'bg-gray-100 text-gray-600',
 };
 
+/**
+ * The genuine drafts among a list — standing, not the `isPublished` column
+ * (EVT-63).
+ *
+ * This is the whole reason the Drafts tab needed a filter written down
+ * rather than a `!event.isPublished` inline. Hiding an event unpublishes
+ * it, so **everything hidden is also unpublished**: on 18 November forty
+ * orphaned events were hidden in one go, and production then held 52
+ * upcoming unpublished events of which only **12** were drafts anybody was
+ * working on. A tab keyed on the column would have opened on the forty.
+ *
+ * A cancelled event is not a draft either. Nobody is going to finish it.
+ */
+export function draftsAmong<T extends Standable>(events: T[]): T[] {
+  return events.filter((event) => standingOf(event) === 'draft');
+}
+
 export function orphanedAmong(events: Standable[]): number {
   return events.filter((event) => standingOf(event) === 'orphaned').length;
 }

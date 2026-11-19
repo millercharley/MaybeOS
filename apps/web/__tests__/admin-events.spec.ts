@@ -1,7 +1,7 @@
 import { stripComments } from './helpers/source-scan';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { adminEventWindow } from '@/lib/event-list';
+import { adminEmptyNote, adminEventWindow, adminWindowKey } from '@/lib/event-list';
 
 /**
  * The organiser's Events console, after an import (EVT-27, EVT-30).
@@ -55,20 +55,43 @@ describe('which events each tab asks for', () => {
     expect(from).toBeUndefined();
   });
 
-  it('asks for everything on All and Draft', () => {
-    // An unpublished event is as likely to be past as future — that is often
-    // why it is still a draft.
+  it('asks for the upcoming stretch on Draft, not the lot (EVT-63)', () => {
+    /*
+      This used to assert the opposite, on the reasoning that "an unpublished
+      event is as likely to be past as future — that is often why it is still
+      a draft". The observation is true and it is exactly what made the old
+      Draft tab useless: it opened on unpublished events from 2025 beside
+      ones for next spring, which is why the tab was removed on 3 November.
+
+      Charley, 2026-11-19: "Bring the Drafts tab back with only upcoming."
+      The same window as Upcoming is what makes it a working queue. Past
+      drafts are reached through Past with the Drafts-only box ticked.
+    */
+    expect(adminEventWindow('draft', now)).toEqual(adminEventWindow('upcoming', now));
+    expect(new Date(adminEventWindow('draft', now).from!).getHours()).toBe(0);
+    expect(adminEventWindow('draft', now).to).toBeUndefined();
+  });
+
+  it('still asks for everything on All, which the console does not use', () => {
     expect(adminEventWindow('all', now)).toEqual({ perPage: 100 });
-    expect(adminEventWindow('draft', now)).toEqual({ perPage: 100 });
   });
 
   it('asks for as many as the API will give', () => {
     expect(adminEventWindow('upcoming', now).perPage).toBe(100);
   });
 
-  it('refetches when the tab changes', () => {
+  it('refetches when the stretch changes, not on every tab (EVT-63)', () => {
+    /*
+      This pinned `[activeTab]`, which was right while the tabs were the two
+      time windows. Drafts asks for the same stretch as Upcoming, so keying
+      the fetch on the tab would discard a hundred events and fetch the
+      identical hundred back, with a spinner over a list already in hand.
+
+      Keyed on the window instead. The call still passes the tab, because
+      the tab is what decides the window.
+    */
     expect(page).toMatch(/adminEventWindow\(activeTab, new Date\(\)\)/);
-    expect(page).toMatch(/\[activeTab\]/);
+    expect(page).toMatch(/\[adminWindowKey\(activeTab\)\]/);
   });
 });
 
@@ -151,5 +174,99 @@ describe('arriving to edit one event', () => {
 
   it('waits until the events are loaded, since the form needs one', () => {
     expect(page).toMatch(/\}, \[eventsData\]\);/);
+  });
+});
+
+/**
+ * The Drafts tab, back and carrying only what is ahead (EVT-63).
+ *
+ * Charley, 2026-11-19: "Bring the Drafts tab back with only upcoming."
+ *
+ * The tab was removed on 3 November for a real reason — it listed
+ * unpublished events from 2025 beside ones for next spring, which is the
+ * stacking EVT-49 bans. *Only upcoming* is that reason removed rather than
+ * reinstated, so this is not a revert: the half that was useful comes back
+ * and the half that broke the rule does not.
+ *
+ * It is also the missing screen behind `mig-hidden-drafts`. Eighteen hidden
+ * events accumulated with nobody noticing a number because nothing listed
+ * them, so there was no number to notice.
+ */
+describe('the Drafts tab', () => {
+  it('is offered beside the two time tabs, not among them', () => {
+    // `extraTabs` renders after Upcoming and Past deliberately: a third pill
+    // between them would read as a third kind of date.
+    expect(page).toMatch(/extraTabs=\{\[\{ key: 'draft', label: 'Drafts' \}\]\}/);
+  });
+
+  it('carries a count, which is the point of it', () => {
+    // The 18 that accumulated unnoticed had no number anywhere.
+    expect(page).toMatch(/draft: draftsAmong\(upcoming\)\.length/);
+  });
+
+  it('counts only what is ahead, never the past drafts', () => {
+    // `draftsAmong(upcoming)`, not `draftsAmong(events)` — a pill reading 300
+    // because of 2024 is the old tab's bug wearing a badge.
+    expect(page).not.toMatch(/draft: draftsAmong\(events\)/);
+    expect(page).not.toMatch(/draft: draftsAmong\(past\)/);
+  });
+
+  it('hides the Drafts-only checkbox on it, where it says nothing', () => {
+    expect(page).toMatch(/activeTab !== 'draft' && \(/);
+  });
+
+  it('keeps the checkbox for the other two, which is how past drafts are reached', () => {
+    expect(page).toMatch(/checked=\{draftsOnly\}/);
+  });
+
+  it('shares its fetched window with Upcoming', () => {
+    expect(adminWindowKey('draft')).toBe('upcoming');
+    expect(adminWindowKey('upcoming')).toBe('upcoming');
+    expect(adminWindowKey('past')).toBe('past');
+  });
+});
+
+describe('what the console says when a list is empty', () => {
+  /*
+    Four different nothings (DESIGN §7). "No events found for this filter"
+    answered all four at once, which is how a screen tells somebody nothing.
+  */
+  it('says so when a search matches nothing, whichever tab', () => {
+    for (const tab of ['upcoming', 'past', 'draft'] as const) {
+      expect(adminEmptyNote(tab, false, true)).toBe('Nothing matches that.');
+    }
+  });
+
+  it('tells an organiser what the Drafts tab is for when it is empty', () => {
+    expect(adminEmptyNote('draft', false, false)).toBe(
+      'No drafts coming up. An event you save without publishing waits here.',
+    );
+  });
+
+  it('distinguishes no drafts behind from no drafts ahead', () => {
+    expect(adminEmptyNote('past', true, false)).toBe('No drafts among the past events.');
+    expect(adminEmptyNote('upcoming', true, false)).toBe('No drafts coming up.');
+  });
+
+  it('falls back to the shared wording for a genuinely empty stretch', () => {
+    expect(adminEmptyNote('upcoming', false, false)).toBe('Nothing coming up.');
+    expect(adminEmptyNote('past', false, false)).toMatch(/once they have happened/);
+  });
+
+  it('is the only thing the page says about an empty list', () => {
+    /*
+      This assertion used to be the first line alone, and it was not worth
+      much: it proved the good sentence was called, not that it was the only
+      one. The grid below carried its own "No events found for this filter."
+      and both rendered at once — a specific empty state with the generic one
+      it replaced printed underneath. Found by opening the tab and searching
+      for something absent.
+
+      `page` has its comments stripped, so the sentence quoted in the page's
+      own note about this does not satisfy the scan.
+    */
+    expect(page).toMatch(/adminEmptyNote\(activeTab, draftsOnly, Boolean\(search\.trim\(\)\)\)/);
+    expect(page).not.toMatch(/No events found for this filter/);
+    expect(page.match(/filtered\.length === 0/g) ?? []).toHaveLength(1);
   });
 });

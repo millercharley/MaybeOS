@@ -7,18 +7,26 @@ import Link from 'next/link';
 import { Plus, Users, Clock, Eye, EyeOff, X, Lock, Pencil, Trash2, Ticket, UserCircle, Share2, UserCog } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
 import { useAuthStore } from '@/lib/auth-store';
-import { adminEventWindow, hostLine, ticketLine } from '@/lib/event-list';
+import {
+  adminEmptyNote,
+  adminEventWindow,
+  adminWindowKey,
+  hostLine,
+  ticketLine,
+  type AdminEventTab,
+} from '@/lib/event-list';
 import { api, Event } from '@/lib/api';
 import { toUpdatePayload } from '@/lib/events';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
 import { ShareEventDialog } from '@/components/events/share-event-dialog';
 import { TransferEvents } from '@/components/events/transfer-events';
 import { EventTabs } from '@/components/events/event-tabs';
-import { emptyNote, searchEvents, splitEvents, type EventTab } from '@/lib/event-tabs';
+import { searchEvents, splitEvents } from '@/lib/event-tabs';
 import { SHARE_LABEL, shareability, shouldOfferAfterPublish } from '@/lib/event-sharing';
 import {
   STANDING_LABEL,
   STANDING_TONE,
+  draftsAmong,
   orphanedAmong,
   orphanedNote,
   standingOf,
@@ -42,10 +50,25 @@ export default function EventsPage() {
     shape anyway: an organiser's unfinished events for next month are a
     working queue, and the ones left over from last year are a different job.
 
+    **Drafts is a tab again, carrying only what is ahead (EVT-63.)** Charley,
+    2026-11-19: "Bring the Drafts tab back with only upcoming." That is the
+    half of the old tab that was worth having, and dropping the past half is
+    what fixes it rather than restoring the bug: the removed tab mixed 2025
+    with next spring, and *only upcoming* is precisely the mixing gone.
+
+    It is also the answer to how eighteen hidden events accumulated with
+    nobody noticing a number. There was no screen that listed them, so there
+    was no number to notice. The pill carries a count.
+
+    The time split is still the only axis Upcoming and Past carry, so EVT-49
+    is intact: Drafts lists no past events at all, and the past drafts it
+    leaves out stay reachable through Past with *Drafts only* ticked — the
+    different job, kept separate.
+
     What is coming, not everything that ever happened (EVT-31): a console for
     777 events opened on November 2024, which is nobody's first question.
   */
-  const [activeTab, setActiveTab] = useState<EventTab>('upcoming');
+  const [activeTab, setActiveTab] = useState<AdminEventTab>('upcoming');
   const [search, setSearch] = useState('');
   const [draftsOnly, setDraftsOnly] = useState(false);
   /**
@@ -103,9 +126,17 @@ export default function EventsPage() {
     nothing, on a console whose whole job is showing an organiser their
     events.
   */
+  /*
+    Keyed on the window, not the tab (EVT-63).
+
+    Upcoming and Drafts ask for the same stretch — Drafts is a filter over
+    what is ahead — so switching between them would otherwise throw away a
+    hundred events and fetch the identical hundred again, with a spinner on
+    a list the page is already holding.
+  */
   const { data: eventsData, loading, error, refetch } = useApi(
     (token, orgId) => api.events.list(orgId, token, adminEventWindow(activeTab, new Date())),
-    [activeTab],
+    [adminWindowKey(activeTab)],
   );
 
   // The form quotes real ticket fees, so it needs the co-op's plan and whether
@@ -279,8 +310,19 @@ export default function EventsPage() {
   */
   const { upcoming, past } = splitEvents(events, { now });
   const inWindow = activeTab === 'past' ? past : upcoming;
+  /*
+    Drafts by standing, never by the `isPublished` column (EVT-63).
+
+    Hiding an event unpublishes it, so everything hidden is also a "draft"
+    to that column. The forty orphaned events hidden on 18 November made
+    production hold 52 upcoming unpublished events against 12 real drafts —
+    so both the tab and the checkbox read `draftsAmong`, which asks what the
+    badge asks. This was already wrong for the checkbox before the tab
+    existed; it just had no screen to be wrong on.
+  */
+  const onlyDrafts = activeTab === 'draft' || draftsOnly;
   const filtered = searchEvents(
-    draftsOnly ? inWindow.filter((event) => !event.isPublished) : inWindow,
+    onlyDrafts ? draftsAmong(inWindow) : inWindow,
     search,
     (event) => [event.title, event.location?.name, event.room?.name],
   );
@@ -380,25 +422,39 @@ export default function EventsPage() {
       <div className="space-y-3">
         <EventTabs
           tab={activeTab}
-          onTab={(next) => setActiveTab(next as EventTab)}
-          counts={{ upcoming: upcoming.length, past: past.length }}
+          onTab={(next) => setActiveTab(next as AdminEventTab)}
+          counts={{
+            upcoming: upcoming.length,
+            past: past.length,
+            draft: draftsAmong(upcoming).length,
+          }}
           search={search}
           onSearch={setSearch}
           label="Which events"
           searchPlaceholder="Search events…"
+          extraTabs={[{ key: 'draft', label: 'Drafts' }]}
         />
 
-        {/* Drafts narrow whichever side is open, rather than being a third
-            kind of date (EVT-49). */}
-        <label className="inline-flex items-center gap-2 text-sm text-gray-700">
-          <input
-            type="checkbox"
-            checked={draftsOnly}
-            onChange={(e) => setDraftsOnly(e.target.checked)}
-            className="rounded border-gray-300"
-          />
-          Drafts only
-        </label>
+        {/*
+          The checkbox is what reaches drafts in the *past* (EVT-63).
+
+          Not shown on the Drafts tab, where it would be a tickbox for the
+          thing the selected tab already says. That is the one place the
+          objection on `EventTabs` — a control that appears and disappears
+          as somebody switches — does not bite: the tab states the filter,
+          so the checkbox is not missing, it is redundant.
+        */}
+        {activeTab !== 'draft' && (
+          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={draftsOnly}
+              onChange={(e) => setDraftsOnly(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            Drafts only
+          </label>
+        )}
       </div>
 
       {/*
@@ -420,9 +476,7 @@ export default function EventsPage() {
 
       {filtered.length === 0 && (
         <p className="text-sm text-gray-500">
-          {draftsOnly && !search.trim()
-            ? `No drafts ${activeTab === 'past' ? 'among the past events' : 'coming up'}.`
-            : emptyNote(activeTab, Boolean(search.trim()))}
+          {adminEmptyNote(activeTab, draftsOnly, Boolean(search.trim()))}
         </p>
       )}
 
@@ -680,11 +734,18 @@ export default function EventsPage() {
           );
         })}
 
-        {filtered.length === 0 && (
-          <div className="col-span-full py-12 text-center text-sm text-gray-500">
-            No events found for this filter.
-          </div>
-        )}
+        {/*
+          No second empty state here (EVT-63).
+
+          This grid carried its own — "No events found for this filter." —
+          under the one above it, so an empty list said nothing twice: a
+          specific sentence, then the generic one it replaced. Found by
+          opening the Drafts tab and searching for something absent, which
+          printed "Nothing matches that." and then "No events found for this
+          filter." directly beneath it. Every test passed; one of mine even
+          claimed `adminEmptyNote` was "the only thing the page says about
+          an empty list", because it checked the call and not the screen.
+        */}
       </div>
     </div>
   );

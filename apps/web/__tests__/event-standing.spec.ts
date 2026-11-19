@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import {
   STANDING_LABEL,
   STANDING_TONE,
+  draftsAmong,
   orphanedAmong,
   orphanedNote,
   standingOf,
@@ -130,5 +131,91 @@ describe('the console uses it', () => {
       of them.
     */
     expect(src).toMatch(/orphanedNote\(orphanedAmong\(filtered\)\)/);
+  });
+});
+
+/**
+ * Which of these is a draft somebody is working on (EVT-63).
+ *
+ * The Drafts tab came back on 2026-11-19 — "Bring the Drafts tab back with
+ * only upcoming" — and the question it has to answer is not the one the
+ * `isPublished` column answers.
+ *
+ * Hiding an event unpublishes it. Forty orphaned events were hidden on
+ * 18 November, which left production holding **52** upcoming unpublished
+ * events against **12** real drafts. A tab keyed on the column opens on the
+ * forty: a working queue made almost entirely of things nobody will ever
+ * work on.
+ */
+describe('the drafts among a list', () => {
+  const draft = { id: 'd', isPublished: false, canceledAt: null, orphanedAt: null };
+  const published = { id: 'p', isPublished: true, canceledAt: null, orphanedAt: null };
+  const cancelled = { id: 'c', isPublished: false, canceledAt: '2026-11-18T00:00:00Z', orphanedAt: null };
+  const orphaned = {
+    id: 'o',
+    isPublished: false,
+    canceledAt: '2026-11-18T00:00:00Z',
+    orphanedAt: '2026-11-18T00:00:00Z',
+  };
+
+  it('keeps an unfinished event', () => {
+    expect(draftsAmong([draft])).toEqual([draft]);
+  });
+
+  it('leaves out a published one', () => {
+    expect(draftsAmong([published])).toEqual([]);
+  });
+
+  it('leaves out one deleted in Google, though it is unpublished', () => {
+    // The forty. This is the assertion the tab exists for.
+    expect(orphaned.isPublished).toBe(false);
+    expect(draftsAmong([orphaned])).toEqual([]);
+  });
+
+  it('leaves out a cancelled one — nobody is going to finish it', () => {
+    expect(draftsAmong([cancelled])).toEqual([]);
+  });
+
+  it('answers the production shape: forty hidden orphans, twelve real drafts', () => {
+    const list = [
+      ...Array.from({ length: 40 }, (_, i) => ({ ...orphaned, id: `o${i}` })),
+      ...Array.from({ length: 12 }, (_, i) => ({ ...draft, id: `d${i}` })),
+    ];
+
+    expect(list.filter((e) => !e.isPublished)).toHaveLength(52);
+    expect(draftsAmong(list)).toHaveLength(12);
+  });
+
+  it('keeps the order it was given', () => {
+    const list = [{ ...draft, id: 'a' }, published, { ...draft, id: 'b' }];
+
+    expect(draftsAmong(list).map((e) => e.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('the console filters drafts by standing, not by the column', () => {
+  const src = readFileSync(
+    join(__dirname, '..', 'app', '(app)', '(dashboard)', 'admin', '[orgSlug]', 'events', 'page.tsx'),
+    'utf8',
+  );
+
+  it('narrows the list with draftsAmong', () => {
+    expect(src).toMatch(/draftsAmong\(inWindow\)/);
+  });
+
+  it('counts the pill with draftsAmong too, so the number means the same', () => {
+    expect(src).toMatch(/draft: draftsAmong\(upcoming\)\.length/);
+  });
+
+  it('no longer filters the list on isPublished anywhere', () => {
+    /*
+      The line this replaces — `inWindow.filter((event) => !event.isPublished)`
+      — was the checkbox's, and was already wrong before the tab existed; it
+      simply had no screen to be wrong on. Comments are kept here on purpose
+      so the scan reads the code, and the quoted line above lives in a
+      comment in the page too, which is why this matches the call shape
+      rather than the words.
+    */
+    expect(src).not.toMatch(/filter\(\(event\) => !event\.isPublished\)/);
   });
 });
