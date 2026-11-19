@@ -585,6 +585,39 @@ Production schema migrated first, by Charley through the Supabase SQL editor, th
 - **Never pass a live database URL as `--shadow-database-url`.** `prisma migrate diff --to-migrations` **resets the shadow database** before replaying the migration files into it. On 2026-09-04 the dev database's own URL was passed as its shadow: every table was dropped, the schema rebuilt from the migrations folder, `_prisma_migrations` dropped, and **every row in dev lost**. Production was never pointed at and was unaffected. Recovery was `prisma migrate resolve --applied` for all 38 migrations, then `SEED_FORCE=true npm run db:seed`. The diff answer that cost this is available safely from `prisma migrate diff --from-url <db> --to-schema-datamodel prisma/schema.prisma`, which needs no shadow database at all. **A read-only-sounding command is not read-only; check what it does to each URL you hand it.**
 - **The dev migration ledger is no longer drifted** — 44 migrations as of 2026-09-07, `prisma migrate status` reports "up to date". It drifted again briefly that day when two migrations were applied to dev through the Supabase connector rather than by `migrate deploy`; `migrate resolve --applied` restored it. This closes the dev half of the consolidation item by accident rather than by design. **Production is still not managed by Prisma**: it is migrated through the Supabase connector and verified by reading `information_schema` back.
 
+## The local API can serve a build you did not write
+
+Found 2026-11-19, after three separate false readings in one session.
+
+`npm run dev:api` is `nest start --watch`, and the process it leaves running
+is **`node dist/main`**. On 19 November `dist/modules/auth/auth.service.js`
+had been rebuilt at 13:56 while `dist/modules/events/events.service.js` was
+still **the previous day's**, in the same `dist`, under the same watcher. So
+one change was live and another, edited twenty minutes later, was not — and
+the API answered every request happily with half of each.
+
+What that costs: an end-to-end check of a brand-new code path reported the
+*old* behaviour as the new one and looked like a clean pass. Twice more, a
+restarted server served stale handlers and the symptom was a field simply
+missing from a response, which reads like a bug in the code you just wrote.
+
+**Check the artifact, not the server.** Before trusting any manual test of an
+API change:
+
+```
+grep -c "<something your change added>" apps/api/dist/modules/<path>.js
+```
+
+Zero means you are testing yesterday. The cure is `rm -rf apps/api/dist &&
+npx nest build`, then restart — a plain restart is not enough, because
+nothing in the restart notices the stale file.
+
+Two older entries in this file are the same lesson in other clothes: a
+`node dist/main` that survived `pkill -f "nest start"` and served the old
+build for twenty minutes, and "check the deploy before asking somebody to
+test it". The shape is always the same — the thing that *looks* like it
+proves a change is running proves only that something is running.
+
 ## How production ships
 - **`next build` and `next dev` share `.next`, so running the production build kills a running dev server.** It leaves the dev process serving production artefacts and every page throws `Cannot find module './vendor-chunks/…'`. Stop the preview, build, then restart it — or expect to `rm -rf apps/web/.next` and restart anyway. Hit twice on 2026-09-03 and diagnosed as a code bug both times.
 - **Before pushing web changes, run `npm --workspace @maybeos/web run verify` and read its exit code.** Netlify runs `next build`, which treats **ESLint errors as fatal** — so a change that typechecks and passes tests can still fail the deploy. On 2026-09-03 four consecutive production builds failed on five unused imports, and the local check reported "LINT CLEAN" because it grepped the lint output for a pattern that matched nothing and then echoed a hardcoded success. **Never grep a tool's output to decide whether it passed; use its exit code.** For a definitive answer, run the deploy's own command: `npm --workspace @maybeos/web run build`.

@@ -497,6 +497,10 @@ export default function EventsPage() {
             minute: '2-digit',
           })}`;
           const rsvpCount = event.rsvpCount ?? 0;
+          // Against a capacity, the number has to be people (EVT-64): 12
+          // bookings can be 19 guests, and this read 12 / 15 on an evening
+          // that was four over.
+          const seatsTaken = event.seatsTaken ?? rsvpCount;
           const capacity = event.capacity ?? 0;
           const share = shareability(event, Boolean(org?.socialSharingEnabled));
 
@@ -543,7 +547,7 @@ export default function EventsPage() {
                 <div className="flex items-center gap-2">
                   <Users className="h-4 w-4" />
                   <span>
-                    {rsvpCount}{capacity > 0 ? ` / ${capacity}` : ''} RSVPs
+                    {capacity > 0 ? `${seatsTaken} / ${capacity} going` : `${rsvpCount} ${rsvpCount === 1 ? 'RSVP' : 'RSVPs'}`}
                   </span>
                 </div>
                 {ticketLine(event) && (

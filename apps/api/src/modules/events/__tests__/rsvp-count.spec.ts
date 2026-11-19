@@ -46,6 +46,13 @@ describe('EventsService — rsvpCount', () => {
         findUnique: jest.fn(),
       },
       organization: { findUnique: jest.fn() },
+      /*
+        Places taken is one `groupBy` per page since EVT-64 — capacity is
+        measured in people, and `_count.rsvps` counts rows. Empty here:
+        these suites assert nothing about plus-ones, and with no rows back
+        `withSeats` falls through to the booking count.
+      */
+      rsvp: { groupBy: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
     };
 
@@ -87,6 +94,55 @@ describe('EventsService — rsvpCount', () => {
     // The nested shape is an implementation detail of the query; leaking it is
     // what caused the bug, because the web reads the flat name.
     expect(result.data[0]).not.toHaveProperty('_count');
+  });
+
+  describe('places taken, in people (EVT-64)', () => {
+    it('sends seatsTaken beside rsvpCount, and they differ by the plus-ones', async () => {
+      /*
+        The card: "N of capacity places taken" ignored plus-ones, so a full
+        event could still look open. Six bookings, nine people — a capacity
+        of 8 is already over, and the old bar read 6 of 8.
+      */
+      prisma.event.findMany.mockResolvedValue([row('a', 6)]);
+      prisma.event.count.mockResolvedValue(1);
+      prisma.rsvp.groupBy.mockResolvedValue([
+        { eventId: 'a', _count: { _all: 6 }, _sum: { plusOnes: 3 } },
+      ]);
+
+      const result = await service.listByOrg('org-1', {});
+
+      expect(result.data[0].rsvpCount).toBe(6);
+      expect(result.data[0].seatsTaken).toBe(9);
+    });
+
+    it('falls back to the booking count for an event nobody has RSVPed to', async () => {
+      // `groupBy` returns no row at all for an event with no RSVPs, which
+      // would otherwise be undefined on the card.
+      prisma.event.findMany.mockResolvedValue([row('a', 0)]);
+      prisma.event.count.mockResolvedValue(1);
+      prisma.rsvp.groupBy.mockResolvedValue([]);
+
+      const result = await service.listByOrg('org-1', {});
+
+      expect(result.data[0].seatsTaken).toBe(0);
+    });
+
+    it('asks once for the page rather than once per event', async () => {
+      // A `groupBy` over the page's ids: 777 events must not become 777
+      // queries, and fetching each event's RSVPs to add them up would pull
+      // thousands of rows to produce one number per card.
+      prisma.event.findMany.mockResolvedValue([row('a', 1), row('b', 2)]);
+      prisma.event.count.mockResolvedValue(2);
+      prisma.rsvp.groupBy.mockResolvedValue([]);
+
+      await service.listByOrg('org-1', {});
+
+      expect(prisma.rsvp.groupBy).toHaveBeenCalledTimes(1);
+      expect(prisma.rsvp.groupBy.mock.calls[0][0].where).toEqual({
+        eventId: { in: ['a', 'b'] },
+        status: 'CONFIRMED',
+      });
+    });
   });
 
   it('counts confirmed RSVPs only, so a capacity bar is not overstated', async () => {

@@ -24,6 +24,9 @@ describe('RSVP faces', () => {
   beforeEach(async () => {
     prisma = {
       event: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
+      // Places taken is one `groupBy` per page since EVT-64. Empty: this
+      // suite is about faces, not plus-ones.
+      rsvp: { groupBy: jest.fn().mockResolvedValue([]) },
       // Both forms: the public listing runs an interactive transaction now
       // (SEC-12), because its two branches return different shapes.
       $transaction: jest.fn(async (arg: any) =>

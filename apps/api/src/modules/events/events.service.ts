@@ -15,6 +15,7 @@ import { RadarService } from '../radar/radar.service';
 import { ContactViewer } from '../../common/access/contact-visibility';
 import { CreateEventDto, UpdateEventDto } from './dto/create-event.dto';
 import { RsvpDto } from './dto/rsvp.dto';
+import { admits, seatsFor, seatsFrom, seatsTaken as seatsTakenOf } from './seats';
 import { canEditEvent, canManageHosts, coHostProblem, NOT_YOURS, NOT_YOUR_EVENT } from './host-control';
 import { attachProblem, whoseRoomsCount } from './event-rooms';
 import { groupOwnedEvents, transferProblem } from './host-transfer';
@@ -137,6 +138,25 @@ function withRsvpCount<T extends { _count: { rsvps: number } }>(
 ): Omit<T, '_count'> & { rsvpCount: number } {
   const { _count, ...rest } = event;
   return { ...rest, rsvpCount: _count.rsvps };
+}
+
+/**
+ * Places taken, in people, beside the count of rows (EVT-64).
+ *
+ * `rsvpCount` stays what it has always been — how many RSVPs there are —
+ * because an organiser scrolling a list of bookings wants that number.
+ * `seatsTaken` is what capacity is measured in, and the two differ by
+ * exactly the plus-ones: 12 bookings can be 19 people.
+ *
+ * Two numbers rather than one redefined, so neither call site has to guess
+ * which meaning it inherited. Where they are equal — nobody brought
+ * anybody — both are right.
+ */
+function withSeats<T extends { id: string; rsvpCount: number }>(
+  event: T,
+  seats: Map<string, number>,
+): T & { seatsTaken: number } {
+  return { ...event, seatsTaken: seats.get(event.id) ?? event.rsvpCount };
 }
 
 /* ───────────────────────────── service ───────────────────────────── */
@@ -921,7 +941,14 @@ export class EventsService {
     // The detail route already ships the full RSVP list, so the count comes
     // from that rather than a second query — but it must still be *present*,
     // and mean the same thing it means in the lists.
-    const rsvpCount = event.rsvps.filter((r) => r.status === 'CONFIRMED').length;
+    const confirmed = event.rsvps.filter((r) => r.status === 'CONFIRMED');
+    const rsvpCount = confirmed.length;
+    /*
+      Places taken, in people (EVT-64). Free here: this route already ships
+      the whole RSVP list, so the plus-ones are to hand and no second query
+      is needed. `rsvpCount` stays the number of bookings.
+    */
+    const seatsTaken = seatsTakenOf(confirmed);
 
     // An attendee list is contact information: `guestEmail` is a raw address,
     // and `note` is whatever someone wrote to the organisers — "I use a
@@ -934,10 +961,11 @@ export class EventsService {
         // Their own RSVP stays: that is how the page knows they are going.
         rsvps: event.rsvps.filter((r) => r.userId === viewer.userId),
         rsvpCount,
+        seatsTaken,
       };
     }
 
-    return { ...event, rsvpCount };
+    return { ...event, rsvpCount, seatsTaken };
   }
 
   /* ─── List by Org (paginated) ───────────────────────────────── */
@@ -1012,9 +1040,14 @@ export class EventsService {
       this.prisma.event.count({ where }),
     ]);
 
+    const seats = await this.seatsByEvent(data.map((event) => event.id));
+
     return {
       data: data.map((event) => {
-        const row = withRsvpFaces(withRsvpCount(event)) as Record<string, unknown> & {
+        const row = withSeats(withRsvpFaces(withRsvpCount(event)), seats) as Record<
+          string,
+          unknown
+        > & {
           _count?: { tickets?: number };
         };
         // Flattened: `_count` also carries the RSVP count, and the shape a
@@ -1428,8 +1461,10 @@ export class EventsService {
       return [rows, count] as const;
     });
 
+    const seats = await this.seatsByEvent(data.map((event) => event.id));
+
     return {
-      data: data.map((event) => withRsvpFaces(withRsvpCount(event))),
+      data: data.map((event) => withSeats(withRsvpFaces(withRsvpCount(event)), seats)),
       meta: {
         total,
         page,
@@ -1492,7 +1527,10 @@ export class EventsService {
       throw new NotFoundException('Event not found');
     }
 
-    return withRsvpFaces(withRsvpCount(event));
+    // Places taken in people, not bookings (EVT-64) — this is the page with
+    // the "N of 20 places taken" line on it.
+    const seats = await this.seatsByEvent([event.id]);
+    return withSeats(withRsvpFaces(withRsvpCount(event)), seats);
   }
 
   /* ─── Public Event by Slug ──────────────────────────────────── */
@@ -1526,7 +1564,35 @@ export class EventsService {
       throw new NotFoundException('Event not found');
     }
 
-    return withRsvpCount(event);
+    // The public page quotes the same line to a stranger (EVT-64).
+    const seats = await this.seatsByEvent([event.id]);
+    return withSeats(withRsvpCount(event), seats);
+  }
+
+  /**
+   * Places taken for a page of events, in one query (EVT-64).
+   *
+   * A `groupBy` rather than a nested include: Prisma cannot sum inside
+   * `_count`, and fetching each event's RSVPs to add them up would pull
+   * thousands of rows to produce one number per card. This returns one row
+   * per event however many people are coming.
+   *
+   * Events nobody has RSVPed to are absent from the result, which is why
+   * `withSeats` falls back to the row count — zero either way.
+   */
+  private async seatsByEvent(eventIds: string[]): Promise<Map<string, number>> {
+    if (eventIds.length === 0) return new Map();
+
+    const rows = await this.prisma.rsvp.groupBy({
+      by: ['eventId'],
+      where: { eventId: { in: eventIds }, status: 'CONFIRMED' },
+      _count: { _all: true },
+      _sum: { plusOnes: true },
+    });
+
+    return new Map(
+      rows.map((row) => [row.eventId, seatsFrom(row._count._all, row._sum.plusOnes)]),
+    );
   }
 
   /* ─── RSVP ──────────────────────────────────────────────────── */
@@ -1552,6 +1618,22 @@ export class EventsService {
       include: { _count: { select: { rsvps: { where: { status: 'CONFIRMED' } } } } },
     });
     if (!event) throw new NotFoundException('Event not found');
+
+    /*
+      Places taken, in people rather than rows (EVT-64).
+
+      An aggregate rather than selecting the RSVPs and adding them up here:
+      it returns two numbers whatever the event's size, so a popular evening
+      does not pull hundreds of rows into a write path to answer "is there
+      room".
+    */
+    const confirmed = await this.prisma.rsvp.aggregate({
+      where: { eventId, status: 'CONFIRMED' },
+      _count: true,
+      _sum: { plusOnes: true },
+    });
+    const taken = seatsFrom(confirmed._count, confirmed._sum.plusOnes);
+    const party = seatsFor(dto.plusOnes);
     if (event.canceledAt) throw new BadRequestException('Event has been canceled');
 
     const isMember = userId
@@ -1581,7 +1663,7 @@ export class EventsService {
 
       // If previously canceled, update instead of create
       if (existing && existing.status === 'CANCELED') {
-        const status = this.determineRsvpStatus(event);
+        const status = this.determineRsvpStatus(event, taken, party);
         const revived = await this.prisma.rsvp.update({
           where: { id: existing.id },
           data: {
@@ -1597,7 +1679,7 @@ export class EventsService {
       }
     }
 
-    const status = this.determineRsvpStatus(event);
+    const status = this.determineRsvpStatus(event, taken, party);
 
     const created = await this.prisma.rsvp.create({
       data: {
@@ -1619,18 +1701,30 @@ export class EventsService {
     return created;
   }
 
-  private determineRsvpStatus(event: {
-    capacity: number | null;
-    waitlistEnabled: boolean;
-    _count: { rsvps: number };
-  }): 'CONFIRMED' | 'WAITLISTED' {
-    if (event.capacity !== null && event._count.rsvps >= event.capacity) {
-      if (event.waitlistEnabled) {
-        return 'WAITLISTED';
-      }
+  /**
+   * Whether this party gets in (EVT-64).
+   *
+   * This compared `_count.rsvps >= capacity`, which was wrong twice over:
+   * it ignored the plus-ones already confirmed, so an evening capped at 20
+   * could hold 34 people and still read as open — and it ignored the
+   * plus-ones of the booking being made, so one remaining place admitted a
+   * party of four.
+   *
+   * The arithmetic lives in `seats.ts` with its own spec; this turns a
+   * refusal into the exception the route answers with.
+   */
+  private determineRsvpStatus(
+    event: { capacity: number | null; waitlistEnabled: boolean },
+    taken: number,
+    party: number,
+  ): 'CONFIRMED' | 'WAITLISTED' {
+    const outcome = admits(event.capacity, taken, party, event.waitlistEnabled);
+
+    if (outcome === 'FULL') {
       throw new BadRequestException('Event is at capacity');
     }
-    return 'CONFIRMED';
+
+    return outcome;
   }
 
   /**

@@ -4720,6 +4720,15 @@ export interface Event {
   /** CONFIRMED RSVPs only — cancelled and waitlisted are not attendees. */
   rsvpCount?: number;
   /**
+   * Places taken, in people rather than bookings (EVT-64).
+   *
+   * `rsvpCount` is how many RSVPs there are; this is how many are coming.
+   * They differ by the plus-ones — since EVT-47 a party of two is one RSVP
+   * with `plusOnes: 1` — so capacity must be measured in this one. Anything
+   * comparing against `capacity` wants `seatsTaken`.
+   */
+  seatsTaken?: number;
+  /**
    * Whether the host charges attendees (EVT-17) — cash at the door, Venmo.
    * Distinct from `priceCents`, which is a ticket sold through MaybeOS.
    */

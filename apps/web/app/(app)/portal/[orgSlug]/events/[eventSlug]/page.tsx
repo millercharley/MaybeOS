@@ -535,7 +535,10 @@ export default function PortalEventPage(props: {
             {event.capacity ? (
               <p className="mt-4 flex items-center gap-2 border-t border-gray-100 pt-4 text-sm text-gray-500">
                 <Users className="h-4 w-4 text-gray-400" />
-                {event.rsvpCount ?? 0} of {event.capacity} places taken
+                {/* People, not bookings: a party of four fills four places
+                    (EVT-64). This read `rsvpCount` and an event could be
+                    full while the line still said there was room. */}
+                {event.seatsTaken ?? event.rsvpCount ?? 0} of {event.capacity} places taken
               </p>
             ) : null}
 

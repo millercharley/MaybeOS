@@ -32,6 +32,13 @@ describe('EventsService — the website embed', () => {
     const captured: Record<string, unknown>[] = [];
     const prisma = {
       organization: { findUnique: jest.fn().mockResolvedValue(org) },
+      /*
+        Places taken is one `groupBy` per page since EVT-64 — capacity is
+        measured in people, and `_count.rsvps` counts rows. Empty here:
+        these suites assert nothing about plus-ones, and with no rows back
+        `withSeats` falls through to the booking count.
+      */
+      rsvp: { groupBy: jest.fn().mockResolvedValue([]) },
       // Interactive form as well as the array form (SEC-12).
       $transaction: async (arg: any) =>
         Array.isArray(arg) ? [await arg[0], 1] : arg(prisma),

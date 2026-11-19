@@ -50,6 +50,12 @@ describe('EventsService.getMemberEventBySlug', () => {
           throw new Error('getMemberEventBySlug must not scan a list');
         },
       },
+      /*
+        Places taken, in people (EVT-64). One `groupBy` for the one event —
+        this page carries the "N of 20 places taken" line, which counted
+        bookings and so could say there was room on a full evening.
+      */
+      rsvp: { groupBy: async () => [] },
     };
     const service = new EventsService(
       prisma as never,
