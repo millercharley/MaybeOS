@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { BuddyService } from './buddy.service';
+import { COUNTED_MEMBER_ROLES } from '../../common/counted-members';
 
 /** Days after pairing with no message before the log says so. */
 const SILENT_AFTER_DAYS = 14;
@@ -145,7 +146,7 @@ export class BuddyLogService {
   /** Per member: asked, served, when, and whether they opted out. */
   async memberSummary(orgId: string) {
     const members = await this.prisma.userOrg.findMany({
-      where: { orgId, role: { in: ['ADMIN', 'STAFF', 'MEMBER'] } },
+      where: { orgId, role: { in: [...COUNTED_MEMBER_ROLES] } },
       select: {
         id: true,
         user: { select: { name: true } },

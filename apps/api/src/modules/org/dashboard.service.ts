@@ -1,9 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { participantKey } from '../commons/threads';
+import { COUNTED_MEMBER_ROLES, countedMemberWhere } from '../../common/counted-members';
 
-/** Roles that count as a member of the community. GUEST is not one. */
-const MEMBER_ROLES = ['ADMIN', 'STAFF', 'MEMBER'] as const;
+/*
+   Roles that count as a member. GUEST is not one (MEM-27).
+
+   This was a local copy of a value three other files also kept. It is the
+   same three roles and always was — the harm was not that this one was
+   wrong but that having five copies is how `impact.service.ts` came to have
+   none at all.
+ */
 
 /**
  * The two things a screen wants to know the moment it opens: how the co-op is
@@ -29,9 +36,9 @@ export class DashboardService {
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
     const [total, joinedThisMonth] = await Promise.all([
-      this.prisma.userOrg.count({ where: { orgId, role: { in: [...MEMBER_ROLES] } } }),
+      this.prisma.userOrg.count({ where: countedMemberWhere(orgId) }),
       this.prisma.userOrg.count({
-        where: { orgId, role: { in: [...MEMBER_ROLES] }, memberSince: { gte: monthStart } },
+        where: { ...countedMemberWhere(orgId), memberSince: { gte: monthStart } },
       }),
     ]);
 
@@ -70,7 +77,7 @@ export class DashboardService {
     const joins = await this.prisma.userOrg.findMany({
       where: {
         orgId,
-        role: { in: [...MEMBER_ROLES] },
+        role: { in: [...COUNTED_MEMBER_ROLES] },
         memberSince: { gte: since },
         userId: { not: viewerUserId },
       },

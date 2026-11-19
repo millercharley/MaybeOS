@@ -17,9 +17,10 @@ import {
   planImport,
 } from './ledger';
 import { GrantSharesDto, ImportLedgerDto, SetTotalDto } from './dto/import-ledger.dto';
+import { COUNTED_MEMBER_ROLES } from '../../common/counted-members';
 
-/** Who is on the ledger: members of the co-op, not its guests. */
-const LEDGER_ROLES = ['ADMIN', 'STAFF', 'MEMBER'] as const;
+/** Who is on the ledger: members of the co-op, not its guests (MEM-27). */
+const LEDGER_ROLES = COUNTED_MEMBER_ROLES;
 
 const OFF = 'Share tracking is off for this co-op. An admin can turn it on in Settings.';
 

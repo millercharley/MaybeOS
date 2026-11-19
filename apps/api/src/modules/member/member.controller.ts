@@ -23,7 +23,7 @@ import { CurrentUser, RequestUser } from '../../common/decorators/current-user.d
 import { viewerFor } from '../../common/access/contact-visibility';
 import { UpdateMyMembershipDto } from './dto/update-my-membership.dto';
 import { MemberService, type EmailChangeRefusal } from './member.service';
-import { MEMBER_ROLES, MEMBER_SORTS, MEMBER_STATUSES } from './member-filters';
+import { ROSTER_FILTER_ROLES, MEMBER_SORTS, MEMBER_STATUSES } from './member-filters';
 import { MemberProfileService } from './member-profile.service';
 import { CreateTierDto } from './dto/create-tier.dto';
 import { ImportMembersDto, ImportAvatarsDto } from './dto/import-members.dto';
@@ -54,7 +54,7 @@ export class MemberController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'perPage', required: false, type: Number })
   @ApiQuery({ name: 'search', required: false, type: String })
-  @ApiQuery({ name: 'role', required: false, enum: MEMBER_ROLES })
+  @ApiQuery({ name: 'role', required: false, enum: ROSTER_FILTER_ROLES })
   @ApiQuery({ name: 'tierId', required: false, type: String, description: 'A tier id, or "none"' })
   @ApiQuery({ name: 'status', required: false, enum: MEMBER_STATUSES })
   @ApiQuery({ name: 'activity', required: false, enum: ['signed-in', 'never'] })

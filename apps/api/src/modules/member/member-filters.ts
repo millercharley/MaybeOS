@@ -43,7 +43,20 @@ export const MEMBER_SORTS: MemberSort[] = [
 
 export const DEFAULT_SORT: MemberSort = 'joined-desc';
 
-export const MEMBER_ROLES = ['ADMIN', 'STAFF', 'MEMBER', 'GUEST'] as const;
+/*
+  Every role the roster filter accepts — GUEST included (MEM-27).
+
+  Renamed from `MEMBER_ROLES`, which was the same name `dashboard.service.ts`
+  used for the opposite list: three roles there, four here. Nothing ever
+  imported the wrong one, but a constant whose name means "members" and whose
+  contents include guests is the exact shape of the bug this change fixes —
+  somebody writing a member count reaches for the obvious name and silently
+  counts guests.
+
+  This list is about *filtering a roster*, where a guest is something you may
+  well want to look at. Counting is `COUNTED_MEMBER_ROLES`.
+*/
+export const ROSTER_FILTER_ROLES = ['ADMIN', 'STAFF', 'MEMBER', 'GUEST'] as const;
 export const MEMBER_STATUSES = [
   'NONE',
   'ACTIVE',
@@ -112,7 +125,7 @@ function oneOf<T extends string>(value: string | undefined, allowed: readonly T[
 export function parseFilters(raw: RawFilters, privileged: boolean): MemberFilters {
   const search = raw.search?.trim() || undefined;
 
-  const role = oneOf(raw.role, MEMBER_ROLES);
+  const role = oneOf(raw.role, ROSTER_FILTER_ROLES);
   const status = privileged ? oneOf(raw.status, MEMBER_STATUSES) : undefined;
 
   const tierId = raw.tierId?.trim() || undefined;

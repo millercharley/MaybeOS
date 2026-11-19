@@ -60,6 +60,7 @@ import {
 import { ImportMemberRowDto, ImportAvatarsDto } from './dto/import-members.dto';
 import { CreateTierDto } from './dto/create-tier.dto';
 import { ContactViewer } from '../../common/access/contact-visibility';
+import { COUNTED_MEMBER_ROLES } from '../../common/counted-members';
 
 /** Why an address could not be corrected (MEM-25). Each needs a different next step. */
 /** No blockers, for a refusal raised before anything has been counted. */
@@ -345,7 +346,7 @@ export class MemberService {
     const where = {
       orgId,
       isPublic: true,
-      role: { in: ['ADMIN', 'STAFF', 'MEMBER'] as OrgRole[] },
+      role: { in: [...COUNTED_MEMBER_ROLES] as OrgRole[] },
       userId: { not: viewerUserId },
     };
 
@@ -1595,7 +1596,7 @@ export class MemberService {
     */
     const where: Prisma.UserOrgWhereInput = {
       orgId,
-      role: { in: ['ADMIN', 'STAFF', 'MEMBER'] },
+      role: { in: [...COUNTED_MEMBER_ROLES] },
       ...(scopeFilter(scope) as Prisma.UserOrgWhereInput),
     };
 
@@ -1830,7 +1831,7 @@ export class MemberService {
     const neverSent = await this.prisma.userOrg.count({
       where: {
         orgId,
-        role: { in: ['ADMIN', 'STAFF', 'MEMBER'] },
+        role: { in: [...COUNTED_MEMBER_ROLES] },
         signInSentAt: null,
         user: { passwordHash: null },
       },
@@ -1852,7 +1853,7 @@ export class MemberService {
     const marked = await this.prisma.userOrg.findMany({
       where: {
         orgId,
-        role: { in: ['ADMIN', 'STAFF', 'MEMBER'] },
+        role: { in: [...COUNTED_MEMBER_ROLES] },
         signInSentAt: { not: null },
       },
       select: {

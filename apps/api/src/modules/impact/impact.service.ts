@@ -13,6 +13,7 @@ import {
   windowLabelFor,
 } from './starter-instrument';
 import { CreateSurveyDto, SurveyQuestionDto } from './dto/create-survey.dto';
+import { countedMemberWhere } from '../../common/counted-members';
 import {
   DEMOGRAPHIC_FIELDS,
   PREFER_NOT_TO_SAY,
@@ -605,7 +606,10 @@ export class ImpactService {
         where: { orgId },
         include: { _count: { select: { responses: true } } },
       }),
-      this.prisma.userOrg.count({ where: { orgId } }),
+      // Guests are not members (MEM-27). This counted every row, so a
+      // guest inflated a published impact report and the denominator of
+      // every survey response rate — and nowhere else in the product.
+      this.prisma.userOrg.count({ where: countedMemberWhere(orgId) }),
       this.prisma.event.count({ where: { orgId } }),
       this.prisma.attendance.count({ where: { event: { orgId } } }),
       this.prisma.event.count({
@@ -921,7 +925,8 @@ export class ImpactService {
       },
     });
 
-    const members = await this.prisma.userOrg.count({ where: { orgId } });
+    // The same count as above, and it was wrong in the same way (MEM-27).
+    const members = await this.prisma.userOrg.count({ where: countedMemberWhere(orgId) });
 
     // Direction lives on the question, so it has to come from the questions
     // rather than from the answers. Categories are consistent within the

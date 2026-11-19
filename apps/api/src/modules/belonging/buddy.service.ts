@@ -10,6 +10,7 @@ import {
   DEFAULT_TEMPLATES,
   renderTemplate,
 } from './belonging-emails';
+import { COUNTED_MEMBER_ROLES } from '../../common/counted-members';
 
 /** What an outcome of advancing a pairing was, for logs and for tests. */
 export type AdvanceOutcome =
@@ -184,7 +185,7 @@ export class BuddyService {
    */
   private async eligiblePool(orgId: string, newMemberId: string): Promise<BuddyCandidate[]> {
     const members = await this.prisma.userOrg.findMany({
-      where: { orgId, role: { in: ['ADMIN', 'STAFF', 'MEMBER'] }, id: { not: newMemberId } },
+      where: { orgId, role: { in: [...COUNTED_MEMBER_ROLES] }, id: { not: newMemberId } },
       select: {
         id: true,
         buddyStats: true,

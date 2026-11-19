@@ -13,6 +13,7 @@ import {
   type DigestPost,
 } from './commons-digest';
 import { zonedParts } from '../space/availability/zoned-time';
+import { COUNTED_MEMBER_ROLES } from '../../common/counted-members';
 
 /** The most members one run will consider, so a run has a known ceiling. */
 const BATCH = 200;
@@ -135,7 +136,7 @@ export class CommonsDigestService {
       where: {
         orgId: org.id,
         commonsDigestEmails: true,
-        role: { in: ['ADMIN', 'STAFF', 'MEMBER'] },
+        role: { in: [...COUNTED_MEMBER_ROLES] },
         // Two independent either-ors, so they are spelled as an AND of two:
         // written as two `OR` keys on one object the second silently
         // replaces the first, and the condition that disappears is whichever

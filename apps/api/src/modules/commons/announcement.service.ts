@@ -6,6 +6,7 @@ import { AuditService } from '../platform/audit.service';
 import { sanitizeEmailHtml } from '../email/email-html';
 import { encodeUnsubscribe } from '../../common/unsubscribe-token';
 import { announcementSubject, stillOwed, type Recipient, type SendProgress } from './announcement';
+import { COUNTED_MEMBER_ROLES } from '../../common/counted-members';
 
 /**
  * Emailing a Commons post to the whole roster (CMN-21).
@@ -231,7 +232,7 @@ export class AnnouncementService {
 
     const [members, sends] = await Promise.all([
       this.prisma.userOrg.findMany({
-        where: { orgId, role: { in: ['ADMIN', 'STAFF', 'MEMBER'] } },
+        where: { orgId, role: { in: [...COUNTED_MEMBER_ROLES] } },
         select: {
           id: true,
           userId: true,

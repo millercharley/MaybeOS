@@ -15,6 +15,7 @@ import { RESERVED_ORG_SLUGS } from './reserved-slugs';
 import { UpdateOrgDto } from './dto/update-org.dto';
 import { ForumService } from './forum.service';
 import { THREAD_CHANNELS } from '../commons/thread-policy';
+import { activeMemberWhere } from '../../common/counted-members';
 
 @Injectable()
 export class OrgService {
@@ -332,12 +333,15 @@ export class OrgService {
     const [members, rooms, openEvents, listedEvents, privateBookings] = await Promise.all([
       this.prisma.userOrg.count({
         where: {
-          orgId: org.id,
-          role: { in: ['ADMIN', 'STAFF', 'MEMBER'] },
           // Active, as the label says. Somebody whose membership is cancelled
           // is a former member, and counting them would inflate the one
           // number a visitor uses to judge whether this place is alive.
-          subscriptionStatus: { not: 'CANCELED' },
+          //
+          // The roles and the cancelled clause moved into
+          // `activeMemberWhere` together (MEM-27), so this question stays
+          // visibly different from a plain member count rather than drifting
+          // into a sixth spelling of it.
+          ...activeMemberWhere(org.id),
         },
       }),
       this.prisma.room.count({ where: { orgId: org.id, isActive: true } }),

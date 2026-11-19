@@ -15,6 +15,7 @@ import {
   afterDismissal,
   canAskInterests,
 } from './interest-ask';
+import { COUNTED_MEMBER_ROLES } from '../../common/counted-members';
 
 /**
  * How far ahead the digest looks. Six weeks is far enough that a member hears
@@ -557,7 +558,7 @@ export class RadarService {
       where: {
         orgId: org.id,
         radarEmails: true,
-        role: { in: ['ADMIN', 'STAFF', 'MEMBER'] },
+        role: { in: [...COUNTED_MEMBER_ROLES] },
         interests: { some: { OR: [{ declared: true }, { rsvpCount: { gt: 0 } }] } },
         // Two independent either-ors, so they are spelled as an AND of two.
         // Written as two `OR` keys on one object the second silently replaces

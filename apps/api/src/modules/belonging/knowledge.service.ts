@@ -12,9 +12,10 @@ import { BelongingSettingsService } from './belonging-settings.service';
 import { DEFAULT_TEMPLATES, renderTemplate } from './belonging-emails';
 import { outstandingReading, graceEndsAt } from './required-reading';
 import { bodyImagePaths, signBodyImages } from './body-images';
+import { COUNTED_MEMBER_ROLES } from '../../common/counted-members';
 
 /** Roles that count as a member of the community for required reading. */
-const ACTIVE_ROLES = ['ADMIN', 'STAFF', 'MEMBER'] as const;
+const ACTIVE_ROLES = [...COUNTED_MEMBER_ROLES] as const;
 
 /**
  * The Knowledge Center (PRD §6).

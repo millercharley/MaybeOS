@@ -2,15 +2,25 @@ import { ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { FREE_PLAN_MEMBER_LIMIT } from '../stripe/dues-pricing';
 import { FORUM_SLUG } from '../org/forum.service';
+import {
+  COUNTED_MEMBER_ROLES,
+  countsAsMember as countsAsMemberShared,
+} from '../../common/counted-members';
 
 type Db = Pick<Prisma.TransactionClient, 'organization' | 'userOrg'>;
 
-/** The roles that count as members. Guests do not, matching how Plus is billed. */
-export const COUNTED_ROLES = ['ADMIN', 'STAFF', 'MEMBER'] as const;
+/*
+  Re-exported, not redefined (MEM-27).
 
-export function countsAsMember(role: string | null | undefined): boolean {
-  return (COUNTED_ROLES as readonly string[]).includes(role ?? 'MEMBER');
-}
+  The roles that count as members — guests do not, matching how Plus is
+  billed. This file is where that was first written down, and four other
+  places then kept their own copy, one of which left the filter out
+  altogether. The value lives in `common/counted-members.ts` now; both names
+  stay here because `recap.service.ts` and the member module import them and
+  neither meaning has changed.
+*/
+export const COUNTED_ROLES = COUNTED_MEMBER_ROLES;
+export const countsAsMember = countsAsMemberShared;
 
 /**
  * How many more members this co-op can take, or null for no limit

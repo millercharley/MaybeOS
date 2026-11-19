@@ -24,6 +24,7 @@ import { initiationOwed } from './initiation';
 import { applicationFeePercent, duesFeeFor } from './dues-pricing';
 import { duesPaymentFrom, payerFrom, subscriptionIdOf } from './dues-ledger';
 import { EmailService } from '../email/email.service';
+import { countedMemberWhere } from '../../common/counted-members';
 import {
   WRITTEN_REPORT_PRICE_CENTS,
   WRITTEN_REPORT_PRODUCT_NAME,
@@ -1877,7 +1878,7 @@ export class StripeService implements OnModuleInit {
 
     const price = ADVERTISED_PRICE_IDS[plan][interval];
     const quantity = PER_MEMBER_PRICE_IDS.has(price)
-      ? Math.max(1, await this.prisma.userOrg.count({ where: { orgId, role: { in: ['ADMIN', 'STAFF', 'MEMBER'] } } }))
+      ? Math.max(1, await this.prisma.userOrg.count({ where: countedMemberWhere(orgId) }))
       : 1;
 
     const web = (this.configService.get<string>('WEB_URL') || 'https://maybeos.org').split(',')[0].trim().replace(/\/$/, '');
@@ -2248,9 +2249,7 @@ export class StripeService implements OnModuleInit {
     // despite the warning sitting in a comment directly above this method's
     // own call site. Stripe reported the 500 on a resent
     // checkout.session.completed; nothing else surfaced it.
-    const quantity = await tx.userOrg.count({
-      where: { orgId, role: { in: ['ADMIN', 'STAFF', 'MEMBER'] } },
-    });
+    const quantity = await tx.userOrg.count({ where: countedMemberWhere(orgId) });
 
     if (quantity < 1) {
       // A co-op with no members is a co-op something is wrong with, and
