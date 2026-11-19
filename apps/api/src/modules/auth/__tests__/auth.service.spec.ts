@@ -75,14 +75,82 @@ describe('AuthService', () => {
 
   describe('validateUser', () => {
     it('should return user without passwordHash on valid credentials', async () => {
+      /*
+        `lastLoginAt` added when AUTH-10 gated sign-in on proving the
+        address. `mockUser` is unverified and has never signed in, which is
+        now precisely the shape that is refused — a freshly farmed account.
+        A user who has signed in before is what this test was always about,
+        and is what every real unverified account in production looks like:
+        53 unverified with a password, 53 of those have signed in, the same
+        people.
+      */
       const hashed = await bcrypt.hash('password123', 10);
-      prisma.user.findUnique.mockResolvedValue({ ...mockUser, passwordHash: hashed });
+      prisma.user.findUnique.mockResolvedValue({
+        ...mockUser,
+        passwordHash: hashed,
+        lastLoginAt: new Date('2026-10-01T00:00:00Z'),
+      });
 
       const result = await service.validateUser('test@example.com', 'password123');
 
       expect(result).toBeDefined();
       expect(result.email).toBe('test@example.com');
       expect(result).not.toHaveProperty('passwordHash');
+    });
+
+    describe('an address nobody has proved (AUTH-10)', () => {
+      const withPassword = async (over: Record<string, unknown>) => {
+        prisma.user.findUnique.mockResolvedValue({
+          ...mockUser,
+          passwordHash: await bcrypt.hash('password123', 10),
+          ...over,
+        });
+      };
+
+      it('refuses an account that is unverified and has never been used', async () => {
+        // The farmed account: created, signed in never. Before this it got a
+        // working session the moment it was created.
+        await withPassword({ emailVerified: false, lastLoginAt: null });
+
+        await expect(
+          service.validateUser('test@example.com', 'password123'),
+        ).rejects.toThrow(/check your email/i);
+      });
+
+      it('lets in an unverified account that has signed in before', async () => {
+        /*
+          The clause that stops this locking out an imported roster. 271 of
+          MaybeItsFate's members are unverified and in a co-op; every
+          unverified account that holds a password has signed in already.
+        */
+        await withPassword({ emailVerified: false, lastLoginAt: new Date('2026-09-01') });
+
+        await expect(
+          service.validateUser('test@example.com', 'password123'),
+        ).resolves.toMatchObject({ email: 'test@example.com' });
+      });
+
+      it('lets in a verified account that has never signed in', async () => {
+        await withPassword({ emailVerified: true, lastLoginAt: null });
+
+        await expect(
+          service.validateUser('test@example.com', 'password123'),
+        ).resolves.toMatchObject({ email: 'test@example.com' });
+      });
+
+      it('discloses nothing: a wrong password still just fails', async () => {
+        /*
+          The gate runs **after** bcrypt, so it can only ever be reached by
+          somebody already holding working credentials — which is why naming
+          the reason is safe. Reversing those two would turn this message
+          into an account-enumeration oracle.
+        */
+        await withPassword({ emailVerified: false, lastLoginAt: null });
+
+        await expect(
+          service.validateUser('test@example.com', 'wrong-password'),
+        ).resolves.toBeNull();
+      });
     });
 
     it('should return null if user not found', async () => {

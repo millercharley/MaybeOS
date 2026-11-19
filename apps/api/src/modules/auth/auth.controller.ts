@@ -13,6 +13,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
+import { PROVE_ADDRESS_MESSAGE } from './signup-gate';
 import { LoginDto } from './dto/login.dto';
 import { MagicLinkDto } from './dto/magic-link.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
@@ -34,8 +35,40 @@ export class AuthController {
   @Throttle({ short: { limit: 3, ttl: 60000 } })
   @ApiOperation({ summary: 'Register a new user account' })
   async register(@Body() dto: RegisterDto) {
-    const user = await this.authService.register(dto.email, dto.password, dto.name);
-    return this.authService.login(user as any);
+    /*
+      Registering no longer signs you in (AUTH-10).
+
+      This line used to be `return this.authService.login(user)`, which gave
+      a working session to any address anybody typed. A bot found it: about
+      twenty of the 33 accounts belonging to no co-op on 19 November were
+      one mailbox, dot-aliased, arriving two or three a week since October.
+
+      The account is still created here rather than held somewhere pending,
+      so the address stays reserved and AUTH-07's duplicate protection keeps
+      working. What it does not get is a session until somebody proves the
+      mailbox — and the proof is the magic link the product already has,
+      which both signs them in and sets `emailVerified`, so there is no
+      second token type and no new template.
+
+      An invitation proves it outright, and those people keep the old
+      behaviour: they clicked an emailed link to get here.
+    */
+    const { user, proved } = await this.authService.register(
+      dto.email,
+      dto.password,
+      dto.name,
+      dto.inviteToken,
+    );
+
+    if (proved) return this.authService.login(user as any);
+
+    await this.authService.sendMagicLink(user.email);
+
+    return {
+      verificationSent: true,
+      email: user.email,
+      message: PROVE_ADDRESS_MESSAGE,
+    };
   }
 
   @UseGuards(LocalAuthGuard)

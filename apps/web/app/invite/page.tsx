@@ -260,7 +260,15 @@ function InviteContent() {
                 Sign In
               </Link>
               <Link
-                href={`/register?redirect=${encodeURIComponent(`/invite?token=${inviteToken}`)}${
+                /*
+                  The token travels to register as well as in the redirect
+                  (AUTH-10). Registering no longer signs anybody in until
+                  the address is proved, and an invitation *is* that proof —
+                  it was emailed to this address. Without passing it, an
+                  invitee would click an emailed link and be told to go and
+                  find a second email.
+                */
+                href={`/register?redirect=${encodeURIComponent(`/invite?token=${inviteToken}`)}${inviteToken ? `&invite=${encodeURIComponent(inviteToken)}` : ''}${
                   invite?.email ? `&email=${encodeURIComponent(invite.email)}` : ''
                 }`}
                 className="btn-secondary block w-full text-center"

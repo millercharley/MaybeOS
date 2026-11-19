@@ -530,8 +530,24 @@ class ApiClient {
 
   // ── Auth ─────────────────────────────────────────
   auth = {
-    register: (data: { email: string; password: string; name?: string }) =>
-      this.request<{ accessToken: string }>('/auth/register', {
+    /**
+     * Registering returns a session only when an invitation proved the
+     * address (AUTH-10). Otherwise it returns `verificationSent` and the
+     * magic link is in the member's inbox.
+     *
+     * A union rather than an optional token, so a caller has to decide what
+     * to do about the second case instead of reading `undefined` and
+     * sending somebody to a page they cannot load.
+     */
+    register: (data: {
+      email: string;
+      password: string;
+      name?: string;
+      inviteToken?: string;
+    }) =>
+      this.request<
+        { accessToken: string } | { verificationSent: true; email: string; message: string }
+      >('/auth/register', {
         method: 'POST',
         body: JSON.stringify(data),
       }),

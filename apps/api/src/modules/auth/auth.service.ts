@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ConflictException,
   UnauthorizedException,
+  ForbiddenException,
   NotFoundException,
   Logger,
 } from '@nestjs/common';
@@ -11,6 +12,11 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { normalizeEmail } from '../../common/email-address';
+import {
+  PROVE_ADDRESS_MESSAGE,
+  inviteProves,
+  mustProveAddress,
+} from './signup-gate';
 import {
   RESET_WINDOW_MINUTES,
   hashResetToken,
@@ -51,6 +57,23 @@ export class AuthService {
     const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
     if (!isPasswordValid) {
       return null;
+    }
+
+    /*
+      An address nobody has proved, on an account nobody has used (AUTH-10).
+
+      **After the password check, deliberately.** Whoever gets this far
+      already holds working credentials, so naming the reason discloses
+      nothing a successful sign-in would not have — and a bare 401 here
+      would strand a real person who registered and has not clicked the
+      link yet, with no way to tell that from a typo.
+
+      `mustProveAddress` grandfathers anybody who has signed in before,
+      which is what stops this locking out the 271 unverified members of an
+      imported roster. Its docblock carries the counts.
+    */
+    if (mustProveAddress(user)) {
+      throw new ForbiddenException(PROVE_ADDRESS_MESSAGE);
     }
 
     const { passwordHash, ...result } = user;
@@ -119,7 +142,7 @@ export class AuthService {
   /**
    * Register a new user with a bcrypt-hashed password.
    */
-  async register(email: string, password: string, name?: string) {
+  async register(email: string, password: string, name?: string, inviteToken?: string) {
     /*
       One spelling, and this is the lookup that mattered most (AUTH-07).
 
@@ -138,6 +161,25 @@ export class AuthService {
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
+    /*
+      Whether this registration has already proved its address (AUTH-10).
+
+      An invitation is emailed to exactly one address, so holding its token
+      is the same evidence a magic link gives — and without honouring it,
+      inviting somebody would cost them two emails: they click the
+      invitation, land on register, and are told to go and find another
+      message. `inviteProves` requires the address to match, so a forwarded
+      invitation cannot verify a stranger's.
+    */
+    const invitation = inviteToken
+      ? await this.prisma.invitation.findUnique({
+          where: { token: inviteToken },
+          select: { email: true, expiresAt: true, acceptedAt: true },
+        })
+      : null;
+
+    const proved = inviteProves(invitation, address);
+
     const user = await this.prisma.user.create({
       data: {
         // Stored as it will be looked up. Storing what was typed is what
@@ -145,11 +187,12 @@ export class AuthService {
         email: address,
         passwordHash,
         name,
+        emailVerified: proved,
       },
     });
 
     const { passwordHash: _, ...result } = user;
-    return result;
+    return { user: result, proved };
   }
 
   /**

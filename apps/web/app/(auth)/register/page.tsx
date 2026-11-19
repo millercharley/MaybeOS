@@ -28,6 +28,19 @@ function RegisterForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  /*
+    Registering may now end in an email rather than a session (AUTH-10).
+
+    An address nobody has proved no longer gets signed in on the spot — that
+    is what a bot was using, two or three accounts a week since October. The
+    one exception is an invitation, which was emailed to the address and so
+    proves it; those people are signed in exactly as before and never see
+    this state.
+  */
+  const [checkEmail, setCheckEmail] = useState('');
+  // Carried from the invitation that sent them here, so an invitee is not
+  // asked to go and find a second email.
+  const inviteToken = searchParams.get('invite') ?? undefined;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -35,7 +48,13 @@ function RegisterForm() {
     setLoading(true);
 
     try {
-      const result = await api.auth.register({ name, email, password });
+      const result = await api.auth.register({ name, email, password, inviteToken });
+
+      if (!('accessToken' in result)) {
+        setCheckEmail(result.email);
+        return;
+      }
+
       setToken(result.accessToken);
       let destination = redirectTo || '/member';
       if (!redirectTo) {
@@ -55,6 +74,41 @@ function RegisterForm() {
     } finally {
       setLoading(false);
     }
+  }
+
+  /*
+    Where somebody lands when the address still has to be proved.
+
+    Says the address back to them, because the commonest reason an email
+    never arrives is a typo in the one they just typed — and a screen that
+    only says "check your email" gives them nothing to check against
+    (DESIGN §7). The way back is the ordinary sign-in link request, which is
+    the same mechanism, so there is no second thing to maintain.
+  */
+  if (checkEmail) {
+    return (
+      <div>
+        <h2 className="mb-4 text-center text-2xl font-bold text-gray-900">
+          Check your email
+        </h2>
+        <p className="text-center text-sm text-gray-600">
+          We have sent a link to <strong>{checkEmail}</strong>. Opening it finishes
+          setting up your account and signs you in.
+        </p>
+        <p className="mt-4 text-center text-sm text-gray-600">
+          Nothing arrived? It can take a minute, and it may be in spam. If the
+          address above is wrong,{' '}
+          <Link href="/register" className="font-medium text-brand-600 hover:underline">
+            start again
+          </Link>
+          , or{' '}
+          <Link href="/login" className="font-medium text-brand-600 hover:underline">
+            ask for a new link
+          </Link>
+          .
+        </p>
+      </div>
+    );
   }
 
   return (
