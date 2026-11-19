@@ -12,6 +12,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:api"],
       "port": 3001
+    },
+    {
+      "name": "maybeos-web-prod",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start", "--workspace=apps/web"],
+      "port": 3000
     }
   ]
 }

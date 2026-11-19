@@ -130,7 +130,15 @@ describe('every member-facing list says which stretch it wants', () => {
   it('the member dashboard asks for today onwards', () => {
     const page = read('app', '(app)', '(dashboard)', 'member', '[orgSlug]', 'page.tsx');
 
-    expect(page).toMatch(/listVisible\(orgId, token, eventWindow\(new Date\(\), 0\)\)/);
+    /*
+      Through the bundle now, not `listVisible` (OPS-46): the dashboard asks
+      for its ten panels in one request, and the events section takes the
+      window's `from`. What this test is for has not changed — the API lists
+      ascending from the start of a co-op's history, so a dashboard that does
+      not name a window gets twenty evenings from 2024 and says "Nothing on
+      today".
+    */
+    expect(page).toMatch(/memberHome\(orgId, token, \{ from: eventWindow\(new Date\(\), 0\)\.from \}\)/);
   });
 
   it('the events page asks for today onwards, on both branches', () => {

@@ -3,8 +3,7 @@
 import Link from 'next/link';
 import { ChevronRight, GraduationCap, Users } from 'lucide-react';
 import { Panel } from '@/components/layout/panel';
-import { useApi } from '@/hooks/use-api';
-import { api, type Offering } from '@/lib/api';
+import { type Offering } from '@/lib/api';
 import { priceLabel, scheduleLabel, showcaseOfferings } from '@/lib/teaching';
 
 /**
@@ -26,23 +25,28 @@ import { priceLabel, scheduleLabel, showcaseOfferings } from '@/lib/teaching';
 export function TeachingShowcase({
   orgSlug,
   enabled,
+  offerings,
+  loading = false,
 }: {
   orgSlug: string;
   enabled?: boolean;
+  offerings: Offering[] | null;
+  loading?: boolean;
 }) {
   /*
-    Asked for only when the feature is on. `useApi` is called either way,
-    because a hook cannot be skipped — the request itself is what is
-    conditional, and `null` means "do not fetch".
-  */
-  const { data, loading } = useApi(
-    (token, orgId) => (enabled ? api.teaching.list(orgId, token) : Promise.resolve([])),
-    [enabled],
-  );
+    Handed in with the rest of the dashboard's panels (OPS-46).
 
+    This used to call `useApi` with a fetcher that resolved to `[]` when the
+    feature was off — a hook cannot be skipped, so the request was what had to
+    be conditional. The co-op's own switch is no longer this component's
+    problem: the API answers the teaching section of the bundle, and the
+    caller decides whether to mount this at all. Only the panel's own
+    "draw nothing when the feature is off" rule stays here, because it is
+    about what this component is for.
+  */
   if (!enabled) return null;
 
-  const shown = showcaseOfferings(data ?? []);
+  const shown = showcaseOfferings(offerings ?? []);
 
   return (
     <Panel

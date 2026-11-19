@@ -3,8 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { DoorOpen, ArrowUpRight } from 'lucide-react';
-import { api } from '@/lib/api';
-import { useApi } from '@/hooks/use-api';
+import type { MemberHome } from '@/lib/api';
 
 /**
  * The door code, on the first screen a member sees (DOR-07).
@@ -24,12 +23,22 @@ import { useApi } from '@/hooks/use-api';
  * cancelled membership — the API answers null for each, and this draws
  * nothing. A door control over an empty space is a question, not an answer,
  * and it would appear on every co-op on MaybeOS that has never had a door.
+ *
+ * The code arrives as a prop rather than a request of its own (OPS-46): the
+ * dashboard asks for its ten panels in one go. A `null` here means either no
+ * door or a section the bundle could not answer, and both draw nothing, which
+ * is what this already did when its own request failed.
  */
-export function DoorCodeCard({ orgSlug }: { orgSlug: string }) {
-  const { data } = useApi((token, orgId) => api.door.myPin(orgId, token), []);
+export function DoorCodeCard({
+  orgSlug,
+  door,
+}: {
+  orgSlug: string;
+  door: MemberHome['doorPin'];
+}) {
   const [shown, setShown] = useState(false);
 
-  const pin = data?.doorPin ?? null;
+  const pin = door?.doorPin ?? null;
   if (!pin) return null;
 
   return (
@@ -65,9 +74,9 @@ export function DoorCodeCard({ orgSlug }: { orgSlug: string }) {
               a moment to answer, and a member who taps it should still have
               MaybeOS behind them when they come back.
             */}
-            {data?.doorUrl && (
+            {door?.doorUrl && (
               <a
-                href={data.doorUrl}
+                href={door.doorUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline"

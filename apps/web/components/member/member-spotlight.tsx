@@ -1,10 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { MessageSquare } from 'lucide-react';
-import { api, SpotlightMember } from '@/lib/api';
-import { useAuthStore } from '@/lib/auth-store';
+import type { SpotlightMember } from '@/lib/api';
 import { Panel } from '@/components/layout/panel';
 import { MemberName } from '@/components/member/member-name';
 
@@ -19,6 +17,12 @@ import { MemberName } from '@/components/member/member-name';
  * list of everybody — that would ship the whole directory to render one card,
  * and would hand a member the rows the API is careful about.
  *
+ * Once per load is now literally once: the member arrives in the dashboard's
+ * one bundled request (OPS-46) rather than a fetch of its own. That also
+ * settles what used to be a hazard here — the old effect was keyed on token
+ * and org id specifically so a re-render could not swap the person out from
+ * under somebody reading about them. A prop cannot.
+ *
  * **A message is the whole point.** A card you can only look at introduces
  * nobody; the button is what turns "who is that" into a conversation, and it
  * goes straight to a thread with them rather than to their profile, because
@@ -29,41 +33,18 @@ import { MemberName } from '@/components/member/member-name';
  * introduce — and a "no members to show" box on a dashboard is a small
  * indignity for a co-op that is just starting.
  */
-export function MemberSpotlight({ orgSlug }: { orgSlug: string }) {
-  const token = useAuthStore((s) => s.token);
-  const orgId = useAuthStore((s) => s.currentOrgId);
-
-  const [member, setMember] = useState<SpotlightMember | null>(null);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!token || !orgId) {
-      setReady(true);
-      return;
-    }
-    api.members
-      .spotlight(orgId, token)
-      .then((found) => {
-        if (!cancelled) setMember(found);
-      })
-      .catch(() => {
-        // An introduction is not worth an error message. If it cannot load,
-        // the dashboard is simply the dashboard.
-        if (!cancelled) setMember(null);
-      })
-      .finally(() => {
-        if (!cancelled) setReady(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // Once per mount, which is once per visit — refetching on every render or
-    // every navigation would swap the person out from under somebody who was
-    // reading about them.
-  }, [token, orgId]);
-
-  if (!ready || !member) return null;
+export function MemberSpotlight({
+  orgSlug,
+  member,
+}: {
+  orgSlug: string;
+  member: SpotlightMember | null;
+}) {
+  // Nothing while the bundle is in flight, nothing if this section failed,
+  // nothing if the co-op has nobody to introduce. An introduction is not
+  // worth an error message: if it cannot load, the dashboard is simply the
+  // dashboard.
+  if (!member) return null;
 
   const name = member.user.name?.trim() || 'A member';
   const initial = name.charAt(0).toUpperCase();

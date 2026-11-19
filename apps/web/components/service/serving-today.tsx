@@ -2,9 +2,7 @@
 
 import Link from 'next/link';
 import { HandHelping, Clock } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { useAuthStore } from '@/lib/auth-store';
-import { api, type MyService } from '@/lib/api';
+import { type MyService } from '@/lib/api';
 import { formatMinutes, servingToday, timeOf } from '@/lib/service-rota';
 
 /**
@@ -21,31 +19,29 @@ import { formatMinutes, servingToday, timeOf } from '@/lib/service-rota';
  * Today is the co-op's today: at ten at night in California, a turn at the
  * building in New York is tomorrow.
  */
-export function ServingToday({ orgId, orgSlug }: { orgId?: string; orgSlug: string }) {
-  const token = useAuthStore((s) => s.token);
-  const [data, setData] = useState<MyService | null>(null);
-
+export function ServingToday({
+  orgSlug,
+  service: data,
+}: {
+  orgSlug: string;
+  service: MyService | null;
+}) {
   /*
-    The co-op named in the URL, not whichever one the session last switched to:
-    a member of two co-ops reading one portal must not be told about a turn at
-    the other. That is why this takes an orgId rather than reaching for the
-    store's current one.
+    Handed in rather than fetched (OPS-46), as part of the dashboard's one
+    bundled request.
 
-    A quiet failure. This is a reminder on somebody's home screen, and an error
-    banner where it would have been is worse than nothing.
+    This used to take an `orgId` and fetch with it, deliberately: the co-op
+    named in the URL, not whichever one the session last switched to, because
+    a member of two co-ops must not be told about a turn at the other. That
+    guarantee has not been dropped — it has moved up to the caller, which
+    passes nothing unless the bundle it holds was fetched for the co-op in the
+    URL. `(dashboard)/layout.tsx` is where the two are kept in step: the URL
+    leads and the store follows.
+
+    A quiet failure, still. This is a reminder on somebody's home screen, and
+    an error banner where it would have been is worse than nothing — so a
+    section the bundle could not answer arrives as `null` and draws nothing.
   */
-  useEffect(() => {
-    if (!orgId || !token) return;
-    let live = true;
-    api.service
-      .mine(orgId, token)
-      .then((d) => live && setData(d))
-      .catch(() => live && setData(null));
-    return () => {
-      live = false;
-    };
-  }, [orgId, token]);
-
   if (!data) return null;
 
   const mine = servingToday(data.upcoming ?? [], data.timezone, new Date());

@@ -3411,6 +3411,44 @@ class ApiClient {
 
     recentJoins: (orgId: string, token: string) =>
       this.request<RecentJoins>(`/orgs/${orgId}/recent-joins`, { token }),
+
+    /**
+     * The member dashboard's ten panels, in one request (OPS-46).
+     *
+     * The page used to ask for them one at a time. Measured on a production
+     * build, opening it made sixteen requests, ten of them these — and in
+     * production `/api/*` is same-origin, so ten requests are ten Netlify
+     * Function invocations on Micro compute every time somebody opens the
+     * app. D-046 records what that cost: four endpoints filing four Sentry
+     * issues in the same second from one member, because a phone that locks
+     * kills ten parallel requests at once.
+     *
+     * Every section may be `null`, and that is not an error state. The
+     * endpoint settles its ten queries rather than awaiting them, so one
+     * failing section nulls one panel instead of blanking the dashboard —
+     * which is the behaviour ten separate requests had by accident and this
+     * keeps on purpose. Each panel already draws an empty state for exactly
+     * this, so `null` needs no new handling, only no `!` on the way in.
+     *
+     * `events` arrives as the paginated envelope the underlying service
+     * returns, unwrapped here so callers see the same `Event[]` that
+     * `events.listVisible` hands them.
+     */
+    memberHome: async (
+      orgId: string,
+      token: string,
+      window: { from?: string } = {},
+    ): Promise<MemberHome> => {
+      const query = new URLSearchParams();
+      if (window.from) query.set('from', window.from);
+
+      const res = await this.request<MemberHomeResponse>(
+        `/orgs/${orgId}/member-home?${query}`,
+        { token },
+      );
+
+      return { ...res, events: res.events?.data ?? null };
+    },
   };
 
   // ── Belonging Support: the Buddy System and the Knowledge Center (BEL) ──
@@ -6750,4 +6788,40 @@ export interface PublicTeaching {
     timezone?: string | null;
   };
   offerings: Offering[];
+}
+
+/**
+ * The member dashboard's own panels, as one response (OPS-46).
+ *
+ * The names come from `MEMBER_HOME_SECTIONS` in the API's
+ * `modules/home/member-home.ts`; nothing in the compiler connects the two
+ * across the workspace boundary, so both sides carry a test that pins the
+ * list and a section added to one without the other fails rather than
+ * rendering an empty panel.
+ *
+ * Every field is nullable because the endpoint settles its queries: `null`
+ * means that one panel could not be answered, which is the same thing each of
+ * these components already drew an empty state for when its own request
+ * failed. It is not an error for the page.
+ */
+export interface MemberHome {
+  stats: MemberStats | null;
+  joins: RecentJoins | null;
+  bookings: Booking[] | null;
+  rsvps: MyRsvp[] | null;
+  events: Event[] | null;
+  spotlight: SpotlightMember | null;
+  doorPin: { doorPin: string | null; doorUrl: string | null } | null;
+  teaching: Offering[] | null;
+  service: MyService | null;
+  ask: InterestAsk | null;
+}
+
+/**
+ * What the endpoint actually sends: the same shape, except that `events` is
+ * the paginated envelope `listPublicEvents` returns. `api.dashboard.memberHome`
+ * unwraps it so every caller sees `Event[]`, as `events.listVisible` does.
+ */
+export interface MemberHomeResponse extends Omit<MemberHome, 'events'> {
+  events: PaginatedResponse<Event> | null;
 }

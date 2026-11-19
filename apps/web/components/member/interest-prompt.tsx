@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { InterestAsk, api } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
@@ -24,34 +24,36 @@ import { Panel } from '@/components/layout/panel';
  * not as silence: it is the only way a member can stop being told about
  * something, and a card with only a yes button would make that impossible.
  */
-export function InterestPrompt({ orgSlug }: { orgSlug: string }) {
+export function InterestPrompt({
+  orgSlug,
+  ask: offered,
+}: {
+  orgSlug: string;
+  ask: InterestAsk | null;
+}) {
   const token = useAuthStore((s) => s.token);
   const orgId = useAuthStore((s) => s.currentOrgId);
 
-  const [ask, setAsk] = useState<InterestAsk | null>(null);
   const [answers, setAnswers] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    if (!token || !orgId) return;
+  /*
+    The question is handed in with the dashboard's other panels (OPS-46)
+    rather than fetched here.
 
-    api.radar
-      .ask(orgId, token)
-      .then((next) => {
-        if (!cancelled) setAsk(next?.interests?.length ? next : null);
-      })
-      .catch(() => {
-        // A dashboard is not the place to report that a question could not be
-        // fetched. No question is the same outcome as no answer.
-        if (!cancelled) setAsk(null);
-      });
+    The "no question" cases are unchanged and there are many of them — Radar
+    off, the co-op not on a plan that includes it, asked recently, waved away
+    three times, nothing left to ask about. A section the bundle could not
+    answer joins that list and reads as no question, which was already this
+    component's own rule: a dashboard is not the place to report that a
+    question could not be fetched, and no question is the same outcome as no
+    answer.
 
-    return () => {
-      cancelled = true;
-    };
-  }, [orgId, token]);
+    An empty `interests` array means the same as no ask, as it did before:
+    `null`, so nothing draws.
+  */
+  const ask = offered?.interests?.length ? offered : null;
 
   if (!token || !orgId || !ask || done) return null;
 

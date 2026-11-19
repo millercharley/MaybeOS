@@ -11,6 +11,6 @@ import { StorageModule } from '../storage/storage.module';
   imports: [ForumModule, StorageModule, PlatformModule],
   controllers: [OrgController, EmbedController],
   providers: [OrgService, DashboardService],
-  exports: [OrgService],
+  exports: [OrgService, DashboardService],
 })
 export class OrgModule {}

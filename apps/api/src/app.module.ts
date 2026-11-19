@@ -9,6 +9,7 @@ import { PrismaModule } from './config/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AttachmentsModule } from './modules/attachments/attachments.module';
 import { OrgModule } from './modules/org/org.module';
+import { HomeModule } from './modules/home/home.module';
 import { MemberModule } from './modules/member/member.module';
 import { EventsModule } from './modules/events/events.module';
 import { TeachingModule } from './modules/teaching/teaching.module';
@@ -148,6 +149,7 @@ import { HealthModule } from './modules/health/health.module';
     HealthModule,
     AuthModule,
     OrgModule,
+    HomeModule,
     AttachmentsModule,
     MemberModule,
     EventsModule,

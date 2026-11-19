@@ -56,37 +56,37 @@ export default function MemberPortalPage() {
   const orgSlug = useParams()?.orgSlug as string;
   const user = useAuthStore((s) => s.user);
   const isLoading = useAuthStore((s) => s.isLoading);
+  const storeOrgId = useAuthStore((s) => s.currentOrgId);
 
-  const { data: bookings, loading: bookingsLoading } = useApi(
-    (token, orgId) => api.rooms.myBookings(orgId, token),
-    []
-  );
+  /*
+    Ten panels, one request (OPS-46).
 
-  // This section used to read "Coming soon — your RSVP'd events will appear
-  // here once the feature is available", while /member/rsvps was live and
-  // linked from the sidebar two rows above it (EVT-01). The dashboard was
-  // telling members a working feature did not exist.
-  const { data: rsvps, loading: rsvpsLoading } = useApi(
-    (token, orgId) => api.events.myRsvps(orgId, token),
-    []
-  );
-  const upcomingRsvps = (rsvps ?? [])
-    .filter((r) => !r.isPast && !r.eventCanceled && r.status !== 'CANCELED')
-    .slice(0, 3);
+    This page used to ask for them one at a time, and on a production build
+    opening it made sixteen requests — ten of these, plus the shell's five and
+    one duplicate profile. In production `/api/*` is same-origin, so ten
+    requests are ten Netlify Function invocations on Micro compute every time
+    a member opens the app's front door. Charley ruled out buying the way out
+    with bigger compute: "Better to make our code more efficient."
 
-  // The co-op's own list, not the public one: a new event defaults to
-  // MEMBERS_ONLY, and this is a member reading their own co-op's dashboard.
-  //
-  // From today onwards (EVT-27). The API lists ascending from the start of a
-  // co-op's history, twenty at a time, so after MaybeItsFate's 777-event
-  // import this panel was handed twenty evenings from November 2024 and said
-  // "Nothing on today" with tonight's event on the calendar.
-  const { data: events, loading: eventsLoading } = useApi(
-    (token, orgId) => api.events.listVisible(orgId, token, eventWindow(new Date(), 0)),
+    Every section may be `null`, and none of them is an error for this page.
+    The endpoint settles its ten queries rather than awaiting them, so a panel
+    whose section failed draws its own empty state and the other nine are
+    unaffected — which is the one virtue the fan-out had and the thing a
+    `Promise.all` would have destroyed.
+
+    `from` is the browser's local midnight, as it was before this: the API
+    lists ascending from the start of a co-op's history, twenty at a time, so
+    after MaybeItsFate's 777-event import this panel was handed twenty
+    evenings from November 2024 and said "Nothing on today" with tonight's
+    event on the calendar (EVT-27). The events in it are the co-op's own list
+    rather than the public one — a new event defaults to MEMBERS_ONLY, and
+    this is a member reading their own co-op's dashboard.
+  */
+  const { data: fetched, loading: homeLoading } = useApi(
+    (token, orgId) =>
+      api.dashboard.memberHome(orgId, token, { from: eventWindow(new Date(), 0).from }),
     [],
   );
-
-  const { data: stats } = useApi((token, orgId) => api.dashboard.memberStats(orgId, token), []);
 
   // Everything the co-op has chosen to show rides on the session (DSH-01), so
   // the dashboard is not four requests deep before it can draw its own header.
@@ -108,6 +108,37 @@ export default function MemberPortalPage() {
   // column's own default and only applies to a session issued before this
   // field was selected.
   const timezone = org?.timezone || 'America/New_York';
+
+  /*
+    The bundle, but only if it is this co-op's.
+
+    `useApi` fetches with the org id in the session store, and the heading,
+    the banner and every panel below are about the co-op named in the URL.
+    `(dashboard)/layout.tsx` keeps those in step — "the URL leads and the
+    store follows" — but it does so in an effect, so for one render after a
+    member switches co-ops the store still holds the one they left.
+
+    Four of these panels have always been fetched off the store and nobody
+    noticed, because a wrong total or a wrong booking list for one frame is
+    invisible. `ServingToday` is not: it told a member what they had promised
+    to do today, and its old fetch took an explicit `orgId` from the URL for
+    exactly this reason. The guarantee that comment described now lives here,
+    once, for all ten.
+  */
+  const panels = storeOrgId && storeOrgId === currentOrg?.orgId ? fetched : null;
+
+  const bookings = panels?.bookings ?? null;
+  const rsvps = panels?.rsvps ?? null;
+  const events = panels?.events ?? null;
+  const stats = panels?.stats ?? null;
+
+  // This section used to read "Coming soon — your RSVP'd events will appear
+  // here once the feature is available", while /member/rsvps was live and
+  // linked from the sidebar two rows above it (EVT-01). The dashboard was
+  // telling members a working feature did not exist.
+  const upcomingRsvps = (rsvps ?? [])
+    .filter((r) => !r.isPast && !r.eventCanceled && r.status !== 'CANCELED')
+    .slice(0, 3);
   const now = new Date();
   const today = happeningToday(events ?? [], timezone, now);
   // What to say when today is empty. "Nothing on today" alone is a dead end;
@@ -152,23 +183,28 @@ export default function MemberPortalPage() {
         Above everything the co-op is saying, because the first is what you
         promised to do today and the second answers the question somebody has
         standing in the doorway. Each renders nothing when it has nothing.
-      */}
-      {currentOrg?.orgId && (
-        <div className="mb-6 space-y-4 empty:mb-0">
-          <ServingToday orgId={currentOrg.orgId} orgSlug={orgSlug} />
-          {/*
-            No "Happening now" here (Charley, 2026-10-04): "it turns out this
-            is redundant with the Today at MaybeItsFate section."
 
-            It was. The panel below lists what is on today and badges the one
-            that is running — so a strip above it saying "one room in use:
-            Attic until 12:00" was the same fact, told worse: a room rather
-            than the event in it. It still exists on the admin dashboard,
-            where room occupancy is somebody's actual job.
-          */}
-          <WelcomeCard orgId={currentOrg.orgId} orgSlug={orgSlug} />
-        </div>
-      )}
+        No `currentOrg?.orgId &&` around this any more. It used to be load
+        bearing — both of these took an org id and fetched with it — and now
+        `panels` is already null unless the bundle was fetched for the co-op
+        in the URL, so the condition would only read as a guarantee it no
+        longer provides. `empty:mb-0` collapses the strip when both draw
+        nothing, which is most days.
+      */}
+      <div className="mb-6 space-y-4 empty:mb-0">
+        <ServingToday orgSlug={orgSlug} service={panels?.service ?? null} />
+        {/*
+          No "Happening now" here (Charley, 2026-10-04): "it turns out this
+          is redundant with the Today at MaybeItsFate section."
+
+          It was. The panel below lists what is on today and badges the one
+          that is running — so a strip above it saying "one room in use:
+          Attic until 12:00" was the same fact, told worse: a room rather
+          than the event in it. It still exists on the admin dashboard,
+          where room occupancy is somebody's actual job.
+        */}
+        <WelcomeCard orgSlug={orgSlug} joins={panels?.joins ?? null} />
+      </div>
 
       {/* The co-op's own banner, when it has set one (DSH-01). No placeholder
           when it has not — an empty grey rectangle across the top of every
@@ -201,7 +237,7 @@ export default function MemberPortalPage() {
             last step lands (ONB-03). Above the door code because it is a
             moment rather than a tool, and it is only ever here once. */}
         <WelcomeIn />
-        <DoorCodeCard orgSlug={orgSlug} />
+        <DoorCodeCard orgSlug={orgSlug} door={panels?.doorPin ?? null} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -228,7 +264,7 @@ export default function MemberPortalPage() {
               </Link>
             }
           >
-            {eventsLoading ? (
+            {homeLoading ? (
               <div className="flex items-center justify-center py-6">
                 <div className="h-6 w-6 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
               </div>
@@ -298,7 +334,7 @@ export default function MemberPortalPage() {
           </Panel>
 
           <Panel title="My Upcoming Events">
-            {rsvpsLoading ? (
+            {homeLoading ? (
               <div className="flex items-center justify-center py-6">
                 <div className="h-6 w-6 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
               </div>
@@ -358,11 +394,16 @@ export default function MemberPortalPage() {
 
             Renders nothing when the co-op does not run teaching.
           */}
-          <TeachingShowcase orgSlug={orgSlug} enabled={org?.teachingEnabled} />
+          <TeachingShowcase
+            orgSlug={orgSlug}
+            enabled={org?.teachingEnabled}
+            offerings={panels?.teaching ?? null}
+            loading={homeLoading}
+          />
 
           <Panel title="My Bookings">
             <div className="space-y-3">
-              {bookingsLoading ? (
+              {homeLoading ? (
                 <div className="flex items-center justify-center py-6">
                   <div className="h-6 w-6 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
                 </div>
@@ -467,12 +508,12 @@ export default function MemberPortalPage() {
         <div className="space-y-6">
           {/* Three or four interests, one tap each (RDR-01). Renders nothing
               unless Radar is on and this member is actually due a question. */}
-          <InterestPrompt orgSlug={orgSlug} />
+          <InterestPrompt orgSlug={orgSlug} ask={panels?.ask ?? null} />
 
           {/* Somebody to meet, above the count (MEM-12). A number tells you how
               big the co-op is; a face tells you who is in it, and only one of
               those leads anywhere. Renders nothing when there is nobody else. */}
-          <MemberSpotlight orgSlug={orgSlug} />
+          <MemberSpotlight orgSlug={orgSlug} member={panels?.spotlight ?? null} />
 
           {/* How many of us there are — and, only if the co-op said so, how
               many it is aiming for. */}

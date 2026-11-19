@@ -134,9 +134,17 @@ export function WelcomeNote({
  * its own place in the conversation. A dashboard has no conversation to sit
  * in, so here they read better as one card.
  */
-export function WelcomeCard({ orgId, orgSlug }: { orgId: string; orgSlug: string }) {
-  const joins = useRecentJoins(orgId);
-
+export function WelcomeCard({
+  orgSlug,
+  joins,
+}: {
+  orgSlug: string;
+  joins: RecentJoins | null;
+}) {
+  // Handed in rather than fetched (OPS-46) — the dashboard asks for its ten
+  // panels in one request. `useRecentJoins` above is still the Commons's way
+  // in, where the arrivals are placed one at a time in the conversation and
+  // there is no bundle to take them from.
   if (!joins || joins.members.length === 0) return null;
 
   return (

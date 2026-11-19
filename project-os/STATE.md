@@ -618,6 +618,36 @@ build for twenty minutes, and "check the deploy before asking somebody to
 test it". The shape is always the same — the thing that *looks* like it
 proves a change is running proves only that something is running.
 
+## `next dev` cannot tell you how many requests a page makes
+
+Found 2026-11-19, measuring the member dashboard for OPS-46.
+
+React StrictMode double-invokes every effect in development, so every
+`useApi` on a page fires twice and the count in the network panel is roughly
+double. A count read off `next dev` is not a conservative estimate either —
+it is wrong in a way that hides which requests are duplicated *by the code*
+and which by the harness. The duplicate `auth/profile` that OPS-46 fixed was
+invisible in dev for exactly that reason: everything was doubled, so nothing
+looked doubled.
+
+Measure on a production build. `npm run start --workspace=apps/web` serves
+`.next`, and `.claude/launch.json` carries a **maybeos-web-prod** entry for
+it — its only purpose is this. Build first; see the entry below about
+`next build` and a running dev server sharing `.next`.
+
+Two further things the dashboard measurement turned up, both of which make a
+dev count disagree with production:
+
+- **Preflights are a dev-only tax.** In development the web app is on :3000
+  and the API on :3001, so every authenticated request is preceded by an
+  `OPTIONS`. In production `NEXT_PUBLIC_API_URL` is `maybeos.org` and `/api/*`
+  is a same-origin redirect, so there are none. Dev shows 32 round trips
+  where production makes 16.
+- **A request the page does not make still shows up.** The log is per tab,
+  not per load: `/api/pricing` from a visit to `/login` sat in the list and
+  read as a dashboard request. Take the count from one reload's worth of
+  request ids, not from the whole panel.
+
 ## How production ships
 - **`next build` and `next dev` share `.next`, so running the production build kills a running dev server.** It leaves the dev process serving production artefacts and every page throws `Cannot find module './vendor-chunks/…'`. Stop the preview, build, then restart it — or expect to `rm -rf apps/web/.next` and restart anyway. Hit twice on 2026-09-03 and diagnosed as a code bug both times.
 - **Before pushing web changes, run `npm --workspace @maybeos/web run verify` and read its exit code.** Netlify runs `next build`, which treats **ESLint errors as fatal** — so a change that typechecks and passes tests can still fail the deploy. On 2026-09-03 four consecutive production builds failed on five unused imports, and the local check reported "LINT CLEAN" because it grepped the lint output for a pattern that matched nothing and then echoed a hardcoded success. **Never grep a tool's output to decide whether it passed; use its exit code.** For a definitive answer, run the deploy's own command: `npm --workspace @maybeos/web run build`.

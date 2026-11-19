@@ -52,6 +52,16 @@ function subjectOf(token: string): string | null {
   }
 }
 
+/**
+ * The profile request currently in flight, if any (OPS-46).
+ *
+ * Module-level rather than a field on the store: nothing renders from it, and
+ * a store field would re-render every subscriber twice per load to say
+ * something no screen shows. There is one auth store per tab, so there is one
+ * of these.
+ */
+let inFlight: Promise<void> | null = null;
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   token: null,
   user: null,
@@ -106,64 +116,98 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ isLoading: false });
       return;
     }
-    try {
-      const user = await api.auth.profile(token);
-      set({ user, isLoading: false });
 
-      // Attach identity to every subsequent error report. Id only — an email
-      // address in a third-party dashboard is member PII we have no reason to
-      // send, and the id is enough to trace a report back to an account.
-      Sentry.setUser({ id: user.id });
+    /*
+      One profile request at a time (OPS-46).
 
-      // Which org is selected is restored from localStorage by `init` before
-      // the profile arrives, and until now nothing ever checked it was one of
-      // *this person's* orgs — only that it was set. So a stale id survived
-      // indefinitely and every org-scoped request answered 403 "Not a member
-      // of this organization", with no way out through the UI, because every
-      // screen that could change the selection is itself org-scoped.
-      //
-      // Charley hit this on 2026-08-18: a dev org id (Sunrise) left in a
-      // browser then pointed at production, immediately after accepting an
-      // invitation that had actually succeeded — so the one thing that looked
-      // broken was the thing that had worked. The same trap catches an org
-      // that no longer exists (the write probe tears one down on every run)
-      // and a membership revoked while somebody was signed in.
-      const { currentOrgId } = get();
-      const stillAMember = user.orgs.some((org) => org.orgId === currentOrgId);
+      `init` reads the token out of localStorage, sets it, and calls this.
+      `AuthProvider` then has a second effect — `if (token && !user)
+      loadProfile()` — which sees exactly that state, because the first call
+      has not come back yet. So every cold load of every page fetched the
+      profile twice, in parallel, forever: measured on a production build of
+      the dashboard, two of its sixteen requests were the same one.
 
-      if (!stillAMember) {
-        if (user.orgs.length > 0) {
-          get().setCurrentOrg(user.orgs[0].orgId);
-        } else if (currentOrgId) {
-          // Belongs to nothing: drop the selection rather than leave a
-          // guaranteed 403 behind.
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('maybeos_org');
+      The guard belongs here rather than in the provider. Five other callers
+      reach for `loadProfile` — the profile page, billing, join, invite, org
+      setup — and several of them fire it from a user action that can be
+      repeated; one of them does it in an effect with `loadProfile` in its
+      deps. Fixing the provider's ordering would have left all of those able
+      to do the same thing again.
+
+      Sharing the promise rather than dropping the call matters: `join` and
+      `invite` both `await loadProfile()` and then read the refreshed user off
+      the store. A second caller that returned immediately would read the old
+      one.
+    */
+    if (inFlight) return inFlight;
+
+    inFlight = (async () => {
+      try {
+        const user = await api.auth.profile(token);
+        set({ user, isLoading: false });
+
+        // Attach identity to every subsequent error report. Id only — an email
+        // address in a third-party dashboard is member PII we have no reason to
+        // send, and the id is enough to trace a report back to an account.
+        Sentry.setUser({ id: user.id });
+
+        // Which org is selected is restored from localStorage by `init` before
+        // the profile arrives, and until now nothing ever checked it was one of
+        // *this person's* orgs — only that it was set. So a stale id survived
+        // indefinitely and every org-scoped request answered 403 "Not a member
+        // of this organization", with no way out through the UI, because every
+        // screen that could change the selection is itself org-scoped.
+        //
+        // Charley hit this on 2026-08-18: a dev org id (Sunrise) left in a
+        // browser then pointed at production, immediately after accepting an
+        // invitation that had actually succeeded — so the one thing that looked
+        // broken was the thing that had worked. The same trap catches an org
+        // that no longer exists (the write probe tears one down on every run)
+        // and a membership revoked while somebody was signed in.
+        const { currentOrgId } = get();
+        const stillAMember = user.orgs.some((org) => org.orgId === currentOrgId);
+
+        if (!stillAMember) {
+          if (user.orgs.length > 0) {
+            get().setCurrentOrg(user.orgs[0].orgId);
+          } else if (currentOrgId) {
+            // Belongs to nothing: drop the selection rather than leave a
+            // guaranteed 403 behind.
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('maybeos_org');
+            }
+            set({ currentOrgId: null });
           }
-          set({ currentOrgId: null });
         }
-      }
-    } catch (err) {
-      // This used to be a bare `catch {}` that discarded the session on *any*
-      // failure. A 500 or a dropped connection would silently sign the user
-      // out and look, from the outside, exactly like a normal logout — no
-      // error, no report, nothing to debug. Only an actual rejection of the
-      // credential should end the session.
-      // Through the shared path, so a refusal means the same thing here as it
-      // does to a background poller (OPS-37).
-      if (get().endSessionIfRejected(err)) {
-        set({ isLoading: false });
-        return;
-      }
+      } catch (err) {
+        // This used to be a bare `catch {}` that discarded the session on *any*
+        // failure. A 500 or a dropped connection would silently sign the user
+        // out and look, from the outside, exactly like a normal logout — no
+        // error, no report, nothing to debug. Only an actual rejection of the
+        // credential should end the session.
+        // Through the shared path, so a refusal means the same thing here as it
+        // does to a background poller (OPS-37).
+        if (get().endSessionIfRejected(err)) {
+          set({ isLoading: false });
+          return;
+        }
 
-      // Keep the token: the credential may well still be good and the next
-      // attempt may succeed. Surface it instead of swallowing it.
-      set({ isLoading: false });
-      Sentry.captureException(err, {
-        level: 'error',
-        tags: { 'auth.stage': 'load-profile' },
-      });
-    }
+        // Keep the token: the credential may well still be good and the next
+        // attempt may succeed. Surface it instead of swallowing it.
+        set({ isLoading: false });
+        Sentry.captureException(err, {
+          level: 'error',
+          tags: { 'auth.stage': 'load-profile' },
+        });
+      } finally {
+        // Cleared whichever way it went, so the next caller — a tab coming
+        // back, a member accepting an invitation — gets a fresh attempt rather
+        // than a settled promise from an hour ago.
+        inFlight = null;
+      }
+    })();
+
+    return inFlight;
   },
 
   endSessionIfRejected: (err: unknown) => {
