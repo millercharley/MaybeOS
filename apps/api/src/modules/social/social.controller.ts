@@ -9,7 +9,7 @@ import { SocialService } from './social.service';
 import { ChoosePageDto, SocialSettingsDto } from './dto/social.dto';
 
 
-/** Connecting the co-op's Facebook Page and Instagram, and who may share (SOC-01). Admins only. */
+/** Connecting the co-op's Facebook Page and Instagram (SOC-01, SOC-04). Admins only. */
 @ApiTags('social')
 @Controller('orgs/:orgId/social')
 @UseGuards(JwtAuthGuard, OrgMembershipGuard, RolesGuard)

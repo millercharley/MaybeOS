@@ -7,7 +7,7 @@ import { useAuthStore } from '@/lib/auth-store';
 /** What Facebook's return to `?social=` means, in words for the admin. */
 const RETURN_MESSAGES: Record<string, { tone: 'ok' | 'bad'; text: string }> = {
   connected: { tone: 'ok', text: 'Facebook is connected.' },
-  pick: { tone: 'ok', text: 'Your login manages more than one Page. Choose the one to share to.' },
+  pick: { tone: 'ok', text: 'Your login manages more than one Page. Choose the one to post to.' },
   nopages: {
     tone: 'bad',
     text: 'That Facebook login does not manage any Page MaybeOS could post to. Sign in as someone who is an admin of the Page.',
@@ -17,11 +17,12 @@ const RETURN_MESSAGES: Record<string, { tone: 'ok' | 'bad'; text: string }> = {
 };
 
 /**
- * Sharing public events to the co-op's Facebook Page and Instagram (SOC-01).
+ * The co-op's Facebook Page and Instagram (SOC-01, SOC-04).
  *
- * An admin connects the Page once. There is no approval queue (Charley): hosts
- * share directly, and an admin decides who may, with a default for everyone
- * and a switch per member on the Members page.
+ * An admin connects the Page once, and MaybeOS posts through it on the
+ * co-op's behalf. Members used to post their own events here; SOC-04 removed
+ * that — in the two months it existed not one member used it — so this card
+ * is about the connection, not about who is allowed to use it.
  */
 export function SocialSharing() {
   const token = useAuthStore((s) => s.token);
@@ -62,7 +63,7 @@ export function SocialSharing() {
     });
 
   const disconnect = () => {
-    if (!window.confirm('Disconnect Facebook? Hosts will not be able to share until it is connected again.')) return;
+    if (!window.confirm('Disconnect Facebook? MaybeOS will not be able to post until it is connected again.')) return;
     return run(() => api.social.disconnect(orgId, token));
   };
 
@@ -72,10 +73,10 @@ export function SocialSharing() {
     <section className="card space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-6">
         <div>
-          <h2 className="text-base font-semibold text-gray-900">Share events to Facebook &amp; Instagram</h2>
+          <h2 className="text-base font-semibold text-gray-900">Facebook &amp; Instagram</h2>
           <p className="mt-1 text-sm text-gray-500">
-            Hosts can post their public events to your co-op&apos;s Facebook Page and Instagram, credited to
-            them, with a link to RSVP.
+            Connect your co-op&apos;s Facebook Page and its Instagram account, so MaybeOS can post
+            what&apos;s on.
           </p>
         </div>
         <span

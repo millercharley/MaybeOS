@@ -32,8 +32,20 @@ describe('the split by audience', () => {
   });
 
   it('My Profile still has the thing other members look at', () => {
-    expect(profile).toMatch(/instagram-handle/);
+    /*
+      This pinned the Instagram handle field until SOC-04, on the premise
+      that it was public — and it never was. Nothing in the product displayed
+      `instagramHandle` to anybody: the Instagram a member's card shows comes
+      from their profile links, through `safeProfileLinks`. The handle existed
+      only so a host could be credited as a collaborator on a post they shared
+      themselves, which members can no longer do, so the field has gone and
+      the column is left holding what 31 members typed.
+
+      What is pinned now is what other members genuinely see.
+    */
+    expect(profile).toMatch(/profile-links|links/);
     expect(profile).toContain('How you appear to the rest of your co-op');
+    expect(profile).not.toMatch(/instagram-handle/);
   });
 
   /** A member at a door should not have to guess which page it was on. */

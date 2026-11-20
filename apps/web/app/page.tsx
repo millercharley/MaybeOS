@@ -96,7 +96,7 @@ const WEEK: WeekStep[] = [
     body: 'Any member can host. Add a picture, make it public or members-only, publish, and the word gets out on its own.',
     points: [
       'Posted to #events in the Commons automatically',
-      'Shared to your Facebook Page and Instagram, credited to the host (rolling out)',
+      'Included in the co-op’s weekly post to Facebook and Instagram (rolling out)',
       'Paid tickets with a flat fee per ticket, never a percentage',
       'Calendar feeds and an embed for your own website',
     ],

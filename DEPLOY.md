@@ -124,7 +124,7 @@ in the repo. The ones production needs:
 | `POSTMARK_BROADCAST_STREAM` | optional; the Postmark stream id for bulk mail — the weekly radar digest and the monthly recap (EML-04). Unset, bulk mail stays on the transactional stream, which is what it did before. **Create the stream in Postmark first**: naming one Postmark does not have fails every bulk send |
 | `SENTRY_DSN` | error tracking |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | optional; calendar sync refuses with 503 naming whichever are unset. All three count — Google rejects an empty or unregistered `redirect_uri` on its own page, so two out of three fails in exactly the way the refusal exists to prevent |
-| `META_APP_ID`, `META_APP_SECRET`, `META_REDIRECT_URI`, `META_CONFIG_ID` | optional; lets hosts share public events to a co-op's Facebook Page and Instagram (SOC-01). Unset, Settings → Integrations says so and the Connect button is disabled. See **Facebook & Instagram** below |
+| `META_APP_ID`, `META_APP_SECRET`, `META_REDIRECT_URI`, `META_CONFIG_ID` | optional; lets MaybeOS post to a co-op's Facebook Page and Instagram (SOC-01, SOC-04 — the co-op posts, members do not). Unset, Settings → Integrations says so and the Connect button is disabled. See **Facebook & Instagram** below |
 
 Dev and prod Supabase credentials are **not interchangeable**, and the two
 dashboards look identical. Check the project name before pasting anything.
@@ -159,6 +159,10 @@ Scopes requested: `calendar.events` (writing bookings) and `calendar.readonly`
 One Meta app for the whole platform, like the Google client: MaybeOS's
 identity, not any one co-op's. Each co-op's admin connects their own Page in
 Settings → Integrations, and the Page token is stored sealed.
+
+Members do not post. SOC-01 let a host share their own event and SOC-04
+removed it — in the two months it existed not one member used it. What the
+connection is for now is the co-op's own posting.
 
 1. At developers.facebook.com, create an app of type **Business**, and add
    **Facebook Login for Business**.

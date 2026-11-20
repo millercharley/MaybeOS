@@ -69,15 +69,6 @@ export default function EventsPage() {
   const [activeTab, setActiveTab] = useState<AdminEventTab>('upcoming');
   const [search, setSearch] = useState('');
   const [draftsOnly, setDraftsOnly] = useState(false);
-  /**
-   * Posting an event to the co-op's Instagram and Facebook (SOC-02).
-   *
-   * The API has always let an organiser share any event —
-   * `if (!actor.staff && event.hostId !== actor.userId)` — and the admin
-   * console had no button for it anywhere. The one that existed was on the
-   * member's own events list, so a co-op's organisers could not post an
-   * event they had not personally hosted.
-   */
   const [creating, setCreating] = useState(false);
   /**
    * Handing a batch of events to the member who actually runs them (EVT-47).
@@ -527,11 +518,10 @@ export default function EventsPage() {
                 )}
               </div>
 
-              {/* One wrapping row (SOC-02). These were four buttons each
-                  carrying their own `ml-4 mt-4`, which lines up only while
-                  they all fit: naming the share button "Share to Instagram &
-                  Facebook" made it wrap, and left Edit stranded on a line of
-                  its own. A flex row wraps as a row. */}
+              {/* One wrapping row. These were four buttons each carrying
+                  their own `ml-4 mt-4`, which lines up only while they all
+                  fit, and stranded Edit on a line of its own as soon as a
+                  longer label appeared. A flex row wraps as a row. */}
               <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
               <button
                 type="button"
@@ -547,11 +537,6 @@ export default function EventsPage() {
               >
                 <Pencil className="h-3 w-3" /> Edit
               </button>
-
-              {/* Posting it to Instagram and Facebook (SOC-02). Organisers
-                  were always allowed to and never had anywhere to do it.
-                  Inside the card's <Link>, so the handler has to stop the
-                  navigation the way Edit above does. */}
 
               {/* Hiding and deleting (EVT-30). Inside the card's <Link>, so
                   both handlers have to stop the navigation the way Edit

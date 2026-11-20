@@ -891,7 +891,7 @@ class ApiClient {
         headline?: string;
         location?: string;
         emailOptIn?: boolean;
-        /** Credited when they share an event to the co-op's Instagram (SOC-01). Null clears it. */
+        /** Kept on the membership; no longer asked for on the profile (SOC-04). Null clears it. */
         instagramHandle?: string | null;
       },
       token: string,
@@ -3965,7 +3965,7 @@ export interface Org {
    * public route selects a narrower set, and how a co-op's door works is not
    * something to publish on its join page.
    */
-  /** Whether hosts may share public events to Facebook and Instagram (SOC-01). */
+  /** Whether MaybeOS may post to the co-op's Facebook Page and Instagram (SOC-01). */
   socialSharingEnabled?: boolean;
   /** Whether members may broadcast what they teach (TCH-01). */
   teachingEnabled?: boolean;
@@ -4638,11 +4638,6 @@ export interface Member {
   emailOptIn?: boolean | null;
   /** Their Instagram username, without the @, credited on events they share (SOC-01). */
   instagramHandle?: string | null;
-  /**
-   * Whether an admin has decided this member may share to the co-op's
-   * Facebook and Instagram (SOC-01). Null follows the co-op's default.
-   * Organisers and the member themselves only.
-   */
 }
 
 /**

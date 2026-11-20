@@ -40,14 +40,6 @@ export default function MyEventsPage() {
   // be worse than not quoting one.
   const [org, setOrg] = useState<Org | null>(null);
   const [loading, setLoading] = useState(true);
-  /**
-   * An event just published, offered to Instagram and Facebook (SOC-02).
-   *
-   * The moment somebody publishes a public event is the moment they want it
-   * seen, and until now the product said nothing about social at exactly
-   * that point. Public events only — raising this on a members-only event
-   * would open a dialog whose only message is that it cannot be shared.
-   */
   const [creating, setCreating] = useState(false);
   /**
    * The event being edited (EVT-22).
@@ -403,7 +395,6 @@ function Section({
   onEdit?: (event: HostedEvent) => void;
   busy: boolean;
   muted?: boolean;
-  /** Whether the co-op lets hosts share to Facebook and Instagram (SOC-01). */
 }) {
   if (events.length === 0) return null;
 
@@ -526,8 +517,6 @@ function EventRow({
               Edit
             </button>
           )}
-          {/* SOC-01, named and explained in SOC-02. The rule is shared with
-              every other place this appears; the API checks it again. */}
           {/*
             Take it off the members' lists without destroying it (EVT-50).
 
