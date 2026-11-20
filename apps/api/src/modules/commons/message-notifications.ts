@@ -1,3 +1,4 @@
+import { plainTextOf } from '../../common/plain-text';
 /**
  * Who hears that somebody wrote to them (CMN-19).
  *
@@ -98,7 +99,20 @@ export const PREVIEW_LIMIT = 400;
  * conversation is the place to read it.
  */
 export function preview(body: string): { text: string; truncated: boolean } {
-  const text = body.trim().replace(/\s+/g, ' ');
+  /*
+    Plain text first, then measure.
+
+    `body` is HTML — members write in the rich composer — and the email
+    template escapes what it is given, so left as markup it arrives as visible
+    angle brackets. That is what a member saw on 20 November: a message
+    beginning "<p>Hey Charlie! Thank you so much for approving…</p> <ol> <li>".
+
+    Converting before the limit rather than after matters twice over. The 400
+    characters now count words instead of tags, so a formatted message gets a
+    real preview rather than a paragraph of markup; and the cut can no longer
+    land inside a tag and leave a fragment behind.
+  */
+  const text = plainTextOf(body);
   if (text.length <= PREVIEW_LIMIT) return { text, truncated: false };
 
   // Cut at a word boundary where there is one close enough to the limit, so

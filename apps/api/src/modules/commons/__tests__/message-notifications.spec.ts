@@ -131,6 +131,31 @@ describe('the message in the email', () => {
     expect(preview('  Hello\n\n   there  ').text).toBe('Hello there');
   });
 
+  /*
+    CMN-31. The composer writes HTML and the email template escapes what it is
+    given, so an unconverted body arrived as visible angle brackets — a member
+    was sent a notification beginning "<p>Hey Charlie! Thank you so much…".
+  */
+  it('sends words, not the markup the composer wrote them in', () => {
+    const out = preview('<p>Hey Charlie!</p> <ol> <li>Is food allowed?</li> </ol>');
+
+    expect(out.text).toBe('Hey Charlie! Is food allowed?');
+    expect(out.text).not.toMatch(/[<>]/);
+  });
+
+  /*
+    Converted before the limit, not after: the 400 characters are meant to be
+    400 characters of what somebody wrote. A heavily formatted message used to
+    spend most of its allowance on tags and arrive cut off early.
+  */
+  it('spends the limit on words rather than on tags', () => {
+    const wrapped = '<p>' + 'word '.repeat(60).trim() + '</p>';
+    const bare = 'word '.repeat(60).trim();
+
+    expect(preview(wrapped)).toEqual(preview(bare));
+    expect(preview(wrapped).truncated).toBe(false);
+  });
+
   it('cuts a long message and says so', () => {
     const long = 'word '.repeat(300);
     const out = preview(long);

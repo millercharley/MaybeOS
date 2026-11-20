@@ -1,3 +1,5 @@
+import { plainTextOf } from '../../common/plain-text';
+
 /**
  * When something the co-op is putting on gets a thread in the Commons, and
  * which channel it lands in (CMN-22).
@@ -203,20 +205,10 @@ export const ANNOUNCEMENTS_SIGNAL_TO_NOBODY = true;
  * thread. The link goes to the Commons.
  */
 export function excerptOf(html: string, limit = 280): string {
-  const text = html
-    // Block-level ends become spaces, so two paragraphs do not run together
-    // into one word.
-    .replace(/<\/(p|div|li|h[1-6]|blockquote)>/gi, ' ')
-    .replace(/<br\s*\/?>/gi, ' ')
-    .replace(/<[^>]*>/g, '')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/\s+/g, ' ')
-    .trim();
+  // The conversion moved to `plainTextOf` when two other emails turned out to
+  // need the same thing and had each been written without it (CMN-31). The
+  // behaviour here is unchanged; this no longer owns the only copy.
+  const text = plainTextOf(html);
 
   if (text.length <= limit) return text;
 

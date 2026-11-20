@@ -5,6 +5,7 @@ import * as postmark from 'postmark';
 import { fromHeader } from './from-header';
 import { htmlToText } from './html-to-text';
 import { safeReplyTo } from './reply-to';
+import { plainTextOf } from '../../common/plain-text';
 
 export interface BookingEmailData {
   memberName: string;
@@ -1383,7 +1384,7 @@ export class EmailService {
               (post) => `
               <div style="margin:0 0 14px;padding:0 0 14px;border-bottom:1px solid #f0ece4;">
                 <a href="${escapeHtml(post.url)}" style="color:#2d2a26;font-weight:600;text-decoration:none;">
-                  ${escapeHtml(post.title || clamp(post.body, 90))}
+                  ${escapeHtml(post.title || clamp(plainTextOf(post.body), 90))}
                 </a>
                 <p style="margin:4px 0 0;color:#6b665e;font-size:13px;">
                   ${escapeHtml(post.authorName ?? 'A member')}${
