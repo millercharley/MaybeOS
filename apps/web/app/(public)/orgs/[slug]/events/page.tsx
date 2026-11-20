@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft, Calendar, CalendarPlus, Clock, MapPin, Ticket } from 'lucide-react';
 import { usePublicApi } from '@/hooks/use-api';
 import { api, apiUrl, type Event } from '@/lib/api';
-import { monthHeading, groupUpcoming, whenLabel } from '@/lib/event-list';
+import { monthHeading, groupUpcoming, eventWindow, whenLabel } from '@/lib/event-list';
 import { submitGuestRsvp } from '@/lib/guest-rsvp';
 
 /**
@@ -29,8 +29,24 @@ export default function PublicEventsPage(props: { params: Promise<{ slug: string
   const { slug } = use(props.params);
 
   const { data: org, loading: orgLoading } = usePublicApi(() => api.orgs.getBySlug(slug), [slug]);
+  /*
+    `eventWindow`, not a bare `listPublic`, and the reason is the whole bug.
+
+    Unwindowed, the API answers page one of every public event the co-op has
+    ever held, oldest first, twenty at a time. `groupUpcoming` below then keeps
+    only what is ahead — and for MaybeItsFate that was nothing, because the
+    first twenty of fifty-nine were all September and October. The page told
+    the open web "Nothing on the calendar just yet" while fifteen public events
+    were coming up, and it had been doing so for as long as the co-op had three
+    pages of history.
+
+    The portal's events page passes this window on both of its branches and has
+    a test pinning it. This page was written later, against the same API, and
+    nobody carried the window across. The guard in `event-list.spec.ts` now
+    covers this file too, so the next page to list events cannot repeat it.
+  */
   const { data: events, loading: eventsLoading } = usePublicApi(
-    () => (org ? api.events.listPublic(org.id) : Promise.resolve([])),
+    () => (org ? api.events.listPublic(org.id, eventWindow(new Date(), 0)) : Promise.resolve([])),
     [org?.id],
   );
 

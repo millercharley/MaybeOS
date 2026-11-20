@@ -150,6 +150,25 @@ describe('every member-facing list says which stretch it wants', () => {
     expect(page).toMatch(/listVisible\(org\.id, token, eventWindow\(new Date\(\), 0\)\)/);
     expect(page).toMatch(/listPublic\(org\.id, eventWindow\(new Date\(\), 0\)\)/);
   });
+
+  /*
+    EVT-65. Found by the production smoke test on 19 Nov, not by a test: the
+    open-web events page had been answering "Nothing on the calendar just yet"
+    while fifteen public events were coming up, because it asked for page one
+    of fifty-nine oldest-first and then discarded everything behind it.
+
+    The test above was written for the portal and named that file, so it could
+    not see a second page listing the same events. The two assertions now sit
+    together on purpose — whichever page somebody writes next, the pattern to
+    copy has a guard attached to it.
+  */
+  it('the open-web events page asks for today onwards too', () => {
+    const page = read('app', '(public)', 'orgs', '[slug]', 'events', 'page.tsx');
+
+    expect(page).toMatch(/listPublic\(org\.id, eventWindow\(new Date\(\), 0\)\)/);
+    // The shape that caused it: a call with the id and nothing else.
+    expect(page).not.toMatch(/listPublic\(org\.id\)/);
+  });
 });
 
 /**
