@@ -73,6 +73,38 @@ describe('query validation', () => {
         run(ListEventsQueryDto, { page: '2', perPage: '50' }),
       ).resolves.toEqual({ page: 2, perPage: 50 });
     });
+
+    /*
+      Found on the live site by the production smoke test, 19 Nov, not here:
+      `/events/public?category=%00` answered 500. Postgres will not store a
+      NUL in a text value and refuses the statement, so the filter did not
+      match nothing — it threw from inside Prisma, after validation had
+      passed.
+
+      The three tests above exist because `from`, `page` and `perPage` did the
+      same thing. Those were fixed one field at a time, and `category` and
+      `visibility` were left as plain strings because nobody had reported
+      them. The guard belongs to the shape of the parameter, not to the field
+      names that happened to be in the bug report.
+    */
+    it.each(['category', 'visibility'])(
+      'rejects a null byte in %s rather than letting Postgres refuse it',
+      async (field) => {
+        await expect(
+          run(ListEventsQueryDto, { [field]: '\u0000' }),
+        ).rejects.toBeInstanceOf(BadRequestException);
+
+        await expect(
+          run(ListEventsQueryDto, { [field]: `before\u0000after` }),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      },
+    );
+
+    it('still accepts an ordinary category', async () => {
+      await expect(
+        run(ListEventsQueryDto, { category: 'Social', visibility: 'PUBLIC' }),
+      ).resolves.toEqual({ category: 'Social', visibility: 'PUBLIC' });
+    });
   });
 
   describe('pagination bounds', () => {
