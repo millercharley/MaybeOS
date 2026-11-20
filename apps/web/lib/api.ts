@@ -1525,31 +1525,9 @@ class ApiClient {
     disconnect: (orgId: string, token: string) =>
       this.request<SocialStatus>(`/orgs/${orgId}/social/meta`, { method: 'DELETE', token }),
 
-    updateSettings: (orgId: string, data: { enabled?: boolean; membersByDefault?: boolean }, token: string) =>
+    updateSettings: (orgId: string, data: { enabled?: boolean }, token: string) =>
       this.request<SocialStatus>(`/orgs/${orgId}/social/settings`, {
         method: 'PATCH',
-        body: JSON.stringify(data),
-        token,
-      }),
-
-    /** True or false decides for this member; null follows the co-op default. */
-    setMember: (orgId: string, userId: string, allowed: boolean | null, token: string) =>
-      this.request<{ userId: string; socialShareAllowed: boolean | null }>(
-        `/orgs/${orgId}/social/members/${userId}`,
-        { method: 'PATCH', body: JSON.stringify({ allowed }), token },
-      ),
-
-    shareOptions: (orgId: string, eventId: string, token: string) =>
-      this.request<ShareOptions>(`/orgs/${orgId}/events/${eventId}/social`, { token }),
-
-    share: (
-      orgId: string,
-      eventId: string,
-      data: { platforms: SocialPlatform[]; body: string; image?: string },
-      token: string,
-    ) =>
-      this.request<{ results: ShareResult[] }>(`/orgs/${orgId}/events/${eventId}/social`, {
-        method: 'POST',
         body: JSON.stringify(data),
         token,
       }),
@@ -4665,7 +4643,6 @@ export interface Member {
    * Facebook and Instagram (SOC-01). Null follows the co-op's default.
    * Organisers and the member themselves only.
    */
-  socialShareAllowed?: boolean | null;
 }
 
 /**
@@ -6619,7 +6596,7 @@ export interface InterestAsk {
   interests: { tagId: string; name: string; emoji: string | null }[];
 }
 
-// ── Sharing to Facebook and Instagram (SOC-01) ─────────────
+// ── The co-op's Facebook Page and Instagram (SOC-01, SOC-04) ──
 
 export type SocialPlatform = 'FACEBOOK' | 'INSTAGRAM';
 
@@ -6627,7 +6604,6 @@ export interface SocialStatus {
   /** Whether this server has a Facebook app configured at all. */
   configured: boolean;
   enabled: boolean;
-  membersByDefault: boolean;
   connection: { pageName: string | null; instagramUsername: string | null; connectedAt: string | null } | null;
   /** Pages to choose from, after a login that manages several. */
   pendingPages: { id: string; name: string; igUsername: string | null }[] | null;
@@ -6637,34 +6613,6 @@ export interface SocialPostRecord {
   platform: SocialPlatform;
   permalink: string | null;
   createdAt: string;
-}
-
-export interface ShareOptions {
-  canShare: boolean;
-  reason: string | null;
-  facebook: { pageName: string | null; post: SocialPostRecord | null } | null;
-  /*
-    `needsImage` used to live here, meaning "the event carries no picture".
-    It drove a dead end — "Add one to the event first" — that SOC-03 removed
-    by letting the host choose a file in the dialog. A flag that no longer
-    describes a constraint is worse than no flag.
-  */
-  instagram: { username: string | null; post: SocialPostRecord | null } | null;
-  imageUrl: string | null;
-  body: string;
-  /** The credit and link added after the body, as each platform will show them. */
-  facebookCredit: string;
-  instagramCredit: string;
-  credit: { hostName: string; instagramHandle: string | null };
-}
-
-export interface ShareResult {
-  platform: SocialPlatform;
-  ok: boolean;
-  permalink?: string | null;
-  error?: string;
-  alreadyShared?: boolean;
-  collaboratorInvited?: boolean;
 }
 
 // ── MaybeOS's own prices (WEB-02) ──────────────────────────

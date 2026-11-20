@@ -6,13 +6,8 @@ import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { SocialService } from './social.service';
-import { ChoosePageDto, MemberSocialDto, ShareEventDto, SocialSettingsDto } from './dto/social.dto';
+import { ChoosePageDto, SocialSettingsDto } from './dto/social.dto';
 
-function isStaff(user: RequestUser, orgId: string): boolean {
-  if (user.globalRole === 'PLATFORM_ADMIN') return true;
-  const role = user.orgRoles?.[orgId];
-  return role === 'ADMIN' || role === 'STAFF';
-}
 
 /** Connecting the co-op's Facebook Page and Instagram, and who may share (SOC-01). Admins only. */
 @ApiTags('social')
@@ -61,44 +56,4 @@ export class SocialAdminController {
     return this.social.updateSettings(orgId, dto);
   }
 
-  @Patch('members/:userId')
-  @Roles('ADMIN')
-  @ApiOperation({ summary: 'Allow or stop one member sharing' })
-  member(
-    @Param('orgId', ParseUUIDPipe) orgId: string,
-    @Param('userId', ParseUUIDPipe) userId: string,
-    @Body() dto: MemberSocialDto,
-  ) {
-    return this.social.setMemberAllowed(orgId, userId, dto.allowed);
-  }
-}
-
-/** A host sharing one of their events (SOC-01). */
-@ApiTags('social')
-@Controller('orgs/:orgId/events/:eventId/social')
-@UseGuards(JwtAuthGuard, OrgMembershipGuard)
-@ApiBearerAuth()
-export class EventShareController {
-  constructor(private readonly social: SocialService) {}
-
-  @Get()
-  @ApiOperation({ summary: 'Whether this event can be shared, and where it has been' })
-  options(
-    @Param('orgId', ParseUUIDPipe) orgId: string,
-    @Param('eventId', ParseUUIDPipe) eventId: string,
-    @CurrentUser() user: RequestUser,
-  ) {
-    return this.social.shareOptions(orgId, eventId, { userId: user.userId, staff: isStaff(user, orgId) });
-  }
-
-  @Post()
-  @ApiOperation({ summary: 'Share this event to the co-op’s Facebook Page and/or Instagram' })
-  share(
-    @Param('orgId', ParseUUIDPipe) orgId: string,
-    @Param('eventId', ParseUUIDPipe) eventId: string,
-    @CurrentUser() user: RequestUser,
-    @Body() dto: ShareEventDto,
-  ) {
-    return this.social.share(orgId, eventId, { userId: user.userId, staff: isStaff(user, orgId) }, dto);
-  }
 }

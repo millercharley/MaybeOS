@@ -310,27 +310,48 @@ export class AdminThing {
   });
 
   /**
-   * And the same thing proved against the real file that has this shape.
+   * This was proved against a real file until SOC-04.
    *
-   * `social.controller.ts` answers with an empty list either way, because both
-   * its classes are guarded — so an assertion on the file as it stands cannot
-   * tell a parser that looked from one that stopped early. Removing the second
-   * class's guard from the source is what distinguishes them: before this fix
-   * the answer stayed empty, which is precisely the silence worth preventing.
+   * `social.controller.ts` carried two classes — the admin connection and a
+   * second one for a member sharing their own event — and was the only file
+   * in the API with that shape, so it made the proof concrete: strip the
+   * second class's guard from the real source and the audit must speak up.
+   *
+   * SOC-04 removed member sharing, and with it the second class, so no real
+   * controller has two classes any more. The four synthetic cases above
+   * cover the parser completely, and every real controller is parsed by the
+   * audit itself at the top of this file — what is lost is only the comfort
+   * of seeing it on a file somebody actually wrote. If a second two-class
+   * controller ever appears, point this back at it.
    */
-  it('would speak up if the second class in social.controller.ts lost its guard', () => {
-    const file = join(__dirname, '..', '..', 'social', 'social.controller.ts');
-    const src = readFileSync(file, 'utf8');
+  it('reads each class in a file, however many there are', () => {
+    const two = `
+@Controller('orgs/:orgId/admin')
+@UseGuards(JwtAuthGuard)
+export class AdminThing {
+  @Get()
+  read() {}
+}
 
-    expect(routesIn(src)).toEqual([]);
+@Controller('orgs/:orgId/events/:eventId/social')
+@UseGuards(JwtAuthGuard, OrgMembershipGuard)
+export class GuardedSecond {
+  @Get()
+  options() {}
 
-    const exposed = src.replace(
+  @Post()
+  share() {}
+}
+`;
+    // Both guarded: silence is the right answer and must not come from a
+    // parser that stopped after the first class.
+    expect(routesIn(two)).toEqual([]);
+
+    const exposed = two.replace(
       "@Controller('orgs/:orgId/events/:eventId/social')\n@UseGuards(JwtAuthGuard, OrgMembershipGuard)",
       "@Controller('orgs/:orgId/events/:eventId/social')",
     );
-    // If the decorators are ever reformatted this replace stops matching, and
-    // the test would otherwise pass by asserting nothing.
-    expect(exposed).not.toBe(src);
+    expect(exposed).not.toBe(two);
 
     expect(routesIn(exposed)).toEqual([
       'GET /orgs/:orgId/events/:eventId/social',

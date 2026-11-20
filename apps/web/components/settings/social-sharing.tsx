@@ -165,26 +165,9 @@ export function SocialSharing() {
               onChange={(e) => run(() => api.social.updateSettings(orgId, { enabled: e.target.checked }, token))}
             />
             <span>
-              <span className="font-medium text-gray-900">Let hosts share public events</span>
-              <span className="block text-gray-500">Posts go out straight away. There is no approval step.</span>
-            </span>
-          </label>
-          <label className="flex items-start gap-3 text-sm">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={status.membersByDefault}
-              disabled={busy}
-              onChange={(e) =>
-                run(() => api.social.updateSettings(orgId, { membersByDefault: e.target.checked }, token))
-              }
-            />
-            <span>
-              <span className="font-medium text-gray-900">Every member can share</span>
+              <span className="font-medium text-gray-900">Let MaybeOS post for this co-op</span>
               <span className="block text-gray-500">
-                {status.membersByDefault
-                  ? 'Turn someone off on the Members page.'
-                  : 'Only members you turn on, on the Members page, can share. Admins and staff always can.'}
+                The connection above is what MaybeOS posts through.
               </span>
             </span>
           </label>

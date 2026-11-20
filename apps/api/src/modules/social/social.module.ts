@@ -2,13 +2,19 @@ import { Module } from '@nestjs/common';
 import { StorageModule } from '../storage/storage.module';
 import { MetaGraphService } from './meta-graph.service';
 import { SocialService } from './social.service';
-import { EventShareController, SocialAdminController } from './social.controller';
+import { SocialAdminController } from './social.controller';
 import { MetaCallbackController } from './meta-callback.controller';
 
-/** Sharing public events to a co-op's Facebook Page and Instagram (SOC-01). */
+/**
+ * The co-op's Facebook Page and Instagram connection (SOC-01, SOC-04).
+ *
+ * Members sharing their own events was removed in SOC-04 — in the two months
+ * it existed not one member used it. What stays is the connection itself,
+ * which the weekly co-op post is built on.
+ */
 @Module({
   imports: [StorageModule],
-  controllers: [SocialAdminController, EventShareController, MetaCallbackController],
+  controllers: [SocialAdminController, MetaCallbackController],
   providers: [SocialService, MetaGraphService],
 })
 export class SocialModule {}

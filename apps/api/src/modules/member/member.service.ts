@@ -106,7 +106,6 @@ function toMemberView<
     subscriptionStatus?: unknown;
     emailOptIn?: boolean | null;
     doorPin?: string | null;
-    socialShareAllowed?: boolean | null;
     signInSentAt?: Date | null;
     signInDeliveredAt?: Date | null;
     signInBouncedAt?: Date | null;
@@ -132,9 +131,6 @@ function toMemberView<
     // member who opened the directory. The omission is the seatbelt; this is
     // the one place the belt is off.
     doorPin: _doorPin,
-    // Whether an admin has stopped this member sharing to the co-op's
-    // Facebook and Instagram (SOC-01). A moderation decision, not a profile.
-    socialShareAllowed: _socialShare,
     /*
       What happened to this member's sign-in email (MEM-25).
 

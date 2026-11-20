@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Users, Clock, Eye, EyeOff, X, Lock, Pencil, Trash2, Ticket, UserCircle, Share2, UserCog } from 'lucide-react';
+import { Plus, Users, Clock, Eye, EyeOff, X, Lock, Pencil, Trash2, Ticket, UserCircle, UserCog } from 'lucide-react';
 import { useApi } from '@/hooks/use-api';
 import { useAuthStore } from '@/lib/auth-store';
 import {
@@ -18,11 +18,9 @@ import {
 import { api, Event } from '@/lib/api';
 import { toUpdatePayload } from '@/lib/events';
 import { EventForm, EventFormValues } from '@/components/events/event-form';
-import { ShareEventDialog } from '@/components/events/share-event-dialog';
 import { TransferEvents } from '@/components/events/transfer-events';
 import { EventTabs } from '@/components/events/event-tabs';
 import { searchEvents, splitEvents } from '@/lib/event-tabs';
-import { SHARE_LABEL, shareability, shouldOfferAfterPublish } from '@/lib/event-sharing';
 import {
   STANDING_LABEL,
   STANDING_TONE,
@@ -80,7 +78,6 @@ export default function EventsPage() {
    * member's own events list, so a co-op's organisers could not post an
    * event they had not personally hosted.
    */
-  const [sharing, setSharing] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   /**
    * Handing a batch of events to the member who actually runs them (EVT-47).
@@ -188,16 +185,6 @@ export default function EventsPage() {
       // Editing a draft and choosing publish should still publish it.
       if (values.publish && !editing.isPublished) {
         await api.events.publish(orgId, editing.id, token);
-        // SOC-02: the moment it goes live is the moment somebody wants it
-        // seen. Public events only; the rule is shared with the buttons.
-        if (
-          shouldOfferAfterPublish(
-            { ...editing, ...toUpdatePayload(values), isPublished: true },
-            Boolean(org?.socialSharingEnabled),
-          )
-        ) {
-          setSharing(editing.id);
-        }
       }
 
       setEditing(null);
@@ -214,13 +201,7 @@ export default function EventsPage() {
     setBusy(true);
     setFormError('');
     try {
-      // The created event, not a discarded promise: SOC-02 needs its id to
-      // offer the share, and `publish: true` on the form means this one is
-      // already live.
-      const made = await api.events.create(orgId, values, token);
-      if (shouldOfferAfterPublish(made, Boolean(org?.socialSharingEnabled))) {
-        setSharing(made.id);
-      }
+      await api.events.create(orgId, values, token);
       setCreating(false);
       refetch();
     } catch (err) {
@@ -329,17 +310,6 @@ export default function EventsPage() {
 
   return (
     <div className="space-y-6">
-      {/* One dialog for the page, not one per row: it is a modal, and 777
-          of them mounted at once is 777 fetches waiting to happen. */}
-      {sharing && orgId && token && (
-        <ShareEventDialog
-          orgId={orgId}
-          orgSlug={orgSlug}
-          token={token}
-          eventId={sharing}
-          onClose={() => setSharing(null)}
-        />
-      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PageHeader
           title="Events"
@@ -502,7 +472,6 @@ export default function EventsPage() {
           // that was four over.
           const seatsTaken = event.seatsTaken ?? rsvpCount;
           const capacity = event.capacity ?? 0;
-          const share = shareability(event, Boolean(org?.socialSharingEnabled));
 
           return (
             // The card has looked clickable since it was built and led
@@ -583,20 +552,6 @@ export default function EventsPage() {
                   were always allowed to and never had anywhere to do it.
                   Inside the card's <Link>, so the handler has to stop the
                   navigation the way Edit above does. */}
-              {share.state === 'ready' && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setSharing(event.id);
-                  }}
-                  disabled={busy}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-brand-600 disabled:opacity-50"
-                >
-                  <Share2 className="h-3 w-3" /> {SHARE_LABEL}
-                </button>
-              )}
 
               {/* Hiding and deleting (EVT-30). Inside the card's <Link>, so
                   both handlers have to stop the navigation the way Edit
@@ -631,13 +586,6 @@ export default function EventsPage() {
               </button>
 
               </div>
-
-              {/* Why there is no Share on this one (SOC-02). Silence read
-                  as the feature not existing; 753 of the co-op's 777 events
-                  are members-only. */}
-              {share.state === 'blocked' && (
-                <p className="mt-3 text-xs text-gray-500">{share.reason}</p>
-              )}
 
               {/* Hide has no confirm box to put its failure in. */}
               {actionError?.id === event.id && confirmDelete !== event.id && (

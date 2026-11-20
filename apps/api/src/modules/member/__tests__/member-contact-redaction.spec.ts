@@ -41,7 +41,6 @@ describe('MemberService — contact redaction', () => {
     // query returns, and the leak below a real one.
     doorPin: 'ABCDE',
     // An admin has stopped this member sharing to the co-op's socials (SOC-01).
-    socialShareAllowed: false,
     // What the provider did with their sign-in email (MEM-25). Scalars on the
     // membership, so the real query returns them whether or not anything asks.
     signInSentAt: new Date('2026-10-04'),
@@ -106,13 +105,11 @@ describe('MemberService — contact redaction', () => {
     expect(mine).toMatchObject({ doorPin: 'ABCDE' });
   });
 
-  it('does not tell other members that an admin has stopped someone sharing', async () => {
-    const [other] = await listAs({ userId: 'user-1', privileged: false });
-    expect(other).not.toHaveProperty('socialShareAllowed');
-
-    const [asAdmin] = await listAs({ userId: 'admin-1', privileged: true });
-    expect(asAdmin).toMatchObject({ socialShareAllowed: false });
-  });
+  /*
+    There was a test here that other members are not told when an admin has
+    stopped somebody sharing. SOC-04 removed member sharing, so there is no
+    such decision to leak and nothing left for it to assert.
+  */
 
   it('does not tell other members that somebody’s email address is dead', async () => {
     // A bounce says more about an address than the address does — that it is

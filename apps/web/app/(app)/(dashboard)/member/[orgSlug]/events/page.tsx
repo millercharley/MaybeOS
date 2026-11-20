@@ -17,8 +17,6 @@ import { emptyNote, searchEvents, splitEvents, type EventTab } from '@/lib/event
 import { TouchpointAsk } from '@/components/impact/touchpoint-ask';
 import { HostEarnings } from '@/components/events/host-earnings';
 import { PageHeader } from '@/components/layout/page-header';
-import { ShareEventDialog } from '@/components/events/share-event-dialog';
-import { SHARE_LABEL, shareability, shouldOfferAfterPublish } from '@/lib/event-sharing';
 import { Panel } from '@/components/layout/panel';
 
 /**
@@ -50,7 +48,6 @@ export default function MyEventsPage() {
    * that point. Public events only — raising this on a members-only event
    * would open a dialog whose only message is that it cannot be shared.
    */
-  const [justPublished, setJustPublished] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   /**
    * The event being edited (EVT-22).
@@ -143,7 +140,6 @@ export default function MyEventsPage() {
       // because going live is a distinct act from correcting a date.
       if (values.publish && !editing.isPublished) {
         await api.events.publish(orgId, editing.id, token);
-        offerToShare({ ...editing, ...toUpdatePayload(values), isPublished: true });
       }
 
       setEditing(null);
@@ -152,13 +148,6 @@ export default function MyEventsPage() {
       setError(err instanceof Error ? err.message : 'Could not save those changes');
     } finally {
       setBusy(false);
-    }
-  }
-
-  /** Raise the dialog only for an event that could actually go out. */
-  function offerToShare(event: { id: string } & Parameters<typeof shouldOfferAfterPublish>[0]) {
-    if (shouldOfferAfterPublish(event, Boolean(org?.socialSharingEnabled))) {
-      setJustPublished(event.id);
     }
   }
 
@@ -220,8 +209,6 @@ export default function MyEventsPage() {
     setBusy(true);
     try {
       await api.events.publish(orgId, eventId, token);
-      const published = events.find((e) => e.id === eventId);
-      if (published) offerToShare({ ...published, isPublished: true });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not publish that');
@@ -260,17 +247,6 @@ export default function MyEventsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Offered the moment it goes live (SOC-02), not on a page the host
-          has to know to go back to. */}
-      {justPublished && orgId && token && (
-        <ShareEventDialog
-          orgId={orgId}
-          orgSlug={orgSlug}
-          token={token}
-          eventId={justPublished}
-          onClose={() => setJustPublished(null)}
-        />
-      )}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <PageHeader
@@ -372,7 +348,6 @@ export default function MyEventsPage() {
               // happened, which is what the past list has always assumed.
               onEdit={tab === 'past' ? undefined : setEditing}
               busy={busy}
-              sharingOn={tab === 'past' ? false : Boolean(org?.socialSharingEnabled)}
               muted={tab === 'past'}
             />
           )}
@@ -409,7 +384,6 @@ function Section({
   onDelete,
   busy,
   muted = false,
-  sharingOn = false,
 }: {
   /**
    * The heading, when the list needs one.
@@ -430,7 +404,6 @@ function Section({
   busy: boolean;
   muted?: boolean;
   /** Whether the co-op lets hosts share to Facebook and Instagram (SOC-01). */
-  sharingOn?: boolean;
 }) {
   if (events.length === 0) return null;
 
@@ -446,7 +419,6 @@ function Section({
             onHide={onHide}
             onDelete={onDelete}
             busy={busy}
-            sharingOn={sharingOn}
           />
         ))}
     </div>
@@ -463,7 +435,6 @@ function EventRow({
   onHide,
   onDelete,
   busy,
-  sharingOn = false,
 }: {
   event: HostedEvent;
   onCancel: (id: string) => void;
@@ -472,7 +443,6 @@ function EventRow({
   onHide?: (id: string) => void;
   onDelete?: (id: string) => void;
   busy: boolean;
-  sharingOn?: boolean;
 }) {
   // Its own, rather than threaded through props: the row is rendered in two
   // places and the URL already knows which co-op this is.
@@ -482,24 +452,12 @@ function EventRow({
   /** Separate from cancelling: these are different acts with different costs. */
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [showSummary, setShowSummary] = useState(false);
-  const [sharing, setSharing] = useState(false);
-  const token = useAuthStore((st) => st.token);
   const start = new Date(event.startTime);
   const canceled = Boolean((event as { canceledAt?: string | null }).canceledAt);
   const ended = Boolean(event.endTime && new Date(event.endTime) <= new Date());
-  const share = shareability(event, sharingOn);
 
   return (
     <div className="card space-y-4">
-    {sharing && orgId && token && (
-      <ShareEventDialog
-        orgId={orgId}
-        orgSlug={orgSlug}
-        token={token}
-        eventId={event.id}
-        onClose={() => setSharing(false)}
-      />
-    )}
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0">
         <p className="font-medium text-gray-900">{event.title}</p>
@@ -570,16 +528,6 @@ function EventRow({
           )}
           {/* SOC-01, named and explained in SOC-02. The rule is shared with
               every other place this appears; the API checks it again. */}
-          {share.state === 'ready' && (
-            <button
-              type="button"
-              onClick={() => setSharing(true)}
-              className="font-medium text-brand-600 hover:underline"
-              disabled={busy}
-            >
-              {SHARE_LABEL}
-            </button>
-          )}
           {/*
             Take it off the members' lists without destroying it (EVT-50).
 
@@ -666,12 +614,6 @@ function EventRow({
         </div>
       )}
 
-      {/* Why there is no Share here (SOC-02). Hiding it taught hosts the
-          feature did not exist; 753 of the co-op's 777 events are
-          members-only, so this is the case they actually meet. */}
-      {share.state === 'blocked' && (
-        <p className="text-xs text-gray-500">{share.reason}</p>
-      )}
     </div>
 
     {/* Only after it has happened, and only on request — a host opening this

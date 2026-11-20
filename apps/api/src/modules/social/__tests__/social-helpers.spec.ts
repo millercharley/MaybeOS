@@ -1,5 +1,5 @@
 import { jpegSize } from '../jpeg-size';
-import { CAPTION_LIMIT, defaultBody, facebookMessage, instagramCaption, normaliseHandle } from '../social-caption';
+import { CAPTION_LIMIT, normaliseHandle } from '../social-caption';
 
 /** A real-shaped JPEG header: SOI, an APP0 segment, a DHT table (whose marker sits in the SOF range), then SOF0. */
 function jpeg(width: number, height: number, marker = 0xc0): Buffer {
@@ -45,36 +45,15 @@ describe('normaliseHandle', () => {
   });
 });
 
-describe('captions', () => {
-  const input = { body: 'Art walk Saturday', hostName: 'Jane Doe', instagramHandle: 'janedoe', eventUrl: 'https://maybeos.org/portal/mif/events/art-walk' };
-
-  it('credits the host and links the event after whatever the host wrote', () => {
-    expect(facebookMessage(input)).toBe(
-      'Art walk Saturday\n\nHosted by Jane Doe (@janedoe on Instagram)\nRSVP: https://maybeos.org/portal/mif/events/art-walk',
-    );
-    expect(instagramCaption(input)).toBe(
-      'Art walk Saturday\n\nHosted by @janedoe\nRSVP: https://maybeos.org/portal/mif/events/art-walk',
-    );
-  });
-
-  it('credits by name when the host has no Instagram', () => {
-    expect(instagramCaption({ ...input, instagramHandle: null })).toContain('Hosted by Jane Doe');
-  });
-
-  it('trims the body, never the credit or the link, to fit Instagram', () => {
-    const caption = instagramCaption({ ...input, body: 'x'.repeat(5000) });
-    expect(caption.length).toBeLessThanOrEqual(CAPTION_LIMIT);
-    expect(caption.endsWith('Hosted by @janedoe\nRSVP: https://maybeos.org/portal/mif/events/art-walk')).toBe(true);
-  });
-
-  it('starts the host off with the title, time in the event’s zone, place and description', () => {
-    const body = defaultBody({
-      title: 'Art Walk',
-      startTime: new Date('2026-10-03T22:00:00Z'),
-      timezone: 'America/New_York',
-      locationName: 'Side Door',
-      description: 'Meet at the lobby.\n\nBring water.',
-    });
-    expect(body).toBe('Art Walk\nSaturday, October 3 at 6:00 PM · Side Door\n\nMeet at the lobby. Bring water.');
+/**
+ * What is left of the captions file (SOC-04).
+ *
+ * The builders that put a host's words, their credit and the RSVP link
+ * together went with member sharing. Instagram's own limit did not — the
+ * co-op's weekly post is bound by exactly the same 2,200 characters.
+ */
+describe('Instagram’s caption limit', () => {
+  it('is the number Instagram enforces, not a number we chose', () => {
+    expect(CAPTION_LIMIT).toBe(2200);
   });
 });
