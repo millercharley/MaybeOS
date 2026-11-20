@@ -786,6 +786,19 @@ class ApiClient {
     removeLogo: (orgId: string, token: string) =>
       this.request<Org>(`/orgs/${orgId}/logo`, { method: 'DELETE', token }),
 
+    /**
+     * Everything the signed-in chrome needs, in one request (OPS-47).
+     *
+     * Replaces four that fired together from four providers in the app
+     * layout — the unread badge, the getting-started checklist, the co-op's
+     * links and the outstanding reading — on every page, not just one. The
+     * four routes below all stay: the unread poll and the mutation refresh
+     * still use them, and this is an extra way to ask rather than a
+     * replacement.
+     */
+    shell: (orgId: string, token: string) =>
+      this.request<AppShell>(`/orgs/${orgId}/shell`, { token }),
+
     // ── Links to things off MaybeOS (NAV-02) ──
     listLinks: (orgId: string, token: string) =>
       this.request<OrgLink[]>(`/orgs/${orgId}/links`, { token }),
@@ -6824,4 +6837,19 @@ export interface MemberHome {
  */
 export interface MemberHomeResponse extends Omit<MemberHome, 'events'> {
   events: PaginatedResponse<Event> | null;
+}
+
+/**
+ * The app shell's four answers (OPS-47).
+ *
+ * Every section is nullable because the bundle settles rather than awaits: a
+ * section whose service failed comes back `null`, which is the same thing
+ * each provider saw when its own request failed, and the same empty state
+ * renders. A test in the API pins these four names against the server's list.
+ */
+export interface AppShell {
+  unread: UnreadCounts | null;
+  onboarding: OnboardingState | null;
+  links: OrgLink[] | null;
+  reading: OutstandingReading | null;
 }

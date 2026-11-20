@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/auth-store';
-import { api, REQUIRED_READING_EVENT } from '@/lib/api';
+import { useShell } from '@/contexts/shell-context';
+import { REQUIRED_READING_EVENT } from '@/lib/api';
 
 /**
  * The handbook, once somebody's thirty days have run out (BEL-07).
@@ -37,31 +38,34 @@ import { api, REQUIRED_READING_EVENT } from '@/lib/api';
  */
 export function RequiredReadingGate({ orgId, orgSlug }: { orgId?: string; orgSlug?: string }) {
   const token = useAuthStore((s) => s.token);
+  const { shell, shellOrgId, ready: shellReady } = useShell();
   const pathname = usePathname() ?? '';
   const router = useRouter();
   const [sent, setSent] = useState(false);
 
   const onHandbook = pathname.includes('/handbook');
 
+  /*
+    From the shell bundle (OPS-47), which asks once for the whole chrome.
+
+    `shellOrgId === orgId` is load-bearing rather than defensive: this effect
+    *redirects*, so seeding it with another co-op's answer would not render a
+    wrong badge, it would send somebody to a handbook they do not owe.
+
+    Fails open, exactly as the direct fetch did. A co-op with the tool off
+    answers with nothing owed; a bundle whose section failed comes back null,
+    and a network blip must never strand somebody on a page they asked for.
+  */
   useEffect(() => {
     if (!orgId || !orgSlug || !token || onHandbook || sent) return;
+    if (!shellReady || shellOrgId !== orgId) return;
 
-    let live = true;
-    api.belonging
-      .outstandingReading(orgId, token)
-      .then((outstanding) => {
-        if (!live || outstanding.blocking.length === 0) return;
-        setSent(true);
-        router.replace(`/portal/${orgSlug}/handbook/start`);
-      })
-      // A co-op with the tool off answers with nothing owed, and a network
-      // blip should never strand somebody on a page they asked for.
-      .catch(() => {});
+    const outstanding = shell?.reading;
+    if (!outstanding || outstanding.blocking.length === 0) return;
 
-    return () => {
-      live = false;
-    };
-  }, [orgId, orgSlug, token, onHandbook, sent, router]);
+    setSent(true);
+    router.replace(`/portal/${orgSlug}/handbook/start`);
+  }, [orgId, orgSlug, token, onHandbook, sent, router, shell, shellOrgId, shellReady]);
 
   /*
     The same destination, reached the other way. Deliberately not guarded by

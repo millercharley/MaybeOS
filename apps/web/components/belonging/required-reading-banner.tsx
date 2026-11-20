@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { AlertTriangle, Clock } from 'lucide-react';
 import { usePortal } from '@/contexts/portal-context';
 import { useAuthStore } from '@/lib/auth-store';
+import { useShell } from '@/contexts/shell-context';
 import { api, OutstandingReading } from '@/lib/api';
 import { timeUntil } from '@/lib/relative-time';
 
@@ -27,15 +28,50 @@ export function RequiredReadingBanner() {
   const pathname = usePathname();
   const [outstanding, setOutstanding] = useState<OutstandingReading | null>(null);
 
+  /*
+    From the shell bundle when it is this co-op's (OPS-47), and from the route
+    when it is not.
+
+    The fallback is not defensive padding. The portal deliberately serves
+    co-ops the viewer does not belong to — a shared event link, a published
+    report (AUTH-08) — and the bundle only ever carries the co-op the
+    *session* is in. Seeding across that line would show somebody another
+    community's reading, so the org is compared and the odd case keeps the
+    request it always made.
+
+    This also used to refetch on every change of `pathname`, which was one
+    request per navigation inside the portal. The bundle refreshes on the api
+    client's mutation announcement, and finishing an article is a mutation, so
+    the banner is no less fresh than it was.
+  */
+  const { shell, shellOrgId, ready: shellReady } = useShell();
+  const seeded = shellReady && org && shellOrgId === org.id;
+
   useEffect(() => {
     if (!org || !token) return;
+
+    /*
+      Wait for the bundle before deciding.
+
+      Without this the banner asks for itself on the first frame and is seeded
+      a moment later, having made the very request the bundle exists to
+      remove. `shellReady` is also true in the signed-out case, so nothing
+      hangs on a session that will never arrive.
+    */
+    if (!shellReady) return;
+
+    if (seeded) {
+      setOutstanding(shell?.reading ?? null);
+      return;
+    }
+
     api.belonging
       .outstandingReading(org.id, token)
       .then(setOutstanding)
       // A co-op with the tool off answers with nothing owed; a network blip
       // should not put an error banner across an unrelated page.
       .catch(() => setOutstanding(null));
-  }, [org, token, pathname]);
+  }, [org, token, pathname, seeded, shell, shellReady]);
 
   if (!outstanding || !org) return null;
 

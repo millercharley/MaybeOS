@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import { ArrowUpRight, Plus, Trash2 } from 'lucide-react';
 import { api, MUTATION_EVENT, OrgLink } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
+import { useShell } from '@/contexts/shell-context';
 
 /**
  * The co-op's links to things that are not in MaybeOS (NAV-02).
@@ -56,9 +57,40 @@ export function OrgLinks({ isAdmin }: { isAdmin: boolean }) {
     }
   }, [token, orgId]);
 
+  /*
+    From the shell bundle (OPS-47).
+
+    A handful of rows that change a few times a year, fetched on every page
+    load from the sidebar — and the sidebar is rendered twice, as a fixed
+    column and as a mobile drawer, which is why this was a provider-shaped
+    problem before it was a bundle-shaped one. The admin path below still
+    writes through the links routes and refreshes from the bundle, so one
+    request updates this list, the badge, the checklist and the reading gate
+    together where it used to take two.
+  */
+  const { shell, shellOrgId, stamp, ready: shellReady } = useShell();
+  const seedRef = useRef<{ orgId: string | null; links: OrgLink[] | null }>({
+    orgId: null,
+    links: null,
+  });
   useEffect(() => {
-    load();
-  }, [load]);
+    seedRef.current = { orgId: shellOrgId, links: shell?.links ?? null };
+  }, [shell, shellOrgId]);
+
+  useEffect(() => {
+    if (!token || !orgId) {
+      void load();
+      return;
+    }
+    if (!shellReady) return;
+
+    if (seedRef.current.orgId === orgId && seedRef.current.links) {
+      setLinks(seedRef.current.links);
+      setReady(true);
+      return;
+    }
+    void load();
+  }, [load, token, orgId, stamp, shellReady]);
 
   // Switching co-op reloads the profile, which is a mutation-shaped change
   // this list cares about. Same hook the getting-started checklist uses.

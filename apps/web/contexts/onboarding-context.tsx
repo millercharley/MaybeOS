@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { usePathname } from 'next/navigation';
 import { useAuthStore } from '@/lib/auth-store';
+import { useShell } from '@/contexts/shell-context';
 import { api, MUTATION_EVENT, OnboardingState } from '@/lib/api';
 
 interface OnboardingContextValue {
@@ -77,9 +78,41 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
     }
   }, [token, orgId]);
 
+  /*
+    The first checklist comes from the shell bundle (OPS-47), and only the
+    first. Everything below — the re-read on navigation, the debounced
+    refresh after a save — is untouched, because those are the cases the
+    checklist exists to catch. What the bundle removes is the request this
+    provider made the instant it mounted, alongside three others asking the
+    same question about the same member in the same co-op.
+  */
+  const { shell, shellOrgId, stamp, ready: shellReady } = useShell();
+  const seedRef = useRef<{ orgId: string | null; state: OnboardingState | null }>({
+    orgId: null,
+    state: null,
+  });
   useEffect(() => {
-    load();
-  }, [load]);
+    seedRef.current = { orgId: shellOrgId, state: shell?.onboarding ?? null };
+  }, [shell, shellOrgId]);
+
+  useEffect(() => {
+    if (!token || !orgId) {
+      void load();
+      return;
+    }
+    // Wait for the bundle, or this makes the request it exists to remove and
+    // is then seeded a moment later, having asked twice.
+    if (!shellReady) return;
+
+    if (seedRef.current.orgId === orgId) {
+      setState(seedRef.current.state);
+      setReady(true);
+      return;
+    }
+    void load();
+    // `stamp` rather than `shell`: a number changes once per answer, where
+    // the bundle object is replaced on every refetch.
+  }, [load, token, orgId, stamp, shellReady]);
 
   /**
    * Re-read on navigation, and after anything is saved.

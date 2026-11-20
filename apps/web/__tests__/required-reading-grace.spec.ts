@@ -44,8 +44,28 @@ describe('the handbook gate', () => {
   });
 
   it('leaves them where they are if the check fails', () => {
-    // A network blip must not strand somebody on a page they asked for.
-    expect(gate).toMatch(/\.catch\(\(\) => \{\}\)/);
+    /*
+      A network blip must not strand somebody on a page they asked for.
+
+      The guarantee is unchanged; where it lives is not. This used to be a
+      `.catch(() => {})` on the gate's own fetch. Since OPS-47 the answer
+      arrives in the shell bundle, and a section whose service failed comes
+      back `null` — so the gate reads the absence and does nothing, which is
+      the same fail-open by a different road. Pinned on the new shape so that
+      deleting the guard fails here rather than in production.
+    */
+    expect(gate).toMatch(/const outstanding = shell\?\.reading;/);
+    expect(gate).toMatch(/if \(!outstanding \|\| outstanding\.blocking\.length === 0\) return;/);
+  });
+
+  it('never redirects on another co-op\'s answer', () => {
+    /*
+      This effect redirects, so seeding it from the bundle is not the same
+      risk as seeding a badge: between switching co-op and the new bundle
+      landing, the old co-op's reading would send somebody to a handbook they
+      do not owe. The org the bundle belongs to is compared, not assumed.
+    */
+    expect(gate).toMatch(/shellOrgId !== orgId\) return;/);
   });
 
   it('covers the pages the refusals were actually happening on', () => {

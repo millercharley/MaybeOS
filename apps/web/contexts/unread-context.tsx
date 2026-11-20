@@ -1,7 +1,8 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '@/lib/auth-store';
+import { useShell } from '@/contexts/shell-context';
 import { api } from '@/lib/api';
 import {
   NO_UNREAD,
@@ -52,6 +53,28 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
   const currentOrgId = useAuthStore((s) => s.currentOrgId);
   const [counts, setCounts] = useState<UnreadCounts>(NO_UNREAD);
+
+  /*
+    The first reading comes from the shell bundle (OPS-47).
+
+    Only the first. This is the one genuinely live thing in the chrome and it
+    keeps its own timer, its own backoff and its own visibility handling — all
+    of CMN-29 is untouched below. What the bundle removes is the request this
+    provider used to make the instant it mounted, which on every page load was
+    one of four asking the same question.
+
+    Held in a ref and triggered by `stamp`, a number, so that a new bundle
+    reseeds the badge without the poll timer restarting every time the bundle
+    object is replaced by an identical one.
+  */
+  const { shell, shellOrgId, stamp, ready: shellReady } = useShell();
+  const seedRef = useRef<{ orgId: string | null; counts: UnreadCounts | null }>({
+    orgId: null,
+    counts: null,
+  });
+  useEffect(() => {
+    seedRef.current = { orgId: shellOrgId, counts: shell?.unread ?? null };
+  }, [shell, shellOrgId]);
 
   /*
     The co-op the session is in, which the sidebar uses too — not the URL,
@@ -115,6 +138,11 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    // Nothing starts until the bundle has answered; otherwise this would
+    // make the very request it exists to remove, then be seeded a moment
+    // later and have asked twice.
+    if (!shellReady) return;
+
     /*
       A timer that backs off, and stops for a tab nobody is looking at
       (CMN-29).
@@ -169,10 +197,28 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
       void run();
     };
 
-    void load().then((first) => {
-      if (first) last = first;
+    /*
+      Seeded, or asked for — never both.
+
+      `shellReady` gates this effect, so the loop does not start until the
+      bundle has answered one way or the other. If it answered for *this*
+      co-op, that reading is the first one and no request is made here. If it
+      failed, or it is still the previous co-op's, this falls back to exactly
+      what it always did.
+    */
+    const seeded =
+      seedRef.current.orgId === orgId ? seedRef.current.counts : null;
+
+    if (seeded) {
+      setCounts(seeded);
+      last = seeded;
       schedule();
-    });
+    } else {
+      void load().then((first) => {
+        if (first) last = first;
+        schedule();
+      });
+    }
 
     document.addEventListener('visibilitychange', onVisibility);
 
@@ -181,7 +227,7 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
       clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [load, orgId, token]);
+  }, [load, orgId, token, stamp, shellReady]);
 
   const refresh = useCallback(() => {
     void load();

@@ -495,6 +495,24 @@ export class KnowledgeService {
     });
   }
 
+  /**
+   * The same answer, keyed on the user rather than their membership row.
+   *
+   * `outstandingFor` wants a `UserOrg` id, so every caller first looked one
+   * up — the belonging controller does it in a private helper, and the app
+   * shell bundle (OPS-47) would have needed its own copy. A bundle composes
+   * services and owns no queries, so rather than let it reach for Prisma, the
+   * lookup belongs here, beside the thing that needs it.
+   */
+  async outstandingForUser(orgId: string, userId: string) {
+    const me = await this.prisma.userOrg.findFirst({
+      where: { orgId, userId },
+      select: { id: true },
+    });
+    if (!me) throw new NotFoundException('You are not a member of this community');
+    return this.outstandingFor(orgId, me.id);
+  }
+
   /** What onboarding walks a member through, and the countdown banner. */
   async outstandingFor(orgId: string, memberId: string) {
     const settings = await this.settings.forOrg(orgId);

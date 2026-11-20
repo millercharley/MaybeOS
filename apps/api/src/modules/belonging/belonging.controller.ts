@@ -303,8 +303,9 @@ export class BelongingController {
   @Get('welcome/outstanding')
   @ApiOperation({ summary: 'What I still have to read, and how long I have' })
   async outstanding(@Param('orgId') orgId: string, @CurrentUser() user: RequestUser) {
-    const me = await this.membership(orgId, user.userId);
-    return this.knowledge.outstandingFor(orgId, me.id);
+    // Through the service, so this route and the shell bundle (OPS-47) cannot
+    // drift: one lookup, one definition of what is outstanding.
+    return this.knowledge.outstandingForUser(orgId, user.userId);
   }
 
   @Get('welcome/articles/:idOrSlug')

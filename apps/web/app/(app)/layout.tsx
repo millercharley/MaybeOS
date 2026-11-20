@@ -15,6 +15,7 @@ import { PortalProvider, usePortal } from '@/contexts/portal-context';
 import { MemberCardProvider } from '@/contexts/member-card-context';
 import { UnreadProvider } from '@/contexts/unread-context';
 import { OnboardingProvider } from '@/contexts/onboarding-context';
+import { ShellProvider } from '@/contexts/shell-context';
 import { useAuthStore } from '@/lib/auth-store';
 import { brandStyle, brandTheme } from '@/lib/brand';
 
@@ -65,18 +66,29 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           the same reason as PortalProvider above: a wrapper that comes and
           goes between routes changes the tree's shape and remounts the shell. */}
       <MemberCardProvider>
-        {/* What this member has not read, for the badges in the sidebar
-            (CMN-14). Unconditional for the same reason as the two above: the
-            sidebar is rendered twice — fixed column and mobile drawer — and a
-            fetch inside it would be two requests a minute for one answer. */}
-        <UnreadProvider>
-          {/* The getting-started checklist, fetched once (ONB-03). The
-              sidebar is mounted twice and the dashboard wants the same
-              answer; unconditional for the same reason as the two above. */}
-          <OnboardingProvider>
-            <AppShell>{children}</AppShell>
-          </OnboardingProvider>
-        </UnreadProvider>
+        {/* One request for everything the chrome needs (OPS-47).
+
+            Above the three that read from it, because they seed themselves
+            from its answer. It replaces the first fetch each of them used to
+            make on mount — four requests, on every page, asking one question
+            about one member in one co-op. Unconditional for the same reason
+            as the providers around it: a wrapper that comes and goes between
+            routes changes the tree's shape and remounts the shell. */}
+        <ShellProvider>
+          {/* What this member has not read, for the badges in the sidebar
+              (CMN-14). Unconditional for the same reason as the two above: the
+              sidebar is rendered twice — fixed column and mobile drawer — and a
+              fetch inside it would be two requests a minute for one answer.
+              Its poll is its own; the bundle only saves it the first ask. */}
+          <UnreadProvider>
+            {/* The getting-started checklist, fetched once (ONB-03). The
+                sidebar is mounted twice and the dashboard wants the same
+                answer; unconditional for the same reason as the two above. */}
+            <OnboardingProvider>
+              <AppShell>{children}</AppShell>
+            </OnboardingProvider>
+          </UnreadProvider>
+        </ShellProvider>
       </MemberCardProvider>
     </PortalProvider>
   );

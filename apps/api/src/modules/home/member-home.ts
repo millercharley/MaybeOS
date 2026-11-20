@@ -40,6 +40,8 @@
  * one side without the other fails a test rather than rendering an empty
  * panel in production.
  */
+import { settleBundle, type Bundle, type BundleFailure } from '../../common/bundle';
+
 export const MEMBER_HOME_SECTIONS = [
   'stats',
   'joins',
@@ -55,16 +57,9 @@ export const MEMBER_HOME_SECTIONS = [
 
 export type SectionName = (typeof MEMBER_HOME_SECTIONS)[number];
 
-export type MemberHome<T = unknown> = Record<SectionName, T | null>;
+export type MemberHome<T = unknown> = Bundle<SectionName, T>;
 
-/*
-  A failure carries its reason, so the caller never walks the results a second
-  time to find out why a section is null. The first version of this returned
-  bare names and the caller re-zipped names to results to recover the reasons —
-  two places deciding which section a result belonged to, which is one more
-  than there should be.
-*/
-export type SectionFailure = { name: SectionName; reason: unknown };
+export type SectionFailure = BundleFailure<SectionName>;
 
 /**
  * One section failing must not empty the page.
@@ -81,36 +76,16 @@ export type SectionFailure = { name: SectionName; reason: unknown };
  * for the entire dashboard. That is strictly worse than the fan-out it
  * replaces, and it is the trap this function exists to avoid.
  *
- * So a failed section is `null`, which is the same thing the web sees today
- * when its own request fails, and the same empty state renders.
+ * The machinery moved to `common/bundle.ts` when the app shell needed the
+ * same thing (OPS-47); this stays as the dashboard's own name for it so the
+ * call sites and their tests read as they did. What is *not* shared is the
+ * list of sections above — that is this page's decision and nobody else's.
  */
 export function settleSections<T>(
   names: readonly SectionName[],
   results: PromiseSettledResult<T>[],
 ): { sections: MemberHome<T>; failed: SectionFailure[] } {
-  if (names.length !== results.length) {
-    // A programming error, not a runtime condition: the caller built its task
-    // list and its name list out of step. Loud, because the alternative is a
-    // response that silently labels every section with the wrong data.
-    throw new Error(
-      `member-home: ${names.length} sections but ${results.length} results`,
-    );
-  }
-
-  const sections = {} as MemberHome<T>;
-  const failed: SectionFailure[] = [];
-
-  names.forEach((name, i) => {
-    const result = results[i];
-    if (result.status === 'fulfilled') {
-      sections[name] = result.value;
-      return;
-    }
-    sections[name] = null;
-    failed.push({ name, reason: result.reason });
-  });
-
-  return { sections, failed };
+  return settleBundle(names, results);
 }
 
 /**
@@ -124,15 +99,6 @@ export function settleSections<T>(
  * log: it would have written a warning on every dashboard load of every co-op
  * not using teaching, which is precisely the noise D-046 was written about.
  *
- * So a 403 from a composed section means "not here", not "broken". The
- * section is `null` either way; only the reporting differs.
- *
- * Duck-typed rather than `instanceof HttpException`, so this file keeps no
- * framework import and a test can pass a plain object. Anything without a
- * `getStatus` is treated as a real failure, which is the safe direction: a
- * dropped connection gets reported rather than quietly swallowed.
+ * So a 403 from a composed section means "not here", not "broken".
  */
-export function isUnavailable(reason: unknown): boolean {
-  const status = (reason as { getStatus?: () => unknown } | null)?.getStatus;
-  return typeof status === 'function' && status.call(reason) === 403;
-}
+export { isUnavailable } from '../../common/bundle';
