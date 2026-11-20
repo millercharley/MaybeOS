@@ -138,10 +138,18 @@ export function posterPalette(brandColor: string | null | undefined): PosterPale
   };
 }
 
-/** "Thu 26 Nov – Sun 6 Dec", the window the post covers. */
-export function windowLabel(from: Date, to: Date): string {
+/**
+ * "Thu, Nov 26 – Sun, Dec 6", the window the post covers.
+ *
+ * The timezone is named rather than inherited. Every date here is a UTC
+ * instant and this renders on a server whose clock is UTC, so formatting
+ * without naming the zone prints the wrong day for any co-op far enough east
+ * or west — and "what's on this Thursday" is exactly the sentence that must
+ * not be a day out.
+ */
+export function windowLabel(from: Date, to: Date, timeZone: string): string {
   const day = (d: Date) =>
-    d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
+    d.toLocaleDateString('en-US', { timeZone, weekday: 'short', day: 'numeric', month: 'short' });
   return `${day(from)} – ${day(to)}`;
 }
 

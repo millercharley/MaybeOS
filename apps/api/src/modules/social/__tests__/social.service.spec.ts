@@ -63,7 +63,10 @@ describe('SocialService', () => {
     prisma = {
       event: { findFirst: jest.fn(() => Promise.resolve(event)) },
       organization: { findUnique: jest.fn(() => Promise.resolve(org)), update: jest.fn() },
-      orgSocialAccount: { findUnique: jest.fn(() => Promise.resolve(account)), upsert: jest.fn(), deleteMany: jest.fn() },
+      orgSocialAccount: { findUnique: jest.fn(() => Promise.resolve(account)), upsert: jest.fn(), deleteMany: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      // SOC-05: `status` reports the last weekly post so an admin can see it
+      // happened. No co-op in these tests has one.
+      socialWeeklyPost: { findFirst: jest.fn().mockResolvedValue(null) },
       $transaction: jest.fn((ops: unknown[]) => Promise.resolve(ops)),
       userOrg: {
         findFirst: jest.fn(({ where }) => Promise.resolve(memberships[where.userId] ?? null)),
@@ -168,7 +171,9 @@ describe('disconnecting a co-op from Meta', () => {
       orgSocialAccount: {
         deleteMany: jest.fn(),
         findUnique: jest.fn().mockResolvedValue(null),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
+      socialWeeklyPost: { findFirst: jest.fn().mockResolvedValue(null) },
       organization: {
         update: jest.fn(),
         findUnique: jest.fn().mockResolvedValue({

@@ -61,11 +61,18 @@ export class SocialService {
     const [org, account] = await Promise.all([
       this.prisma.organization.findUnique({
         where: { id: orgId },
-        select: { socialSharingEnabled: true, socialShareMembersByDefault: true },
+        select: { socialSharingEnabled: true },
       }),
       this.prisma.orgSocialAccount.findUnique({
         where: { orgId },
         select: {
+          weeklyEnabled: true,
+          weeklyDay: true,
+          weeklyHour: true,
+          weeklyDays: true,
+          weeklyCta: true,
+          weeklyToPage: true,
+          weeklyToInstagram: true,
           pageId: true,
           pageName: true,
           igUsername: true,
@@ -83,9 +90,48 @@ export class SocialService {
         ? (unseal<MetaPage[]>(account.pendingPages) ?? []).map(({ id, name, igUsername }) => ({ id, name, igUsername }))
         : null;
 
+    /*
+      The last run, so an admin can see that it happened — and, when it did
+      not, why. A feature that posts once a week is one an admin otherwise
+      has no way to check without opening Instagram.
+    */
+    const lastPost = await this.prisma.socialWeeklyPost.findFirst({
+      where: { orgId },
+      orderBy: { periodStart: 'desc' },
+      select: {
+        periodStart: true,
+        status: true,
+        eventCount: true,
+        facebookUrl: true,
+        instagramUrl: true,
+        error: true,
+      },
+    });
+
     return {
       configured: this.meta.isConfigured,
       enabled: org.socialSharingEnabled,
+      weekly: account
+        ? {
+            enabled: account.weeklyEnabled,
+            day: account.weeklyDay,
+            hour: account.weeklyHour,
+            days: account.weeklyDays,
+            cta: account.weeklyCta,
+            toPage: account.weeklyToPage,
+            toInstagram: account.weeklyToInstagram,
+            last: lastPost
+              ? {
+                  periodStart: lastPost.periodStart.toISOString().slice(0, 10),
+                  status: lastPost.status,
+                  eventCount: lastPost.eventCount,
+                  facebookUrl: lastPost.facebookUrl,
+                  instagramUrl: lastPost.instagramUrl,
+                  error: lastPost.error,
+                }
+              : null,
+          }
+        : null,
       connection: account?.pageId
         ? {
             pageName: account.pageName,
@@ -209,6 +255,45 @@ export class SocialService {
       }),
     ]);
 
+    return this.status(orgId);
+  }
+
+  /**
+   * The weekly post's settings (SOC-05).
+   *
+   * On the account rather than the organisation because they are about
+   * posting, and posting needs the connection: a co-op with no Page has
+   * nothing to schedule. `updateMany` rather than `update` so a co-op that
+   * has not connected yet gets a clear refusal instead of a Prisma error.
+   */
+  async updateWeekly(
+    orgId: string,
+    dto: {
+      enabled?: boolean;
+      day?: number;
+      hour?: number;
+      days?: number;
+      cta?: string | null;
+      toPage?: boolean;
+      toInstagram?: boolean;
+    },
+  ) {
+    const { count } = await this.prisma.orgSocialAccount.updateMany({
+      where: { orgId },
+      data: {
+        ...(dto.enabled !== undefined && { weeklyEnabled: dto.enabled }),
+        ...(dto.day !== undefined && { weeklyDay: dto.day }),
+        ...(dto.hour !== undefined && { weeklyHour: dto.hour }),
+        ...(dto.days !== undefined && { weeklyDays: dto.days }),
+        ...(dto.cta !== undefined && { weeklyCta: dto.cta?.trim() || null }),
+        ...(dto.toPage !== undefined && { weeklyToPage: dto.toPage }),
+        ...(dto.toInstagram !== undefined && { weeklyToInstagram: dto.toInstagram }),
+      },
+    });
+
+    if (count === 0) {
+      throw new BadRequestException('Connect a Facebook Page before scheduling a weekly post.');
+    }
     return this.status(orgId);
   }
 

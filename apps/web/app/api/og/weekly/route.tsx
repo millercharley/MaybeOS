@@ -45,6 +45,8 @@ interface Body {
   logoUrl?: string | null;
   from: string;
   to: string;
+  /** The co-op's timezone. Every time on the poster is formatted into it. */
+  timezone?: string;
   /** What the co-op wants people to do, in their own words. */
   cta?: string | null;
   events: { title: string; startsAt: string; room?: string | null; free?: boolean }[];
@@ -121,6 +123,7 @@ export async function POST(request: Request) {
     free: Boolean(e.free),
   }));
 
+  const tz = body.timezone || 'America/New_York';
   const { shown, overflow } = splitForPoster(events);
   const c = posterPalette(body.brandColor);
 
@@ -131,11 +134,11 @@ export async function POST(request: Request) {
 
   const time = (d: Date) =>
     d
-      .toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+      .toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' })
       .replace(':00', '')
       .toLowerCase();
 
-  return new ImageResponse(
+  const png = new ImageResponse(
     (
       <div
         style={{
@@ -196,7 +199,7 @@ export async function POST(request: Request) {
           </div>
 
           <div style={{ display: 'flex', fontSize: 28, marginTop: 12, opacity: 0.75 }}>
-            {windowLabel(new Date(body.from), new Date(body.to))}
+            {windowLabel(new Date(body.from), new Date(body.to), tz)}
           </div>
         </div>
 
@@ -237,10 +240,10 @@ export async function POST(request: Request) {
                 }}
               >
                 <div style={{ display: 'flex', fontSize: 20, fontWeight: 600, letterSpacing: 1 }}>
-                  {e.startsAt.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()}
+                  {e.startsAt.toLocaleDateString('en-US', { timeZone: tz, month: 'short' }).toUpperCase()}
                 </div>
                 <div style={{ display: 'flex', fontSize: 36, fontWeight: 700, lineHeight: 1.1 }}>
-                  {e.startsAt.getDate()}
+                  {e.startsAt.toLocaleDateString('en-US', { timeZone: tz, day: 'numeric' })}
                 </div>
               </div>
 
@@ -265,7 +268,7 @@ export async function POST(request: Request) {
                     a single line of text has no business being a flex row. */}
                 <div style={{ display: 'flex', fontSize: 25, marginTop: 6, opacity: 0.7 }}>
                   {[
-                    e.startsAt.toLocaleDateString('en-US', { weekday: 'long' }),
+                    e.startsAt.toLocaleDateString('en-US', { timeZone: tz, weekday: 'long' }),
                     time(e.startsAt),
                     e.room,
                     e.free ? 'Free' : null,
@@ -346,4 +349,29 @@ export async function POST(request: Request) {
       ],
     },
   );
+
+  /*
+    JPEG, not the PNG satori gives us.
+
+    Instagram's content publishing API takes JPEG and nothing else, and it
+    fetches the file itself from a public address — so the conversion has to
+    happen before the bytes are stored, not when they are read. Done here
+    rather than in the API for the same reason the drawing is: `sharp` is
+    already a dependency of this app and adding it to a 68 MB function
+    bundle to re-encode one image a week would be the wrong trade.
+
+    A poster is flat colour and text, so quality 88 is indistinguishable from
+    the PNG at a fraction of the bytes — and Instagram has a size ceiling.
+  */
+  const jpeg = await sharp(Buffer.from(await png.arrayBuffer()))
+    .jpeg({ quality: 88, chromaSubsampling: '4:4:4' })
+    .toBuffer();
+
+  return new Response(new Uint8Array(jpeg), {
+    headers: {
+      'Content-Type': 'image/jpeg',
+      'Content-Length': String(jpeg.length),
+      'Cache-Control': 'no-store',
+    },
+  });
 }

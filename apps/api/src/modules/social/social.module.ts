@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { StorageModule } from '../storage/storage.module';
 import { MetaGraphService } from './meta-graph.service';
 import { SocialService } from './social.service';
+import { WeeklyPostService } from './weekly-post.service';
 import { SocialAdminController } from './social.controller';
 import { MetaCallbackController } from './meta-callback.controller';
 
@@ -15,6 +16,7 @@ import { MetaCallbackController } from './meta-callback.controller';
 @Module({
   imports: [StorageModule],
   controllers: [SocialAdminController, MetaCallbackController],
-  providers: [SocialService, MetaGraphService],
+  providers: [SocialService, MetaGraphService, WeeklyPostService],
+  exports: [WeeklyPostService],
 })
 export class SocialModule {}

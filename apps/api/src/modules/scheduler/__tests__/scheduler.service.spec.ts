@@ -11,6 +11,7 @@ import { StripeService } from '../../stripe/stripe.service';
 import { RadarService } from '../../radar/radar.service';
 import { CommonsDigestService } from '../../commons/commons-digest.service';
 import { RecapService } from '../../recap/recap.service';
+import { WeeklyPostService } from '../../social/weekly-post.service';
 import { HostBriefingService } from '../../service/host-briefing.service';
 import { ServiceService } from '../../service/service.service';
 import { CalendarImportService } from '../../calendar/calendar-import.service';
@@ -119,6 +120,15 @@ describe('SchedulerService', () => {
         {
           provide: RecapService,
           useValue: { draftDue: jest.fn().mockResolvedValue({ processed: 0, failed: 0, errors: [] }) },
+        },
+        // SOC-05. A co-op is due in the one hour a week it chose; none here.
+        {
+          provide: WeeklyPostService,
+          useValue: {
+            runDue: jest
+              .fn()
+              .mockResolvedValue({ considered: 0, posted: 0, skipped: 0, failed: 0, errors: [] }),
+          },
         },
       ],
     }).compile();
@@ -405,6 +415,15 @@ describe('SchedulerService — compose-pending-reports', () => {
         {
           provide: RecapService,
           useValue: { draftDue: jest.fn().mockResolvedValue({ processed: 0, failed: 0, errors: [] }) },
+        },
+        // SOC-05. A co-op is due in the one hour a week it chose; none here.
+        {
+          provide: WeeklyPostService,
+          useValue: {
+            runDue: jest
+              .fn()
+              .mockResolvedValue({ considered: 0, posted: 0, skipped: 0, failed: 0, errors: [] }),
+          },
         },
       ],
     }).compile();

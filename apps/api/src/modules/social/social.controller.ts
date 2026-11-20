@@ -6,7 +6,7 @@ import { OrgMembershipGuard } from '../../common/guards/org-membership.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, RequestUser } from '../../common/decorators/current-user.decorator';
 import { SocialService } from './social.service';
-import { ChoosePageDto, SocialSettingsDto } from './dto/social.dto';
+import { ChoosePageDto, SocialSettingsDto, WeeklyPostDto } from './dto/social.dto';
 
 
 /** Connecting the co-op's Facebook Page and Instagram (SOC-01, SOC-04). Admins only. */
@@ -54,6 +54,13 @@ export class SocialAdminController {
   @ApiOperation({ summary: 'Turn sharing on or off, and set the default for members' })
   settings(@Param('orgId', ParseUUIDPipe) orgId: string, @Body() dto: SocialSettingsDto) {
     return this.social.updateSettings(orgId, dto);
+  }
+
+  @Patch('weekly')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: "When MaybeOS posts the co-op's week, and what it says" })
+  weekly(@Param('orgId', ParseUUIDPipe) orgId: string, @Body() dto: WeeklyPostDto) {
+    return this.social.updateWeekly(orgId, dto);
   }
 
 }

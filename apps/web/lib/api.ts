@@ -1525,6 +1525,26 @@ class ApiClient {
     disconnect: (orgId: string, token: string) =>
       this.request<SocialStatus>(`/orgs/${orgId}/social/meta`, { method: 'DELETE', token }),
 
+    /** When MaybeOS posts the co-op's week, and what it says (SOC-05). */
+    updateWeekly: (
+      orgId: string,
+      data: {
+        enabled?: boolean;
+        day?: number;
+        hour?: number;
+        days?: number;
+        cta?: string | null;
+        toPage?: boolean;
+        toInstagram?: boolean;
+      },
+      token: string,
+    ) =>
+      this.request<SocialStatus>(`/orgs/${orgId}/social/weekly`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+        token,
+      }),
+
     updateSettings: (orgId: string, data: { enabled?: boolean }, token: string) =>
       this.request<SocialStatus>(`/orgs/${orgId}/social/settings`, {
         method: 'PATCH',
@@ -6595,10 +6615,43 @@ export interface InterestAsk {
 
 export type SocialPlatform = 'FACEBOOK' | 'INSTAGRAM';
 
+/**
+ * The cap on the call to action.
+ *
+ * Re-exported from the renderer rather than written again: the form, the API
+ * and the poster all enforce it, and three copies of a number is how they
+ * come to disagree. A test reads the API's copy across the workspace
+ * boundary and asserts the two packages still say the same thing.
+ */
+export { CTA_LIMIT as WEEKLY_CTA_LIMIT } from '@/lib/weekly-poster';
+
+export interface WeeklyPostSettings {
+  enabled: boolean;
+  /** ISO weekday, 1 Monday to 7 Sunday. */
+  day: number;
+  /** The hour in the co-op's own timezone. */
+  hour: number;
+  days: number;
+  cta: string | null;
+  toPage: boolean;
+  toInstagram: boolean;
+  /** The most recent week, so an admin can see it happened — or why not. */
+  last: {
+    periodStart: string;
+    status: string;
+    eventCount: number;
+    facebookUrl: string | null;
+    instagramUrl: string | null;
+    error: string | null;
+  } | null;
+}
+
 export interface SocialStatus {
   /** Whether this server has a Facebook app configured at all. */
   configured: boolean;
   enabled: boolean;
+  /** Null until a Page is connected: there is nothing to schedule without one. */
+  weekly: WeeklyPostSettings | null;
   connection: { pageName: string | null; instagramUsername: string | null; connectedAt: string | null } | null;
   /** Pages to choose from, after a login that manages several. */
   pendingPages: { id: string; name: string; igUsername: string | null }[] | null;

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { api, SocialStatus } from '@/lib/api';
 import { useAuthStore } from '@/lib/auth-store';
+import { WeeklyPost } from '@/components/settings/weekly-post';
 
 /** What Facebook's return to `?social=` means, in words for the admin. */
 const RETURN_MESSAGES: Record<string, { tone: 'ok' | 'bad'; text: string }> = {
@@ -70,6 +71,7 @@ export function SocialSharing() {
   const { connection } = status;
 
   return (
+    <>
     <section className="card space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-6">
         <div>
@@ -175,5 +177,15 @@ export function SocialSharing() {
         </div>
       )}
     </section>
+
+    {/*
+      The schedule, below the connection it depends on (SOC-05).
+
+      Given this component's own status rather than fetching again: two cards
+      asking the same question would be two requests on a settings page, and
+      a moment where one of them is out of date with the other.
+    */}
+    <WeeklyPost status={status} onChange={setStatus} />
+    </>
   );
 }

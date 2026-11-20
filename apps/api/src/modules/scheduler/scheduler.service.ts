@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../config/prisma.service';
 import { MigrationDriftService } from '../health/migration-drift.service';
+import { WeeklyPostService } from '../social/weekly-post.service';
 import { describeDrift, isClean } from '../health/migration-drift';
 import { CommonsService } from '../commons/commons.service';
 import { ReportService } from '../impact/report.service';
@@ -61,6 +62,7 @@ export class SchedulerService {
     private readonly radar: RadarService,
     private readonly commonsDigest: CommonsDigestService,
     private readonly recap: RecapService,
+    private readonly weekly: WeeklyPostService,
     private readonly rota: ServiceService,
     private readonly calendars: CalendarImportService,
     private readonly ticketPasses: TicketPassService,
@@ -102,6 +104,7 @@ export class SchedulerService {
       { name: 'send-commons-digests',           run: () => this.sendCommonsDigests(now) },
       { name: 'draft-monthly-recaps',           run: () => this.draftMonthlyRecaps(now) },
       { name: 'send-ticket-confirmations',      run: () => this.sendTicketConfirmations() },
+      { name: 'post-weekly-social',             run: () => this.postWeeklySocial(now) },
     ]) {
       try {
         tasks.push(await task.run());
@@ -285,6 +288,25 @@ export class SchedulerService {
       return { task: 'draft-monthly-recaps', processed, failed, errors };
     } catch (error) {
       return { task: 'draft-monthly-recaps', processed: 0, failed: 1, errors: [(error as Error).message] };
+    }
+  }
+
+  /**
+   * The co-op's weekly post to Facebook and Instagram (SOC-05).
+   *
+   * Almost always does nothing: a co-op is due in the one hour a week it
+   * chose, in its own timezone, and the unique row per week is what makes
+   * the four runs inside that hour post once.
+   */
+  private async postWeeklySocial(now: Date): Promise<TaskResult> {
+    try {
+      const { considered, posted, skipped, failed, errors } = await this.weekly.runDue(now);
+      if (considered > 0) {
+        this.logger.log(`Weekly social: ${posted} posted, ${skipped} skipped, ${failed} failed`);
+      }
+      return { task: 'post-weekly-social', processed: posted, failed, errors };
+    } catch (error) {
+      return { task: 'post-weekly-social', processed: 0, failed: 1, errors: [(error as Error).message] };
     }
   }
 

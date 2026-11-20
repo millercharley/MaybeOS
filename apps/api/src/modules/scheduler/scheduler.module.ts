@@ -10,6 +10,7 @@ import { RadarModule } from '../radar/radar.module';
 import { RecapModule } from '../recap/recap.module';
 import { CalendarModule } from '../calendar/calendar.module';
 import { TicketPassModule } from '../events/ticket-pass.module';
+import { SocialModule } from '../social/social.module';
 import { SchedulerService } from './scheduler.service';
 import { MigrationDriftService } from '../health/migration-drift.service';
 
@@ -21,6 +22,7 @@ import { MigrationDriftService } from '../health/migration-drift.service';
  */
 @Module({
   imports: [
+    SocialModule,
     CommonsModule,
     ImpactModule,
     BelongingModule,

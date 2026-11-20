@@ -1,3 +1,5 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import {
   CTA_LIMIT,
   DEFAULT_CTA,
@@ -198,6 +200,22 @@ describe('the weekly poster', () => {
       expect(CTA_LIMIT * 26).toBeGreaterThan(POSTER_WIDTH);
     });
 
+    /*
+      The two packages do not share code, so the cap exists twice: once here
+      for the renderer and the form, once in the API for the DTO. This is the
+      best a workspace boundary allows — not one definition, but a test that
+      fails the moment there are two different ones.
+    */
+    it('agrees with the cap the API enforces', () => {
+      const api = readFileSync(
+        join(__dirname, '..', '..', 'api', 'src', 'modules', 'social', 'weekly-cta.ts'),
+        'utf8',
+      );
+      const theirs = Number(api.match(/export const CTA_LIMIT = (\d+)/)![1]);
+
+      expect(theirs).toBe(CTA_LIMIT);
+    });
+
     it('has something to say for a co-op that has not written one', () => {
       expect(DEFAULT_CTA).toMatch(/Everyone welcome/);
       expect(DEFAULT_CTA.length).toBeLessThanOrEqual(CTA_LIMIT);
@@ -206,8 +224,30 @@ describe('the weekly poster', () => {
 
   describe('the window', () => {
     it('reads as the span the post covers', () => {
-      expect(windowLabel(new Date('2026-11-26T00:00:00'), new Date('2026-12-06T23:59:00'))).toBe(
-        'Thu, Nov 26 – Sun, Dec 6',
+      expect(
+        windowLabel(
+          new Date('2026-11-26T05:00:00Z'),
+          new Date('2026-12-07T04:59:00Z'),
+          'America/New_York',
+        ),
+      ).toBe('Thu, Nov 26 – Sun, Dec 6');
+    });
+
+    /*
+      The zone is named, not inherited. These are real instants and the
+      renderer runs on a UTC server, so an unnamed zone prints the wrong day
+      for any co-op far enough from Greenwich — and "what's on this Thursday"
+      is the one sentence that must not be a day out.
+    */
+    it('reads the day in the co-op’s zone, not the server’s', () => {
+      // Midnight in Los Angeles is 8am UTC the same day; midnight in Sydney
+      // is the afternoon *before* in UTC.
+      const instant = new Date('2026-11-26T08:00:00Z');
+
+      expect(windowLabel(instant, instant, 'America/Los_Angeles')).toContain('Nov 26');
+      expect(windowLabel(instant, instant, 'Australia/Sydney')).toContain('Nov 26');
+      expect(windowLabel(new Date('2026-11-26T20:00:00Z'), new Date('2026-11-26T20:00:00Z'), 'Australia/Sydney')).toContain(
+        'Nov 27',
       );
     });
   });

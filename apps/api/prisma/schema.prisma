@@ -1,9 +1,8 @@
 generator client {
-
-/// Names and addresses in comments and fixtures throughout this repo are
-/// stand-ins, checked against the member table so none of them is a real
-/// person (OPS-38). The incidents they describe are real; the people are
-/// not. Real member data lives in the database and stays there.
+  /// Names and addresses in comments and fixtures throughout this repo are
+  /// stand-ins, checked against the member table so none of them is a real
+  /// person (OPS-38). The incidents they describe are real; the people are
+  /// not. Real member data lives in the database and stays there.
 
   provider      = "prisma-client-js"
   binaryTargets = ["native", "rhel-openssl-3.0.x"]
@@ -61,7 +60,7 @@ model Organization {
   /// price, the org fee line, the joining fee, the reprice). So this column
   /// off `'usd'` would show a visitor one currency and bill them another;
   /// moving it is the second half of this work, not a setting to flip.
-  currency     String  @default("usd")
+  currency String @default("usd")
 
   /// What an hour of a member's service is worth to this co-op, in cents
   /// (SRV-02). Null, and null by default, which is the honest state.
@@ -399,6 +398,7 @@ model Organization {
   shareGrants             ShareGrant[]
   doorSheetEntries        DoorSheetEntry[]
   socialAccount           OrgSocialAccount?
+  weeklyPosts             SocialWeeklyPost[]
   eventSocialPosts        EventSocialPost[]
   offerings               Offering[]
 
@@ -447,21 +447,21 @@ enum OrgRole {
 }
 
 model User {
-  id              String     @id @default(uuid())
-  email           String     @unique
-  passwordHash    String?
-  name            String?
-  avatarUrl       String?
+  id                  String     @id @default(uuid())
+  email               String     @unique
+  passwordHash        String?
+  name                String?
+  avatarUrl           String?
   /// Where MaybeOS keeps this avatar itself, in the private `avatars` bucket.
   /// An imported avatar URL points at the platform the co-op is leaving and
   /// dies with that account, so the bytes are copied here on import. A path
   /// wins over `avatarUrl`, which still holds an external URL when that is
   /// all there is.
-  avatarPath      String?
-  globalRole      GlobalRole @default(USER)
-  emailVerified   Boolean    @default(false)
-  magicLinkToken  String?
-  magicLinkExpiry DateTime?
+  avatarPath          String?
+  globalRole          GlobalRole @default(USER)
+  emailVerified       Boolean    @default(false)
+  magicLinkToken      String?
+  magicLinkExpiry     DateTime?
   /// A pending password reset, as a sha256 of the token (AUTH-09).
   ///
   /// Its own pair rather than reusing the magic-link columns: a token issued
@@ -471,16 +471,16 @@ model User {
   /// magic-link token is not.
   passwordResetToken  String?
   passwordResetExpiry DateTime?
-  lastLoginAt     DateTime?
+  lastLoginAt         DateTime?
   /// Set when somebody leaves MaybeOS's forum (FRM-01).
   ///
   /// Leaving deletes the membership row, which leaves no trace — so without
   /// this, founding a second co-op would drag somebody straight back into a
   /// forum they had already left. "We asked once and they said no" has to
   /// outlive the row it was recorded on.
-  forumOptOutAt   DateTime?
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  forumOptOutAt       DateTime?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
 
   orgs             UserOrg[]
   rsvps            Rsvp[]
@@ -1009,7 +1009,7 @@ model Event {
   ///
   /// 50 keeps what every existing event already looks like, so this changes
   /// nothing until somebody moves the slider.
-  imageFocusY         Int       @default(50)
+  imageFocusY         Int             @default(50)
   startTime           DateTime
   endTime             DateTime
   timezone            String          @default("America/New_York")
@@ -1157,8 +1157,8 @@ model Event {
   /// rather than `Cascade` on purpose: deleting an offering must not delete
   /// evenings people hold tickets to. The session survives as a plain event,
   /// which is what it already was to everyone who booked it.
-  offeringId  String?
-  offering    Offering?    @relation(fields: [offeringId], references: [id], onDelete: SetNull)
+  offeringId String?
+  offering   Offering? @relation(fields: [offeringId], references: [id], onDelete: SetNull)
 
   @@unique([orgId, slug])
   @@unique([orgId, googleEventId])
@@ -1187,31 +1187,31 @@ model Event {
 ///
 /// A private lesson has no dates and never creates one.
 model Offering {
-  id           String          @id @default(uuid())
-  orgId        String
-  org          Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  id          String       @id @default(uuid())
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   /// Who is teaching. Not the creator: an organiser may write one up on a
   /// member's behalf, the same distinction `Event.hostId` and
   /// `Event.createdById` draw (EVT-32).
-  teacherId    String
-  teacher      User            @relation("OfferingTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
-  createdById  String?
-  createdBy    User?           @relation("OfferingCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  teacherId   String
+  teacher     User         @relation("OfferingTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
+  createdById String?
+  createdBy   User?        @relation("OfferingCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
-  kind         OfferingKind
-  title        String
+  kind            OfferingKind
+  title           String
   /// `title` kebab-cased, unique per co-op, the same shape `Event.slug` uses
   /// minus the date prefix — an offering is not pinned to one.
-  slug         String
+  slug            String
   /// One line for a card. The long version lives in `richDescription`.
-  summary      String?
-  description  String?
+  summary         String?
+  description     String?
   richDescription String?
 
   imageUrl       String?
   imageCredit    String?
   imageCreditUrl String?
-  imageFocusY    Int           @default(50)
+  imageFocusY    Int     @default(50)
 
   /// Who may see it, reusing the event enum rather than inventing a parallel
   /// one that would drift.
@@ -1223,36 +1223,36 @@ model Offering {
   /// a member writing up what they teach: being on the open web should be a
   /// thing somebody chose. A session inherits this explicitly rather than
   /// relying on either default.
-  visibility   EventVisibility @default(MEMBERS_ONLY)
+  visibility EventVisibility @default(MEMBERS_ONLY)
 
-  isPublished  Boolean         @default(false)
-  publishedAt  DateTime?
+  isPublished Boolean   @default(false)
+  publishedAt DateTime?
   /// Set when the teacher stops taking anybody. Kept rather than deleted, so
   /// the people who already signed up still have something to point at.
-  closedAt     DateTime?
+  closedAt    DateTime?
   /// The Commons post carrying this offering's conversation (CMN-22).
   ///
   /// Unique, like `events.postId`, and `SetNull` on delete: removing an
   /// offering must not take a thread members have been talking in with it.
-  postId       String?   @unique
+  postId      String?   @unique
 
-  payment      OfferingPayment @default(ARRANGE_DIRECTLY)
+  payment    OfferingPayment @default(ARRANGE_DIRECTLY)
   /// What it costs, in cents. Null means free, or "ask" — the same meaning
   /// `Event.priceCents` carries, and the same reason it is not zero: Stripe
   /// will not take a payment under fifty cents, so zero is not a price.
-  priceCents   Int?
+  priceCents Int?
   /// What the teacher wants to say about money when MaybeOS is not taking it
   /// — "sliding scale, $30-60", "first lesson free". Prose on purpose: a
   /// number cannot express most of what teachers actually charge.
-  priceNote    String?
-  currency     String          @default("usd")
+  priceNote  String?
+  currency   String          @default("usd")
 
-  post         Post?     @relation("OfferingThread", fields: [postId], references: [id], onDelete: SetNull)
-  sessions     Event[]
-  interests    OfferingInterest[]
+  post      Post?              @relation("OfferingThread", fields: [postId], references: [id], onDelete: SetNull)
+  sessions  Event[]
+  interests OfferingInterest[]
 
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([orgId, slug])
   @@index([orgId, visibility, isPublished])
@@ -1270,16 +1270,16 @@ model Offering {
 /// The note is the learner's own words and is read by the teacher and the
 /// co-op's organisers. It is never published, and never reaches the embed.
 model OfferingInterest {
-  id         String   @id @default(uuid())
+  id         String    @id @default(uuid())
   offeringId String
-  offering   Offering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  offering   Offering  @relation(fields: [offeringId], references: [id], onDelete: Cascade)
   userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   note       String?
   /// When the teacher marked it dealt with. Kept rather than deleted so a
   /// teacher can see who they have already replied to.
   handledAt  DateTime?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   /// Asking twice is asking once. A member who presses it again is
   /// updating their note, not joining a queue a second time.
@@ -1611,9 +1611,9 @@ model Booking {
   /// The default is the safe one: a row of unknown origin is treated as
   /// ours and therefore left alone by the import, rather than being offered
   /// up for re-ownership.
-  source         BookingSource @default(MAYBEOS)
-  title          String
-  description    String?
+  source      BookingSource @default(MAYBEOS)
+  title       String
+  description String?
 
   /// What the booking is for, asked when it is made (SPC-15).
   ///
@@ -1908,28 +1908,28 @@ model ChannelSection {
 }
 
 model Post {
-  id        String   @id @default(uuid())
-  channelId String
-  authorId  String
-  title     String?
-  body      String
-  isPinned  Boolean  @default(false)
-  isFlagged Boolean  @default(false)
+  id               String    @id @default(uuid())
+  channelId        String
+  authorId         String
+  title            String?
+  body             String
+  isPinned         Boolean   @default(false)
+  isFlagged        Boolean   @default(false)
   /// When an organiser asked for this post to be emailed to the whole
   /// roster (CMN-21). Null for the overwhelming majority of posts, which
   /// are a conversation rather than an announcement.
   emailRequestedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  channel     Channel      @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  author      User         @relation(fields: [authorId], references: [id])
-  comments    Comment[]
-  reactions   Reaction[]
-  attachments Attachment[]
-  eventThread Event?       @relation("EventThread")
-  offeringThread Offering? @relation("OfferingThread")
-  emailSends  PostEmailSend[]
+  channel        Channel         @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author         User            @relation(fields: [authorId], references: [id])
+  comments       Comment[]
+  reactions      Reaction[]
+  attachments    Attachment[]
+  eventThread    Event?          @relation("EventThread")
+  offeringThread Offering?       @relation("OfferingThread")
+  emailSends     PostEmailSend[]
 
   @@index([channelId, createdAt])
   @@map("posts")
@@ -3523,6 +3523,21 @@ model OrgSocialAccount {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  /// The co-op's weekly post (SOC-05). Off until an admin turns it on: a
+  /// connection is permission to post, not an instruction to start.
+  weeklyEnabled     Boolean @default(false)
+  /// ISO weekday, 1 Monday to 7 Sunday. Charley's default is Thursday.
+  weeklyDay         Int     @default(4)
+  /// The hour in the co-op's own timezone, 0 to 23. Mornings by default.
+  weeklyHour        Int     @default(9)
+  /// How many days the post covers, counting its own. Thursday through the
+  /// following Sunday is eleven.
+  weeklyDays        Int     @default(11)
+  /// What the co-op wants people to do, in their own words, on the image.
+  weeklyCta         String?
+  weeklyToPage      Boolean @default(true)
+  weeklyToInstagram Boolean @default(true)
+
   org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
 
   @@map("org_social_accounts")
@@ -3531,6 +3546,36 @@ model OrgSocialAccount {
 enum SocialPlatform {
   FACEBOOK
   INSTAGRAM
+}
+
+/// One week's post for a co-op (SOC-05).
+///
+/// The unique index on `(orgId, periodStart)` is the whole of the
+/// idempotency, the same way the monthly recap works: the scheduler runs
+/// every fifteen minutes, so four runs fall inside the hour a co-op chose,
+/// and the row is claimed before anything is published.
+model SocialWeeklyPost {
+  id           String   @id @default(uuid())
+  orgId        String
+  /// The local date the post covers from — the day it goes out.
+  periodStart  DateTime @db.Date
+  periodEnd    DateTime @db.Date
+  status       String   @default("PENDING")
+  eventCount   Int      @default(0)
+  imagePath    String?
+  facebookId   String?
+  facebookUrl  String?
+  instagramId  String?
+  instagramUrl String?
+  /// Why it did not go out, for an admin reading the settings page.
+  error        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, periodStart])
+  @@map("social_weekly_posts")
 }
 
 /// One event shared to one platform (SOC-01). Unique per event and platform,
