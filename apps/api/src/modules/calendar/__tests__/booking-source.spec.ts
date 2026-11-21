@@ -117,3 +117,88 @@ describe('the importer leaves a MaybeOS booking alone', () => {
     expect(IMPORT).toMatch(/title: entry\.title,\s*\n\s*startTime: entry\.start,\s*\n\s*endTime: entry\.end,/);
   });
 });
+
+/**
+ * …and a row the importer created is not one of ours (SPC-39).
+ *
+ * SPC-36 above added the column with `DEFAULT 'MAYBEOS'` and no backfill, so
+ * every row that already existed — the thousands the importer had created
+ * among them — began claiming to be a MaybeOS booking. The guard this file
+ * exists to pin is absolute: `ours` means the import does not look at
+ * ownership at all. So a reservation it had filed under the wrong person was
+ * frozen under them, and every later pass, including the ones that learned
+ * to read a guest line, a title and a guest's name, declined to correct it.
+ *
+ * Eight of MaybeItsFate's sat in the first organiser's My Bookings — he is
+ * the fallback owner, which is who an unmatched reservation is filed under —
+ * six of them upcoming evenings in the Attic that another member had booked
+ * through the co-op's old calendar tool.
+ *
+ * The fix is the data, not the guard: the migration hands those rows back by
+ * recognising the one thing MaybeOS never writes into a description, which
+ * is the very line `booking-guest.ts` reads to find out whose reservation it
+ * is. These tests keep the two statements of that line from drifting apart.
+ */
+describe('the backfill SPC-36 did not write', () => {
+  const MIGRATION = readFileSync(
+    join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      '..',
+      'prisma',
+      'migrations',
+      '20261121200000_spc39_imported_booking_source',
+      'migration.sql',
+    ),
+    'utf8',
+  );
+
+  const GUEST = read('booking-guest.ts');
+
+  /** The labels the SQL looks for, out of its own alternation. */
+  const sqlLabels = (MIGRATION.match(/\(guest\|[^)]*\)/) ?? [''])[0]
+    .replace(/^\(|\)$/g, '')
+    .split('|')
+    .filter(Boolean);
+
+  /** The labels `guestFrom` looks for, out of its own array. */
+  const codeLabels = (GUEST.match(/const LABELS = \[([^\]]*)\]/) ?? ['', ''])[1]
+    .split(',')
+    .map((part) => part.trim().replace(/^'|'$/g, ''))
+    .filter(Boolean);
+
+  it('moves the rows, and only in one direction', () => {
+    expect(MIGRATION).toMatch(/UPDATE "bookings"\s*\nSET "source" = 'GOOGLE'/);
+    expect(MIGRATION).toMatch(/WHERE "source" = 'MAYBEOS'/);
+  });
+
+  it('leaves ownership to the import rather than writing it here', () => {
+    /*
+      SPC-35 is what makes that safe: a pass with weaker evidence may no
+      longer take a reservation off a member it is already attributed to, so
+      the 42 of these that are already on the right person stay there while
+      the 8 that are not get looked at again.
+    */
+    expect(MIGRATION).not.toMatch(/"userId"\s*=/);
+    expect(MIGRATION).not.toMatch(/"isCoopHold"\s*=/);
+    expect(MIGRATION).not.toMatch(/"bookedFor/);
+  });
+
+  it('recognises a row by the line only a booking tool writes', () => {
+    expect(codeLabels.length).toBeGreaterThan(1);
+    expect(sqlLabels).toEqual(codeLabels);
+  });
+
+  it('spells the word boundary the way Postgres does', () => {
+    // `\b` is a backspace in a Postgres regex, so it would match nothing and
+    // the migration would silently move no rows at all.
+    expect(MIGRATION).toContain(')\\M');
+    expect(MIGRATION).not.toMatch(/\)\\b/);
+  });
+
+  it('asks for a calendar entry, since that is what it is claiming', () => {
+    expect(MIGRATION).toMatch(/"googleEventId" IS NOT NULL/);
+  });
+});
