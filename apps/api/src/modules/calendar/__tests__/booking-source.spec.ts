@@ -129,10 +129,10 @@ describe('the importer leaves a MaybeOS booking alone', () => {
  * frozen under them, and every later pass, including the ones that learned
  * to read a guest line, a title and a guest's name, declined to correct it.
  *
- * Eight of MaybeItsFate's sat in the first organiser's My Bookings — he is
- * the fallback owner, which is who an unmatched reservation is filed under —
- * six of them upcoming evenings in the Attic that another member had booked
- * through the co-op's old calendar tool.
+ * Eight of MaybeItsFate's 48 sat in the first organiser's My Bookings — he
+ * is the fallback owner, which is who an unmatched reservation is filed
+ * under — six of them upcoming evenings in the Attic that another member had
+ * booked through the co-op's old calendar tool.
  *
  * The fix is the data, not the guard: the migration hands those rows back by
  * recognising the one thing MaybeOS never writes into a description, which

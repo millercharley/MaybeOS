@@ -13,11 +13,16 @@
 -- — declined to correct it.
 --
 -- At MaybeItsFate, 3,024 of those rows were later relabelled GOOGLE by hand;
--- 50 were missed, and all 50 are rows the import had attributed to somebody.
--- Eight of them sat in the first organiser's My Bookings — the fallback
+-- 50 were missed, and every one is a row the import had attributed to
+-- somebody. Eight sat in the first organiser's My Bookings — the fallback
 -- owner, which is who an unmatched reservation is filed under — showing him
 -- six upcoming evenings in the Attic that another member had booked through
--- the co-op's old calendar tool.
+-- the co-op's old calendar tool. The other 40 are already on the right
+-- person, and SPC-35 is what keeps them there.
+--
+-- 48 of the 50, to be exact: two have lost the `googleEventId` that would
+-- let a pass find them again, so relabelling them would change nothing. They
+-- are already filed under the member the guest line names.
 --
 -- The fingerprint is the description. MaybeOS never writes a "Guest •" line;
 -- a booking tool writing into a room calendar is the only thing that does,
