@@ -1,5 +1,5 @@
 import { readSource } from '../../../common/testing/source-scan';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
@@ -200,5 +200,90 @@ describe('the backfill SPC-36 did not write', () => {
 
   it('asks for a calendar entry, since that is what it is claiming', () => {
     expect(MIGRATION).toMatch(/"googleEventId" IS NOT NULL/);
+  });
+});
+
+/**
+ * …and the relabel that was done by hand is written down (SPC-39b).
+ *
+ * 3,024 of MaybeItsFate's rows were corrected straight against production,
+ * by a rule nobody recorded, and SPC-39 above caught 48 that run had missed.
+ * So production is right and the repository cannot say why — a dump taken
+ * before 21 November 2026 and replayed through the migrations would carry
+ * the bug back in, and the drift check would not notice, because it compares
+ * migration names rather than rows.
+ *
+ * The migration is a no-op on both databases today. What these tests protect
+ * is the claim it rests on: that a co-op hold is something only the importer
+ * makes. The day somebody adds "hold this room" to the admin screens, that
+ * stops being true and this fails — which is the point, because the
+ * migration would then be relabelling their holds as Google's.
+ */
+describe('a co-op hold is the importer’s mark', () => {
+  const MIGRATION = readFileSync(
+    join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      '..',
+      'prisma',
+      'migrations',
+      '20261125180000_spc39b_coop_holds_are_imports',
+      'migration.sql',
+    ),
+    'utf8',
+  );
+
+  /** Every Prisma `data` block in the API that mentions `isCoopHold`. */
+  function holdWrites(): { file: string; block: string }[] {
+    const found: { file: string; block: string }[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name !== '__tests__' && entry.name !== 'node_modules') walk(path);
+          continue;
+        }
+        if (!entry.name.endsWith('.ts')) continue;
+
+        const source = readFileSync(path, 'utf8');
+        // One nesting level is enough: `data: { … isCoopHold … }`, and the
+        // importer's own write is exactly that shape.
+        const blocks = source.match(/\bdata:\s*\{(?:[^{}]|\{[^{}]*\})*\}/gs) ?? [];
+        for (const block of blocks) {
+          if (block.includes('isCoopHold')) found.push({ file: entry.name, block });
+        }
+      }
+    };
+    walk(join(__dirname, '..', '..', '..'));
+    return found;
+  }
+
+  it('is set true in one place, and that place is the import', () => {
+    const elsewhere = holdWrites().filter((w) => w.file !== 'calendar-import.service.ts');
+
+    // Everything else may only clear it — that is SPC-38 handing a
+    // reservation back to the member who turns out to be here after all.
+    expect(elsewhere.length).toBeGreaterThan(0);
+    for (const write of elsewhere) {
+      expect(write.block).toMatch(/isCoopHold: false/);
+    }
+  });
+
+  it('moves a hold on that basis, and a guest line on SPC-39’s', () => {
+    expect(MIGRATION).toMatch(/UPDATE "bookings"\s*\nSET "source" = 'GOOGLE'/);
+    expect(MIGRATION).toMatch(/"isCoopHold" = true/);
+    expect(MIGRATION).toContain(')\\M');
+  });
+
+  it('leaves ownership alone here too', () => {
+    /*
+      The whole of what it assigns, read out of the statement rather than
+      searched for — `isCoopHold` appears in the WHERE clause, so a scan of
+      the file would match it there and prove nothing.
+    */
+    const assigned = MIGRATION.match(/\nSET ([\s\S]*?)\nWHERE /)![1].trim();
+    expect(assigned).toBe("\"source\" = 'GOOGLE'");
   });
 });
